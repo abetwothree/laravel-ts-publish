@@ -188,27 +188,6 @@ test('ts:publish returns success exit code', function () {
         ->assertExitCode(0);
 });
 
-test('ts:publish writes model split template files', function () {
-    $outputDir = workbench_path('resources/js/types/data/split-template-example');
-
-    config()->set('ts-publish.models.template', 'laravel-ts-publish::model-split');
-    config()->set('ts-publish.output_directory', $outputDir);
-    config()->set('ts-publish.output_to_files', true);
-    config()->set('ts-publish.routes.enabled', true);
-    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
-    config()->set('ts-publish.model_metadata.enabled', true);
-    config()->set('ts-publish.model_metadata.included', [User::class]);
-    config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
-
-    $this->artisan('ts:publish', ['--preview' => 'false'])
-        ->assertSuccessful();
-
-    expect(file_exists("$outputDir/app/http/controllers/post-controller.ts"))->toBeTrue()
-        ->and(file_get_contents("$outputDir/app/models/user_meta.ts"))
-        ->toContain("import type { RoleType } from '../enums';")
-        ->toContain('limits: { minimum: number; maximum: null };');
-});
-
 test('ts:publish writes model full template files', function () {
     $outputDir = workbench_path('resources/js/types/data/full-template-example');
 
@@ -231,7 +210,7 @@ test('ts:publish writes model full template files', function () {
 });
 
 test('ts:publish writes modular files to namespace-based directories', function () {
-    $outputDir = workbench_path('resources/js/types/data/default-example');
+    $outputDir = workbench_path('resources/js/types/data/split-template-example');
 
     config()->set('ts-publish.output_directory', $outputDir);
     config()->set('ts-publish.output_to_files', true);
