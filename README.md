@@ -17,7 +17,7 @@ Enums and routes become functional objects. Enums get PHP-like `.from()`, `.tryF
 
 You can override anything the package infers. By default, types republish after `migrate`, and the `@tolki/ts` Vite plugin republishes them when your PHP changes, so your frontend stays in sync.
 
-To see what the package writes, browse the [generated output examples](workbench/resources/js/types/data/default-example).
+To see what the package writes, browse the [generated output examples](workbench/resources/js/types/data).
 
 ## Also by me
 
