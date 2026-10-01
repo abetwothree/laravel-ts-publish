@@ -40,6 +40,8 @@ export * from './crew';
 export * from './crew_meta';
 export * from './custom-key-post';
 export * from './custom-key-post_meta';
+export * from './depot';
+export * from './depot_meta';
 export * from './docblock-generics-fixture';
 export * from './docblock-generics-fixture_meta';
 export * from './excludable-model';

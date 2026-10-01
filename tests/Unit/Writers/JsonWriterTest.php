@@ -212,3 +212,17 @@ test('writes json file to disk when output_to_files is enabled', function () {
     $writer = new JsonWriter($filesystem);
     $writer->write($runner);
 });
+
+test('json models list a key an attribute and a relation share once, as the relation', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $json = json_decode((new JsonWriter(new Filesystem))->write($runner), true);
+    $properties = collect($json['models']['Workbench\\App\\Models\\Depot']['properties']);
+
+    expect($properties->where('name', 'supervisor')->pluck('type')->all())->toBe(['User | null'])
+        ->and($properties->where('name', 'orders_count')->pluck('type')->all())->toBe(['number | null']);
+});

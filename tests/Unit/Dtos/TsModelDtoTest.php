@@ -69,4 +69,24 @@ describe('TsModelDto', function () {
     test('jsonSerialize returns the same as toArray', function () {
         expect($this->dto->jsonSerialize())->toBe($this->dto->toArray());
     });
+
+    test('withoutShadowedKeys wraps an interface in Omit only for the keys it shares with a relation', function () {
+        $dto = new TsModelDto(
+            modelName: 'Depot',
+            description: '',
+            fqcn: 'App\Models\Depot',
+            filePath: 'app/Models/Depot.php',
+            filename: 'depot',
+            columns: [],
+            mutators: [],
+            appends: [],
+            relations: [],
+            typeImports: [],
+            shadowedKeys: ['supervisor', 'region'],
+        );
+
+        expect($dto->withoutShadowedKeys('Depot', ['id', 'supervisor']))->toBe("Omit<Depot, 'supervisor'>")
+            ->and($dto->withoutShadowedKeys('Depot', ['supervisor', 'region']))->toBe("Omit<Depot, 'supervisor' | 'region'>")
+            ->and($dto->withoutShadowedKeys('DepotMutators', ['label']))->toBe('DepotMutators');
+    });
 });

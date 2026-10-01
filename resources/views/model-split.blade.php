@@ -88,12 +88,12 @@ export interface {{ $data->modelName }}Relations
     {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
-@foreach ($data->relations as $name => $relation)
-    {!! JsEmitter::validJsObjectKey($name . '_count') !!}: number;
+@foreach ($data->relationCountKeys as $key)
+    {!! JsEmitter::validJsObjectKey($key) !!}: number;
 @endforeach
     // Exists
-@foreach ($data->relations as $name => $relation)
-    {!! JsEmitter::validJsObjectKey($name . '_exists') !!}: boolean;
+@foreach ($data->relationExistsKeys as $key)
+    {!! JsEmitter::validJsObjectKey($key) !!}: boolean;
 @endforeach
 }
 @endif{{-- end $data->relations --}}
@@ -101,34 +101,39 @@ export interface {{ $data->modelName }}Relations
 
 @php
     $extends = [];
+    $baseKeys = [...array_keys($data->columns), ...array_keys($data->appends)];
 
     if (count($data->columns) > 0 || count($data->appends) > 0) {
-        $extends[] = $data->modelName;
+        $extends[] = $data->withoutShadowedKeys($data->modelName, $baseKeys);
     }
 
     if (count($data->mutators) > 0) {
-        $extends[] = $data->modelName . 'Mutators';
+        $extends[] = $data->withoutShadowedKeys($data->modelName . 'Mutators', array_keys($data->mutators));
     }
 
     if (count($data->relations) > 0) {
         $extends[] = $data->modelName . 'Relations';
     }
 @endphp
-export interface {{ $data->modelName }}All extends {{ implode(', ', $extends) }} {}
+export interface {{ $data->modelName }}All extends {!! implode(', ', $extends) !!} {}
 @endif{{-- end all extends --}}
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
 
 @php
-    $extends = (count($data->enumColumns) > 0 || count($data->enumAppends) > 0) ? [$data->modelName . 'Resource'] : [$data->modelName];
+    $base = (count($data->enumColumns) > 0 || count($data->enumAppends) > 0) ? $data->modelName . 'Resource' : $data->modelName;
+    $extends = [$data->withoutShadowedKeys($base, [...array_keys($data->columns), ...array_keys($data->appends)])];
 
     if (count($data->mutators) > 0) {
         $mutators = $data->modelName . 'Mutators';
-        $extends[] = count($data->enumMutators) > 0 ? $mutators . 'Resource' : $mutators;
+        $extends[] = $data->withoutShadowedKeys(
+            count($data->enumMutators) > 0 ? $mutators . 'Resource' : $mutators,
+            array_keys($data->mutators),
+        );
     }
 
     if (count($data->relations) > 0) {
         $extends[] = $data->modelName . 'Relations';
     }
 @endphp
-export interface {{ $data->modelName }}AllResource extends {{ implode(', ', $extends) }} {}
+export interface {{ $data->modelName }}AllResource extends {!! implode(', ', $extends) !!} {}
 @endif{{-- end all has enums extends --}}

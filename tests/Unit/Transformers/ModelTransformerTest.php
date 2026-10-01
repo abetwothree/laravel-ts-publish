@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,7 @@ use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
@@ -1635,4 +1637,37 @@ describe('ModelTransformer with Laravel13Connection model using the #[Connection
         ! class_exists('Illuminate\Database\Eloquent\Attributes\Connection'),
         'Connection attribute requires Laravel 13+',
     );
+});
+
+describe('ModelTransformer with keys an attribute and a relation both publish', function () {
+    test('a relation named like a column shadows it, and both stay in their own lists', function () {
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['supervisor'])
+            ->and($data->columns['supervisor']['type'])->toBe('string | null')
+            ->and($data->relations['supervisor']['type'])->toBe('User | null');
+    });
+
+    test('a count key a column already publishes is not synthesized again', function () {
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect($data->relationCountKeys)->toBe(['supervisor_count'])
+            ->and($data->relationExistsKeys)->toBe(['supervisor_exists', 'orders_exists'])
+            ->and($data->columns['orders_count']['type'])->toBe('number | null');
+    });
+
+    test('a relation named like an accessor shadows the mutator key', function () {
+        $data = (new ModelTransformer(ShadowedAccessorPost::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['author'])
+            ->and($data->mutators['author']['type'])->toBe('string');
+    });
+
+    test('a model with no shared key reports none and keeps every count and exists key', function () {
+        $data = (new ModelTransformer(Address::class))->data();
+
+        expect($data->shadowedKeys)->toBe([])
+            ->and($data->relationCountKeys)->toBe(array_map(fn (string $name): string => $name.'_count', array_keys($data->relations)))
+            ->and($data->relationExistsKeys)->toBe(array_map(fn (string $name): string => $name.'_exists', array_keys($data->relations)));
+    });
 });

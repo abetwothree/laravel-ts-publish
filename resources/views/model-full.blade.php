@@ -25,6 +25,7 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @if (count($data->columns) > 0)
     // Columns
 @foreach ($data->columns as $name => $column)
+@continue(in_array((string) $name, $data->shadowedKeys, true))
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 4) !!}
 @endif
@@ -34,12 +35,14 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @if (count($data->mutators) > 0 || count($data->appends) > 0)
     // Mutators
 @foreach ($data->mutators as $name => $mutator)
+@continue(in_array((string) $name, $data->shadowedKeys, true))
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 4) !!}
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!!  $mutator['type'] !!};
 @endforeach
 @foreach ($data->appends as $name => $append)
+@continue(in_array((string) $name, $data->shadowedKeys, true))
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 4) !!}
 @endif
@@ -55,12 +58,12 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
     {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
     // Counts
-@foreach ($data->relations as $name => $relation)
-    {!! JsEmitter::validJsObjectKey($name . '_count') !!}: number;
+@foreach ($data->relationCountKeys as $key)
+    {!! JsEmitter::validJsObjectKey($key) !!}: number;
 @endforeach
     // Exists
-@foreach ($data->relations as $name => $relation)
-    {!! JsEmitter::validJsObjectKey($name . '_exists') !!}: boolean;
+@foreach ($data->relationExistsKeys as $key)
+    {!! JsEmitter::validJsObjectKey($key) !!}: boolean;
 @endforeach
 @endif
 }

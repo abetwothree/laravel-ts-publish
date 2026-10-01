@@ -27,6 +27,7 @@ declare global {
 @if (count($transformer->columns) > 0)
             // Columns
 @foreach($transformer->columns as $name => $column)
+@continue(in_array((string) $name, $transformer->shadowedKeys, true))
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 12) !!}
 @endif
@@ -36,12 +37,14 @@ declare global {
 @if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
             // Mutators
 @foreach($transformer->mutators as $name => $mutator)
+@continue(in_array((string) $name, $transformer->shadowedKeys, true))
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 12) !!}
 @endif
             {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
 @endforeach
 @foreach($transformer->appends as $name => $append)
+@continue(in_array((string) $name, $transformer->shadowedKeys, true))
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 12) !!}
 @endif
@@ -55,8 +58,12 @@ declare global {
 {!! JsEmitter::formatJsDoc($relation['description'], 12) !!}
 @endif
             {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+@if(in_array($name.'_count', $transformer->relationCountKeys, true))
             {!! JsEmitter::validJsObjectKey($name.'_count') !!}: number;
+@endif
+@if(in_array($name.'_exists', $transformer->relationExistsKeys, true))
             {!! JsEmitter::validJsObjectKey($name.'_exists') !!}: boolean;
+@endif
 @endforeach
 @endif
         }

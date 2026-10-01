@@ -5509,6 +5509,55 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Depot": {
+            "name": "Depot",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "supervisor_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "orders_count",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "supervisor",
+                    "type": "User | null"
+                },
+                {
+                    "name": "orders",
+                    "type": "Order[]"
+                },
+                {
+                    "name": "supervisor_count",
+                    "type": "number"
+                },
+                {
+                    "name": "supervisor_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "orders_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\DocblockGenericsFixture": {
             "name": "DocblockGenericsFixture",
             "properties": [

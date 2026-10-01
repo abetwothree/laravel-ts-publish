@@ -31,6 +31,9 @@ use JsonSerializable;
  *    mutators: MutatorsList,
  *    appends: AppendsList,
  *    relations: RelationsList,
+ *    shadowedKeys: list<string>,
+ *    relationCountKeys: list<string>,
+ *    relationExistsKeys: list<string>,
  *    enumColumns: EnumPropertiesList,
  *    enumMutators: EnumPropertiesList,
  *    enumAppends: EnumPropertiesList,
@@ -52,6 +55,9 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
      * @param  EnumPropertiesList  $enumMutators
      * @param  EnumPropertiesList  $enumAppends
      * @param  list<string>  $tsExtends
+     * @param  list<string>  $shadowedKeys  attribute keys a relation also publishes
+     * @param  list<string>  $relationCountKeys  the `_count` keys to publish
+     * @param  list<string>  $relationExistsKeys  the `_exists` keys to publish
      */
     public function __construct(
         public string $modelName,
@@ -69,7 +75,27 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
         public array $enumMutators = [],
         public array $enumAppends = [],
         public array $tsExtends = [],
+        public array $shadowedKeys = [],
+        public array $relationCountKeys = [],
+        public array $relationExistsKeys = [],
     ) {}
+
+    /**
+     * An interface name, wrapped in `Omit<>` for each of its keys a relation also publishes, so that a combined
+     * interface can extend it beside the relations interface.
+     *
+     * @param  list<int|string>  $keys  the keys the interface declares
+     */
+    public function withoutShadowedKeys(string $interface, array $keys): string
+    {
+        $shadowed = array_values(array_intersect($this->shadowedKeys, array_map(strval(...), $keys)));
+
+        if ($shadowed === []) {
+            return $interface;
+        }
+
+        return 'Omit<'.$interface.', '.implode(' | ', array_map(fn (string $key): string => "'".$key."'", $shadowed)).'>';
+    }
 
     /** @return ModelData */
     public function toArray(): array
@@ -84,6 +110,9 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
             'mutators' => $this->mutators,
             'appends' => $this->appends,
             'relations' => $this->relations,
+            'shadowedKeys' => $this->shadowedKeys,
+            'relationCountKeys' => $this->relationCountKeys,
+            'relationExistsKeys' => $this->relationExistsKeys,
             'typeImports' => $this->typeImports,
             'valueImports' => $this->valueImports,
             'enumColumns' => $this->enumColumns,

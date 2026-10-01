@@ -13,6 +13,8 @@
 # never exports it - the shape that only became reachable once the stubs landed.
 # TS6196 is an import the generated file never uses - the trace a dropped extends
 # clause or an overridden cast leaves behind.
+# TS2320 is one interface extending two that declare the same key with different types, as a model's
+# combined interface does when a column and a relation share a name.
 #
 # A leaked token named like a DOM global (`Comment`) binds to the DOM type and raises none of those, so a second
 # program per tree runs without the DOM lib and counts, on its own line, each name only it cannot find, minus
@@ -145,11 +147,11 @@ gate_one() {
   owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
 
   local errs count
-  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724|6196)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6196)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
-  echo "TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: $count"
-  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but never used\.?.*/  \1/" | sort | uniq -c | sort -rn
+  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / unused import) in generated tree: $count"
+  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but never used\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/" | sort | uniq -c | sort -rn
 
   # A relative specifier (./ or ../) only ever resolves against a file this package itself writes, so an
   # unresolved one is never an app-side alias a stub could cover - it is

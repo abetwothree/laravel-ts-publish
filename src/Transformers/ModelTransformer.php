@@ -86,6 +86,15 @@ class ModelTransformer extends CoreTransformer
     /** @var RelationsList */
     public protected(set) array $relations = [];
 
+    /** @var list<string> Column, append and mutator keys a relation also publishes; the relation's type wins. */
+    public protected(set) array $shadowedKeys = [];
+
+    /** @var list<string> Each relation's `_count` key that no attribute or relation already publishes. */
+    public protected(set) array $relationCountKeys = [];
+
+    /** @var list<string> Each relation's `_exists` key that no attribute or relation already publishes. */
+    public protected(set) array $relationExistsKeys = [];
+
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
@@ -139,6 +148,7 @@ class ModelTransformer extends CoreTransformer
             ->transformColumns()
             ->transformMutators()
             ->transformRelations()
+            ->resolveKeyCollisions()
             ->resolveImportConflicts();
 
         return $this;
@@ -163,6 +173,9 @@ class ModelTransformer extends CoreTransformer
             mutators: $this->mutators,
             appends: $this->appends,
             relations: $this->relations,
+            shadowedKeys: $this->shadowedKeys,
+            relationCountKeys: $this->relationCountKeys,
+            relationExistsKeys: $this->relationExistsKeys,
             typeImports: $imports['typeImports'],
             valueImports: $imports['valueImports'],
             enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
@@ -496,6 +509,34 @@ class ModelTransformer extends CoreTransformer
             if (! $isMorphTo) {
                 $this->modelFqcnMap[$relation['related']] = $relatedBasename;
                 $this->modelFqcnRelations[$relation['related']][] = $relation['name'];
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Find the attribute keys a relation also publishes, and each relation's count and exists key that is still free.
+     *
+     * Model::toArray() merges loaded relations over attributes, so the relation owns a shared key; a count or exists
+     * key an attribute already publishes, such as a counter-cache column, stays the attribute's.
+     */
+    protected function resolveKeyCollisions(): self
+    {
+        $attributes = $this->columns + $this->appends + $this->mutators;
+        $taken = $attributes + $this->relations;
+
+        foreach (array_keys($this->relations) as $name) {
+            if (isset($attributes[$name])) {
+                $this->shadowedKeys[] = (string) $name;
+            }
+
+            if (! isset($taken[$name.'_count'])) {
+                $this->relationCountKeys[] = $name.'_count';
+            }
+
+            if (! isset($taken[$name.'_exists'])) {
+                $this->relationExistsKeys[] = $name.'_exists';
             }
         }
 

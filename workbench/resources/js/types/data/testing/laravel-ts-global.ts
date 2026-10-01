@@ -595,6 +595,27 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
         }
+        /**
+         * Shares keys between attributes and relations: a `supervisor` column beside a `supervisor()` relation, and an
+         * `orders_count` counter-cache column beside the `orders()` relation's own count key.
+         */
+        export interface Depot {
+            // Columns
+            id: number;
+            name: string;
+            supervisor_id: number | null;
+            orders_count: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The user who runs the depot. */
+            supervisor: User | null;
+            supervisor_count: number;
+            supervisor_exists: boolean;
+            /** The orders the depot ships. */
+            orders: Order[];
+            orders_exists: boolean;
+        }
         /** Docblock-engine fixtures: every accessor's type lives only in its docblock. */
         export interface DocblockGenericsFixture {
             // Columns

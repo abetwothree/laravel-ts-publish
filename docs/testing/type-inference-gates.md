@@ -88,6 +88,9 @@ The gate runs `npx tsc --noEmit` over each generated tree and counts these diagn
 - **TS2300 (duplicate identifier)**: two imports resolving to one local name, which
   [`ImportNameRegistry`](../components/import-name-registry.md) exists to prevent.
 - **TS2440**: an import colliding with a local declaration of the same name.
+- **TS2320 (cannot simultaneously extend)**: one interface extending two that declare one key with different types. A
+  model's combined `XAll` interface did when a relation and a column shared a name, which
+  `ModelTransformer::resolveKeyCollisions()` settles in the relation's favor.
 - **TS2344 (does not satisfy the constraint)**: a token used where its type rejects it, such as a
   [`Pick<Model, K>`](../components/resource-ast-analyzer.md#when-a-pick-reference-is-emitted) key the model interface
   does not declare.

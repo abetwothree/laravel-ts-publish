@@ -295,6 +295,7 @@
     "app\/Models\/CompositeComment.php",
     "app\/Models\/Crew.php",
     "app\/Models\/CustomKeyPost.php",
+    "app\/Models\/Depot.php",
     "app\/Models\/DocblockGenericsFixture.php",
     "app\/Models\/ExcludableModel.php",
     "app\/Models\/Image.php",

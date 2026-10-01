@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -317,4 +319,40 @@ test('renders an enum-collection column with its [] suffix in the resource varia
     expect($content)
         ->toContain('week_days: AsEnum<typeof WeekDays>[] | null;')
         ->not->toContain('week_days: AsEnum<typeof WeekDays> | null;');
+});
+
+describe('ModelWriter with keys an attribute and a relation both publish', function () {
+    beforeEach(function () {
+        config()->set('ts-publish.output_to_files', false);
+    });
+
+    test('the split template omits the shadowed column from the combined interface', function () {
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(Depot::class));
+
+        expect($content)
+            ->toContain("export interface DepotAll extends Omit<Depot, 'supervisor'>, DepotRelations {}")
+            ->toContain('    supervisor: string | null;')
+            ->toContain('    supervisor: User | null;')
+            ->toContain('    orders_count: number | null;')
+            ->not->toContain('orders_count: number;');
+    });
+
+    test('the split template omits a shadowed mutator from the combined interface', function () {
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(ShadowedAccessorPost::class));
+
+        expect($content)->toContain(
+            "export interface ShadowedAccessorPostAll extends ShadowedAccessorPost, Omit<ShadowedAccessorPostMutators, 'author'>, ShadowedAccessorPostRelations {}",
+        );
+    });
+
+    test('the full template declares a shared key once, with the relation type', function () {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(Depot::class));
+
+        expect(substr_count($content, '    supervisor: '))->toBe(1)
+            ->and($content)->toContain('    supervisor: User | null;')
+            ->and(substr_count($content, '    orders_count: '))->toBe(1)
+            ->and($content)->toContain('    orders_count: number | null;');
+    });
 });

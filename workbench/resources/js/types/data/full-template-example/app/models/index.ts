@@ -19,6 +19,7 @@ export * from './comment';
 export * from './composite-comment';
 export * from './crew';
 export * from './custom-key-post';
+export * from './depot';
 export * from './docblock-generics-fixture';
 export * from './excludable-model';
 export * from './image';
