@@ -42,6 +42,14 @@ it('ignores a leading backslash, on a name it is given and on one it is asked ab
         ->and(PublishedModelRegistry::isPublished(Post::class))->toBeTrue();
 });
 
+it('matches a class name in any letter case, as PHP resolves one', function () {
+    PublishedModelRegistry::register([User::class]);
+
+    expect(PublishedModelRegistry::isPublished(strtolower(User::class)))->toBeTrue()
+        ->and(PublishedModelRegistry::isPublished(strtoupper(User::class)))->toBeTrue()
+        ->and(PublishedModelRegistry::isPublished(strtolower(Post::class)))->toBeFalse();
+});
+
 it('returns to the no-information state on reset()', function () {
     PublishedModelRegistry::register([User::class]);
     $memoized = PublishedModelRegistry::signature();
@@ -78,5 +86,16 @@ it('signs the set, not the order it was registered in', function () {
     expect($signature)->not->toBe('')
         ->and($again)->toBe($signature)
         ->and($partial)->not->toBe($signature)
+        ->and(PublishedModelRegistry::signature())->toBe($signature);
+});
+
+it('signs the set, not the letter case its classes were registered in', function () {
+    PublishedModelRegistry::register([User::class]);
+    $signature = PublishedModelRegistry::signature();
+
+    PublishedModelRegistry::reset();
+    PublishedModelRegistry::register([strtolower(User::class)]);
+
+    expect($signature)->not->toBe('')
         ->and(PublishedModelRegistry::signature())->toBe($signature);
 });

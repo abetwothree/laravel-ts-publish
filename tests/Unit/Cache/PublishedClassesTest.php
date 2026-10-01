@@ -58,3 +58,18 @@ it('reads a name with a leading backslash as the class it spells', function () {
         ->and(PublishedClasses::exports('\\'.TeamResource::class))->toBeTrue()
         ->and(PublishedClasses::exports('\\'.UserResource::class))->toBeFalse();
 });
+
+it('reads a name in any letter case as the class it spells', function () {
+    // The autoloader is case-sensitive, so a lower-cased name finds only a class already loaded under its own name.
+    foreach ([User::class, Post::class, TeamResource::class, UserResource::class] as $class) {
+        class_exists($class);
+    }
+
+    PublishedModelRegistry::register([User::class]);
+    PublishedResourceRegistry::register([TeamResource::class]);
+
+    expect(PublishedClasses::exports(strtolower(User::class)))->toBeTrue()
+        ->and(PublishedClasses::exports(strtolower(Post::class)))->toBeFalse()
+        ->and(PublishedClasses::exports(strtolower(TeamResource::class)))->toBeTrue()
+        ->and(PublishedClasses::exports(strtolower(UserResource::class)))->toBeFalse();
+});

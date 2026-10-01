@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
@@ -66,17 +68,40 @@ final class ValueResult
     }
 
     /**
-     * Whether every model a result names gets a published file; a framework or abstract model such as `Model` does not.
+     * Whether a generated file exports every class a result names on its model channels, as far as this run knows.
      *
-     * A token with no file behind it would be emitted without an import, so the result declines instead.
+     * A token with no file behind it would be emitted without an import, so MethodAnalysis::addProperty() declines it.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function namesOnlyExportedClasses(array $result): bool
+    {
+        foreach (self::modelChannelFqcns($result) as $fqcn) {
+            if (! PublishedClasses::exports($fqcn)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether every model a result names gets a published file. With no published set to read, a framework or
+     * abstract model such as `Model` is still known to have none.
      *
      * @param  ValueExpressionResult  $result
      */
     public static function namesOnlyPublishedModels(array $result): bool
     {
-        $models = [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
+        if (! self::namesOnlyExportedClasses($result)) {
+            return false;
+        }
 
-        foreach ($models as $model) {
+        if (! PublishedModelRegistry::isEmpty()) {
+            return true;
+        }
+
+        foreach (self::modelChannelFqcns($result) as $model) {
             if (str_starts_with($model, 'Illuminate\\') || new ReflectionClass($model)->isAbstract()) {
                 return false;
             }
@@ -294,5 +319,16 @@ final class ValueResult
         }
 
         return $result;
+    }
+
+    /**
+     * The FQCNs a result carries on its single and embedded model channels.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>
+     */
+    private static function modelChannelFqcns(array $result): array
+    {
+        return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
     }
 }

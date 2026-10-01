@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\OpaqueHandle;
 use Workbench\Crm\Models\User as CrmUser;
 
 /** A test-only model on the `posts` table whose untyped getters return a related model. */
@@ -70,5 +71,15 @@ class AuthoredPost extends Model
     protected function authorToResource(): Attribute
     {
         return Attribute::get(fn () => $this->author?->toResource());
+    }
+
+    /**
+     * A class that is neither a model nor a resource, so no file is ever generated for it.
+     *
+     * @return Attribute<OpaqueHandle, never>
+     */
+    protected function handle(): Attribute
+    {
+        return Attribute::get(fn (): OpaqueHandle => new OpaqueHandle);
     }
 }

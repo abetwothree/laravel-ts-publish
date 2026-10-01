@@ -7,11 +7,11 @@ namespace AbeTwoThree\LaravelTsPublish\Cache;
 /**
  * The set of model classes this run emits a .ts file for: the collected ones, and each model their relations reach.
  * Empty means "no information", as in a run that skips the model phase, so callers must fail open.
- * A class name matches with or without the leading backslash a fully qualified spelling carries.
+ * A class name matches in any letter case, as PHP resolves one, and with or without a leading backslash.
  */
 class PublishedModelRegistry
 {
-    /** @var array<class-string, true> */
+    /** @var array<string, true> */
     protected static array $published = [];
 
     /** Bumped on every change, so an analysis read against an older set is never reused. */
@@ -28,7 +28,7 @@ class PublishedModelRegistry
     public static function register(iterable $fqcns): void
     {
         foreach ($fqcns as $fqcn) {
-            static::$published[ltrim($fqcn, '\\')] = true;
+            static::$published[static::normalize($fqcn)] = true;
         }
 
         static::$version++;
@@ -58,7 +58,7 @@ class PublishedModelRegistry
      */
     public static function isPublished(string $fqcn): bool
     {
-        return static::$published === [] || isset(static::$published[ltrim($fqcn, '\\')]);
+        return static::$published === [] || isset(static::$published[static::normalize($fqcn)]);
     }
 
     /**
@@ -82,5 +82,13 @@ class PublishedModelRegistry
         sort($fqcns);
 
         return static::$signature = $fqcns === [] ? '' : hash('xxh128', implode("\n", $fqcns));
+    }
+
+    /**
+     * The key for a class name: lower case, as PHP resolves class names in any case, with no leading backslash.
+     */
+    protected static function normalize(string $fqcn): string
+    {
+        return strtolower(ltrim($fqcn, '\\'));
     }
 }

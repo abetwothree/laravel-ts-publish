@@ -5,8 +5,10 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Post;
 
 /**
  * A computation that counts its runs and answers which run it was.
@@ -109,6 +111,16 @@ test('computes an answer again once the published resource set changes', functio
 
     $before = $memo->remember('k', $counting($runs));
     PublishedResourceRegistry::register([PostResource::class]);
+
+    expect([$before, $memo->remember('k', $counting($runs))])->toBe([1, 2]);
+});
+
+test('computes an answer again once the published model set changes', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+
+    $before = $memo->remember('k', $counting($runs));
+    PublishedModelRegistry::register([Post::class]);
 
     expect([$before, $memo->remember('k', $counting($runs))])->toBe([1, 2]);
 });

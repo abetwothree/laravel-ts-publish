@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -633,6 +634,11 @@ class ModelAttributeResolver
             return $this->buildMorphUnionInfo($targets, $relation, $ctx);
         }
 
+        // A model this run does not publish has no file to import, so the relation names nothing.
+        if (! PublishedModelRegistry::isPublished($relation['related'])) {
+            return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
+        }
+
         DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
@@ -1057,7 +1063,7 @@ class ModelAttributeResolver
         $docblockTargets = $this->morphToDocblockTargets($modelFqcn, $relationName);
 
         if ($docblockTargets !== []) {
-            return $docblockTargets;
+            return array_values(array_filter($docblockTargets, PublishedModelRegistry::isPublished(...)));
         }
 
         $ctx = $this->resolveContext($modelFqcn);
@@ -1068,7 +1074,10 @@ class ModelAttributeResolver
 
         $morphName = $this->relationMorphName($ctx['instance'], $relationName) ?? '';
 
-        return $this->getMorphToTargets($modelFqcn, $morphName);
+        return array_values(array_filter(
+            $this->getMorphToTargets($modelFqcn, $morphName),
+            PublishedModelRegistry::isPublished(...),
+        ));
     }
 
     /**

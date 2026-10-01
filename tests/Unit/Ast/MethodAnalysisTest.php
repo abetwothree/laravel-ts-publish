@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
     expect(new ResourceAnalysis)->toBeInstanceOf(MethodAnalysis::class)
@@ -192,6 +193,20 @@ describe('MethodAnalysis::addProperty()', function () {
             ->and($analysis->inlineModelFqcns)->toBe(['status' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User', 'Workbench\App\Models\User']])
             ->and($analysis->inlineEnumResourceFqcns)->toBe(['status' => ['Workbench\App\Enums\Season']])
             ->and($analysis->customImports)->toBe(['@/types/x' => ['XType']]);
+    });
+
+    test('a value naming a class no generated file exports is declined to unknown, keeping its optional flag', function () {
+        PublishedModelRegistry::register(['Workbench\App\Models\User']);
+
+        $analysis = new MethodAnalysis;
+        $analysis->addProperty('post', ['type' => 'Post | null', 'optional' => true, 'modelFqcn' => 'Workbench\App\Models\Post']);
+        $analysis->addProperty('user', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+
+        expect($analysis->properties)->toBe([
+            ['name' => 'post', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+            ['name' => 'user', 'type' => 'User', 'optional' => false, 'description' => ''],
+        ])
+            ->and($analysis->modelFqcns)->toBe(['user' => 'Workbench\App\Models\User']);
     });
 
     test('optional is the union of the caller flag and the value result', function () {

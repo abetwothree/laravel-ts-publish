@@ -80,6 +80,11 @@ class MethodAnalysis
      */
     public function addProperty(string $name, array $result, bool $optional = false, string $description = ''): void
     {
+        // A class no generated file exports would be a token with no import behind it.
+        if (! ValueResult::namesOnlyExportedClasses($result)) {
+            $result = [...ValueResult::unknown(), 'optional' => $result['optional']];
+        }
+
         $this->properties[] = [
             'name' => $name,
             'type' => $result['type'],

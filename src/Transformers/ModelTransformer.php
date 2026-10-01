@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
@@ -278,6 +280,7 @@ class ModelTransformer extends CoreTransformer
                 };
             }
 
+            $typings = $this->exportedTypeInfo($typings);
             $type = $typings['type'];
 
             if ($attribute['nullable'] && ! str_contains($type, 'null')) {
@@ -349,6 +352,8 @@ class ModelTransformer extends CoreTransformer
             if ($resolved['omit'] ?? false) {
                 continue;
             }
+
+            $resolved = $this->exportedTypeInfo($resolved);
 
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
@@ -435,6 +440,10 @@ class ModelTransformer extends CoreTransformer
                 fn (Collection $relations, array $excluded) => $relations->filter(
                     fn (array $relation) => $isMorphToRelation($relation) || ! in_array($relation['related'], $excluded)
                 )
+            )
+            // A model this run does not publish has no file to import, so its relation is left out.
+            ->filter(
+                fn (array $relation) => $isMorphToRelation($relation) || PublishedModelRegistry::isPublished($relation['related'])
             );
 
         foreach ($relations as $relation) {
@@ -513,6 +522,23 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * The type info as resolved, or `unknown` when it names a class no generated file exports.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return TypeScriptTypeInfo
+     */
+    protected function exportedTypeInfo(array $info): array
+    {
+        foreach ($info['classFqcns'] as $fqcn) {
+            if (! PublishedClasses::exports($fqcn)) {
+                return LaravelTsPublish::emptyTypeScriptInfo();
+            }
+        }
+
+        return $info;
     }
 
     /**

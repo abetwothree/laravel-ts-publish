@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -828,5 +829,38 @@ describe('resolveAttribute() @property fallback for virtual attributes', functio
     test('never answers a relation name from an ide-helper @property-read tag', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'child_rows')['type'])
             ->toBe('unknown');
+    });
+});
+
+describe('models this run does not publish', function () {
+    test('resolveRelation names a related model while there is no published set to read', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveRelation(Comment::class, 'post'))
+            ->toBe(['type' => 'Post', 'modelFqcn' => Post::class, 'morphFqcns' => []]);
+    });
+
+    test('resolveRelation names nothing for a related model outside the published set', function () {
+        PublishedModelRegistry::register([Comment::class]);
+
+        expect(resolve(ModelAttributeResolver::class)->resolveRelation(Comment::class, 'post'))
+            ->toBe(['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []]);
+    });
+
+    test('a morphTo docblock generic keeps only the targets in the published set', function () {
+        PublishedModelRegistry::register([Image::class, User::class]);
+
+        // Image::reviewable() is documented as MorphTo<Crm\User|User>, and Crm's User is outside the set.
+        $result = resolve(ModelAttributeResolver::class)->resolveRelation(Image::class, 'reviewable');
+
+        expect($result['type'])->toBe('User | null')
+            ->and($result['morphFqcns'])->toBe([User::class]);
+    });
+
+    test('the reverse morph map keeps only the targets in the published set', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->buildMorphTargetMap([User::class, Post::class, Product::class, Image::class]);
+
+        PublishedModelRegistry::register([User::class, Image::class]);
+
+        expect($resolver->resolveMorphToTargets(Image::class, 'imageable'))->toBe([User::class]);
     });
 });

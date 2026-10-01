@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
@@ -1669,5 +1671,38 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
         expect($data->shadowedKeys)->toBe([])
             ->and($data->relationCountKeys)->toBe(array_map(fn (string $name): string => $name.'_count', array_keys($data->relations)))
             ->and($data->relationExistsKeys)->toBe(array_map(fn (string $name): string => $name.'_exists', array_keys($data->relations)));
+    });
+});
+
+describe('ModelTransformer with a published model set', function () {
+    test('a relation to a model outside the set is left out, with its count and exists keys', function () {
+        PublishedModelRegistry::register([Depot::class, User::class]);
+
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect(array_keys($data->relations))->toBe(['supervisor'])
+            ->and($data->relationCountKeys)->toBe(['supervisor_count'])
+            ->and($data->relationExistsKeys)->toBe(['supervisor_exists'])
+            ->and(json_encode($data->typeImports))->not->toContain('Order');
+    });
+
+    test('nothing is left out while there is no published set to read', function () {
+        expect(array_keys((new ModelTransformer(Depot::class))->data()->relations))->toBe(['supervisor', 'orders']);
+    });
+
+    test('an accessor naming a model outside the set publishes unknown and imports nothing', function () {
+        PublishedModelRegistry::register([AuthoredPost::class]);
+
+        $data = (new ModelTransformer(AuthoredPost::class))->data();
+
+        expect($data->mutators['author_model']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('User');
+    });
+
+    test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function () {
+        $data = (new ModelTransformer(AuthoredPost::class))->data();
+
+        expect($data->mutators['handle']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
     });
 });
