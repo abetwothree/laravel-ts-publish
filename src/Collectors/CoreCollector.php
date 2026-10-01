@@ -73,15 +73,7 @@ abstract class CoreCollector
             ->sortKeys()
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
-            ->filter(function (string $class) {
-                if (! class_exists($class)) {
-                    return false;
-                }
-
-                $reflection = new ReflectionClass($class);
-
-                return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
-            })
+            ->filter($this->passesClassFilter(...))
             ->when($included, function (Collection $collection) use ($included) {
                 $resolved = $this->resolveClassesAndDirectories($included);
 
@@ -107,6 +99,30 @@ abstract class CoreCollector
 
         return ! $this->matchesEntry($class, $settings['excluded'])
             && ($settings['included'] === [] || $this->matchesEntry($class, $settings['included']));
+    }
+
+    /**
+     * Whether a class the scan did not find would still be published when named.
+     */
+    public function accepts(string $class): bool
+    {
+        return $this->passesClassFilter($class) && $this->allows($class);
+    }
+
+    /**
+     * Whether a class exists, passes this collector's class filter and carries no #[TsExclude].
+     *
+     * @phpstan-assert-if-true class-string $class
+     */
+    protected function passesClassFilter(string $class): bool
+    {
+        if (! class_exists($class)) {
+            return false;
+        }
+
+        $reflection = new ReflectionClass($class);
+
+        return $this->classFilter($reflection) && $reflection->getAttributes(TsExclude::class) === [];
     }
 
     /**
