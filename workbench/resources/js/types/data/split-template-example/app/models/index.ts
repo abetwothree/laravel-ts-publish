@@ -22,6 +22,7 @@ export * from './custom-key-post';
 export * from './depot';
 export * from './docblock-generics-fixture';
 export * from './excludable-model';
+export * from './facility';
 export * from './image';
 export * from './kpi';
 export * from './label';

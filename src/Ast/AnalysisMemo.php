@@ -136,11 +136,20 @@ final class AnalysisMemo
     }
 
     /**
-     * Drop every answer not pinned, when a run starts or an input they read changes.
+     * Drop every answer not pinned, when an input they read changes.
      */
     public function forget(): void
     {
         $this->entries = array_filter($this->entries, fn (array $entry): bool => $entry['pinned']);
+    }
+
+    /**
+     * Drop every answer, pinned or not, when a run starts, since two runs in one process can publish different sets.
+     */
+    public function reset(): void
+    {
+        $this->entries = [];
+        $this->pinnedAt = [];
     }
 
     /**

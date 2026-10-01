@@ -23,6 +23,7 @@ use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\Depot;
 use Workbench\App\Models\ExcludableModel;
+use Workbench\App\Models\Facility;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Laravel13Attributes;
@@ -46,6 +47,8 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\UntypedColumn;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\App\Packages\Audit\Models\AuditInspector;
+use Workbench\App\Packages\Audit\Models\AuditTrail;
 use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
 use Workbench\Crm\Models\User as CrmUser;
@@ -1701,6 +1704,41 @@ describe('ModelTransformer with a published model set', function () {
 
     test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function () {
         $data = (new ModelTransformer(AuthoredPost::class))->data();
+
+        expect($data->mutators['handle']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
+    });
+});
+
+describe('ModelTransformer with models this run does not publish', function () {
+    test('a relation to one is left out, with its count and exists keys', function () {
+        PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
+
+        $data = (new ModelTransformer(Facility::class))->data();
+
+        expect(array_keys($data->relations))->toBe(['audit_trails', 'inspector'])
+            ->and($data->relations['inspector']['type'])->toBe('AuditInspector | User | null')
+            ->and($data->relationCountKeys)->toBe(['audit_trails_count', 'inspector_count'])
+            ->and($data->relationExistsKeys)->toBe(['audit_trails_exists', 'inspector_exists']);
+    });
+
+    test('nothing is left out while there is no published set to read', function () {
+        $data = (new ModelTransformer(Facility::class))->data();
+
+        expect(array_keys($data->relations))->toBe(['audit_trails', 'excluded_records', 'inspector']);
+    });
+
+    test('an accessor naming one publishes unknown and imports nothing', function () {
+        PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
+
+        $data = (new ModelTransformer(Facility::class))->data();
+
+        expect($data->mutators['last_excluded']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('ExcludedModel');
+    });
+
+    test('an accessor naming a class no file is generated for publishes unknown, whatever the published set', function () {
+        $data = (new ModelTransformer(Facility::class))->data();
 
         expect($data->mutators['handle']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');

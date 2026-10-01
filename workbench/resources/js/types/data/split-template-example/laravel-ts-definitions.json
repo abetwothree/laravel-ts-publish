@@ -68,6 +68,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\FacilityAudited": {
+            "name": "FacilityAudited",
+            "eventName": "FacilityAudited",
+            "broadcastName": ".Workbench.App.Events.FacilityAudited",
+            "properties": [
+                {
+                    "name": "facility",
+                    "type": "Partial<Facility>",
+                    "optional": false
+                },
+                {
+                    "name": "trail",
+                    "type": "Partial<AuditTrail>",
+                    "optional": false
+                },
+                {
+                    "name": "record",
+                    "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\MixedTypesEvent": {
             "name": "MixedTypesEvent",
             "eventName": "MixedTypesEvent",
@@ -5692,6 +5714,67 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Facility": {
+            "name": "Facility",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "inspector_type",
+                    "type": "string | null"
+                },
+                {
+                    "name": "inspector_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "last_excluded",
+                    "type": "unknown"
+                },
+                {
+                    "name": "handle",
+                    "type": "unknown"
+                },
+                {
+                    "name": "audit_trails",
+                    "type": "AuditTrail[]"
+                },
+                {
+                    "name": "inspector",
+                    "type": "AuditInspector | User | null"
+                },
+                {
+                    "name": "audit_trails_count",
+                    "type": "number"
+                },
+                {
+                    "name": "inspector_count",
+                    "type": "number"
+                },
+                {
+                    "name": "audit_trails_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "inspector_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Image": {
             "name": "Image",
             "properties": [
@@ -9322,6 +9405,113 @@
                     "type": "boolean"
                 }
             ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditInspector": {
+            "name": "AuditInspector",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditNote": {
+            "name": "AuditNote",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "audit_trail_id",
+                    "type": "number"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "trail",
+                    "type": "AuditTrail"
+                },
+                {
+                    "name": "trail_count",
+                    "type": "number"
+                },
+                {
+                    "name": "trail_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditTrail": {
+            "name": "AuditTrail",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "facility_id",
+                    "type": "number"
+                },
+                {
+                    "name": "action",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "facility",
+                    "type": "Facility"
+                },
+                {
+                    "name": "notes",
+                    "type": "AuditNote[]"
+                },
+                {
+                    "name": "facility_count",
+                    "type": "number"
+                },
+                {
+                    "name": "notes_count",
+                    "type": "number"
+                },
+                {
+                    "name": "facility_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "notes_exists",
+                    "type": "boolean"
+                }
+            ]
         }
     },
     "resources": {
@@ -12467,6 +12657,46 @@
                 {
                     "name": "extra_field",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\FacilityResource": {
+            "name": "FacilityResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "audit_trails",
+                    "type": "AuditTrail[]",
+                    "optional": false
+                },
+                {
+                    "name": "latest_trail",
+                    "type": "AuditTrail | null",
+                    "optional": false
+                },
+                {
+                    "name": "excluded_records",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "first_excluded",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ trails: AuditTrail[]; excluded: unknown }",
                     "optional": false
                 }
             ]

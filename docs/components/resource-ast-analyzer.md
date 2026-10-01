@@ -404,7 +404,9 @@ A class the developer wrote down stays on `isResourceClass()`: an explicit argum
 The registry fails open: while it is empty, `isPublished()` answers `true`, so `RunnerForSource`, which never
 registers, analyzes without narrowing. `Runner::run()` and `RunnerForSource::run()` reset it first.
 `Runner::generateResources()` registers the whole collected list before generating, because a resource may reference
-one collected after it. The registry is process-static, so `Tests\TestCase::setUp()` resets it too.
+one collected after it. The registry is process-static, so `Tests\TestCase::setUp()` resets it too. Models have the
+same check through `PublishedModelRegistry`, which a source run does fill; see
+[ModelAttributeResolver § Models a run publishes](model-attribute-resolver.md#models-a-run-publishes).
 
 In the modular files a leaked guess fails `tsc` with TS2305 or TS2724, or with TS2307 when the run writes nothing into
 the guessed class's directory. In `laravel-ts-global.ts` it fails with TS2304 or TS2552. `unimportable-token-gate.sh`

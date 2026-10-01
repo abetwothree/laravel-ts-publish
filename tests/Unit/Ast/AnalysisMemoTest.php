@@ -174,3 +174,47 @@ test('forget drops every answer but the pinned ones', function () use ($counting
     expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('kept')
         ->and($memo->remember('k', $counting($runs)))->toBe(2);
 });
+
+test('reset drops every answer, the pinned ones too', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+
+    $memo->remember('pinned', fn (): string => 'stale', pin: true);
+    $memo->remember('k', $counting($runs));
+    $memo->reset();
+
+    expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('recomputed')
+        ->and($memo->remember('k', $counting($runs)))->toBe(2);
+});
+
+test('reset forgets which analyses were pinned, so a pin in the next run is measured from that run', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $outerRuns = new ArrayObject;
+    $innerRuns = new ArrayObject;
+    $inner = function () use ($memo, $counting, $innerRuns): int {
+        if ($memo->enter('inner')) {
+            $memo->leave('inner');
+        }
+
+        return $counting($innerRuns)();
+    };
+    $outer = function () use ($memo, $counting, $outerRuns, $inner): int {
+        $memo->remember('inner', $inner);
+
+        return $counting($outerRuns)();
+    };
+    $pinInner = function () use ($memo, $inner): void {
+        $memo->enter('inner');
+        $memo->remember('inner', $inner, pin: true);
+        $memo->leave('inner');
+    };
+
+    $pinInner();
+    $memo->reset();
+
+    // In the next run `outer` reads `inner`, and `inner` is pinned to a fresh result afterwards.
+    $memo->remember('outer', $outer);
+    $pinInner();
+
+    expect($memo->remember('outer', $outer))->toBe(2);
+});

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
@@ -40,6 +41,7 @@ use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
+use Override;
 use Throwable;
 
 class Runner extends BaseRunner
@@ -49,9 +51,10 @@ class Runner extends BaseRunner
         // Process-static and only ever added to. Clearing at the run boundary, not next to register(),
         // is what makes "this run publishes no resources" mean an empty registry, not the last run's set.
         PublishedResourceRegistry::reset();
+        PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
-        resolve(AnalysisMemo::class)->forget();
+        resolve(AnalysisMemo::class)->reset();
         TsTypeString::forgetQualifiedTypes();
 
         /** @var BarrelWriter $barrelWriter */
@@ -122,6 +125,11 @@ class Runner extends BaseRunner
             $empty = collect();
             $this->modelGenerators = $empty;
 
+            // A flag skipped the phase, but the model files stay published, so a later phase reads the same set.
+            if (Config::boolean('ts-publish.models.enabled', false) && $this->publishesAfterModels()) {
+                $this->buildModelMorphTargetMap();
+            }
+
             return;
         }
 
@@ -142,6 +150,26 @@ class Runner extends BaseRunner
 
         $this->modelGenerators = $modelGenerators;
         $this->logger?->success('Models — '.$this->modelGenerators->count());
+    }
+
+    /**
+     * Whether a phase after the model phase runs: each can name a model, and each caches under the published set.
+     * The Inertia config always runs when it is on, and types the shared data through the same engine.
+     */
+    protected function publishesAfterModels(): bool
+    {
+        return $this->shouldPublishModelMetadata || $this->shouldPublishResources || $this->shouldPublishRoutes
+            || $this->shouldPublishFormRequests || $this->shouldPublishBroadcastEvents
+            || Config::boolean('ts-publish.inertia.enabled');
+    }
+
+    /**
+     * Only a run that generates the models reads their tables, so any other builds the published set from relations.
+     */
+    #[Override]
+    protected function inspectsModelTables(): bool
+    {
+        return $this->shouldPublishModels;
     }
 
     /**

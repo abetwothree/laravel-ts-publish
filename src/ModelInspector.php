@@ -13,6 +13,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Override;
 
+/**
+ * @phpstan-import-type RelationInfo from ModelInfo
+ */
 class ModelInspector extends EloquentModelInspector
 {
     /**
@@ -61,5 +64,18 @@ class ModelInspector extends EloquentModelInspector
             builder: $modelInfo['builder'],
             resource: $modelInfo['resource'] ?? null,
         );
+    }
+
+    /**
+     * Reads the relations from the model's methods, without its table.
+     *
+     * @return Collection<int, RelationInfo>
+     */
+    public function relationsOf(Model $model): Collection
+    {
+        /** @var Collection<int, RelationInfo> $relations */
+        $relations = $this->getRelations($model);
+
+        return $relations;
     }
 }

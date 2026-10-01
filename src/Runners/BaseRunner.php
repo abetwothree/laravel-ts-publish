@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
@@ -22,8 +24,10 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use InvalidArgumentException;
 use Laravel\Prompts\Support\Logger;
 use Throwable;
 
@@ -170,6 +174,8 @@ abstract class BaseRunner
         $signature = is_subclass_of($generatorClass, ProvidesCacheSignature::class, true)
             ? $generatorClass::cacheSignature($fqcn)
             : '';
+        // A model joining or leaving the published set changes what every other class may name.
+        $signature .= PublishedModelRegistry::signature();
         $this->manifest->markSeen($cacheKey);
 
         // Recomputed over the deps recorded on the last build, so editing any of them flips the fingerprint.
@@ -241,20 +247,67 @@ abstract class BaseRunner
     }
 
     /**
-     * Builds the morph target map for all models, allowing MorphTo relations to be resolved to precise union types.
+     * The models this run publishes: the collected ones, then each model their relations reach on demand. Registers
+     * the set and builds the morph target map over it, so MorphTo relations resolve to precise union types.
      *
      * @return list<class-string>
      */
     protected function buildModelMorphTargetMap(): array
     {
-        /** @var ModelsCollector $collector */
+        /** @var object $collector */
         $collector = resolve(Config::string('ts-publish.models.collector_class', ModelsCollector::class));
+        $collect = [$collector, 'collect'];
 
-        /** @var list<class-string> $modelClasses */
-        $modelClasses = $collector->collect()->all();
+        if (! is_callable($collect)) {
+            throw new InvalidArgumentException(
+                sprintf('Configured models collector [%s] must offer collect().', $collector::class),
+            );
+        }
 
-        resolve(ModelAttributeResolver::class)->buildMorphTargetMap($modelClasses);
+        $resolver = resolve(ModelAttributeResolver::class);
+        $withoutTables = ! $this->inspectsModelTables();
+
+        /** @var list<class-string> $collected */
+        $collected = Collection::wrap($collect())->all();
+
+        // A project's own collector need only offer collect(); only a CoreCollector can say what it would accept.
+        $modelClasses = $collector instanceof CoreCollector
+            ? $resolver->withRelatedModels(
+                $collected,
+                fn (string $class): bool => $collector->accepts($class) && $this->modelTableExists($class),
+                $withoutTables,
+            )
+            : $collected;
+
+        PublishedModelRegistry::register($modelClasses);
+        $resolver->buildMorphTargetMap($modelClasses, $withoutTables);
 
         return $modelClasses;
+    }
+
+    /**
+     * Whether building the published set inspects every model's table, as the model phase does anyway.
+     */
+    protected function inspectsModelTables(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Whether a model's table or view exists; a model published on demand needs one, or it would publish no columns.
+     *
+     * @param  class-string  $class
+     */
+    protected function modelTableExists(string $class): bool
+    {
+        try {
+            /** @var Model $instance */
+            $instance = resolve($class);
+            $schema = $instance->getConnection()->getSchemaBuilder();
+
+            return $schema->hasTable($instance->getTable()) || $schema->hasView($instance->getTable());
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

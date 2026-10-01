@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -15,11 +18,21 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityRoster;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RosterEntry;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\DB;
 
 use function Orchestra\Testbench\workbench_path;
 
+use Workbench\App\Http\Resources\FacilityResource;
+use Workbench\App\Http\Resources\ImageMorphResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\BaseExtendableModel;
+use Workbench\App\Models\ExcludedModel;
+use Workbench\App\Models\Facility;
+use Workbench\App\Models\Laravel13Connection;
+use Workbench\App\Packages\Audit\Models\AuditTrail;
 
 beforeEach(function () {
     config()->set('ts-publish.output_to_files', false);
@@ -310,4 +323,99 @@ test('a --source run drops a class map memoized before it so the disk is rescann
     $runner->run();
 
     expect($cache->getValue())->not->toHaveKey('/a/directory/scanned/by/an/earlier/run');
+});
+
+test('a model --source run reads the same published model set a full run does', function () {
+    $runner = new RunnerForSource(Facility::class);
+    $runner->run();
+
+    expect(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeTrue()
+        ->and(PublishedModelRegistry::isPublished(ExcludedModel::class))->toBeFalse()
+        ->and($runner->modelGenerators->first()->content)
+        ->toContain('audit_trails: AuditTrail[];')
+        ->not->toContain('excluded_records');
+});
+
+test('a --source run generates the file of a model that is only published on demand', function () {
+    $runner = new RunnerForSource(AuditTrail::class);
+    $runner->run();
+
+    expect($runner->modelGenerators)->toHaveCount(1)
+        ->and($runner->modelGenerators->first()->content)
+        ->toContain('export interface AuditTrail')
+        ->toContain('notes: AuditNote[];');
+});
+
+test('a --source run of a class that is no model reads the same published model set', function () {
+    $runner = new RunnerForSource(FacilityResource::class);
+    $runner->run();
+
+    expect(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeTrue()
+        ->and($runner->resourceGenerators->first()->content)
+        ->toContain('audit_trails: AuditTrail[];')
+        ->toContain('excluded_records: unknown;')
+        ->not->toContain('ExcludedModel');
+});
+
+test('a resource --source run types a morphTo as a full run does', function () {
+    $runner = new RunnerForSource(ImageMorphResource::class);
+    $runner->run();
+
+    expect($runner->resourceGenerators->first()->content)
+        ->toContain('imageable: Post | Product | WorkbenchUser | CrmUser;');
+});
+
+test('an enum --source run reads no model set', function () {
+    (new Runner)->run();
+    (new RunnerForSource('Workbench\App\Enums\Status'))->run();
+
+    expect(PublishedModelRegistry::isEmpty())->toBeTrue();
+});
+
+test('a resource --source run reads the tables of the models it reads, not those of every collected model', function () {
+    // The first query of a test migrates the lazily refreshed database, so it must not be counted.
+    DB::select('select 1');
+
+    $queries = 0;
+    DB::listen(function () use (&$queries): void {
+        $queries++;
+    });
+
+    (new RunnerForSource(FacilityResource::class))->run();
+
+    $warned = array_column(AnalysisWarnings::all(), 'subject');
+
+    expect($queries)->toBeLessThan(resolve(ModelsCollector::class)->collect()->count())
+        ->and($warned)->not->toContain(BaseExtendableModel::class)->not->toContain(Laravel13Connection::class);
+});
+
+test('a --source run of a model that is only published on demand writes no metadata companion', function () {
+    $runner = new RunnerForSource(AuditTrail::class);
+    $runner->run();
+
+    expect($runner->modelGenerators)->toHaveCount(1)
+        ->and($runner->modelMetadataGenerators)->toBeEmpty();
+});
+
+test('a --source run publishes a model on a database view when a collected model relates to it', function () {
+    DB::statement('create view roster_entries as select id, name from facilities');
+    config()->set('ts-publish.models.additional_directories', [
+        ...config()->array('ts-publish.models.additional_directories'),
+        FacilityRoster::class,
+    ]);
+
+    $runner = new RunnerForSource(FacilityRoster::class);
+    $runner->run();
+
+    expect(PublishedModelRegistry::isPublished(RosterEntry::class))->toBeTrue()
+        ->and($runner->modelGenerators->first()->content)->toContain('entries: RosterEntry[];');
+});
+
+test('a --source run starts with an empty analysis memo, pinned answers included', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+
+    (new RunnerForSource('Workbench\\App\\Enums\\Status'))->run();
+
+    expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
 });

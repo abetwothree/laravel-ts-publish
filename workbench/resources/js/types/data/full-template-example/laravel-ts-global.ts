@@ -643,6 +643,36 @@ declare global {
             posts_count: number;
             posts_exists: boolean;
         }
+        /**
+         * Relates to a model outside every configured model directory, which is published on demand, and to a
+         * #[TsExclude]d model, whose relation is left out.
+         */
+        export interface Facility {
+            // Columns
+            id: number;
+            name: string;
+            inspector_type: string | null;
+            inspector_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** Names a model that is never published, so it has no file to import. */
+            last_excluded: unknown;
+            /** Names a class that is neither a model nor a resource, so no file is ever published for it. */
+            handle: unknown;
+            // Relations
+            /** Published on demand: AuditTrail sits in no configured model directory. */
+            audit_trails: app.packages.audit.models.AuditTrail[];
+            audit_trails_count: number;
+            audit_trails_exists: boolean;
+            /**
+             * Names its targets in the docblock generic: AuditInspector sits in no configured model directory and is
+             * published on demand, and the #[TsExclude]d model is left out of the union.
+             */
+            inspector: app.packages.audit.models.AuditInspector | User | null;
+            inspector_count: number;
+            inspector_exists: boolean;
+        }
         export interface Image {
             // Columns
             id: number;
@@ -1792,6 +1822,51 @@ declare global {
             kpis: app.models.Kpi[];
             kpis_count: number;
             kpis_exists: boolean;
+        }
+    }
+    export namespace app.packages.audit.models {
+        /** Named only by a morphTo docblock generic on Facility, so it is published on demand through that generic. */
+        export interface AuditInspector {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+        /** Reached only through AuditTrail, which is itself published on demand. */
+        export interface AuditNote {
+            // Columns
+            id: number;
+            audit_trail_id: number;
+            body: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The entry the note belongs to. */
+            trail: AuditTrail;
+            trail_count: number;
+            trail_exists: boolean;
+        }
+        /**
+         * Lives outside every configured model directory, as a package's model does, so it is published only because
+         * Facility relates to it.
+         */
+        export interface AuditTrail {
+            // Columns
+            id: number;
+            facility_id: number;
+            action: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The facility the entry was recorded for. */
+            facility: app.models.Facility;
+            facility_count: number;
+            facility_exists: boolean;
+            /** Published on demand in turn: reached only through this model. */
+            notes: AuditNote[];
+            notes_count: number;
+            notes_exists: boolean;
         }
     }
     export namespace blog.models {
@@ -3112,6 +3187,16 @@ declare global {
             flag?: string | null;
             extra: Record<string, unknown>;
             extra_field: string;
+        }
+        /** Reads a relation whose model is published on demand, and one whose model is never published. */
+        export interface FacilityResource {
+            id: number;
+            name: string;
+            audit_trails: app.packages.audit.models.AuditTrail[];
+            latest_trail: app.packages.audit.models.AuditTrail | null;
+            excluded_records: unknown;
+            first_excluded: unknown;
+            summary: { trails: app.packages.audit.models.AuditTrail[]; excluded: unknown };
         }
         /**
          * Regression fixture for Task 17C: a fluent method chained onto a receiver that resolves to a
@@ -5286,6 +5371,11 @@ declare global {
         export interface EnumBroadcastEvent {
             status: app.enums.StatusType;
             color: app.enums.ColorType;
+        }
+        export interface FacilityAudited {
+            facility: Partial<app.models.Facility>;
+            trail: Partial<app.packages.audit.models.AuditTrail>;
+            record: unknown;
         }
         export interface MixedTypesEvent {
             post: PostSnapshot;

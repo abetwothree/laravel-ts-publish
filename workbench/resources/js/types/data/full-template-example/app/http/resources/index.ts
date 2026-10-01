@@ -54,6 +54,7 @@ export * from './enum-collection-resource';
 export * from './enum-null-first-resource';
 export * from './event-log-resource';
 export * from './extended-address-resource';
+export * from './facility-resource';
 export * from './fluent-self-resource';
 export * from './fqcn-mixin-resource';
 export * from './guard-clause-closure-resource';

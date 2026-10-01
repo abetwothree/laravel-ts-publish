@@ -46,6 +46,8 @@ export * from './docblock-generics-fixture';
 export * from './docblock-generics-fixture_meta';
 export * from './excludable-model';
 export * from './excludable-model_meta';
+export * from './facility';
+export * from './facility_meta';
 export * from './image';
 export * from './image_meta';
 export * from './kpi';

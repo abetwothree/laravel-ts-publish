@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
@@ -23,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
+use Override;
 use ReflectionClass;
 
 class RunnerForSource extends BaseRunner
@@ -72,9 +74,10 @@ class RunnerForSource extends BaseRunner
     public function run(): void
     {
         PublishedResourceRegistry::reset();
+        PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
         CoreCollector::flushClassMapCache();
-        resolve(AnalysisMemo::class)->forget();
+        resolve(AnalysisMemo::class)->reset();
         TsTypeString::forgetQualifiedTypes();
 
         $fqcn = $this->resolveSourceToFqcn();
@@ -84,6 +87,13 @@ class RunnerForSource extends BaseRunner
         }
 
         $reflection = new ReflectionClass($fqcn);
+
+        // An enum names no model. Any other class may, and reads the same published set a full run does.
+        if (! $reflection->isEnum()
+            && ($this->shouldPublishModels || Config::boolean('ts-publish.models.enabled', false))
+        ) {
+            $this->buildModelMorphTargetMap();
+        }
 
         if ($this->validateEnum($reflection)) {
             if (! $this->shouldPublishEnums) {
@@ -102,7 +112,8 @@ class RunnerForSource extends BaseRunner
             ));
 
             $publishModel = $this->shouldPublishModels && $modelCollector->allows($fqcn);
-            $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->allows($fqcn);
+            // A model published on demand is outside the collected list, and a full run writes it no companion.
+            $publishMetadata = $this->shouldPublishModelMetadata && $metadataCollector->collect()->contains($fqcn);
 
             if (! $publishModel && ! $publishMetadata) {
                 $modelReason = $this->shouldPublishModels ? 'are excluded by filters' : 'are disabled';
@@ -149,6 +160,15 @@ class RunnerForSource extends BaseRunner
         }
     }
 
+    /**
+     * A source run generates one class, which reads the tables it needs itself, so the set reads none.
+     */
+    #[Override]
+    protected function inspectsModelTables(): bool
+    {
+        return false;
+    }
+
     protected function resolveSourceToFqcn(): string
     {
         if (str_ends_with($this->source, '.php')) {
@@ -177,8 +197,6 @@ class RunnerForSource extends BaseRunner
 
     protected function generateModel(string $fqcn): void
     {
-        $this->buildModelMorphTargetMap();
-
         /** @var ModelGenerator $generator */
         $generator = resolve(
             Config::string('ts-publish.models.generator_class', ModelGenerator::class),

@@ -159,6 +159,16 @@ leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of 
 `PublishedResourceRegistry` for this check, and enums have no equivalent. Publish the enum, or cast the property with
 an import-aware `#[TsCasts]`.
 
+### A model published on demand gets no metadata companion and is not watched
+
+A model outside every configured directory is published when a published model relates to it, so the relation has a
+file to import. That file is all it gets. The metadata phase reads its own collector, so the model has no `_meta`
+companion, and `WatcherJsonWriter` lists collected classes only, so editing the model's file does not republish it. A
+relation to a model with no table or view, a `#[TsExclude]`d model, or one in `models.excluded` or outside
+`models.included` is left out instead, with no warning. A custom `models.collector_class` that narrows `collect()` must
+narrow `accepts()` too, or the models its list relates to are published on demand. Add the model's class or directory
+to `models.additional_directories` to publish it like any other model.
+
 ### A model class name containing an underscore can collide with a metadata companion
 
 A companion is named `Str::kebab(ModelName).'_meta'`, and `Str::kebab()` never adds an underscore, so no other

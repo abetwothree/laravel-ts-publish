@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Workbench\App\Http\Controllers\CacheBustController;
 use Workbench\App\Models\User;
 
@@ -256,4 +259,53 @@ test('a morph map registered after the first run busts only the cached metadata 
     } finally {
         Relation::morphMap($previousMorphMap, false);
     }
+});
+
+test('a model that becomes publishable between runs busts the cached files that may name it', function () {
+    $trailFile = $this->out.'/workbench/app/packages/audit/models/audit-trail.ts';
+    $archiveFile = $this->out.'/workbench/app/packages/audit/models/audit-archive.ts';
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($trailFile))->not->toContain('archive')
+        ->and(file_exists($archiveFile))->toBeFalse();
+
+    // AuditArchive had no table, so it was not published on demand. No class file and no config changes here.
+    Schema::create('audit_archives', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('audit_trail_id');
+    });
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($trailFile))->toContain('archive: AuditArchive')
+        ->and(file_exists($archiveFile))->toBeTrue();
+});
+
+test('a model that becomes publishable between runs is named by a resource that read it as unknown before', function () {
+    Config::set('ts-publish.resources.additional_directories', [
+        ...Config::array('ts-publish.resources.additional_directories'),
+        ArchiveSpreadingResource::class,
+    ]);
+    Config::set('ts-publish.resources.included', [ArchiveSpreadingResource::class]);
+
+    $published = function (): string {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->out, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getFilename() === 'archive-spreading-resource.ts') {
+                return (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        return '';
+    };
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('archive: unknown;');
+
+    // One process serves both runs, so an analysis worked out under the first run's set must not outlive it.
+    Schema::create('audit_archives', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('audit_trail_id');
+    });
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('archive: AuditArchive');
 });

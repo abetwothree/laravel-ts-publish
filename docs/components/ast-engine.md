@@ -250,8 +250,9 @@ Subject mode types `$this->prop` from the subject's own declaration. It always a
 is `null`, as for a broadcast event, a DTO or any plain class. On a model-backed subject, it applies to a property
 `SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
 PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
-publishes that object, not a same-named attribute. A result naming an abstract or `Illuminate\` model declines rather
-than emit a token nothing imports.
+publishes that object, not a same-named attribute. A result naming a model the run does not publish declines rather
+than emit a token nothing imports, and with no published set to read, an abstract or `Illuminate\` model is still
+known to have no file. [ModelAttributeResolver § Models a run publishes][published-models] covers the set.
 
 A name the framework declares is never the subject's own, however the subject redeclares it: `JsonResource`'s
 `resource`, `with` and `additional`, `ResourceCollection`'s `collects` and `collection`, every `Model` property, and
@@ -298,8 +299,8 @@ dropped-arm count, and happens only where computing the answer again could not d
 `AnalysisMemo::reproducible()`. The outermost `analyzeMethod()` in a chain is pinned instead: stored even when a cycle
 cut it short, and reused whatever is on the stack.
 
-`AnalysisMemo::forget()` drops every unpinned answer. `Runner::run()`, `RunnerForSource::run()` and
-`ModelAttributeResolver::buildMorphTargetMap()` call it, so a pinned answer outlives a run in the same process.
+`AnalysisMemo::forget()` drops every unpinned answer, and `ModelAttributeResolver::buildMorphTargetMap()` calls it.
+`reset()` drops every answer, and `Runner::run()` and `RunnerForSource::run()` call it, so none outlives a run.
 
 ## MethodAnalysis
 
@@ -457,6 +458,7 @@ These pages cover the engine's neighbors:
 [gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
 [gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
+[published-models]: model-attribute-resolver.md#models-a-run-publishes
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
