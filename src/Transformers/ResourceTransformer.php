@@ -960,7 +960,7 @@ class ResourceTransformer extends CoreTransformer
             }
 
             $typeName = $originalConstName.'Type';
-            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+            $ns = TsNaming::globalNamespace($fqcn);
 
             $map[$constAlias] = $ns.'.'.$typeName;
         }
@@ -979,13 +979,13 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }

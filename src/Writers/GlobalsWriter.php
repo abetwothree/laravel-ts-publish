@@ -41,7 +41,7 @@ class GlobalsWriter
 
         foreach ($runner->enumGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = str_replace('/', '.', $t->namespacePath);
+            $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->enumName;
             $globalTypesByNamespace[$ns][] = $t->enumName.'Type';
             if ($t->backed) {
@@ -51,25 +51,25 @@ class GlobalsWriter
 
         foreach ($runner->modelGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = str_replace('/', '.', $t->namespacePath);
+            $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->modelName;
         }
 
         foreach ($runner->resourceGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = str_replace('/', '.', $t->namespacePath);
+            $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->resourceName;
         }
 
         foreach ($runner->formRequestGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = str_replace('/', '.', $t->namespacePath);
+            $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->typeName;
         }
 
         foreach ($runner->broadcastEventGenerators as $gen) {
             $t = $gen->transformer;
-            $ns = str_replace('/', '.', $t->namespacePath);
+            $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->eventName;
         }
 
@@ -154,27 +154,27 @@ class GlobalsWriter
         ];
 
         $viewData['groupedModels'] = $runner->modelGenerators
-            ->groupBy(fn (ModelGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->groupBy(fn (ModelGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $viewData['groupedEnums'] = $runner->enumGenerators
-            ->groupBy(fn (EnumGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->groupBy(fn (EnumGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $viewData['groupedResources'] = $runner->resourceGenerators
-            ->groupBy(fn (ResourceGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->groupBy(fn (ResourceGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $viewData['groupedFormRequests'] = $runner->formRequestGenerators
-            ->groupBy(fn (FormRequestGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->groupBy(fn (FormRequestGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (FormRequestGenerator $g) => $g->transformer))
             ->sortKeys();
 
         $viewData['groupedBroadcastEvents'] = $runner->broadcastEventGenerators
-            ->groupBy(fn (BroadcastEventGenerator $g) => str_replace('/', '.', $g->transformer->namespacePath))
+            ->groupBy(fn (BroadcastEventGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (BroadcastEventGenerator $g) => $g->transformer))
             ->sortKeys();
 

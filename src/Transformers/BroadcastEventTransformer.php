@@ -503,10 +503,10 @@ class BroadcastEventTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }
@@ -528,13 +528,13 @@ class BroadcastEventTransformer extends CoreTransformer
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+            $ns = TsNaming::globalNamespace($fqcn);
             $map[$key] = $ns.'.'.$typeName;
         }
 
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
             $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+            $ns = TsNaming::globalNamespace($fqcn);
             $map[$key] = $ns.'.'.$typeName;
         }
 

@@ -34,6 +34,14 @@ abstract class CoreTransformer
         return $this->findable;
     }
 
+    /**
+     * The global namespace this class's types are declared under in the globals file.
+     */
+    public function globalNamespace(): string
+    {
+        return TsNaming::globalNamespace($this->findable);
+    }
+
     /** @return static */
     abstract public function transform(): self;
 

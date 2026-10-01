@@ -222,6 +222,8 @@
     "app\/Http\/Resources\/RegistrarResource.php",
     "app\/Http\/Resources\/RelationChainResource.php",
     "app\/Http\/Resources\/ReleaseColumnsResource.php",
+    "app\/Http\/Resources\/ReportCardResource.php",
+    "app\/Http\/Resources\/ReportCards\/SummaryCardResource.php",
     "app\/Http\/Resources\/ResourceWrappedEnumResource.php",
     "app\/Http\/Resources\/ReviewResource.php",
     "app\/Http\/Resources\/RosterSlotResource.php",

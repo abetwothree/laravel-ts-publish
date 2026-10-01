@@ -69,6 +69,44 @@ describe('namespaceToPath', function () {
     });
 });
 
+describe('globalNamespace', function () {
+    test('single-word segments keep the spelling the path has', function () {
+        expect($this->service->globalNamespace('App\Models\User'))->toBe('app.models')
+            ->and($this->service->globalNamespace('Blog\Enums\ArticleStatus'))->toBe('blog.enums');
+    });
+
+    test('a multi-word segment is camelCase, never the hyphenated path', function () {
+        expect($this->service->globalNamespace('App\Http\Resources\ReportCards\SummaryCardResource'))
+            ->toBe('app.http.resources.reportCards');
+    });
+
+    test('an acronym lowers as one word', function (string $fqcn, string $namespace) {
+        expect($this->service->globalNamespace($fqcn))->toBe($namespace);
+    })->with([
+        'a whole-segment acronym' => ['App\Http\Controllers\API\UserController', 'app.http.controllers.api'],
+        'an acronym before a word' => ['App\HTTPClient\Models\Request', 'app.httpClient.models'],
+        'a one-letter prefix' => ['App\OAuth\Models\Token', 'app.oAuth.models'],
+        'a letter and a digit' => ['App\Api\V2\Models\Token', 'app.api.v2.models'],
+        'an acronym before a digit' => ['App\HTTP2Client\Models\Request', 'app.http2Client.models'],
+        'an acronym that ends in a digit' => ['App\Http\Controllers\API2\UserController', 'app.http.controllers.api2'],
+    ]);
+
+    test('the configured prefix is stripped, as it is from the path', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        expect($this->service->globalNamespace('Workbench\App\Http\Resources\ReportCards\SummaryCardResource'))
+            ->toBe('app.http.resources.reportCards');
+    });
+
+    test('a reserved word cannot open a namespace name, so the first segment takes a suffix', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'App\\');
+
+        expect($this->service->globalNamespace('App\Import\Models\Batch'))->toBe('import_.models')
+            ->and($this->service->globalNamespace('App\Enum\Status'))->toBe('enum_')
+            ->and($this->service->globalNamespace('App\Models\Import\Batch'))->toBe('models.import');
+    });
+});
+
 describe('relativeImportPath', function () {
     test('same directory returns dot', function () {
         expect($this->service->relativeImportPath('blog/models', 'blog/models'))->toBe('.');

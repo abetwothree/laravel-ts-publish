@@ -15388,6 +15388,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ReportCardResource": {
+            "name": "ReportCardResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "SummaryCardResource",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReportCards\\SummaryCardResource": {
+            "name": "SummaryCardResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ResourceWrappedEnumResource": {
             "name": "ResourceWrappedEnumResource",
             "properties": [

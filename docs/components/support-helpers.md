@@ -69,6 +69,16 @@ wants `toTsType()` is not a type-string helper, and would be in the same bind as
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
 
+### `TsNaming`
+
+`namespaceToPath()` and `globalNamespace()` read one namespace two ways, and neither stands in for the other. A path
+kebab-cases each segment, which a directory name allows and an identifier does not, so nothing derives a global
+namespace from a path. `globalNamespace()` lowers only a segment's leading capitals, so `ReportCards` is `reportCards`
+and `HTTPClient` is `httpClient`, and it suffixes `_` to a reserved word in the first position, the one place
+TypeScript rejects one. `CoreTransformer::globalNamespace()` is the accessor the globals file reads, for a declaration
+and for a qualified reference alike. `SummaryCardResource`, under `Http\Resources\ReportCards`, pins it in every
+generated tree.
+
 ### `StringSerialization`
 
 Its callers in `src/Ast/` use it to decline a receiver rule where `toTsType()` says `string` but `json_encode()` writes

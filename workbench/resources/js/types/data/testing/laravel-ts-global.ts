@@ -4098,6 +4098,11 @@ declare global {
             columns: { named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> };
             picks: { named: Pick<workbench.app.models.Release, 'major' | 'minor'>; rest: Pick<workbench.app.models.Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
         }
+        /** Nests a resource from a multi-word namespace segment, so the globals file qualifies it across namespaces. */
+        export interface ReportCardResource {
+            id: number;
+            summary: workbench.app.http.resources.reportCards.SummaryCardResource;
+        }
         /**
          * Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property`
          * returns `unknown` instead of the correct `AsEnum` utility type.
@@ -4831,6 +4836,13 @@ declare global {
         /** A collection of admin stores. */
         export interface StoreCollection {
             data: Store[];
+        }
+    }
+    export namespace workbench.app.http.resources.reportCards {
+        /** Lives under a multi-word namespace segment, which the globals file must spell as an identifier. */
+        export interface SummaryCardResource {
+            id: number;
+            title: string;
         }
     }
     export namespace workbench.blog.http.resources {
