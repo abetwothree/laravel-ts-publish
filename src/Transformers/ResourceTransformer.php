@@ -145,6 +145,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, list<class-string>> property name => ordered list of enum FQCNs for ternary/union where ALL non-null branches are EnumResource calls with different FQCNs */
     protected array $multiEnumResourceProperties = [];
 
+    /** @var list<class-string> the enums whose single or union record dropOverriddenEnumResources() dropped */
+    protected array $droppedEnumResourceFqcns = [];
+
     /** @var array<string, string> property name => TS type override from model's #[TsCasts] */
     protected array $modelTsCastsOverrides = [];
 
@@ -170,11 +173,13 @@ class ResourceTransformer extends CoreTransformer
             ->parseResourceTsCastsOverrides()
             ->runAstAnalysis()
             ->applyOverrides()
+            ->dropOverriddenEnumResources()
             ->pruneOverriddenEnumImports()
             ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
             ->resolveImportConflicts()
+            ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
             ->buildResolvedImports();
 
@@ -514,6 +519,86 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * Drops a key's enum-resource records when its type holds none of their enums' type names, and moves each enum to
+     * its inline wraps. Left in place, they make rewriteEnumResourceTypes() throw, overwrite the cast or import each
+     * enum for nothing. This reads $enumFqcnMap before pruneOverriddenEnumImports() removes the entries no type holds.
+     *
+     * @return $this
+     */
+    protected function dropOverriddenEnumResources(): self
+    {
+        foreach ($this->properties as $property => ['type' => $type]) {
+            $holdsTypeName = fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
+                $this->enumFqcnMap[$fqcn],
+                $type,
+            );
+            $single = $this->enumResourceProperties[$property]['fqcn'] ?? null;
+            $several = $this->multiEnumResourceProperties[$property] ?? [];
+            $wraps = $this->propertyInlineEnumResourceFqcns[$property] ?? [];
+
+            if ($single !== null && ! $holdsTypeName($single)) {
+                // The other two entries would say this key reads the enum bare, and keep the enum's type import.
+                unset(
+                    $this->enumResourceProperties[$property],
+                    $this->directEnumProperties[$property],
+                    $this->propertyEnumFqcns[$property],
+                );
+                $wraps[] = $single;
+                $this->droppedEnumResourceFqcns[] = $single;
+            }
+
+            if ($several !== [] && ! array_any($several, $holdsTypeName)) {
+                unset($this->multiEnumResourceProperties[$property]);
+                array_push($wraps, ...$several);
+                array_push($this->droppedEnumResourceFqcns, ...$several);
+            }
+
+            // Which wraps the type writes depends on the const aliases, so keepWrittenInlineWraps() cuts the list after
+            // resolveImportConflicts().
+            if ($wraps !== []) {
+                $this->propertyInlineEnumResourceFqcns[$property] = $wraps;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Keeps a key's inline wraps whose const its type writes after `typeof`, by the const's own name or by the alias
+     * this file gives it. It runs after resolveImportConflicts(), which decides the aliases.
+     *
+     * @return $this
+     */
+    protected function keepWrittenInlineWraps(): self
+    {
+        foreach ($this->propertyInlineEnumResourceFqcns as $property => $fqcns) {
+            $type = $this->properties[$property]['type'] ?? '';
+            $writesConst = fn (string $fqcn): bool => preg_match(
+                TsTypeString::queuedTokenPattern(
+                    array_values(array_unique([
+                        $this->enumConstMap[$fqcn],
+                        $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn],
+                    ])),
+                    'typeof\s+\K',
+                ),
+                $type,
+            ) === 1;
+
+            // A wrap the type writes itself needs its imports and no rewrite, which an inline wrap gets. The list is a
+            // queue for aliasTypeofConst(), one entry per occurrence, so it is never deduped.
+            $wraps = array_values(array_filter($fqcns, $writesConst));
+
+            if ($wraps === []) {
+                unset($this->propertyInlineEnumResourceFqcns[$property]);
+            } else {
+                $this->propertyInlineEnumResourceFqcns[$property] = $wraps;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
      * Drops enum-map entries whose bare type no property or extends clause names any more after #[TsCasts] overrides.
      *
      * @return $this
@@ -641,43 +726,8 @@ class ResourceTransformer extends CoreTransformer
                 'type' => $type,
             ];
 
-            // The type import survives only if some property still reads this enum directly.
-            $usedForDirectAccess = $isMixed;
-
-            if (! $usedForDirectAccess) {
-                foreach ($this->directEnumProperties as $prop => $propFqcn) {
-                    if ($propFqcn === $info['fqcn']) {
-                        $usedForDirectAccess = true;
-
-                        break;
-                    }
-                }
-            }
-
-            if (! $usedForDirectAccess) {
-                foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
-                    if ($propFqcn === $info['fqcn'] && ! isset($this->enumResourceProperties[$prop])) {
-                        $usedForDirectAccess = true;
-
-                        break;
-                    }
-                }
-            }
-
-            // A bare enum read nested inside an inline array (e.g. ['role' => $member->role])
-            // is the semantically correct signal to check here, checked explicitly rather than
-            // relying on dispatchFqcnResults()'s FQCN-keyed directEnumFqcns entries above.
-            if (! $usedForDirectAccess) {
-                foreach ($this->propertyInlineEnumFqcns as $propFqcns) {
-                    if (in_array($info['fqcn'], $propFqcns, true)) {
-                        $usedForDirectAccess = true;
-
-                        break;
-                    }
-                }
-            }
-
-            if (! $usedForDirectAccess) {
+            // The type import survives only if some key still reads this enum bare.
+            if (! $isMixed && ! $this->readsEnumDirectly($info['fqcn'])) {
                 unset($this->enumFqcnMap[$info['fqcn']]);
             }
         }
@@ -701,27 +751,7 @@ class ResourceTransformer extends CoreTransformer
                     $rewritten[] = 'AsEnum<typeof '.$constName.'>';
 
                     // A mixed ternary elsewhere may still emit XType, which needs the type import.
-                    $stillNeeded = false;
-
-                    foreach ($this->directEnumProperties as $propFqcn) {
-                        if ($propFqcn === $fqcn) {
-                            $stillNeeded = true;
-
-                            break;
-                        }
-                    }
-
-                    if (! $stillNeeded) {
-                        foreach ($this->propertyEnumFqcns as $prop => $propFqcn) {
-                            if ($propFqcn === $fqcn && ! isset($this->enumResourceProperties[$prop])) {
-                                $stillNeeded = true;
-
-                                break;
-                            }
-                        }
-                    }
-
-                    if (! $stillNeeded) {
+                    if (! $this->readsEnumDirectly($fqcn)) {
                         unset($this->enumFqcnMap[$fqcn]);
                     }
                 } else {
@@ -733,6 +763,18 @@ class ResourceTransformer extends CoreTransformer
                 ...$this->properties[$propName],
                 'type' => implode(' | ', $rewritten),
             ];
+        }
+
+        // Only where two enums share a type name: the prune reads names, so each keeps the other's import. A dropped
+        // record never reached the loops above, which settle such an import by whether some key reads the enum bare.
+        $typeNameCounts = array_count_values($originalEnumFqcnMap);
+
+        foreach (array_unique($this->droppedEnumResourceFqcns) as $fqcn) {
+            $typeName = $originalEnumFqcnMap[$fqcn] ?? null;
+
+            if ($typeName !== null && $typeNameCounts[$typeName] > 1 && ! $this->readsEnumDirectly($fqcn)) {
+                unset($this->enumFqcnMap[$fqcn]);
+            }
         }
 
         // analyzeInlineArray() already substituted each inline wrap's bare const name into 'AsEnum<typeof {bare}>';
@@ -752,6 +794,25 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * Whether some key reads the enum bare, at the top level or inside an inline array.
+     */
+    protected function readsEnumDirectly(string $fqcn): bool
+    {
+        if (in_array($fqcn, $this->directEnumProperties, true)) {
+            return true;
+        }
+
+        foreach ($this->propertyEnumFqcns as $property => $propertyFqcn) {
+            if ($propertyFqcn === $fqcn && ! isset($this->enumResourceProperties[$property])) {
+                return true;
+            }
+        }
+
+        // An inline array's bare enum is also a FQCN-keyed directEnumProperties entry, but this is the explicit signal.
+        return array_any($this->propertyInlineEnumFqcns, static fn (array $fqcns): bool => in_array($fqcn, $fqcns, true));
     }
 
     /**

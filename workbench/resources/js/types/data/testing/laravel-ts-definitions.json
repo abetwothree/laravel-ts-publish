@@ -15168,6 +15168,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostStateCastResource": {
+            "name": "PostStateCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "held",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostStateResource": {
             "name": "PostStateResource",
             "properties": [

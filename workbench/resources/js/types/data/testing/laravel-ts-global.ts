@@ -4079,6 +4079,18 @@ declare global {
             headline: workbench.app.models.Comment | null;
             spotlight: { comment: workbench.app.models.Comment | null };
         }
+        /**
+         * Lays a cast over each key that holds an enum resource: each key publishes its cast, and imports an enum only where
+         * the cast writes its wrap.
+         */
+        export interface PostStateCastResource {
+            id: number;
+            status: string;
+            visibility: string;
+            either: string | null;
+            held: string | null;
+            wrapped: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
+        }
         /** Publishes a union of two enum resources and no enum resource of its own: the union brings the file's enum imports. */
         export interface PostStateResource {
             id: number;

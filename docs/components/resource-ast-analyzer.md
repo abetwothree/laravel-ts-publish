@@ -514,8 +514,8 @@ beside a signature are all known:
   `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
   must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
   reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` keeps
-  them, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource` key, and making it drop them like the
-  others would stop that rewrite.
+  them while the cast holds the enum's type name, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource`
+  key, and making it drop them like the others would stop that rewrite.
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
 an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts. The pattern is
@@ -595,10 +595,14 @@ Its import clean-up compares values, so it is right for both kinds.
 `TsTypeString::typeNameOccursIn()`, because an unused import fails `tsc` with TS6196 under `noUnusedLocals`. Two
 steps depend on it:
 
-- **After a `#[TsCasts]` override**: `pruneOverriddenAnalysisImports()` and `pruneOverriddenEnumImports()` drop each
-  model, `#[TsType]` and enum type import that no property type or extends clause still spells. The model prune reads
-  class basenames before aliasing, so two same-basename models both stay imported while either is spelled, and one can
-  stay imported unused under its alias.
+- **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
+  holds none of the enums' type names. It runs first, since `pruneOverriddenEnumImports()` removes the names it reads.
+  An enum whose const the type writes after `typeof`, by its name or its alias, stays as an inline wrap.
+  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name, which
+  `pruneOverriddenEnumImports()`, reading names, cannot tell apart. `pruneOverriddenAnalysisImports()` and
+  `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
+  clause still spells. The model prune reads class basenames before aliasing, so two same-basename models both stay
+  imported while either is spelled, and one can stay imported unused under its alias.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
   every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and

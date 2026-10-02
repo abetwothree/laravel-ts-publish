@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
@@ -80,6 +82,7 @@ use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
+use Workbench\App\Http\Resources\PostStateCastResource;
 use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
@@ -1534,6 +1537,14 @@ describe('ResourceTransformer import collision deconfliction', function () {
         // list-element handling instead of being re-deduped there.
         expect($data->properties['matrix']['type'])
             ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]');
+    });
+
+    test('two colliding Status wraps, one repeated, keep their own alias through the positional queue', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        // The wraps' own list must keep all three entries, or the third occurrence reads the last entry's alias.
+        expect((new ResourceTransformer(EnumResourceWrapTrioResource::class))->properties['trio']['type'])
+            ->toBe('{ a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof CrmStatus>; c: AsEnum<typeof WorkbenchStatus> }');
     });
 });
 
@@ -3111,4 +3122,25 @@ describe('a union whose every arm is an enum resource', function () {
         'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | null'],
         'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | null'],
     ]);
+});
+
+// The class's cast types four keys and the one on `toArray()` a fifth. Only `wrapped` writes wraps, so only its enums
+// are imported, and the globals file qualifies them.
+test('publishes each cast over an enum resource as written, importing only the enums a cast writes as wraps', function () {
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $transformer = new ResourceTransformer(PostStateCastResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'id' => 'number',
+        'status' => 'string',
+        'visibility' => 'string',
+        'either' => 'string | null',
+        'held' => 'string | null',
+        'wrapped' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
+    ])
+        ->and($transformer->typeImports)->toBe([])
+        ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
+        ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
+        ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
 });

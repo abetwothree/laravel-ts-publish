@@ -212,6 +212,7 @@
     "app\/Http\/Resources\/PostPinnedCommentsResource.php",
     "app\/Http\/Resources\/PostResource.php",
     "app\/Http\/Resources\/PostSpotlightResource.php",
+    "app\/Http\/Resources\/PostStateCastResource.php",
     "app\/Http\/Resources\/PostStateResource.php",
     "app\/Http\/Resources\/PostStatsResource.php",
     "app\/Http\/Resources\/PostUnwrappedCollection.php",
