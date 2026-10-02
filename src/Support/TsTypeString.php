@@ -46,6 +46,19 @@ class TsTypeString
     protected array $qualifiedTypes = [];
 
     /**
+     * The namespace map the two indexes below were read from.
+     *
+     * @var array<string, list<string>>|null
+     */
+    protected ?array $indexedNamespaces = null;
+
+    /** @var array<string, string> type name => the first namespace that owns it */
+    protected array $typeOwners = [];
+
+    /** @var array<string, array<string, true>> namespace => the type names it owns */
+    protected array $ownedTypes = [];
+
+    /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
@@ -160,8 +173,8 @@ class TsTypeString
     /**
      * Prefix unqualified type names in a TypeScript type string with their global namespace.
      *
-     * Pass 1 resolves per-file import aliases (`CrmUser` → `models.User`) first, so aliased names
-     * reach the namespace-qualification pass already resolved. A quoted string literal is left as written.
+     * An alias in the file's own map (`CrmUser` → `models.User`) resolves through it, in the same pass as every other
+     * name. A quoted string literal is left as written.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
@@ -187,6 +200,9 @@ class TsTypeString
     {
         $this->qualificationMaps = null;
         $this->qualifiedTypes = [];
+        $this->indexedNamespaces = null;
+        $this->typeOwners = [];
+        $this->ownedTypes = [];
     }
 
     /**
@@ -337,6 +353,9 @@ class TsTypeString
     /**
      * Qualify one type string under the given maps, leaving each quoted string literal as written.
      *
+     * Each name is read once: through the file's own map when it has an entry, else as the current namespace's own
+     * name, else as the first namespace that owns it. A name after a `.` is already qualified.
+     *
      * @param  array<string, list<string>>  $namespacedTypes
      * @param  array<string, string>  $aliasResolution
      */
@@ -351,58 +370,54 @@ class TsTypeString
             static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),
             ARRAY_FILTER_USE_BOTH,
         );
-        [$patterns, $replacements] = $this->qualificationRules($namespacedTypes, $skipNamespace, $aliasResolution);
-        $qualified = preg_replace($patterns, $replacements, $qualifiable);
+
+        if ($this->indexedNamespaces !== $namespacedTypes) {
+            $this->indexNamespaces($namespacedTypes);
+        }
+
+        $owners = $this->typeOwners;
+        $own = $this->ownedTypes[$skipNamespace] ?? [];
+
+        $qualified = preg_replace_callback(
+            '/(?<![A-Za-z0-9_$.\x80-\xff])[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/',
+            static function (array $match) use ($aliasResolution, $skipNamespace, $owners, $own): string {
+                $name = $match[0];
+
+                if (isset($aliasResolution[$name])) {
+                    $target = $aliasResolution[$name];
+                    $lastDot = strrpos($target, '.');
+
+                    return $lastDot !== false && substr($target, 0, $lastDot) === $skipNamespace
+                        ? substr($target, $lastDot + 1)
+                        : $target;
+                }
+
+                return isset($own[$name]) || ! isset($owners[$name]) ? $name : $owners[$name].'.'.$name;
+            },
+            $qualifiable,
+        );
 
         return implode('', array_replace($segments, $qualified));
     }
 
     /**
-     * The rewrites that qualify a name, applied in order: per-file aliases first, then every other namespace's names.
+     * Index a namespace map by type name, once per map: who owns each name first, and what each namespace owns.
      *
      * @param  array<string, list<string>>  $namespacedTypes
-     * @param  array<string, string>  $aliasResolution
-     * @return array{list<string>, list<string>} the patterns, and the replacement for each
      */
-    protected function qualificationRules(array $namespacedTypes, string $skipNamespace, array $aliasResolution): array
+    protected function indexNamespaces(array $namespacedTypes): void
     {
-        $patterns = [];
-        $replacements = [];
-
-        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
-        foreach ($aliasResolution as $alias => $qualified) {
-            $lastDot = strrpos($qualified, '.');
-            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $replacements[] = ($targetNs === $skipNamespace)
-                ? substr($qualified, $lastDot + 1)
-                : $qualified;
-        }
-
-        // Pass 2: names that also exist in the skip namespace belong to the current context,
-        // so they must not be re-qualified with another namespace.
-        /** @var list<string> $skipTypeNames */
-        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+        $this->indexedNamespaces = $namespacedTypes;
+        $this->typeOwners = [];
+        $this->ownedTypes = [];
 
         foreach ($namespacedTypes as $namespace => $typeNames) {
-            if ($namespace === $skipNamespace) {
-                continue;
-            }
-
-            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
-            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
+            $this->ownedTypes[$namespace] = array_fill_keys($typeNames, true);
 
             foreach ($typeNames as $typeName) {
-                if (in_array($typeName, $skipTypeNames, true)) {
-                    continue;
-                }
-
-                $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $replacements[] = $namespace.'.'.$typeName;
+                $this->typeOwners[$typeName] ??= $namespace;
             }
         }
-
-        return [$patterns, $replacements];
     }
 
     /**

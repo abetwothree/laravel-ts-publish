@@ -275,7 +275,7 @@ describe('TS_PRIMITIVES', function () {
 });
 
 describe('qualifyGlobalType', function () {
-    test('resolves import alias to fully-qualified name (Pass 1)', function () {
+    test('resolves import alias to fully-qualified name', function () {
         $result = $this->service->qualifyGlobalType(
             'CrmUser | null',
             ['crm.models' => ['User']],
@@ -286,7 +286,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('crm.models.User | null');
     });
 
-    test('uses bare name when alias target is in the skip namespace (Pass 1)', function () {
+    test('uses bare name when alias target is in the skip namespace', function () {
         $result = $this->service->qualifyGlobalType(
             'CrmUser | null',
             ['crm.models' => ['User']],
@@ -297,7 +297,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('User | null');
     });
 
-    test('qualifies a bare type name with its namespace prefix (Pass 2)', function () {
+    test('qualifies a bare type name with its namespace prefix', function () {
         $result = $this->service->qualifyGlobalType(
             'User | null',
             ['app.models' => ['User', 'Post']],
@@ -307,7 +307,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('app.models.User | null');
     });
 
-    test('skips qualification for types in the skip namespace (Pass 2)', function () {
+    test('skips qualification for types in the skip namespace', function () {
         $result = $this->service->qualifyGlobalType(
             'User | Post',
             ['app.models' => ['User', 'Post']],
@@ -338,7 +338,7 @@ describe('qualifyGlobalType', function () {
     });
 
     test('does not re-qualify bare names that belong to the skip namespace', function () {
-        // After Pass 1, AppUser becomes bare 'User'; Pass 2 must not re-qualify it with crm.models.
+        // AppUser resolves to this namespace's bare 'User', which crm.models' own 'User' must not then claim.
         $result = $this->service->qualifyGlobalType(
             'Post | Product | AppUser | CrmUser',
             ['app.models' => ['User', 'Post', 'Product'], 'crm.models' => ['User']],
@@ -347,6 +347,34 @@ describe('qualifyGlobalType', function () {
         );
 
         expect($result)->toBe('Post | Product | User | crm.models.User');
+    });
+
+    test('reads a name through the file\'s own map, whichever namespace also owns it', function () {
+        $types = ['app.models' => ['User', 'ServiceDesk'], 'crm.models' => ['User']];
+
+        expect($this->service->qualifyGlobalType('User | null', $types, 'app.models', ['User' => 'crm.models.User']))
+            ->toBe('crm.models.User | null')
+            ->and($this->service->qualifyGlobalType('User | null', $types, 'crm.models', ['User' => 'crm.models.User']))
+            ->toBe('User | null');
+    });
+
+    test('reads each name once, so a name one entry wrote is never rewritten by another', function () {
+        // AppUser resolves to this namespace's bare `User`, which the `User` entry must not then send to crm.models.
+        $result = $this->service->qualifyGlobalType(
+            'AppUser | User',
+            ['app.models' => ['User'], 'crm.models' => ['User']],
+            'app.models',
+            ['AppUser' => 'app.models.User', 'User' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('User | crm.models.User');
+    });
+
+    test('a name several namespaces own goes to the first one, unless the current namespace owns it', function () {
+        $types = ['app.enums' => ['StatusType'], 'crm.enums' => ['StatusType'], 'app.models' => ['Post']];
+
+        expect($this->service->qualifyGlobalType('StatusType', $types, 'app.models'))->toBe('app.enums.StatusType')
+            ->and($this->service->qualifyGlobalType('StatusType', $types, 'crm.enums'))->toBe('StatusType');
     });
 
     test('never rewrites a name inside a quoted string literal, whatever the literal escapes', function (string $type, string $qualified) {
@@ -376,6 +404,20 @@ describe('qualifyGlobalType', function () {
 
         expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
     });
+
+    test('reads a name spelled with non-ASCII letters whole, as a type name and as an alias', function (string $type, string $qualified) {
+        $result = $this->service->qualifyGlobalType(
+            $type,
+            ['app.models' => ['Ünï', 'User']],
+            '',
+            ['AliasÜnï' => 'app.models.Ünï'],
+        );
+
+        expect($result)->toBe($qualified);
+    })->with([
+        'a type name' => ['Ünï | null', 'app.models.Ünï | null'],
+        'an alias' => ['AliasÜnï', 'app.models.Ünï'],
+    ]);
 
     test('qualifies each type once per namespace under the same maps, and reads a repeat back', function () {
         $service = new CountingTsTypeString;
