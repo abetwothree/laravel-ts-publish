@@ -128,6 +128,12 @@ class GlobalsWriter
             }
         }
 
+        // Sorted by name so the import lines do not depend on the order the classes were collected in.
+        foreach ($externalTypeImports as $path => $types) {
+            sort($types);
+            $externalTypeImports[$path] = $types;
+        }
+
         $externalTypeImports = TsNaming::sortImportPaths($externalTypeImports);
 
         // Build a merged alias map from all transformers so the globals template can resolve

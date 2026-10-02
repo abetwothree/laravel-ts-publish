@@ -209,6 +209,51 @@ test('globals content resolves aliased types to namespace-qualified names', func
         ->not->toContain('first: app.models.User | app.models.User | null');
 });
 
+test('a name two namespaces publish is qualified to the class the file itself imports', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)
+        // ServiceDesk imports only Crm's User, so its file never aliases the name; app.models owns a User too.
+        ->not->toContain('crm_agent: User | null;')
+        ->toContain('crm_agent: crm.models.User | null;')
+        // Crm's User casts to Crm's Status, though app.enums is the first namespace to own a StatusType.
+        ->toContain("company: string | null;\n            status: crm.enums.StatusType;")
+        // A resource reads the Address model, though its own namespace owns a resource named Address.
+        ->not->toContain('primaryAddress: Address | null;')
+        ->toContain('primaryAddress: app.models.Address | null;');
+});
+
+test('the globals file qualifies every name the same way whatever order the classes were collected in', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $writer = new GlobalsWriter(new Filesystem);
+    $sortedLines = function () use ($writer, $runner): array {
+        $lines = explode("\n", $writer->write($runner));
+        sort($lines);
+
+        return $lines;
+    };
+
+    $collected = $sortedLines();
+
+    foreach (['enumGenerators', 'modelGenerators', 'resourceGenerators', 'formRequestGenerators', 'broadcastEventGenerators'] as $phase) {
+        (new ReflectionProperty($runner, $phase))->setValue($runner, $runner->{$phase}->reverse()->values());
+    }
+
+    expect($sortedLines())->toBe($collected);
+});
+
 test('globals resources section emits export type for flat collections', function () {
     config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);

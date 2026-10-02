@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+
 /**
  * Shared import conflict resolution helpers for transformers.
  */
@@ -42,6 +44,28 @@ trait ResolvesImportConflicts
         }
 
         return $constName;
+    }
+
+    /**
+     * Map each imported type, under the name this file gives it, to its globally-qualified name.
+     *
+     * A bare name is ambiguous once two namespaces publish it, so the globals file reads every name through this
+     * map, as the class's own file reads it through its imports.
+     *
+     * @param  array<string, string>  ...$fqcnMaps  FQCN => unaliased TypeScript type name
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    protected function qualifiedImportNames(array ...$fqcnMaps): array
+    {
+        $map = [];
+
+        foreach ($fqcnMaps as $fqcnMap) {
+            foreach ($fqcnMap as $fqcn => $typeName) {
+                $map[$this->importAliases[$fqcn] ?? $typeName] = TsNaming::globalNamespace($fqcn).'.'.$typeName;
+            }
+        }
+
+        return $map;
     }
 
     /**

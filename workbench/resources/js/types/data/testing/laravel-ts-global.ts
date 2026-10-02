@@ -8,7 +8,7 @@ export {}
 
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
-import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
+import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -1360,7 +1360,7 @@ declare global {
             order_count: number;
             order_exists: boolean;
             /** The CRM user assigned as the support agent (optional). */
-            crm_agent: User | null;
+            crm_agent: workbench.crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
         }
@@ -1958,7 +1958,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: workbench.app.enums.StatusType;
+            status: workbench.crm.enums.StatusType;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -3094,8 +3094,8 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: workbench.app.models.Address[];
+            primaryAddress: workbench.app.models.Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -3129,8 +3129,8 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: workbench.app.models.Address[];
+            primaryAddress: workbench.app.models.Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -4364,8 +4364,8 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: workbench.app.models.Address[];
+            primaryAddress: workbench.app.models.Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -4406,8 +4406,8 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: workbench.app.models.Address[];
+            primaryAddress: workbench.app.models.Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -4808,8 +4808,8 @@ declare global {
             posts: workbench.app.models.Post[];
             comments: workbench.app.models.Comment[];
             orders: workbench.app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: workbench.app.models.Address[];
+            primaryAddress: workbench.app.models.Address | null;
             teams: workbench.app.models.Team[];
             ownedTeams: workbench.app.models.Team[];
             images: workbench.app.models.Image[];
@@ -5054,7 +5054,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: workbench.app.enums.StatusType;
+            status: workbench.crm.enums.StatusType;
         }
     }
     export namespace workbench.shipping.http.resources {

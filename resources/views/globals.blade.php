@@ -20,6 +20,9 @@ declare global {
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
+@php
+$references = $transformer->globalTypeReferenceMap();
+@endphp
 @if($transformer->description)
 {!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
@@ -31,7 +34,7 @@ declare global {
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @endif
 @if (count($transformer->mutators) > 0 || count($transformer->appends) > 0)
@@ -41,14 +44,14 @@ declare global {
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @foreach($transformer->appends as $name => $append)
 @continue(in_array((string) $name, $transformer->shadowedKeys, true))
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -57,7 +60,7 @@ declare global {
 @if($relation['description'])
 {!! JsEmitter::formatJsDoc($relation['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @if(in_array($name.'_count', $transformer->relationCountKeys, true))
             {!! JsEmitter::validJsObjectKey($name.'_count') !!}: number;
 @endif
@@ -102,18 +105,21 @@ declare global {
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
+@php
+$references = $transformer->globalTypeReferenceMap();
+@endphp
 @if($transformer->description)
 {!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
 @endif
 @if($transformer->typeAlias !== null)
-        export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+        export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $references) !!};
 @else
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $globalAliasMap) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endif
@@ -151,12 +157,15 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @if ($transformers->count() > 0)
     export namespace {{ $namespace }} {
 @foreach ($transformers as $transformer)
+@php
+$references = $transformer->globalTypeReferenceMap();
+@endphp
         export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
 $optional = $prop['optional'] ? '?' : '';
 @endphp
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $transformer->globalTypeReferenceMap()) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endforeach

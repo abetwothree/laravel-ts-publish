@@ -8,7 +8,7 @@ export {}
 
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
-import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
+import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -1342,7 +1342,7 @@ declare global {
             order_count: number;
             order_exists: boolean;
             /** The CRM user assigned as the support agent (optional). */
-            crm_agent: User | null;
+            crm_agent: crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
         }
@@ -1940,7 +1940,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: app.enums.StatusType;
+            status: crm.enums.StatusType;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -3094,8 +3094,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -3129,8 +3129,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4364,8 +4364,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4406,8 +4406,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4808,8 +4808,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -5054,7 +5054,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: app.enums.StatusType;
+            status: crm.enums.StatusType;
         }
     }
     export namespace shipping.http.resources {

@@ -89,6 +89,7 @@ use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
+use Workbench\App\Http\Resources\UserExceptResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Address;
@@ -3011,4 +3012,14 @@ test('a numeric-string key in a model-backed resource publishes as written, wher
         ->toBe(['id' => 'number', 6 => 'string'])
         ->and($content)->toContain('"6": string;')
         ->not->toContain('int-key');
+});
+
+test('globalTypeReferenceMap() maps every name the file imports, aliased or not, to the class it imports', function () {
+    expect((new ResourceTransformer(ServiceDeskResource::class))->globalTypeReferenceMap())->toBe([
+        'CrmUser' => 'workbench.crm.models.User',
+        'WorkbenchUser' => 'workbench.app.models.User',
+    ])
+        // The resources namespace owns a resource named Address; this file's Address is the model.
+        ->and((new ResourceTransformer(UserExceptResource::class))->globalTypeReferenceMap()['Address'])
+        ->toBe('workbench.app.models.Address');
 });

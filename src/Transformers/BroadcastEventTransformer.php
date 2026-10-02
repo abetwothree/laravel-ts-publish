@@ -524,21 +524,7 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        $map = [];
-
-        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = TsNaming::globalNamespace($fqcn);
-            $map[$key] = $ns.'.'.$typeName;
-        }
-
-        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-            $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = TsNaming::globalNamespace($fqcn);
-            $map[$key] = $ns.'.'.$typeName;
-        }
-
-        return $map;
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /**

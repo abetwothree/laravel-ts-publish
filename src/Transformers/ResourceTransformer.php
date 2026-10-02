@@ -993,6 +993,16 @@ class ResourceTransformer extends CoreTransformer
         return $map;
     }
 
+    /**
+     * Map every type name this resource's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
+    }
+
     /** @return list<string> */
     protected function transientProperties(): array
     {

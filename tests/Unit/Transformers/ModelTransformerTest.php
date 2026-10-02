@@ -38,6 +38,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
+use Workbench\App\Models\ServiceDesk;
 use Workbench\App\Models\StrictCompositeComment;
 use Workbench\App\Models\StrictTaskAssignment;
 use Workbench\App\Models\Tag;
@@ -1742,5 +1743,25 @@ describe('ModelTransformer with models this run does not publish', function () {
 
         expect($data->mutators['handle']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
+    });
+});
+
+describe('globalTypeReferenceMap()', function () {
+    test('maps a name the file imports unaliased to the class that import names', function () {
+        // app.models owns a User too, but the only User this file imports is Crm's.
+        expect((new ModelTransformer(ServiceDesk::class))->globalTypeReferenceMap())->toBe([
+            'Order' => 'workbench.app.models.Order',
+            'User' => 'workbench.crm.models.User',
+        ]);
+    });
+
+    test('maps each alias to the class it aliases, and the model\'s own name to itself', function () {
+        expect((new ModelTransformer(Warehouse::class))->globalTypeReferenceMap())->toMatchArray([
+            'WorkbenchStatusType' => 'workbench.app.enums.StatusType',
+            'CrmStatusType' => 'workbench.crm.enums.StatusType',
+            'CrmUser' => 'workbench.crm.models.User',
+            'ManagerUser' => 'workbench.app.models.User',
+            'Warehouse' => 'workbench.app.models.Warehouse',
+        ]);
     });
 });

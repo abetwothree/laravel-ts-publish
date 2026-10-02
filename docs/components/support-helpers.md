@@ -66,6 +66,15 @@ The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only o
 wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
+`qualifyGlobalType()` reads each name of a type once: through the `$aliasResolution` map when the file has an entry
+for it, else as the current namespace's own name, else as the first namespace that owns it. The globals template
+passes each transformer's `globalTypeReferenceMap()`, which `ResolvesImportConflicts::qualifiedImportNames()` builds
+from every name the class's own file imports, aliased or not. A bare name two namespaces publish then resolves as the
+file's own import does, whatever order the classes were collected in. The by-name fallback remains for a name no FQCN
+map carries, such as one a `#[TsCasts]` string spells, and only there does the first owning namespace still decide.
+`GlobalsWriterTest` pins the shapes a merged alias map got wrong, and that both collection orders publish the same
+lines.
+
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
 
