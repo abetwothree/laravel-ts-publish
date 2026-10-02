@@ -8,10 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\OpaqueHandle;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -149,6 +151,91 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
             'embeddedModelFqcns' => [User::class, Comment::class],
         ]);
     });
+});
+
+// A union is one of enum resources when its enum resources are as many as the types it counts: its arms' types, or its
+// members where the caller says so, as a conditional default does.
+describe('ValueResult::unionResults() over enum-resource branches', function () {
+    $nullableSecond = [
+        ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+        ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class],
+    ];
+    $sameNamedPair = [
+        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class],
+        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => CrmStatus::class],
+    ];
+
+    test('is a union of enum resources when it counts as many types as enum resources', function (array $branches, bool $countMembers, array $union) {
+        expect(ValueResult::unionResults($branches, $countMembers))->toBe($union);
+    })->with([
+        'two arms, one of them nullable, counted by arm' => [
+            $nullableSecond,
+            false,
+            [
+                'type' => 'StatusType | VisibilityType | null',
+                'optional' => false,
+                'multiEnumResourceFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'a same-named pair whose arms render alike, counted by member' => [
+            $sameNamedPair,
+            true,
+            ['type' => 'StatusType | null', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, CrmStatus::class]],
+        ],
+    ]);
+
+    test('is not one when the count differs, or a branch is no enum resource', function (array $branches, bool $countMembers, array $union) {
+        expect(ValueResult::unionResults($branches, $countMembers))->toBe($union);
+    })->with([
+        'two arms, one of them nullable, counted by member' => [
+            $nullableSecond,
+            true,
+            [
+                'type' => 'StatusType | VisibilityType | null',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'a same-named pair whose arms render alike, counted by arm' => [
+            $sameNamedPair,
+            false,
+            ['type' => 'StatusType | null', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
+        ],
+        'two arms beside a branch typed null, counted by arm' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'VisibilityType', 'optional' => false, 'enumFqcn' => Visibility::class],
+                ['type' => 'null', 'optional' => false],
+            ],
+            false,
+            [
+                'type' => 'StatusType | VisibilityType | null',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'two arms beside a string' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'VisibilityType', 'optional' => false, 'enumFqcn' => Visibility::class],
+                ['type' => 'string', 'optional' => false],
+            ],
+            false,
+            [
+                'type' => 'StatusType | VisibilityType | string',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'an arm beside a direct read of another enum' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class],
+            ],
+            false,
+            ['type' => 'StatusType | VisibilityType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, Visibility::class]],
+        ],
+    ]);
 });
 
 describe('ValueResult::spellsTwoClassesAlike()', function () {

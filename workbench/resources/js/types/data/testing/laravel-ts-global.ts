@@ -3345,6 +3345,12 @@ declare global {
             archived?: boolean;
             [key: number]: workbench.app.models.OrderItem;
         }
+        /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
+        export interface HandoverNoticeResource {
+            id: number;
+            counterparty: workbench.crm.models.User | workbench.app.models.User | null;
+            unclaimed: workbench.crm.models.User | null;
+        }
         /** Unions two models that share a name by `??`, a ternary and an inline array, and reads an accessor that does the same. */
         export interface HandoverResource {
             id: number;
@@ -4072,6 +4078,11 @@ declare global {
             id: number;
             headline: workbench.app.models.Comment | null;
             spotlight: { comment: workbench.app.models.Comment | null };
+        }
+        /** Publishes a union of two enum resources and no enum resource of its own: the union brings the file's enum imports. */
+        export interface PostStateResource {
+            id: number;
+            either: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
         }
         /** A resource that carries a value next to its model through a promoted constructor property. */
         export interface PostStatsResource {

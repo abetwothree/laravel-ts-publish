@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
@@ -58,6 +59,7 @@ use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
+use Workbench\App\Http\Resources\HandoverNoticeResource;
 use Workbench\App\Http\Resources\HandoverResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
@@ -78,6 +80,7 @@ use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
+use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
@@ -3078,4 +3081,34 @@ describe('a union of two models that share a name', function () {
         expect((new ResourceTransformer(HandoverSummaryResource::class))->properties['parties']['type'])
             ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
     });
+
+    test('keeps both arms of a `when()` with a default, the value\'s first', function () {
+        expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['counterparty']['type'])
+            ->toBe('CrmUser | WorkbenchUser | null');
+    });
+
+    test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
+        expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
+            ->toBe('CrmUser | null');
+    });
+});
+
+describe('a union whose every arm is an enum resource', function () {
+    test('wraps each enum of a ternary in a workbench resource that holds no single enum resource', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        expect((new ResourceTransformer(PostStateResource::class))->properties['either']['type'])
+            ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
+    });
+
+    // Two enums that share a name still fold into one token, so each line below is missing its other enum. These pin
+    // the wrap, not the fold.
+    test('wraps the one token that two enums sharing a name fold into', function (string $key, string $type) {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        expect((new ResourceTransformer(EnumResourceArmsWarehouseResource::class))->properties[$key]['type'])->toBe($type);
+    })->with([
+        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | null'],
+        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | null'],
+    ]);
 });

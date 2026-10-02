@@ -264,7 +264,6 @@ describe('a member that holds two models of one name under a single token', func
             'through an accessor: both watchers, then the property' => ['both_watchers_or_owners', 'unknown'],
             'by the reads themselves: the property, then the CRM watchers' => ['direct_owners_or_crm_watchers', 'WorkbenchUser[]'],
             'by the reads themselves: both watchers, then the property' => ['direct_both_watchers_or_owners', 'WorkbenchUser[]'],
-            'by the reads themselves: a `when()` pair, then the receiver' => ['direct_when_pair_or_receiver', 'WorkbenchUser | null'],
         ]);
     });
 
@@ -403,6 +402,11 @@ describe('a union read by class', function () {
             ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
         ],
     ]);
+
+    // `when()` unions its value and its default by class, so as an arm it has a class behind each of its tokens.
+    test('reads a `when()` over the two models by class, as an arm of another union', function () {
+        expect(receiverPairArchiveTypes()['direct_when_pair_or_receiver'])->toBe('WorkbenchUser | CrmUser | null');
+    });
 
     test('keeps no queue of a kind none of its tokens names', function (array $carrier) {
         expect(ValueResult::unionResults([$carrier, ['type' => 'string', 'optional' => false]]))

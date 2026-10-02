@@ -1052,7 +1052,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Whether to generate HasEnums value imports, also counting enums wrapped inside inline object types.
+     * Whether to generate HasEnums value imports, also counting enums wrapped inside unions and inline object types.
      */
     protected function shouldGenerateHasEnums(): bool
     {
@@ -1060,7 +1060,9 @@ class ResourceTransformer extends CoreTransformer
             return false;
         }
 
-        return $this->enumProperties() !== [] || $this->propertyInlineEnumResourceFqcns !== [];
+        return $this->enumProperties() !== []
+            || $this->multiEnumResourceProperties !== []
+            || $this->propertyInlineEnumResourceFqcns !== [];
     }
 
     /**

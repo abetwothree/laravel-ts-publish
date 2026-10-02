@@ -70,6 +70,12 @@ class AuthoredPost extends Model
         ]);
     }
 
+    /** Either model behind an operand the engine cannot type: the fall-through keeps a token for each. */
+    protected function cachedAuthorOrLead(): Attribute
+    {
+        return Attribute::get(fn () => cache('post.author') ?? $this->author ?? $this->crmAuthor);
+    }
+
     /** Both models that share a name, each under a key of its own. */
     protected function bothAuthors(): Attribute
     {

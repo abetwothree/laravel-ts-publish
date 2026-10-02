@@ -183,6 +183,10 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         expect((new ModelTransformer(AuthoredPost::class))->data()->mutators[$accessor]['type'])->toBe($type);
     })->with([
         'a union' => ['author_or_lead', 'AuthorUser | CrmAuthorUser'],
+        'a union a `??` falls through to, past an operand the engine cannot type' => [
+            'cached_author_or_lead',
+            'AuthorUser | CrmAuthorUser',
+        ],
         'separate keys' => ['both_authors', '{ author: AuthorUser; lead: CrmAuthorUser }'],
         'a key naming one model beside a key naming the union' => [
             'author_and_either',

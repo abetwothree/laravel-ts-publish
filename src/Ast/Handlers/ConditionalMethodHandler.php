@@ -169,18 +169,20 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...$value, 'optional' => false];
         }
 
-        $members = array_values(array_unique([
-            ...TsTypeString::splitTopLevelUnion($value['type']),
-            ...TsTypeString::splitTopLevelUnion($default['type']),
-        ]));
+        $valueMembers = TsTypeString::splitTopLevelUnion($value['type']);
+        $defaultMembers = TsTypeString::splitTopLevelUnion($default['type']);
 
         // `[]` is assignable to every array type, so an empty-array arm beside a real one would only
-        // widen the property into a shape — `Category[] | Record<…>` — that no caller can consume.
-        if (array_any($members, fn (string $m): bool => $m !== 'never[]' && str_ends_with($m, '[]'))) {
-            $members = array_values(array_filter($members, fn (string $m): bool => $m !== 'never[]'));
+        // widen the property into a shape — `Category[] | Record<…>` — that no caller can consume. It is taken
+        // out of each arm, since unionResults() reads the members arm by arm where two classes share a name.
+        if (array_any([...$valueMembers, ...$defaultMembers], fn (string $m): bool => $m !== 'never[]' && str_ends_with($m, '[]'))) {
+            $value['type'] = implode(' | ', array_diff($valueMembers, ['never[]']));
+            $default['type'] = implode(' | ', array_diff($defaultMembers, ['never[]']));
         }
 
-        return [...ValueResult::mergeUnion($members, [$value, $default]), 'optional' => false];
+        // This path has always counted the union's members, so a `null` member counts. Counting arms would read more
+        // unions as enum resources, and not every reader honours one.
+        return [...ValueResult::unionResults([$value, $default], countMembers: true), 'optional' => false];
     }
 
     /**
@@ -403,7 +405,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
         } else {
-            $value['type'] = 'null';
+            // whenNull() returns its value only when that value is null, so the arm names nothing the value does. The
+            // value is still resolved, so that an arm dropped inside it is counted.
+            $value = ['type' => 'null', 'optional' => false];
         }
 
         return $this->applyConditionalDefault($value, $args, $scope, $engine);

@@ -13070,6 +13070,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\HandoverNoticeResource": {
+            "name": "HandoverNoticeResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "counterparty",
+                    "type": "CrmUser | ModelsUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "unclaimed",
+                    "type": "CrmUser | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\HandoverResource": {
             "name": "HandoverResource",
             "properties": [
@@ -15144,6 +15164,21 @@
                 {
                     "name": "spotlight",
                     "type": "{ comment: Comment | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostStateResource": {
+            "name": "PostStateResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
                     "optional": false
                 }
             ]

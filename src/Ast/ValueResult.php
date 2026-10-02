@@ -172,30 +172,31 @@ final class ValueResult
      *
      * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
+     * With $countMembers, a union of enum resources is told by the count of its members, not of its arms' types.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
-    public static function unionResults(array $results): array
+    public static function unionResults(array $results, bool $countMembers = false): array
     {
-        /** @var list<string> $types */
+        /** @var list<string> $types the types mergeUnion() counts: each arm's whole type, or each member of it */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
 
         foreach ($results as $inner) {
             if ($inner['type'] === 'unknown') {
-                continue; // @codeCoverageIgnore
+                continue;
             }
 
-            $types[] = $inner['type'];
+            array_push($types, ...($countMembers ? TsTypeString::splitTopLevelUnion($inner['type']) : [$inner['type']]));
             $branchResults[] = $inner;
         }
 
         $types = array_values(array_unique($types));
 
         if ($types === []) {
-            return self::unknown(); // @codeCoverageIgnore
+            return self::unknown();
         }
 
         $result = self::mergeUnion($types, $branchResults);

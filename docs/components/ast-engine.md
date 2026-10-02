@@ -350,8 +350,8 @@ see. Return-branch merges outside a spread helper keep the strict rule, where on
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
 `KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
 `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
-left operand's `null` with `ValueResult::stripNullArm()` before it unions the two arms through `unionResults()`,
-because `??` never returns that `null`, which the ternary union would keep.
+left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
+union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
 `ConditionalMethodHandler::applyConditionalDefault()` also leaves an `unknown` default arm out, but records nothing, so
 neither the drop count nor `DroppedUnionArmsAuditTest` sees that drop.
 

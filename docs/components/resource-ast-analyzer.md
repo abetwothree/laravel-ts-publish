@@ -273,8 +273,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   removes, so the key publishes optional.
 - **An explicit default makes the key required**: `hasExplicitDefaultArg()` counts arguments the way
   `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
-  `applyConditionalDefault()` then unions the default's type in through `ValueResult::mergeUnion()`, which carries its
-  import channels. Joining the type strings by hand would emit a token with no import.
+  `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
+  its import channels. Joining the type strings by hand would emit a token with no import.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s, keeps the key `unknown`, since `T | unknown` is `unknown`. The key stays required
   either way. This drop is not recorded in `DroppedUnionArms`; see
@@ -636,11 +636,11 @@ only when its text and the classes behind its tokens both match, and each kept m
 `$this->sender ?? $this->receiver` over two `User` models publishes `User | User`, which aliasing then spells apart,
 where a merge by text published one arm under the other's class. Every other union takes the text-merged path
 unchanged. So does a union with an arm that queues a name for two classes more often than it spells it, as a member
-typed `@return User[]|CrmUser[]` does, a `when()` over both models, and a union that itself stayed the merge by
-text: `ClassTokenQueue::outrunsItsTokens()` asks it of each arm, since such an arm does not say which token is whose.
-`CoalesceHandler` and the two receiver sites enter through `unionResults()` too. `ConditionalMethodHandler` and
-`mergeReturnBranches()` still merge by text. `HandoverResource` pins the `??`, ternary, to-many and inline-array
-shapes.
+typed `@return User[]|CrmUser[]` does, and a union that itself stayed the merge by text:
+`ClassTokenQueue::outrunsItsTokens()` asks it of each arm, since such an arm does not say which token is whose.
+`CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
+`unionResults()` too. `mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary,
+to-many and inline-array shapes, and `HandoverNoticeResource` pins the `when()` and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
