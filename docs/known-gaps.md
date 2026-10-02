@@ -133,14 +133,14 @@ rather than by property name, so narrow it to one enum.
 
 ### An enum named like another enum's type name collides with it
 
-An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` publishes a const
-with the same identifier. A file that imports `Role`'s type and `RoleType`'s const gets two imports named `RoleType`
-and fails `tsc` with TS2300, in one namespace or across two. Type names and const names go through two registries that
-never see each other ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). When the
-two enums share a namespace, the enums barrel also re-exports `RoleType` from both files and fails with TS2308, even
-when no file imports them. No workbench fixture has this naming, and the token gate does not count TS2308, so neither
-failure shows in CI. Give one enum a distinct name, such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames
-both its const and its type.
+An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` in the same
+namespace publishes a const with the same identifier. The enums barrel then re-exports `RoleType` from both files and
+fails with TS2308, and `laravel-ts-global.ts` declares both in one namespace and fails with TS2300. No alias can settle
+it, because both names are the published ones. `Runner::warnOfCollidingEnumNames()` names the pair in a warning after
+the run, and covers a backed enum's `…Kind` name the same way. The token gate does not count TS2308. Across two
+namespaces nothing collides any more, because a file that imports both aliases the const
+([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one enum a distinct name,
+such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type.
 
 ### An empty `[]` under an imported type alias still ships as `[]`
 

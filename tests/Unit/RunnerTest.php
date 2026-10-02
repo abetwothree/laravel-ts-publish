@@ -16,6 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\Access;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
@@ -1174,6 +1177,46 @@ describe('PublishedModelRegistry run boundary', function () {
             ->and($page->content)
             ->toContain('trail: AuditTrail | null, record: unknown }')
             ->not->toContain('ExcludedModel');
+    });
+});
+
+// ─── Enum names two enums in one namespace both publish ────────────────────────
+
+describe('enum names that collide inside one namespace', function () {
+    test('a run warns when one enum\'s const is another enum\'s type name in the same namespace', function () {
+        config()->set('ts-publish.enums.additional_directories', [Access::class, AccessType::class]);
+        config()->set('ts-publish.enums.included', [Access::class, AccessType::class]);
+
+        (new Runner)->run();
+
+        expect(AnalysisWarnings::all())->toContain([
+            'subject' => AccessType::class,
+            'message' => 'Publishes the name [AccessType], which ['.Access::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+        ]);
+    });
+
+    test('a run warns when one enum\'s const is the kind name a backed enum publishes in the same namespace', function () {
+        config()->set('ts-publish.enums.additional_directories', [Access::class, AccessKind::class]);
+        config()->set('ts-publish.enums.included', [Access::class, AccessKind::class]);
+
+        (new Runner)->run();
+
+        expect(AnalysisWarnings::all())->toContain([
+            'subject' => AccessKind::class,
+            'message' => 'Publishes the name [AccessKind], which ['.Access::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+        ]);
+    });
+
+    test('a run raises no such warning for enums that share a name across namespaces', function () {
+        // Clearance and Crm's ClearanceType cross names too, but each in its own namespace, where an alias settles it.
+        (new Runner)->run();
+
+        expect(array_filter(
+            AnalysisWarnings::all(),
+            fn (array $warning): bool => str_contains($warning['message'], 'also publishes in the same namespace'),
+        ))->toBe([]);
     });
 });
 

@@ -115,7 +115,43 @@ class Runner extends BaseRunner
         $this->enumGenerators = $enumGenerators;
 
         $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
+        $this->warnOfCollidingEnumNames();
         $this->logger?->success('Enums — '.$this->enumGenerators->count());
+    }
+
+    /**
+     * Warn when two enums in one namespace publish the same name: `Role` publishes the type `RoleType`, which an enum
+     * named `RoleType` publishes as its const, and one barrel or global namespace cannot export both.
+     */
+    protected function warnOfCollidingEnumNames(): void
+    {
+        /** @var array<string, array<string, string>> $publishers namespace path => published name => enum FQCN */
+        $publishers = [];
+
+        foreach ($this->enumGenerators as $generator) {
+            $transformer = $generator->transformer;
+            $names = [$transformer->enumName, $transformer->enumName.'Type'];
+
+            if ($transformer->backed) {
+                $names[] = $transformer->enumName.'Kind';
+            }
+
+            foreach ($names as $name) {
+                $publisher = $publishers[$transformer->namespacePath][$name] ?? null;
+
+                if ($publisher === null) {
+                    $publishers[$transformer->namespacePath][$name] = $transformer->fqcn();
+
+                    continue;
+                }
+
+                AnalysisWarnings::add($transformer->fqcn(), sprintf(
+                    'Publishes the name [%s], which [%s] also publishes in the same namespace, so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+                    $name,
+                    $publisher,
+                ));
+            }
+        }
     }
 
     protected function generateModels(): void
