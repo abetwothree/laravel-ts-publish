@@ -5948,6 +5948,10 @@
                     "type": "string | null"
                 },
                 {
+                    "name": "parties",
+                    "type": "{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }"
+                },
+                {
                     "name": "party",
                     "type": "WorkbenchUser | CrmUser | null"
                 },
@@ -13090,8 +13094,78 @@
                     "optional": false
                 },
                 {
+                    "name": "parties",
+                    "type": "{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
                     "name": "audience",
                     "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverSummaryResource": {
+            "name": "HandoverSummaryResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "receiver_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "party",
+                    "type": "WorkbenchUser | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "parties",
+                    "type": "{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "audience",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "sender",
+                    "type": "WorkbenchUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "receiver",
+                    "type": "CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "watchers",
+                    "type": "WorkbenchUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "crmWatchers",
+                    "type": "CrmUser[]",
                     "optional": false
                 }
             ]

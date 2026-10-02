@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
@@ -36,6 +37,7 @@ use PhpParser\Node\Identifier;
  * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
  *
  * @phpstan-type InlineSpreadArm = array{fqcn: class-string, isModel: bool, isCollection: bool}
+ * @phpstan-type MemberNames = array<string, list<string>>
  *
  * @internal
  */
@@ -345,12 +347,21 @@ final class InlineArrayHandler implements ExpressionHandler
         $spreadModelFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => $arm['isModel']), 'fqcn');
         $spreadResourceFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => ! $arm['isModel']), 'fqcn');
 
+        $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+        $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
+
         // Spread arms lead the type, then each key once, at its first position, with every occurrence kept: the
         // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
         // member's own arms.
         $embeddedModelFqcns = [
             ...$spreadModelFqcns,
-            ...$this->memberFqcns($analysis, $analysis->inlineModelFqcns, $analysis->modelFqcns),
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineModelFqcns,
+                $analysis->modelFqcns,
+                class_basename(...),
+                $sharedNames,
+            ),
         ];
 
         // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
@@ -380,7 +391,13 @@ final class InlineArrayHandler implements ExpressionHandler
         // member whose own union names two resources carries both. Never deduped, as for the models above.
         $embeddedResourceFqcns = [
             ...$spreadResourceFqcns,
-            ...$this->memberFqcns($analysis, $analysis->inlineResourceFqcns, $analysis->nestedResources),
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineResourceFqcns,
+                $analysis->nestedResources,
+                $resourceNameOf,
+                $sharedNames,
+            ),
         ];
 
         if ($embeddedResourceFqcns !== []) {
@@ -404,21 +421,117 @@ final class InlineArrayHandler implements ExpressionHandler
      *
      * @param  InlineModelFqcnsMap|InlineResourceFqcnsMap  $queues  member name => the class behind each of its tokens
      * @param  ClassMapType  $singles  member name => the one class its type names, for a member without a queue
+     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
+     * @param  MemberNames  $sharedNames  member name => the names it queues on both channels
      * @return list<class-string>
      */
-    private function memberFqcns(MethodAnalysis $analysis, array $queues, array $singles): array
-    {
+    private function memberFqcns(
+        MethodAnalysis $analysis,
+        array $queues,
+        array $singles,
+        Closure $nameOf,
+        array $sharedNames,
+    ): array {
         $fqcns = [];
+        $types = array_column($analysis->properties, 'type', 'name');
 
         foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
-            if (isset($queues[$memberName])) {
-                array_push($fqcns, ...$queues[$memberName]);
-            } elseif (isset($singles[$memberName])) {
-                $fqcns[] = $singles[$memberName];
-            }
+            $queue = $this->memberQueue($memberName, $queues, $singles);
+            $shared = $sharedNames[$memberName] ?? [];
+
+            array_push($fqcns, ...$this->perToken($queue, $types[$memberName], $nameOf, $shared));
         }
 
         return $fqcns;
+    }
+
+    /**
+     * The names each member queues on both channels, a class on each: a model and a resource under one name.
+     *
+     * Both queues are merged for aliasing, models first, so a name queued on both is left as it came on both.
+     *
+     * @param  Closure(class-string): string  $resourceNameOf
+     * @return MemberNames
+     */
+    private function sharedNames(MethodAnalysis $analysis, Closure $resourceNameOf): array
+    {
+        $shared = [];
+
+        foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
+            $models = $this->memberQueue($memberName, $analysis->inlineModelFqcns, $analysis->modelFqcns);
+            $resources = $this->memberQueue($memberName, $analysis->inlineResourceFqcns, $analysis->nestedResources);
+
+            $shared[$memberName] = array_values(array_intersect(
+                array_map(class_basename(...), $models),
+                array_map($resourceNameOf, $resources),
+            ));
+        }
+
+        return $shared;
+    }
+
+    /**
+     * The classes a member's own analysis queued on one channel: its queue, else the one class its type names.
+     *
+     * @param  InlineModelFqcnsMap|InlineResourceFqcnsMap  $queues
+     * @param  ClassMapType  $singles
+     * @return list<class-string>
+     */
+    private function memberQueue(string $memberName, array $queues, array $singles): array
+    {
+        return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * One member's queue with one entry per token for each name it gives a single class.
+     *
+     * A merge by text can queue that class more or less often than the member spells it, and the next member's tokens
+     * would read the difference. A name the member queues on both channels, one class on each, is left as it came.
+     *
+     * @param  list<class-string>  $queue
+     * @param  Closure(class-string): string  $nameOf
+     * @param  list<string>  $sharedNames  the names the member queues on both channels
+     * @return list<class-string>
+     */
+    private function perToken(array $queue, string $type, Closure $nameOf, array $sharedNames): array
+    {
+        /** @var array<string, list<class-string>> $classesOf name => the classes queued for it, in order */
+        $classesOf = [];
+
+        foreach ($queue as $fqcn) {
+            $classesOf[$nameOf($fqcn)][] = $fqcn;
+        }
+
+        /** @var array<string, int> $room name => the entries it still gets, for a name that has one class behind it */
+        $room = [];
+
+        foreach ($classesOf as $name => $classes) {
+            if (count(array_unique($classes)) === 1 && ! in_array($name, $sharedNames, true)) {
+                // At least one: this rule leaves an entry for a class the member's type does not spell as it came.
+                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name]), $type));
+            }
+        }
+
+        $perToken = [];
+
+        foreach ($queue as $fqcn) {
+            $name = $nameOf($fqcn);
+
+            if (! isset($room[$name])) {
+                $perToken[] = $fqcn;
+            } elseif ($room[$name] > 0) {
+                $perToken[] = $fqcn;
+                $room[$name]--;
+            }
+        }
+
+        foreach ($room as $name => $left) {
+            for ($i = 0; $i < $left; $i++) {
+                $perToken[] = $classesOf[$name][0];
+            }
+        }
+
+        return $perToken;
     }
 
     /**

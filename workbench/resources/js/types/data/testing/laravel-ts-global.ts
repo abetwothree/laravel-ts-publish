@@ -736,6 +736,8 @@ declare global {
             party: User | workbench.crm.models.User | null;
             /** The same union over to-many relations, picked by a ternary. */
             audience: User[] | workbench.crm.models.User[];
+            /** One key naming a single model, and one naming the union of both. */
+            parties: { first: User | null; either: User | workbench.crm.models.User | null };
             // Relations
             /** The application user handing the work over. */
             sender: User | null;
@@ -3343,13 +3345,32 @@ declare global {
             archived?: boolean;
             [key: number]: workbench.app.models.OrderItem;
         }
-        /** Unions two models that share a name, by `??`, by a ternary and inside an inline array. */
+        /** Unions two models that share a name by `??`, a ternary and an inline array, and reads an accessor that does the same. */
         export interface HandoverResource {
             id: number;
             party: workbench.app.models.User | workbench.crm.models.User | null;
             picked: workbench.crm.models.User | workbench.app.models.User | null;
             pair: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
+            parties: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
             audience: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /**
+         * Declares no toArray(), so it publishes the model's own serialization, appended `parties` accessor included: the
+         * union of two same-named models inside it has to survive the delegation with each token naming its own class.
+         */
+        export interface HandoverSummaryResource {
+            id: number;
+            sender_id: number | null;
+            receiver_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            party: workbench.app.models.User | workbench.crm.models.User | null;
+            parties: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
+            audience: workbench.app.models.User[] | workbench.crm.models.User[];
+            sender: workbench.app.models.User | null;
+            receiver: workbench.crm.models.User | null;
+            watchers: workbench.app.models.User[];
+            crmWatchers: workbench.crm.models.User[];
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon

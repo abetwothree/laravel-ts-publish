@@ -1804,4 +1804,11 @@ describe('ModelTransformer with accessors that union two models sharing a name',
         expect($data->mutators['party']['type'])->toBe('WorkbenchUser | CrmUser | null')
             ->and($data->mutators['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
     });
+
+    test('a shape keeps the union apart from a key that names one of the two alone', function () {
+        $data = (new ModelTransformer(Handover::class))->data();
+
+        expect($data->appends['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
 });

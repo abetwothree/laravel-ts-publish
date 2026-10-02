@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
@@ -829,7 +830,8 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->propertyModelFqcnsList[$propName] = array_values($named);
+            // A class the key's type does not spell is never read: aliasing walks each name's own queue.
+            $this->propertyModelFqcnsList[$propName] = ClassTokenQueue::fqcnsOf($tsInfo);
 
             foreach ($named as $i => $fqcn) {
                 /** @var class-string $fqcn */

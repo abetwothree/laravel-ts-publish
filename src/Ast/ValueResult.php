@@ -23,6 +23,7 @@ use ReflectionClass;
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
+ *      classTokenFqcns?: list<class-string>,
  *      customImports?: TypesImportMap
  * }
  *
@@ -130,7 +131,7 @@ final class ValueResult
         }
 
         if (count($attribute['classFqcns']) > 1) {
-            $result['embeddedModelFqcns'] = $attribute['classFqcns'];
+            $result['embeddedModelFqcns'] = ClassTokenQueue::fqcnsOf($attribute);
         } elseif ($attribute['classFqcns'] !== []) {
             $result['modelFqcn'] = $attribute['classFqcns'][0];
         }
@@ -231,6 +232,17 @@ final class ValueResult
         }
 
         return false;
+    }
+
+    /**
+     * The FQCNs a result carries on its single and embedded model channels.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>
+     */
+    public static function modelChannelFqcns(array $result): array
+    {
+        return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
     }
 
     /**
@@ -422,17 +434,6 @@ final class ValueResult
         }
 
         return $union;
-    }
-
-    /**
-     * The FQCNs a result carries on its single and embedded model channels.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return list<class-string>
-     */
-    private static function modelChannelFqcns(array $result): array
-    {
-        return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
     }
 
     /**

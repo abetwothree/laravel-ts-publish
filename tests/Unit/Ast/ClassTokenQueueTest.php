@@ -142,3 +142,20 @@ it('outruns its tokens just as well when the resource naming closure names its c
 
     expect($queue->outrunsItsTokens())->toBeTrue();
 });
+
+it('answers with the class behind each token when the info carries that queue, else each class once', function (array $info, array $queue) {
+    expect(ClassTokenQueue::fqcnsOf($info))->toBe($queue);
+})->with([
+    'an info with a queue per token' => [
+        ['classFqcns' => [User::class, CrmUser::class], 'classTokenFqcns' => [User::class, User::class, CrmUser::class]],
+        [User::class, User::class, CrmUser::class],
+    ],
+    'an info without one' => [
+        ['classFqcns' => [User::class, CrmUser::class]],
+        [User::class, CrmUser::class],
+    ],
+    'an info that names no class' => [
+        ['classFqcns' => []],
+        [],
+    ],
+]);

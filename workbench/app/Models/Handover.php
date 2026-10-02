@@ -18,6 +18,8 @@ class Handover extends Model
 {
     protected $fillable = ['sender_id', 'receiver_id'];
 
+    protected $appends = ['parties'];
+
     /**
      * The application user handing the work over.
      *
@@ -62,6 +64,15 @@ class Handover extends Model
     protected function party(): Attribute
     {
         return Attribute::get(fn () => $this->sender ?? $this->receiver);
+    }
+
+    /** One key naming a single model, and one naming the union of both. */
+    protected function parties(): Attribute
+    {
+        return Attribute::get(fn () => [
+            'first' => $this->sender,
+            'either' => $this->sender ?? $this->receiver,
+        ]);
     }
 
     /** The same union over to-many relations, picked by a ternary. */

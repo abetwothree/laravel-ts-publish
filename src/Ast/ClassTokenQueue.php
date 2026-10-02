@@ -14,6 +14,8 @@ use Closure;
  * last one covering any further occurrence. Both read their tokens through TsTypeString::queuedTokenPattern() and
  * queuePosition(), so a token cannot count for one walk and not for the other.
  *
+ * @phpstan-type QueuedClasses = array{classFqcns: list<class-string>, classTokenFqcns?: list<class-string>}
+ *
  * @internal
  */
 final class ClassTokenQueue
@@ -39,6 +41,17 @@ final class ClassTokenQueue
         if ($this->queues !== []) {
             $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queues));
         }
+    }
+
+    /**
+     * The classes aliasing walks against an info's tokens: its per-token queue when it has one, else each class once.
+     *
+     * @param  QueuedClasses  $info
+     * @return list<class-string>
+     */
+    public static function fqcnsOf(array $info): array
+    {
+        return $info['classTokenFqcns'] ?? $info['classFqcns'];
     }
 
     /**

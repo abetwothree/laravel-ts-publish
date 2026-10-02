@@ -14,6 +14,8 @@ export interface Handover
     receiver_id: number | null;
     created_at: string | null;
     updated_at: string | null;
+    /** One key naming a single model, and one naming the union of both. */
+    parties: { first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null };
 }
 
 export interface HandoverMutators

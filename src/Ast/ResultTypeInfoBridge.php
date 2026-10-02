@@ -43,6 +43,18 @@ final class ResultTypeInfoBridge
 
         $info['type'] = $result['type'];
 
+        // The merged info lists each class once. Where the type spells one name for two classes, the engine's own
+        // queue tells the tokens apart, provided it lines up with them: a merge by text can outrun its tokens.
+        if (ValueResult::spellsTwoClassesAlike([$result])) {
+            $models = ValueResult::modelChannelFqcns($result);
+            $queue = new ClassTokenQueue($models, class_basename(...));
+            $queue->take($result['type']);
+
+            if (! $queue->outrunsItsTokens()) {
+                $info['classTokenFqcns'] = $models;
+            }
+        }
+
         // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result
         // carries the ones its expression named, and dropping either emits a token with no import.
         foreach ($result['customImports'] ?? [] as $path => $names) {

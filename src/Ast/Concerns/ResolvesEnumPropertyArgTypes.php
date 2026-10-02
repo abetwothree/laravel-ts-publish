@@ -31,6 +31,7 @@ use PhpParser\Node\Name;
  *      enumFqcn: class-string|null,
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
+ *      classTokenFqcns?: list<class-string>,
  *      customImports: TypesImportMap
  * }
  *
@@ -176,6 +177,8 @@ trait ResolvesEnumPropertyArgTypes
             'enumFqcn' => $enumFqcn,
             'enumFqcns' => $tsInfo['enumFqcns'],
             'classFqcns' => $tsInfo['classFqcns'],
+            // Present only where the type spells one name for two classes; see TypeScriptTypeInfo.
+            ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
         ];
     }

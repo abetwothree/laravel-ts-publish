@@ -61,6 +61,7 @@ export * from './fqcn-mixin-resource';
 export * from './guard-clause-closure-resource';
 export * from './guarded-collection-spread-resource';
 export * from './handover-resource';
+export * from './handover-summary-resource';
 export * from './helper-call-resource';
 export * from './image-delegated-resource';
 export * from './image-dimensions-resource';

@@ -20,6 +20,8 @@ export interface Handover
     party: ModelsUser | CrmUser | null;
     /** The same union over to-many relations, picked by a ternary. */
     audience: ModelsUser[] | CrmUser[];
+    /** One key naming a single model, and one naming the union of both. */
+    parties: { first: ModelsUser | null; either: ModelsUser | CrmUser | null };
     // Relations
     /** The application user handing the work over. */
     sender: ModelsUser | null;

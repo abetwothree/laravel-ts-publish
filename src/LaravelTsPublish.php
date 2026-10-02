@@ -51,10 +51,14 @@ use UnitEnum;
  *    customImports: array<string, list<string>>,
  *    enumFqcns: list<class-string>,
  *    classFqcns: list<class-string>,
+ *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
  * }
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
+ * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
+ * `type` spells one name for two classes and the engine's queue does not outrun those tokens: `classFqcns` lists each
+ * class once, so its order alone cannot say which token is which.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
  *

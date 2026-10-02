@@ -55,6 +55,21 @@ class AuthoredPost extends Model
         return Attribute::get(fn () => $this->author ?? $this->crmAuthor);
     }
 
+    /** One key naming a single model, beside one naming the union of the two that share a name. */
+    protected function authorAndEither(): Attribute
+    {
+        return Attribute::get(fn () => ['author' => $this->author, 'either' => $this->author ?? $this->crmAuthor]);
+    }
+
+    /** One model queued twice behind a single token, before a key that names the other model. */
+    protected function leadOrLabelAndAuthor(): Attribute
+    {
+        return Attribute::get(fn () => [
+            'lead' => $this->crmAuthor ?? ($this->exists ? 'none' : $this->crmAuthor),
+            'author' => $this->author,
+        ]);
+    }
+
     /** Both models that share a name, each under a key of its own. */
     protected function bothAuthors(): Attribute
     {

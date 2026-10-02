@@ -59,6 +59,7 @@ use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\HandoverResource;
+use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
@@ -3066,5 +3067,15 @@ describe('a union of two models that share a name', function () {
             ->and($properties['picked']['type'])->toBe('CrmUser | WorkbenchUser | null')
             ->and($properties['pair']['type'])->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }')
             ->and($properties['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
+    });
+
+    test('reads the same union through a model accessor, token for token', function () {
+        expect((new ResourceTransformer(HandoverResource::class))->properties['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
+
+    test('keeps it through a resource that delegates to the model\'s own serialization', function () {
+        expect((new ResourceTransformer(HandoverSummaryResource::class))->properties['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
     });
 });

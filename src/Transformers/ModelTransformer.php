@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -111,13 +112,13 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> FQCN => list of relation method names that reference it */
     protected array $modelFqcnRelations = [];
 
-    /** @var array<string, list<string>> column_name => list of FQCNs (enum or model) referenced by that column */
+    /** @var array<string, list<string>> column_name => enums, then the class queue aliasing walks against its type */
     protected array $columnFqcns = [];
 
-    /** @var array<string, list<string>> mutator_name => list of FQCNs (enum or model) referenced by that mutator */
+    /** @var array<string, list<string>> mutator_name => enums, then the class queue aliasing walks against its type */
     protected array $mutatorFqcns = [];
 
-    /** @var array<string, list<string>> append_name => list of FQCNs (enum or model) referenced by that append */
+    /** @var array<string, list<string>> append_name => enums, then the class queue aliasing walks against its type */
     protected array $appendsFqcns = [];
 
     /** @var array<string, list<string>> relation_name => target FQCNs, one per occurrence, in type-string order */
@@ -309,6 +310,9 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($typings['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $typings['classes'][$i];
+            }
+
+            foreach (ClassTokenQueue::fqcnsOf($typings) as $fqcn) {
                 $this->columnFqcns[$name][] = $fqcn;
             }
 
@@ -390,7 +394,9 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $resolved['classes'][$i];
+            }
 
+            foreach (ClassTokenQueue::fqcnsOf($resolved) as $fqcn) {
                 if ($isAppended) {
                     $this->appendsFqcns[$name][] = $fqcn;
                 } else {

@@ -51,7 +51,7 @@ final class ReflectedTypeAcceptor
             $modelFqcn = $tsInfo['classFqcns'][0];
             $result['modelFqcn'] = $modelFqcn;
         } elseif ($tsInfo['classFqcns'] !== []) {
-            $result['embeddedModelFqcns'] = $tsInfo['classFqcns'];
+            $result['embeddedModelFqcns'] = ClassTokenQueue::fqcnsOf($tsInfo);
         }
 
         if ($tsInfo['customImports'] !== []) {

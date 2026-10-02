@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -104,7 +105,7 @@ trait ResolvesFilteredRelationTypes
                     // Sibling of the enumFqcns collection above: an inlined attribute can itself
                     // reference another model or a #[TsType(import:)] alias, both needed to compile.
                     /** @var list<class-string> $classFqcns */
-                    $classFqcns = $tsInfo['classFqcns'];
+                    $classFqcns = ClassTokenQueue::fqcnsOf($tsInfo);
                     array_push($collectedModelFqcns, ...$classFqcns);
 
                     foreach ($tsInfo['customImports'] as $path => $names) {

@@ -164,3 +164,15 @@ describe('ValueResult::spellsTwoClassesAlike()', function () {
             ->and(ValueResult::spellsTwoClassesAlike([['type' => 'string', 'optional' => false]]))->toBeFalse();
     });
 });
+
+describe('ValueResult::withAttributeChannels() and a per-token class queue', function () {
+    test('carries the queue in place of the class list when the attribute has one', function () {
+        $result = ValueResult::withAttributeChannels(['type' => 'T', 'optional' => false], [
+            'enumFqcns' => [],
+            'classFqcns' => [User::class, CrmUser::class],
+            'classTokenFqcns' => [User::class, User::class, CrmUser::class],
+        ]);
+
+        expect($result['embeddedModelFqcns'])->toBe([User::class, User::class, CrmUser::class]);
+    });
+});

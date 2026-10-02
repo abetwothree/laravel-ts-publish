@@ -349,11 +349,11 @@ see. Return-branch merges outside a spread helper keep the strict rule, where on
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
 `KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
-`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` builds its
-own member list, because `??` never returns its left operand's `null`. It strips that arm with
-`ValueResult::stripNullArm()`, which the ternary union would keep. `ConditionalMethodHandler::applyConditionalDefault()`
-also leaves an `unknown` default arm out, but records nothing, so neither the drop count nor `DroppedUnionArmsAuditTest`
-sees that drop.
+`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
+left operand's `null` with `ValueResult::stripNullArm()` before it unions the two arms through `unionResults()`,
+because `??` never returns that `null`, which the ternary union would keep.
+`ConditionalMethodHandler::applyConditionalDefault()` also leaves an `unknown` default arm out, but records nothing, so
+neither the drop count nor `DroppedUnionArmsAuditTest` sees that drop.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
