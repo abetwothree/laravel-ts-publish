@@ -90,6 +90,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from the resource's #[TsCasts] */
     protected array $tsCastsImportPaths = [];
 
+    /** @var array<string, true> property name => true, for a key whose cast in force brings its own import */
+    protected array $importedCastKeys = [];
+
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
 
@@ -117,6 +120,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var array<string, list<class-string>> property name => model FQCNs embedded in inline object type strings */
     protected array $propertyInlineModelFqcns = [];
+
+    /** @var array<string, list<class-string>> property name => the resource FQCN behind each resource token, in type order */
+    protected array $propertyInlineResourceFqcns = [];
 
     /** @var array<string, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
     protected array $propertyInlineEnumResourceFqcns = [];
@@ -293,9 +299,11 @@ class ResourceTransformer extends CoreTransformer
 
         $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
 
+        $castKeys = $this->castKeys($analysis);
+        $this->importedCastKeys = $this->castKeysWithImport($castKeys, $analysis);
+
         // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
-        resolve(IndexSignatureReconciler::class)
-            ->reconcile($analysis, $this->castKeys($analysis), $this->tsExtends !== []);
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis, $castKeys, $this->tsExtends !== []);
 
         // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -368,6 +376,10 @@ class ResourceTransformer extends CoreTransformer
             $this->propertyInlineModelFqcns[$propName] = $fqcns;
         }
 
+        foreach ($analysis->inlineResourceFqcns as $propName => $fqcns) {
+            $this->propertyInlineResourceFqcns[$propName] = $fqcns;
+        }
+
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumConstMap[$fqcn])) {
@@ -403,6 +415,21 @@ class ResourceTransformer extends CoreTransformer
     protected function castKeys(MethodAnalysis $analysis): array
     {
         return $this->tsTypeOverrides + $this->modelCastsOver(array_flip(array_column($analysis->properties, 'name')));
+    }
+
+    /**
+     * The keys whose cast in force brings its own import: the resource's, else the model's, else one a method's cast
+     * set that the analysis reports. That text is the app's own, so no queue of the value it replaced may alias it.
+     *
+     * @param  array<string, string>  $castKeys  castKeys()'s resource and model casts, which win over a method's
+     * @return array<string, true>
+     */
+    protected function castKeysWithImport(array $castKeys, MethodAnalysis $analysis): array
+    {
+        $imports = $this->tsCastsImportPaths + array_diff_key($this->modelTsCastsImportPaths, $this->tsTypeOverrides);
+
+        return array_fill_keys(array_keys(array_intersect_key($castKeys, $imports)), true)
+            + array_diff_key($analysis->importedCastKeys, $castKeys);
     }
 
     /**
@@ -898,7 +925,8 @@ class ResourceTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->mergePropertyFqcnMaps() as $propName => $propFqcns) {
-            if (! isset($this->properties[$propName])) {
+            // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
+            if (! isset($this->properties[$propName]) || isset($this->importedCastKeys[$propName])) {
                 continue;
             }
 
@@ -934,6 +962,7 @@ class ResourceTransformer extends CoreTransformer
             $this->propertyEnumFqcnsList,
             $this->propertyInlineEnumFqcns,
             $this->propertyInlineModelFqcns,
+            $this->propertyInlineResourceFqcns,
         ] as $map) {
             foreach ($map as $propName => $propFqcns) {
                 $merged[$propName] = [...($merged[$propName] ?? []), ...$propFqcns];

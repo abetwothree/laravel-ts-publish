@@ -8,6 +8,25 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastAliasedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HostCastOverHelperCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastAliasedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
@@ -194,6 +213,7 @@ use Workbench\Blog\Http\Resources\ReactionResource;
 use Workbench\Blog\Models\Article;
 use Workbench\Blog\Models\Reaction;
 use Workbench\Crm\Http\Resources\DealResource;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\Deal;
 use Workbench\Crm\Models\User as CrmUser;
 use Workbench\Shipping\Http\Resources\ShipmentResource;
@@ -6127,6 +6147,184 @@ describe('ResourceAstAnalyzer with BranchedInlineFqcnResource (branch union null
             '{ primaryContact: User | null; manager: User | null }'
             .' | { manager: User | null; secondaryContact: User | null; primaryContact: User | null } | null'
         )->and($type)->not->toContain('} | null | {');
+    });
+});
+
+describe('ResourceAstAnalyzer with BranchedMorphUnionResource (branch union resources)', function () {
+    // Image::reviewable() unions two resources that share a basename; each branch's `review` spells it once.
+    test('mergeReturnBranches() keeps each branch\'s resources per occurrence, in order', function () {
+        $reflection = new ReflectionClass(BranchedMorphUnionResource::class);
+        $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
+
+        expect($analysis->inlineResourceFqcns)->toBe([
+            'review' => [CrmUserResource::class, UserResource::class, CrmUserResource::class, UserResource::class],
+        ]);
+    });
+
+    test('every occurrence of the merged union is spelled by its own alias', function () {
+        $transformer = new ResourceTransformer(BranchedMorphUnionResource::class);
+
+        expect($transformer->properties['review']['type'])->toBe(
+            '{ subject: CrmUserResource | WorkbenchUserResource }'
+            .' | { subject: CrmUserResource | WorkbenchUserResource; label: string | null }'
+        );
+    });
+});
+
+describe('ResourceTransformer with a #[TsCasts] entry that brings its own import', function () {
+    // Its text is the app's own, so no queue of the analyzed value may alias the bare names it spells.
+    test('a class-level cast over a resource union publishes the cast as written, with its own import', function () {
+        $transformer = new ResourceTransformer(CastMorphUnionResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('UserResource | null')
+            ->and($transformer->typeImports['@js/types/user'])->toBe(['UserResource']);
+    });
+
+    test('a method-level cast over a resource union publishes the cast as written, with its own import', function () {
+        $transformer = new ResourceTransformer(MethodCastMorphUnionResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('UserResource | null')
+            ->and($transformer->typeImports['@js/types/user'])->toBe(['UserResource']);
+    });
+
+    test('a class-level cast over a key reading two same-named models publishes the cast as written', function () {
+        $transformer = new ResourceTransformer(CastMorphModelResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports['@js/types/user'])->toBe(['User']);
+    });
+
+    test('a method-level cast over a key reading two same-named models publishes the cast as written', function () {
+        $transformer = new ResourceTransformer(MethodCastMorphModelResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports['@js/types/user'])->toBe(['User']);
+    });
+
+    test('a model-level cast over a key reading two same-named models publishes the cast as written', function () {
+        $transformer = new ResourceTransformer(ModelCastReadResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports['@js/types/user'])->toBe(['User']);
+    });
+
+    test('a class-level cast over a key reading two same-named enums publishes the cast as written', function () {
+        $transformer = new ResourceTransformer(CastTwoEnumResource::class);
+
+        expect($transformer->properties['review_priority']['type'])->toBe('StatusType | null')
+            ->and($transformer->typeImports['@js/types/status'])->toBe(['StatusType']);
+    });
+
+    test('a method-level cast over a key reading two same-named enums publishes the cast, and adds no enum import', function () {
+        $transformer = new ResourceTransformer(MethodCastTwoEnumResource::class);
+
+        expect($transformer->properties['review_priority']['type'])->toBe('StatusType | null')
+            ->and($transformer->typeImports['@js/types/status'])->toBe(['StatusType'])
+            ->and(collect($transformer->typeImports)->flatten()->all())->not->toContain('PriorityType');
+    });
+});
+
+describe('ResourceTransformer with a #[TsCasts] entry that brings no import', function () {
+    // Its text spells the package's names, so the file keeps the imports it relies on and the alias pass still runs.
+    test('a method-level cast keeps the enum import its text spells', function () {
+        $transformer = new ResourceTransformer(MethodCastNoImportResource::class);
+
+        expect($transformer->properties['role']['type'])->toBe('RoleType | null')
+            ->and(collect($transformer->typeImports)->flatten()->all())->toBe(['RoleType']);
+    });
+
+    test('a class-level cast naming an enum the file aliases is aliased', function () {
+        $transformer = new ResourceTransformer(CastAliasedEnumResource::class);
+
+        expect($transformer->properties['status']['type'])->toBe('WorkbenchStatusType | null');
+    });
+
+    test('a method-level cast naming an enum the file aliases is aliased', function () {
+        $transformer = new ResourceTransformer(MethodCastAliasedEnumResource::class);
+
+        expect($transformer->properties['status']['type'])->toBe('WorkbenchStatusType | null');
+    });
+
+    test('a resource cast without an import, over its model\'s cast with an import, is aliased', function () {
+        $transformer = new ResourceTransformer(CastOverModelCastResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('CrmUser | null')
+            ->and($transformer->typeImports)->not->toHaveKey('@js/types/user');
+    });
+
+    test('a class-level cast without an import, over a method-level one with an import, is aliased', function () {
+        $transformer = new ResourceTransformer(ClassCastOverMethodCastResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('CrmUserResource | null');
+    });
+
+    test('a method-level cast without an import, over a spread helper\'s one with an import, is aliased', function () {
+        $transformer = new ResourceTransformer(HostCastOverHelperCastResource::class);
+
+        expect($transformer->properties['reviewable']['type'])->toBe('CrmUserResource | null');
+    });
+});
+
+describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through a spread and a branch merge)', function () {
+    // Each branch spreads a helper whose cast has an import: the key travels through merge() and then the branch merge.
+    test('the key a spread helper\'s cast retypes with an import reaches the merged analysis and stays unaliased', function () {
+        $reflection = new ReflectionClass(BranchedCastSpreadResource::class);
+        $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
+
+        expect($analysis->importedCastKeys)->toBe(['reviewable' => true])
+            ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
+            ->toBe('UserResource | null');
+    });
+});
+
+describe('AstEngine::analyze() with a method-level #[TsCasts] entry', function () {
+    test('an entry with an import is published as written', function () {
+        $result = resolve(AstEngine::class)->analyze(MethodCastMorphUnionResource::class, 'toArray', null, 'tests/fixtures');
+
+        expect(collect($result->properties)->firstWhere('name', 'reviewable')['type'])->toBe('UserResource | null');
+    });
+
+    test('an entry without an import keeps the import its text spells', function () {
+        $result = resolve(AstEngine::class)->analyze(MethodCastNoImportResource::class, 'toArray', null, 'tests/fixtures');
+
+        expect(collect($result->properties)->firstWhere('name', 'role')['type'])->toBe('RoleType | null')
+            ->and(collect($result->typeImports)->flatten()->all())->toBe(['RoleType']);
+    });
+
+    test('an entry without an import naming an enum the file aliases is aliased', function () {
+        $result = resolve(AstEngine::class)->analyze(MethodCastAliasedEnumResource::class, 'toArray', null, 'tests/fixtures');
+
+        expect(collect($result->properties)->firstWhere('name', 'status')['type'])->toBe('WorkbenchStatusType | null');
+    });
+});
+
+describe('ResourceTransformer aliasing an inline array in the order its type spells the class tokens', function () {
+    test('a spread resource arm leads the queue, ahead of the members that follow it', function () {
+        $transformer = new ResourceTransformer(SpreadBeforeMemberResource::class);
+
+        expect($transformer->properties['members']['type'])
+            ->toBe("(Omit<CrmUserResource, 'peer'> & { peer: WorkbenchUserResource })[]");
+    });
+
+    test('a spread model arm leads the queue too, ahead of the members that follow it', function () {
+        $transformer = new ResourceTransformer(SpreadModelBeforeMemberResource::class);
+
+        expect($transformer->properties['manager']['type'])
+            ->toBe("Omit<WorkbenchUser, 'peer'> & { peer: CrmUser | null }");
+    });
+
+    test('a key declared twice queues its resources once, so a later member keeps its own alias', function () {
+        $transformer = new ResourceTransformer(RedeclaredKeyResource::class);
+
+        expect($transformer->properties['review']['type'])
+            ->toBe('{ subject: CrmUserResource | WorkbenchUserResource; again: WorkbenchUserResource }');
+    });
+
+    test('a key declared twice queues its models once, so a later member keeps its own alias', function () {
+        $transformer = new ResourceTransformer(RedeclaredKeyModelResource::class);
+
+        expect($transformer->properties['review']['type'])
+            ->toBe('{ subject: CrmUser | WorkbenchUser | null; again: WorkbenchUser | null }');
     });
 });
 

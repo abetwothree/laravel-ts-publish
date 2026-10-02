@@ -419,13 +419,14 @@ final class AnalysisComposer
             }
         }
 
-        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns] as $map) {
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $propName => $fqcns) {
                 $queues[$propName] = [...($queues[$propName] ?? []), ...$fqcns];
             }
         }
 
-        return $queues;
+        // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
+        return array_diff_key($queues, $analysis->importedCastKeys);
     }
 
     /**

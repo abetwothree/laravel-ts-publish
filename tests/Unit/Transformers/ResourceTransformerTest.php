@@ -62,6 +62,7 @@ use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
 use Workbench\App\Http\Resources\ImageNullableArmsResource;
+use Workbench\App\Http\Resources\ImageReviewResource;
 use Workbench\App\Http\Resources\InheritedInlineFqcnResource;
 use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
@@ -3041,4 +3042,17 @@ test('an EnumResource const steps aside for another enum\'s type name the resour
         ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
         ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
         ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('a morph union over two resources that share a name spells each one by its own alias', function () {
+    $transformer = new ResourceTransformer(ImageReviewResource::class);
+
+    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource', 'optional' => true])
+        ->and($transformer->properties['reviewer']['type'])->toBe('CrmUserResource | WorkbenchUserResource')
+        // The same union one level down, inside an inline array.
+        ->and($transformer->properties['review']['type'])->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')
+        ->and($transformer->typeImports)->toBe([
+            '../../../crm/http/resources' => ['UserResource as CrmUserResource'],
+            '.' => ['UserResource as WorkbenchUserResource'],
+        ]);
 });

@@ -3415,6 +3415,16 @@ declare global {
             height?: number;
         }
         /**
+         * Exposes a morphTo whose targets' resources share a basename: Crm's UserResource and this namespace's UserResource
+         * must each be named by its own alias, inside an inline array as well.
+         */
+        export interface ImageReviewResource {
+            id: number;
+            reviewable?: crm.http.resources.UserResource | UserResource;
+            reviewer: crm.http.resources.UserResource | UserResource;
+            review: { subject: crm.http.resources.UserResource | UserResource; label: string | null };
+        }
+        /**
          * Base class for ChildInlineFqcnResource. Both regional_hub_* properties carry Warehouse::regionalHub()'s
          * per-occurrence FQCN multiplicity (Crm, App, Crm) so a child spreading this analysis in through
          * syncAnalysisMaps() can lose it if that merge dedupes.

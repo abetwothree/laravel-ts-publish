@@ -418,7 +418,10 @@ check itself with the `#[TsExclude]`d `AttachmentResource`, `AttachmentCollectio
 
 `ConditionalMethodHandler::analyzeWhenLoaded()` binds a `morphTo` closure parameter to every target, in
 `AnalysisScope::$varClassBindings`. `ToResourceHandler` then maps each target model to its resource and publishes the
-union, such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`. The
+union, such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`.
+`MethodAnalysis::addProperty()` queues them under the property in `inlineResourceFqcns`, one per token, so two targets
+whose resources share a name are each spelled by their own alias. `InlineArrayHandler` builds the same queue for an
+inline array, spread arms first and then each member, and `ImageReviewResource` pins both. The
 union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is wrong
 for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
@@ -624,8 +627,8 @@ Three more rules keep each FQCN beside its own token:
   `ValueResult::withAttributeChannels()`. `InlineArrayHandler` walks members in order, taking each member's
   `inlineModelFqcns` over the self-keyed `modelFqcns` map. `WarehouseResource::$probe_nested` pins it.
 - **An overriding key clears its parent's channels**: when a key overrides a spread parent's key,
-  `analyzeReturnArray()` clears every channel for it, the three inline ones included. The child's occurrences then
-  never consume the parent's queue.
+  `analyzeReturnArray()` clears every channel for it through `MethodAnalysis::forgetChannels()`, the inline ones
+  included. The child's occurrences then never consume the parent's queue.
 - **Arm order is kept**: the branch union hoists one trailing `| null` through `TsTypeString::hoistNull()` and moves
   no type-name token relative to its queue.
 
@@ -707,6 +710,5 @@ These [known gaps](../known-gaps.md) come from the rules on this page:
 - [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)
 - [`Model::toArray()` on a receiver declines, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
-- [A morph union whose targets' resources share a basename spells the same token twice](../known-gaps.md#a-morph-union-whose-targets-resources-share-a-basename-spells-the-same-token-twice)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
 - [A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals](../known-gaps.md#a-mixed-enum-ternary-whose-arms-are-both-array-shaped-ships-a-duplicated-union-member-in-the-globals)

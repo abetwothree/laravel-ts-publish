@@ -19,9 +19,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type ImportMapType = TypesImportMap
  * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type InlineResourceFqcnsMap = array<string, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
+ * @phpstan-type ImportedCastKeyMap = array<string, true>
  * @phpstan-type AnalyzedProperty = array{
  *     name: string,
  *     type: string,
@@ -47,10 +49,13 @@ class MethodAnalysis
      * @param  ClassMapType  $modelFqcns  property name => model FQCN (from bare whenLoaded)
      * @param  InlineEnumFqcnsMap  $inlineEnumFqcns  property name => list of enum FQCNs embedded in inline object type strings
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
+     * @param  InlineResourceFqcnsMap  $inlineResourceFqcns  property name => the resource FQCN behind each resource token, in type order
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
      *                                                          for a mixed EnumResource/direct-access ternary
+     * @param  ImportedCastKeyMap  $importedCastKeys  property name => true, for a key whose method-level #[TsCasts]
+     *                                                entry brings its own import: that text is the app's own
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -63,9 +68,11 @@ class MethodAnalysis
         public array $modelFqcns = [],
         public array $inlineEnumFqcns = [],
         public array $inlineModelFqcns = [],
+        public array $inlineResourceFqcns = [],
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
         public array $enumResourceArmShapes = [],
+        public array $importedCastKeys = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -105,6 +112,10 @@ class MethodAnalysis
             $this->inlineModelFqcns[$name][] = $fqcn;
         }
 
+        foreach ($result['embeddedResourceFqcns'] ?? [] as $fqcn) {
+            $this->inlineResourceFqcns[$name][] = $fqcn;
+        }
+
         foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
             $this->inlineEnumResourceFqcns[$name][] = $fqcn;
         }
@@ -118,8 +129,8 @@ class MethodAnalysis
      * Merge another analysis's maps into this one.
      *
      * `properties` appends; the single-value class maps spread-merge with the source winning on
-     * collision. `inlineModelFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append WITHOUT
-     * deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
+     * collision. `inlineModelFqcns`, `inlineResourceFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append
+     * WITHOUT deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
      */
     public function merge(self $source): void
     {
@@ -130,6 +141,7 @@ class MethodAnalysis
         $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
         $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
         $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
+        $this->importedCastKeys = [...$this->importedCastKeys, ...$source->importedCastKeys];
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
@@ -141,6 +153,10 @@ class MethodAnalysis
 
         foreach ($source->inlineModelFqcns as $propName => $fqcns) {
             $this->inlineModelFqcns[$propName] = [...($this->inlineModelFqcns[$propName] ?? []), ...$fqcns];
+        }
+
+        foreach ($source->inlineResourceFqcns as $propName => $fqcns) {
+            $this->inlineResourceFqcns[$propName] = [...($this->inlineResourceFqcns[$propName] ?? []), ...$fqcns];
         }
 
         foreach ($source->inlineEnumResourceFqcns as $propName => $fqcns) {
@@ -156,7 +172,23 @@ class MethodAnalysis
         return isset($this->enumResources[$name]) || isset($this->nestedResources[$name])
             || isset($this->directEnumFqcns[$name]) || isset($this->modelFqcns[$name])
             || isset($this->inlineEnumFqcns[$name]) || isset($this->inlineModelFqcns[$name])
+            || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
             || isset($this->enumResourceArmShapes[$name]);
+    }
+
+    /**
+     * Forget every channel entry and cast mark keyed by this property name, when another value takes the key over: an
+     * entry left behind would alias the new type by the old one's classes, or keep an import nothing spells, and a
+     * mark would keep the new type from being aliased.
+     */
+    public function forgetChannels(string $name): void
+    {
+        unset(
+            $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
+            $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
+            $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
+            $this->enumResourceArmShapes[$name], $this->importedCastKeys[$name],
+        );
     }
 }

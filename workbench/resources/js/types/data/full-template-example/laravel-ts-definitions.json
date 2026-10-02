@@ -13340,6 +13340,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ImageReviewResource": {
+            "name": "ImageReviewResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable",
+                    "type": "CrmUserResource | ResourcesUserResource",
+                    "optional": true
+                },
+                {
+                    "name": "reviewer",
+                    "type": "CrmUserResource | ResourcesUserResource",
+                    "optional": false
+                },
+                {
+                    "name": "review",
+                    "type": "{ subject: CrmUserResource | ResourcesUserResource; label: string | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\InheritedInlineFqcnResource": {
             "name": "InheritedInlineFqcnResource",
             "properties": [

@@ -155,6 +155,7 @@
     "app\/Http\/Resources\/ImageMorphResource.php",
     "app\/Http\/Resources\/ImageNullableArmsResource.php",
     "app\/Http\/Resources\/ImageResource.php",
+    "app\/Http\/Resources\/ImageReviewResource.php",
     "app\/Http\/Resources\/InheritedInlineFqcnResource.php",
     "app\/Http\/Resources\/InlineArrayFqcnResource.php",
     "app\/Http\/Resources\/KpiResource.php",

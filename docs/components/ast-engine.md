@@ -314,10 +314,15 @@ the result carries. Every collector goes through it, so a channel added to `Valu
 at once. A collector that built rows by hand would miss a new channel silently. Nothing throws, the property still
 types, and only the generated TypeScript shows the missing import or alias.
 
-Never deduplicate the three inline queues, `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns`.
-`addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return branches and a spread parent
-alike. `TsTypeString::aliasPropertyType()` walks each as a positional queue against the type's tokens, so a property
-naming the same class twice needs two entries.
+Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
+`inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
+branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `aliasTypeofConst()` for
+`inlineEnumResourceFqcns`, walks each as a positional queue against the type's tokens, so a property naming the same
+class twice needs two entries.
+
+`forgetChannels()` is the dual of `addProperty()`: it drops every entry keyed by one property, for a key another value
+takes over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset channels by hand
+would miss the next one added.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
 owns its rules.

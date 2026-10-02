@@ -463,12 +463,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $result = $this->analyzeValueExpression($item->value);
 
             // When a child key overrides a parent spread key, clear stale parent tracking
-            unset(
-                $analysis->enumResources[$keyName], $analysis->nestedResources[$keyName], $analysis->directEnumFqcns[$keyName],
-                $analysis->modelFqcns[$keyName], $analysis->multiEnumResourceFqcns[$keyName], $analysis->inlineEnumFqcns[$keyName],
-                $analysis->inlineModelFqcns[$keyName], $analysis->inlineEnumResourceFqcns[$keyName],
-                $analysis->enumResourceArmShapes[$keyName],
-            );
+            $analysis->forgetChannels($keyName);
 
             $analysis->addProperty($keyName, $result);
         }
@@ -908,10 +903,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     ];
                 }
 
+                // An import makes the text the app's own, which no queue may alias; a cast without one, here or in a
+                // later method, spells the package's names and is aliased as before.
                 if (is_array($value) && isset($value['import'])) {
+                    $analysis->importedCastKeys[$property] = true;
+
                     foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                         $analysis->customImports[$value['import']][] = $importName;
                     }
+                } else {
+                    unset($analysis->importedCastKeys[$property]);
                 }
             }
         }
@@ -1241,9 +1242,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
             modelFqcns: $channels->modelFqcns,
             inlineEnumFqcns: $channels->inlineEnumFqcns,
             inlineModelFqcns: $channels->inlineModelFqcns,
+            inlineResourceFqcns: $channels->inlineResourceFqcns,
             multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
             enumResourceArmShapes: $channels->enumResourceArmShapes,
+            importedCastKeys: $channels->importedCastKeys,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );

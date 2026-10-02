@@ -56,10 +56,12 @@ where the const registry's name differs from the const name, each on its own acc
 inline `EnumResource::make()` has no type import to alias. It calls the consumer's `rewriteTypeReferences()` once if a
 type was aliased.
 
-`rewriteTypeReferences()` hands each property's type and FQCN list to `TsTypeString::aliasPropertyType()`. The list is a
-queue per type name, so occurrence N of a name in the type string takes the Nth FQCN registered under that name. Order
-and multiplicity are the contract, so never sort or dedupe the list. Deduping `Crm, App, Crm` to `Crm, App` retypes the
-third occurrence as the app model. `WarehouseResource::regional_hub_contacts` pins that interleaved case.
+`rewriteTypeReferences()` hands each property's type and FQCN list to `TsTypeString::aliasPropertyType()`, except that
+`ResourceTransformer` skips a key whose `#[TsCasts]` entry brings its own import, since that text is the app's own. The
+list is a queue per type name, so occurrence N of a name in the type string takes the Nth FQCN registered under that
+name. Order and multiplicity are the contract, so never sort or dedupe the list. Deduping `Crm, App, Crm` to
+`Crm, App` retypes the third occurrence as the app model. `WarehouseResource::regional_hub_contacts` pins that
+interleaved case.
 
 The queue lines up with the type string because each builder writes a union's arms and its FQCN list in one loop:
 `LaravelTsPublish::mergeTypeScriptInfos()` for a class union and `ModelAttributeResolver::buildMorphUnionInfo()` for a

@@ -203,16 +203,6 @@ $this->app->singleton(TsNaming::class, MyTsNaming::class);
 A subclass that overrode `importSortGroup()` or `$resourceTypeNames` extends `TsNaming` instead, where both are
 protected. [Support helpers](./components/support-helpers.md) sets which class owns a helper.
 
-### A morph union whose targets' resources share a basename spells the same token twice
-
-A `morphTo` exposed through `whenLoaded('reviewable', fn ($subject) => $subject->toResource())`, whose targets'
-resources share a basename, publishes `reviewable?: UserResource | UserResource;` beside two aliased imports, so the
-file fails `tsc` with TS2552 and TS6196. A union reports its classes on the FQCN-keyed `embeddedResourceFqcns` channel,
-which `ResourceTransformer::rewriteTypeReferences()` never looks up, and the fix, a property-keyed channel, is
-cross-cutting because `InlineArrayHandler` builds the same shape. `Image::reviewable` has this shape, but no workbench
-resource exposes it, so the token gate never sees it. Give one resource a distinct `#[TsResource(name: ...)]`, rename
-the class, or cast the property with an import-aware `#[TsCasts]`.
-
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
 `TsTypeString::typeNameOccursIn()` decides which imports a type still needs, and it counts a name wherever its token

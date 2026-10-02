@@ -13,6 +13,7 @@ use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
+use Workbench\App\Http\Resources\ImageReviewResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\UserResource;
@@ -55,6 +56,18 @@ describe('AstEngine::analyze()', function () {
             ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
             ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
             ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
+    });
+
+    test('aliases the two same-named resources of one morph union apart, in an inline array too', function () {
+        $result = resolve(AstEngine::class)->analyze(ImageReviewResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'reviewer')['type'])->toBe('CrmUserResource | WorkbenchUserResource')
+            ->and(collect($result->properties)->firstWhere('name', 'review')['type'])
+            ->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')
+            ->and($result->typeImports)->toBe([
+                '../../../crm/http/resources' => ['UserResource as CrmUserResource'],
+                '.' => ['UserResource as WorkbenchUserResource'],
+            ]);
     });
 
     test('leaves the bare enum type and its type import when the tolki package is off', function () {

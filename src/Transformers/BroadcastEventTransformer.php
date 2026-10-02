@@ -219,16 +219,7 @@ class BroadcastEventTransformer extends CoreTransformer
         // A #[TsCasts] override replaces the property's type outright, so the type it displaced
         // must not keep an import alive.
         foreach (array_keys($this->tsTypeOverrides) as $name) {
-            unset(
-                $analysis->enumResources[$name],
-                $analysis->nestedResources[$name],
-                $analysis->directEnumFqcns[$name],
-                $analysis->modelFqcns[$name],
-                $analysis->multiEnumResourceFqcns[$name],
-                $analysis->inlineEnumFqcns[$name],
-                $analysis->inlineModelFqcns[$name],
-                $analysis->inlineEnumResourceFqcns[$name],
-            );
+            $analysis->forgetChannels((string) $name);
         }
 
         $this->properties = $this->resolveProperties($analysis);

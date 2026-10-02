@@ -197,3 +197,36 @@ it('claims no type import for a nested mixed enum whose bare name the rewrite sp
         'embeddedEnumResourceFqcns' => [Status::class],
     ]);
 });
+
+it('queues one resource per token in the order the object spells them, never deduped', function () {
+    // Mirrors ImageReviewResource::$review: `subject` is a morph union over two resources that share a name, and
+    // `again` names one of them a second time, so each occurrence needs its own entry for aliasing to walk.
+    $crm = 'Workbench\\Crm\\Http\\Resources\\UserResource';
+    $app = 'Workbench\\App\\Http\\Resources\\UserResource';
+
+    $array = new Array_([
+        new ArrayItem(new Variable('placeholder'), new String_('subject')),
+        new ArrayItem(new Variable('placeholder'), new String_('again')),
+        new ArrayItem(new Variable('placeholder'), new String_('label')),
+    ]);
+
+    $analysis = new ResourceAnalysis(
+        properties: [
+            ['name' => 'subject', 'type' => 'UserResource | UserResource', 'optional' => false, 'description' => ''],
+            ['name' => 'again', 'type' => 'UserResource', 'optional' => false, 'description' => ''],
+            ['name' => 'label', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ],
+        nestedResources: [$crm => $crm, $app => $app, 'again' => $crm],
+        inlineResourceFqcns: ['subject' => [$crm, $app]],
+    );
+
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+
+    $result = (new InlineArrayHandler)->resolve($array, $scope, new InlineArrayHandlerReturnArrayStubEngine($array, $analysis));
+
+    expect($result)->toBe([
+        'type' => '{ subject: UserResource | UserResource; again: UserResource; label: string }',
+        'optional' => false,
+        'embeddedResourceFqcns' => [$crm, $app, $crm],
+    ]);
+});
