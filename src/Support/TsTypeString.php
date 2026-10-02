@@ -139,35 +139,22 @@ class TsTypeString
      */
     public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
     {
-        /** @var array<string, non-empty-list<string>> $queues */
-        $queues = [];
+        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '');
+    }
 
-        foreach ($itemFqcns as $fqcn) {
-            $name = $nameMap[$fqcn] ?? null;
-
-            if ($name !== null) {
-                $queues[$name][] = $aliases[$fqcn] ?? $name;
-            }
-        }
-
-        if ($queues === []) {
-            return $type;
-        }
-
-        $names = array_keys($queues);
-        usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
-        $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
-
-        $pattern = '/(?<![A-Za-z0-9_$.])(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
-        $cursors = [];
-
-        return preg_replace_callback($pattern, static function (array $match) use ($queues, &$cursors): string {
-            $name = $match[0];
-            $cursor = $cursors[$name] ?? 0;
-            $cursors[$name] = min($cursor + 1, count($queues[$name]) - 1);
-
-            return $queues[$name][$cursor];
-        }, $type) ?? $type;
+    /**
+     * Alias every `typeof <const>` occurrence in one item's type string, in the queue order aliasPropertyType() uses.
+     *
+     * A type string spells a const only after `typeof`, as in `AsEnum<typeof Const>`. The same name bare is a type, and
+     * can be another enum's: an inline array may read one enum bare and wrap another whose const has that name.
+     *
+     * @param  list<string>  $itemFqcns  FQCN per `typeof` occurrence, in source order, never deduped
+     * @param  array<string, string>  $constNames  FQCN => unaliased const name
+     * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     */
+    public function aliasTypeofConst(string $type, array $itemFqcns, array $constNames, array $aliases): string
+    {
+        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, 'typeof\s+\K');
     }
 
     /**
@@ -348,6 +335,48 @@ class TsTypeString
     public function isVagueTsType(string $type): bool
     {
         return $type === 'object' || (str_contains($type, 'unknown') && ! str_contains($type, '{'));
+    }
+
+    /**
+     * Replace each registered name with its alias, the Nth occurrence of a name taking the Nth FQCN queued under it.
+     *
+     * $anchor is a pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
+     *
+     * @param  list<string>  $itemFqcns
+     * @param  array<string, string>  $nameMap  FQCN => unaliased name
+     * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     */
+    protected function aliasInQueueOrder(string $type, array $itemFqcns, array $nameMap, array $aliases, string $anchor): string
+    {
+        /** @var array<string, non-empty-list<string>> $queues */
+        $queues = [];
+
+        foreach ($itemFqcns as $fqcn) {
+            $name = $nameMap[$fqcn] ?? null;
+
+            if ($name !== null) {
+                $queues[$name][] = $aliases[$fqcn] ?? $name;
+            }
+        }
+
+        if ($queues === []) {
+            return $type;
+        }
+
+        $names = array_keys($queues);
+        usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
+
+        $pattern = '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+        $cursors = [];
+
+        return preg_replace_callback($pattern, static function (array $match) use ($queues, &$cursors): string {
+            $name = $match[0];
+            $cursor = $cursors[$name] ?? 0;
+            $cursors[$name] = min($cursor + 1, count($queues[$name]) - 1);
+
+            return $queues[$name][$cursor];
+        }, $type) ?? $type;
     }
 
     /**

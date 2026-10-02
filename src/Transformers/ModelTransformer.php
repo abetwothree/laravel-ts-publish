@@ -652,9 +652,8 @@ class ModelTransformer extends CoreTransformer
         $registry = new ImportNameRegistry;
         $registry->reserve($this->modelName);
 
-        // A sibling registry resolves const names independently rather than string-slicing the type
-        // alias, which breaks on a numeric tiebreak suffix. The two registries can't see each other, so
-        // a const name equal to another enum's type name still collides — see the docs' known limitation.
+        // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
+        // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry;
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
@@ -678,8 +677,14 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
+        $resolved = $registry->resolve();
+
+        // A type import and a const import are both local names in the file, so a const steps aside for every name
+        // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
+        $constRegistry->reserve(...array_values($resolved));
+
         $this->applyResolvedImportNames(
-            $registry->resolve(),
+            $resolved,
             $this->enumFqcnMap + $this->modelFqcnMap,
             $constRegistry->resolve(),
         );

@@ -218,6 +218,73 @@ describe('aliasPropertyType', function () {
     });
 });
 
+describe('aliasTypeofConst', function () {
+    $constNames = [
+        'App\\Enums\\Status' => 'Status',
+        'Crm\\Enums\\Status' => 'Status',
+        'Crm\\Enums\\ClearanceType' => 'ClearanceType',
+    ];
+
+    test('aliases the const named after typeof, in a collection wrap and across extra whitespace', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof ClearanceType>[] | AsEnum<typeof   ClearanceType>',
+            ['Crm\\Enums\\ClearanceType', 'Crm\\Enums\\ClearanceType'],
+            $constNames,
+            ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'],
+        ))->toBe('AsEnum<typeof CrmClearanceType>[] | AsEnum<typeof   CrmClearanceType>');
+    });
+
+    // aliasPropertyType() would alias both tokens here, which writes one enum's const alias into another enum's type.
+    test('leaves a bare token spelled like the const, which is another enum\'s type', function () use ($constNames) {
+        $aliases = ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'];
+
+        expect($this->service->aliasTypeofConst(
+            '{ clearance: ClearanceType; clearance_type: AsEnum<typeof ClearanceType> }',
+            ['Crm\\Enums\\ClearanceType'],
+            $constNames,
+            $aliases,
+        ))->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+            ->and($this->service->aliasTypeofConst(
+                '{ clearance_type: AsEnum<typeof ClearanceType>; clearance: ClearanceType }',
+                ['Crm\\Enums\\ClearanceType'],
+                $constNames,
+                $aliases,
+            ))->toBe('{ clearance_type: AsEnum<typeof CrmClearanceType>; clearance: ClearanceType }');
+    });
+
+    test('two typeof tokens of one name take two aliases in queue order, and a bare token between them takes none', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            '{ app: AsEnum<typeof Status>; plain: Status; crm: AsEnum<typeof Status> }',
+            ['App\\Enums\\Status', 'Crm\\Enums\\Status'],
+            $constNames,
+            ['App\\Enums\\Status' => 'EnumsStatus', 'Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('{ app: AsEnum<typeof EnumsStatus>; plain: Status; crm: AsEnum<typeof CrmStatus> }');
+    });
+
+    test('the last FQCN covers a typeof past the end of a short queue', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof Status> | AsEnum<typeof Status>[]',
+            ['Crm\\Enums\\Status'],
+            $constNames,
+            ['Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('AsEnum<typeof CrmStatus> | AsEnum<typeof CrmStatus>[]');
+    });
+
+    test('word boundaries keep a longer name and a qualified name intact', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof StatusExtra> | AsEnum<typeof other.Status> | AsEnum<typeof Status>',
+            ['Crm\\Enums\\Status'],
+            $constNames,
+            ['Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('AsEnum<typeof StatusExtra> | AsEnum<typeof other.Status> | AsEnum<typeof CrmStatus>');
+    });
+
+    test('an item with no mapped FQCN is returned untouched', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst('AsEnum<typeof Status>', ['Other\\Enums\\Role'], $constNames, []))
+            ->toBe('AsEnum<typeof Status>');
+    });
+});
+
 describe('extractImportableTypes', function () {
     test('extractImportableTypes returns custom type names', function () {
         expect($this->service->extractImportableTypes('ProductMetadata'))

@@ -208,6 +208,26 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
         }
+        /**
+         * Imports names that cross between types and consts: Clearance's type and ClearanceType's const are both
+         * `ClearanceType`, and the Grade model's type and the Grade enum's const are both `Grade`.
+         */
+        export interface Badge {
+            // Columns
+            id: number;
+            label: string;
+            clearance: app.enums.ClearanceType;
+            clearance_type: crm.enums.ClearanceTypeType;
+            minimum_grade: app.enums.GradeType;
+            grade_id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The grade record the badge was awarded for. */
+            grade: Grade;
+            grade_count: number;
+            grade_exists: boolean;
+        }
         export interface BaseExtendableModel extends ParentModelInterface {
         }
         export interface BaseSharedExtendableModel extends SharedModelInterface {
@@ -672,6 +692,15 @@ declare global {
             inspector: app.packages.audit.models.AuditInspector | User | null;
             inspector_count: number;
             inspector_exists: boolean;
+        }
+        /** Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`. */
+        export interface Grade {
+            // Columns
+            id: number;
+            subject: string;
+            grade: app.enums.GradeType;
+            created_at: string | null;
+            updated_at: string | null;
         }
         export interface Image {
             // Columns
@@ -2038,6 +2067,15 @@ declare global {
         export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
     }
     export namespace app.enums {
+        /** Publishes the type `ClearanceType`, the name Crm's ClearanceType enum publishes its const under. */
+        export interface Clearance
+        {
+            Open: 'open',
+            Restricted: 'restricted',
+        }
+        export type ClearanceType = 'open' | 'restricted';
+        export type ClearanceKind = 'Open' | 'Restricted';
+
         /** String-backed enum with TsCase attribute overrides on individual cases. */
         export interface Color
         {
@@ -2078,6 +2116,15 @@ declare global {
         }
         export type ExcludableEnumType = 'alpha' | 'beta';
         export type ExcludableEnumKind = 'Alpha' | 'Beta';
+
+        /** Shares its name with the Grade model, whose own file imports this enum's const. */
+        export interface Grade
+        {
+            Pass: 'pass',
+            Fail: 'fail',
+        }
+        export type GradeType = 'pass' | 'fail';
+        export type GradeKind = 'Pass' | 'Fail';
 
         /** String-backed enum with both instance and static methods. */
         export interface MediaType
@@ -2244,6 +2291,15 @@ declare global {
         export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
     }
     export namespace crm.enums {
+        /** Publishes the const `ClearanceType`, the name App's Clearance enum publishes its type under. */
+        export interface ClearanceType
+        {
+            Temporary: 'temporary',
+            Permanent: 'permanent',
+        }
+        export type ClearanceTypeType = 'temporary' | 'permanent';
+        export type ClearanceTypeKind = 'Temporary' | 'Permanent';
+
         export interface Status
         {
             Lead: 'lead',
@@ -2393,6 +2449,17 @@ declare global {
         export interface ArtistResource {
             id: number;
             name: string;
+        }
+        /**
+         * Reads one enum bare and wraps the other, so the file imports Clearance's type and ClearanceType's const: two
+         * imports that would both be named `ClearanceType`.
+         */
+        export interface BadgeResource {
+            id: number;
+            label: string;
+            clearance: app.enums.ClearanceType;
+            clearance_type: crm.enums.ClearanceTypeType;
+            summary: { clearance: app.enums.ClearanceType; clearance_type: crm.enums.ClearanceTypeType };
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {

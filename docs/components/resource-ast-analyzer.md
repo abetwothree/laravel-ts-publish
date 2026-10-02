@@ -652,7 +652,8 @@ the same PHP shape, and they must never disagree.
 `resolveImportConflicts()` has assigned any alias. A top-level key never shows that bare name, because
 `rewriteEnumResourceTypes()` builds its string from `constImportAliases` itself. For a nested wrap,
 `ResourceTransformer` and `AnalysisComposer` alias the bare name after `resolveImportConflicts()`. They call
-`TsTypeString::aliasPropertyType()` over `inlineEnumResourceFqcns`, in the order `InlineArrayHandler` built it.
+`TsTypeString::aliasTypeofConst()` over `inlineEnumResourceFqcns`, in the order `InlineArrayHandler` built it.
+`aliasTypeofConst()` changes only the name after `typeof`. The same name bare is another enum's type.
 
 The order matters because two members can wrap different enums that share one const name. `DealResource::$status_pair`
 pins two `Status` enums, each keeping its own alias:

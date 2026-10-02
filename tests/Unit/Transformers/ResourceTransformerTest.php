@@ -42,6 +42,7 @@ use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
+use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\BodylessOrderResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
@@ -3022,4 +3023,22 @@ test('globalTypeReferenceMap() maps every name the file imports, aliased or not,
         // The resources namespace owns a resource named Address; this file's Address is the model.
         ->and((new ResourceTransformer(UserExceptResource::class))->globalTypeReferenceMap()['Address'])
         ->toBe('workbench.app.models.Address');
+});
+
+test('an inline array that reads one enum bare and wraps another keeps each enum\'s own name', function () {
+    $transformer = new ResourceTransformer(BadgeResource::class);
+
+    expect($transformer->properties['summary']['type'])
+        ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+        ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('an EnumResource const steps aside for another enum\'s type name the resource also imports', function () {
+    $transformer = new ResourceTransformer(BadgeResource::class);
+
+    expect($transformer->properties['clearance']['type'])->toBe('ClearanceType')
+        ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+        ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
 });

@@ -496,6 +496,31 @@
             "methods": [],
             "staticMethods": []
         },
+        "Workbench\\App\\Enums\\Clearance": {
+            "name": "Clearance",
+            "cases": [
+                {
+                    "name": "Open",
+                    "value": "open",
+                    "description": ""
+                },
+                {
+                    "name": "Restricted",
+                    "value": "restricted",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Open'",
+                "'Restricted'"
+            ],
+            "caseTypes": [
+                "'open'",
+                "'restricted'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
         "Workbench\\App\\Enums\\Color": {
             "name": "Color",
             "cases": [
@@ -713,6 +738,31 @@
             "caseTypes": [
                 "'alpha'",
                 "'beta'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Workbench\\App\\Enums\\Grade": {
+            "name": "Grade",
+            "cases": [
+                {
+                    "name": "Pass",
+                    "value": "pass",
+                    "description": ""
+                },
+                {
+                    "name": "Fail",
+                    "value": "fail",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pass'",
+                "'Fail'"
+            ],
+            "caseTypes": [
+                "'pass'",
+                "'fail'"
             ],
             "methods": [],
             "staticMethods": []
@@ -1547,6 +1597,31 @@
                 "'tutorial'",
                 "'review'",
                 "'news'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Workbench\\Crm\\Enums\\ClearanceType": {
+            "name": "ClearanceType",
+            "cases": [
+                {
+                    "name": "Temporary",
+                    "value": "temporary",
+                    "description": ""
+                },
+                {
+                    "name": "Permanent",
+                    "value": "permanent",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Temporary'",
+                "'Permanent'"
+            ],
+            "caseTypes": [
+                "'temporary'",
+                "'permanent'"
             ],
             "methods": [],
             "staticMethods": []
@@ -4342,6 +4417,55 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Badge": {
+            "name": "Badge",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "label",
+                    "type": "string"
+                },
+                {
+                    "name": "clearance",
+                    "type": "ClearanceType"
+                },
+                {
+                    "name": "clearance_type",
+                    "type": "ClearanceTypeType"
+                },
+                {
+                    "name": "minimum_grade",
+                    "type": "GradeType"
+                },
+                {
+                    "name": "grade_id",
+                    "type": "number"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "grade",
+                    "type": "Grade"
+                },
+                {
+                    "name": "grade_count",
+                    "type": "number"
+                },
+                {
+                    "name": "grade_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\BaseExtendableModel": {
             "name": "BaseExtendableModel",
             "properties": []
@@ -5772,6 +5896,31 @@
                 {
                     "name": "inspector_exists",
                     "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Grade": {
+            "name": "Grade",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "subject",
+                    "type": "string"
+                },
+                {
+                    "name": "grade",
+                    "type": "GradeType"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
                 }
             ]
         },
@@ -9961,6 +10110,36 @@
                 {
                     "name": "name",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BadgeResource": {
+            "name": "BadgeResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "clearance",
+                    "type": "ClearanceType",
+                    "optional": false
+                },
+                {
+                    "name": "clearance_type",
+                    "type": "AsEnum<typeof CrmClearanceType>",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }",
                     "optional": false
                 }
             ]

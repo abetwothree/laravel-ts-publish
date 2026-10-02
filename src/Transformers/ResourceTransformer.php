@@ -707,15 +707,15 @@ class ResourceTransformer extends CoreTransformer
             ];
         }
 
-        // analyzeInlineArray() already substituted each inline wrap's bare const name into
-        // 'AsEnum<typeof {bare}>'; rewriteTypeReferences() can't alias it — $nameMap excludes
-        // enumConstMap. Two inline members can share one bare name, so alias by FQCN order.
+        // analyzeInlineArray() already substituted each inline wrap's bare const name into 'AsEnum<typeof {bare}>';
+        // rewriteTypeReferences() can't alias it, as $nameMap excludes enumConstMap. Only the name after `typeof` is a
+        // const; bare, it is another enum's type. Two inline members can share one bare name, so alias by FQCN order.
         foreach ($this->propertyInlineEnumResourceFqcns as $propName => $fqcns) {
             if (! isset($this->properties[$propName])) {
                 continue; // @codeCoverageIgnore
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasTypeofConst(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $this->enumConstMap,
@@ -846,9 +846,8 @@ class ResourceTransformer extends CoreTransformer
         $registry = new ImportNameRegistry($skip);
         $registry->reserve($this->resourceName);
 
-        // A sibling registry resolves const names independently rather than string-slicing the type
-        // alias, which breaks on a numeric tiebreak suffix. The two registries can't see each other, so
-        // a const name equal to another enum's type name still collides — see the docs' known limitation.
+        // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
+        // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry($skip);
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
@@ -876,8 +875,14 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
+        $resolved = $registry->resolve();
+
+        // A type import and a const import are both local names in the file, so a const steps aside for every name
+        // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
+        $constRegistry->reserve(...array_values($resolved));
+
         $this->applyResolvedImportNames(
-            $registry->resolve(),
+            $resolved,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
             $constRegistry->resolve(),
         );

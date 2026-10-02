@@ -64,6 +64,24 @@ describe('ImportNameRegistry', function () {
         expect($registry->resolve()['App\Models\Order'])->toBe('ModelsOrder');
     });
 
+    test('several names can be reserved at once, as when a const registry learns the names a type registry took', function () {
+        $types = new ImportNameRegistry;
+        $types->register('App\Enums\Role', 'RoleType');
+        $types->register('App\Models\Grade', 'Grade');
+
+        $consts = new ImportNameRegistry;
+        $consts->reserve(...array_values($types->resolve()));
+        $consts->register('Crm\Enums\RoleType', 'RoleType');
+        $consts->register('App\Enums\Grade', 'Grade');
+        $consts->register('App\Enums\Role', 'Role');
+
+        expect($consts->resolve())->toBe([
+            'Crm\Enums\RoleType' => 'CrmRoleType',
+            'App\Enums\Grade' => 'EnumsGrade',
+            'App\Enums\Role' => 'Role',
+        ]);
+    });
+
     test('preferred alias wins when unique and falls back when it collides', function () {
         $registry = new ImportNameRegistry;
         $registry->register('App\Models\A\User', 'User', preferredAlias: 'OwnerUser');

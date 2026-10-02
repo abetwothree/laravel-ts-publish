@@ -151,8 +151,8 @@ final class AnalysisComposer
     /**
      * Assign collision-free local names across every FQCN map, then rewrite the types that use them.
      *
-     * Two sibling registries, exactly as ResourceTransformer runs them: a const name equal to another
-     * enum's type name still collides, which is that class's own documented limitation.
+     * Two sibling registries, exactly as ResourceTransformer runs them: types resolve first, and a const steps aside
+     * for every name a type took.
      */
     private function resolveImportConflicts(): void
     {
@@ -183,8 +183,11 @@ final class AnalysisComposer
             }
         }
 
+        $resolved = $registry->resolve();
+        $constRegistry->reserve(...array_values($resolved));
+
         $this->applyResolvedImportNames(
-            $registry->resolve(),
+            $resolved,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
             $constRegistry->resolve(),
         );
@@ -233,13 +236,14 @@ final class AnalysisComposer
         }
 
         // analyzeInlineArray() already wrote `AsEnum<typeof {bare}>` into the inline object type, and
-        // rewriteTypeReferences() cannot alias it — its name map holds type names, never const ones.
+        // rewriteTypeReferences() cannot alias it: its name map holds type names, never const ones. Only the name after
+        // `typeof` is a const; the same name bare is another enum's type, so it stays.
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             if (! isset($this->properties[$propName])) {
                 continue;
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasTypeofConst(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $this->enumConstMap,

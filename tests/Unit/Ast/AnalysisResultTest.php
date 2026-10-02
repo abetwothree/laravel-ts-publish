@@ -10,6 +10,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Http\Resources\ApiPostResource;
+use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\TernaryResource;
@@ -32,6 +33,28 @@ describe('AstEngine::analyze()', function () {
                 '../../models' => ['Profile'],
                 '.' => ['PostResource'],
             ]);
+    });
+
+    test('aliases an EnumResource const whose name another enum\'s type import took', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $result = resolve(AstEngine::class)->analyze(BadgeResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'clearance')['type'])->toBe('ClearanceType')
+            ->and(collect($result->properties)->firstWhere('name', 'clearance_type')['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+            ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
+            ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
+    });
+
+    test('keeps a bare enum type apart from another enum\'s const alias inside an inline array', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $result = resolve(AstEngine::class)->analyze(BadgeResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'summary')['type'])
+            ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+            ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
+            ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
     });
 
     test('leaves the bare enum type and its type import when the tolki package is off', function () {

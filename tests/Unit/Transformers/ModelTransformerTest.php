@@ -17,6 +17,7 @@ use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Badge;
 use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
@@ -24,6 +25,7 @@ use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\Depot;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Facility;
+use Workbench\App\Models\Grade;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Laravel13Attributes;
@@ -1763,5 +1765,33 @@ describe('globalTypeReferenceMap()', function () {
             'ManagerUser' => 'workbench.app.models.User',
             'Warehouse' => 'workbench.app.models.Warehouse',
         ]);
+    });
+});
+
+describe('ModelTransformer with a const and a type that share a name', function () {
+    test('an enum const steps aside for another enum\'s type name', function () {
+        $data = (new ModelTransformer(Badge::class))->data();
+
+        // Clearance publishes the type ClearanceType; Crm's ClearanceType enum publishes a const of that name.
+        expect($data->typeImports['../enums'])->toContain('ClearanceType')
+            ->and($data->valueImports['../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType'])
+            ->and($data->enumColumns['clearance_type']['constName'])->toBe('CrmClearanceType')
+            ->and($data->enumColumns['clearance']['constName'])->toBe('Clearance');
+    });
+
+    test('an enum const steps aside for an imported model of the same name', function () {
+        $data = (new ModelTransformer(Badge::class))->data();
+
+        expect($data->typeImports['.'])->toBe(['Grade'])
+            ->and($data->valueImports['../enums'])->toBe(['Clearance', 'Grade as WorkbenchGrade'])
+            ->and($data->enumColumns['minimum_grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->relations['grade']['type'])->toBe('Grade');
+    });
+
+    test('a const named like the model\'s own interface keeps its name: a value import merges with a local interface', function () {
+        $data = (new ModelTransformer(Grade::class))->data();
+
+        expect($data->valueImports['../enums'])->toBe(['Grade'])
+            ->and($data->enumColumns['grade']['constName'])->toBe('Grade');
     });
 });
