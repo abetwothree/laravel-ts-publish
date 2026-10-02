@@ -26,6 +26,7 @@ use Workbench\App\Models\Depot;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Grade;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Laravel13Attributes;
@@ -1793,5 +1794,14 @@ describe('ModelTransformer with a const and a type that share a name', function 
 
         expect($data->valueImports['../enums'])->toBe(['Grade'])
             ->and($data->enumColumns['grade']['constName'])->toBe('Grade');
+    });
+});
+
+describe('ModelTransformer with accessors that union two models sharing a name', function () {
+    test('each token of the union names its own class, by `??` and by a ternary', function () {
+        $data = (new ModelTransformer(Handover::class))->data();
+
+        expect($data->mutators['party']['type'])->toBe('WorkbenchUser | CrmUser | null')
+            ->and($data->mutators['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
     });
 });

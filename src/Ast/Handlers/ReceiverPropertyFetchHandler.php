@@ -76,7 +76,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
 
         $merged = count($results) === 1
             ? $results[0]
-            : ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
+            : ValueResult::unionResults($results);
 
         if (($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits)
             && ! in_array('null', TsTypeString::splitTopLevelUnion($merged['type']), true)

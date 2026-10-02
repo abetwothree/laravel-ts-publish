@@ -190,7 +190,7 @@ describe('aliasPropertyType', function () {
 
     // The trailing (?![A-Za-z0-9_$]) is what stops `User` claiming `UserProfile`: it fails on the `P` and
     // PCRE backtracks into the longer alternative. Passes with the longest-first usort deleted, so this
-    // guards the outcome, not that sort — the sort is defensive only.
+    // guards the outcome, not that sort. The next test pins the sort.
     test('a longer registered name is not shadowed by a shorter one that prefixes it', function () use ($nameMap) {
         expect($this->service->aliasPropertyType(
             'UserProfile | User',
@@ -198,6 +198,17 @@ describe('aliasPropertyType', function () {
             $nameMap,
             ['App\\Models\\User' => 'AppUser', 'App\\Models\\UserProfile' => 'AppUserProfile'],
         ))->toBe('AppUserProfile | AppUser');
+    });
+
+    // The lookahead stops at ASCII, so it cannot reject `Caf` inside `Café`; only trying `Café` first reads it whole.
+    // The aliases differ from the names' spelling, so a `Caf` cut out of `Café` cannot spell the right string.
+    test('a name that a longer one continues with a non-ASCII letter is read whole', function () {
+        expect($this->service->aliasPropertyType(
+            'Café | Caf',
+            ['App\\Models\\Caf', 'App\\Models\\Café'],
+            ['App\\Models\\Café' => 'Café', 'App\\Models\\Caf' => 'Caf'],
+            ['App\\Models\\Café' => 'AppCafe', 'App\\Models\\Caf' => 'AppCaf'],
+        ))->toBe('AppCafe | AppCaf');
     });
 
     // Pick<>/Omit<> relation-filter references (e.g. `Pick<User, 'id' | 'user'>`) carry a bare model
@@ -282,6 +293,42 @@ describe('aliasTypeofConst', function () {
     test('an item with no mapped FQCN is returned untouched', function () use ($constNames) {
         expect($this->service->aliasTypeofConst('AsEnum<typeof Status>', ['Other\\Enums\\Role'], $constNames, []))
             ->toBe('AsEnum<typeof Status>');
+    });
+});
+
+describe('queuedTokenPattern', function () {
+    test('reads a name as a whole token, never inside a longer name or after a dot', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['User']),
+            'User | UserResource | AdminUser | crm.models.User | User[]',
+            $matches,
+        );
+
+        expect($matches[0])->toBe(['User', 'User']);
+    });
+
+    test('tries the longest name first, whatever order the names arrive in', function () {
+        preg_match_all($this->service->queuedTokenPattern(['Caf', 'Café']), 'Café | Caf', $matches);
+
+        expect($matches[0])->toBe(['Café', 'Caf']);
+    });
+
+    test('puts an anchor before every name, and a \K in it keeps the anchor out of the match', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['Status', 'Role'], 'typeof\s+\K'),
+            'typeof Status | Role | typeof  Role',
+            $matches,
+        );
+
+        expect($matches[0])->toBe(['Status', 'Role']);
+    });
+});
+
+describe('queuePosition', function () {
+    test('walks a queue in order, then holds its last entry for every occurrence after it', function () {
+        expect(array_map(fn (int $occurrence): int => $this->service->queuePosition($occurrence, 3), [0, 1, 2, 3, 4, 9]))
+            ->toBe([0, 1, 2, 2, 2, 2])
+            ->and($this->service->queuePosition(5, 1))->toBe(0);
     });
 });
 

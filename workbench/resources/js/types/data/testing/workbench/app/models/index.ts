@@ -52,6 +52,8 @@ export * from './facility';
 export * from './facility_meta';
 export * from './grade';
 export * from './grade_meta';
+export * from './handover';
+export * from './handover_meta';
 export * from './image';
 export * from './image_meta';
 export * from './kpi';

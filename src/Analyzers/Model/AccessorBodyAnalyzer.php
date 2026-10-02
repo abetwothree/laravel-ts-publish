@@ -114,7 +114,7 @@ final class AccessorBodyAnalyzer
     {
         foreach ([$info['enumTypes'], $info['classes']] as $names) {
             foreach (array_count_values($names) as $name => $count) {
-                $pattern = '/(?<![A-Za-z0-9_$.])'.preg_quote((string) $name, '/').'(?![A-Za-z0-9_$])/';
+                $pattern = TsTypeString::queuedTokenPattern([(string) $name]);
 
                 if ($count > 1 && preg_match_all($pattern, $info['type']) < $count) {
                     return false;

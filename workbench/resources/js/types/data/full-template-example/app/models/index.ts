@@ -25,6 +25,7 @@ export * from './docblock-generics-fixture';
 export * from './excludable-model';
 export * from './facility';
 export * from './grade';
+export * from './handover';
 export * from './image';
 export * from './kpi';
 export * from './label';

@@ -177,12 +177,12 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
             ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(Image::class, 'no_docblock_accessor')['type'])->toBe('null');
     });
 
-    test('two models sharing a name decline under one token, and publish under a token each', function () {
+    test('two models sharing a name publish under a token each, in a union as under separate keys', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
         $data = (new ModelTransformer(AuthoredPost::class))->data();
 
-        expect($data->mutators['author_or_lead']['type'])->toBe('unknown')
+        expect($data->mutators['author_or_lead']['type'])->toBe('AuthorUser | CrmAuthorUser')
             ->and($data->mutators['both_authors']['type'])->toBe('{ author: AuthorUser; lead: CrmAuthorUser }');
     });
 

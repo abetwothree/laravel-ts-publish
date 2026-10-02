@@ -158,6 +158,34 @@ class TsTypeString
     }
 
     /**
+     * The pattern that reads a name as a whole token of a type string: not inside a longer name, not after a dot.
+     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match.
+     *
+     * Longer names come first: the lookahead stops at ASCII, so a name that a longer one continues with a non-ASCII
+     * letter is read whole only that way.
+     *
+     * @param  non-empty-list<string>  $names
+     */
+    public function queuedTokenPattern(array $names, string $anchor = ''): string
+    {
+        usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+        $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
+
+        return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+    }
+
+    /**
+     * The queue position the Nth occurrence of a name reads, counting from zero: the last entry covers every occurrence
+     * after the queue runs out.
+     *
+     * @param  positive-int  $entries
+     */
+    public function queuePosition(int $occurrence, int $entries): int
+    {
+        return min($occurrence, $entries - 1);
+    }
+
+    /**
      * Prefix unqualified type names in a TypeScript type string with their global namespace.
      *
      * An alias in the file's own map (`CrmUser` → `models.User`) resolves through it, in the same pass as every other
@@ -363,19 +391,15 @@ class TsTypeString
             return $type;
         }
 
-        $names = array_keys($queues);
-        usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
-        $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
+        $pattern = $this->queuedTokenPattern(array_keys($queues), $anchor);
+        $seen = [];
 
-        $pattern = '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
-        $cursors = [];
-
-        return preg_replace_callback($pattern, static function (array $match) use ($queues, &$cursors): string {
+        return preg_replace_callback($pattern, function (array $match) use ($queues, &$seen): string {
             $name = $match[0];
-            $cursor = $cursors[$name] ?? 0;
-            $cursors[$name] = min($cursor + 1, count($queues[$name]) - 1);
+            $occurrence = $seen[$name] ?? 0;
+            $seen[$name] = $occurrence + 1;
 
-            return $queues[$name][$cursor];
+            return $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
         }, $type) ?? $type;
     }
 

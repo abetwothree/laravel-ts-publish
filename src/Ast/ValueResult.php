@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -196,14 +197,48 @@ final class ValueResult
             return self::unknown(); // @codeCoverageIgnore
         }
 
-        return self::mergeUnion($types, $branchResults);
+        $result = self::mergeUnion($types, $branchResults);
+
+        // Arms that spell one name for two classes cannot be told apart by their text, so the members are read again
+        // arm by arm, one member per class.
+        return self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+    }
+
+    /**
+     * Whether one name spells two different models, or two different resources, among the given results.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     */
+    public static function spellsTwoClassesAlike(array $results): bool
+    {
+        /** @var array<string, class-string> $models */
+        $models = [];
+        /** @var array<string, class-string> $resources */
+        $resources = [];
+
+        foreach ($results as $result) {
+            foreach (self::modelChannelFqcns($result) as $fqcn) {
+                if (($models[class_basename($fqcn)] ??= $fqcn) !== $fqcn) {
+                    return true;
+                }
+            }
+
+            foreach (self::resourceChannelFqcns($result) as $fqcn) {
+                if (($resources[TsNaming::resourceTypeName($fqcn)] ??= $fqcn) !== $fqcn) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
      * Fold union member types and their branch results into one ValueExpressionResult, carrying every
      * FQCN/import channel across so no emitted token loses its import.
      *
-     * Shared by the ternary/closure union and by coalesce, which computes its own member list.
+     * Shared by unionResults() and by the callers that hold their own member list: ConditionalMethodHandler, and the
+     * one-arm fall-throughs of coalesce.
      *
      * @param  list<string>  $types
      * @param  list<ValueExpressionResult>  $branchResults
@@ -322,6 +357,74 @@ final class ValueResult
     }
 
     /**
+     * Give a union one member per class where its arms spell one name for two: a member repeats an earlier one only
+     * when its text and the classes behind its tokens both match, and the queues carry one FQCN per token, in order.
+     * The merge by text stands when an arm's own queue does not line up with its tokens.
+     *
+     * @param  ValueExpressionResult  $union  the arms as merged by their text
+     * @param  list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    private static function withMembersByClass(array $union, array $arms): array
+    {
+        /** @var array<string, string> $members identity => text */
+        $members = [];
+        $nullable = false;
+        /** @var list<class-string> $modelFqcns */
+        $modelFqcns = [];
+        /** @var list<class-string> $resourceFqcns */
+        $resourceFqcns = [];
+
+        foreach ($arms as $arm) {
+            $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
+            $resources = new ClassTokenQueue(
+                self::resourceChannelFqcns($arm),
+                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
+            );
+
+            foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
+                if ($member === 'null') {
+                    $nullable = true;
+
+                    continue;
+                }
+
+                $memberModels = $models->take($member);
+                $memberResources = $resources->take($member);
+                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources]);
+
+                if (isset($members[$identity])) {
+                    continue;
+                }
+
+                $members[$identity] = $member;
+                array_push($modelFqcns, ...$memberModels);
+                array_push($resourceFqcns, ...$memberResources);
+            }
+
+            // An arm that queues a name for two classes more often than it spells it holds a class behind another's
+            // token, and does not say which token is whose (a merge by text is such an arm): the merge by text stands.
+            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens()) {
+                return $union;
+            }
+        }
+
+        unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
+
+        $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
+
+        if ($modelFqcns !== []) {
+            $union['embeddedModelFqcns'] = $modelFqcns;
+        }
+
+        if ($resourceFqcns !== []) {
+            $union['embeddedResourceFqcns'] = $resourceFqcns;
+        }
+
+        return $union;
+    }
+
+    /**
      * The FQCNs a result carries on its single and embedded model channels.
      *
      * @param  ValueExpressionResult  $result
@@ -330,5 +433,16 @@ final class ValueResult
     private static function modelChannelFqcns(array $result): array
     {
         return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
+    }
+
+    /**
+     * The FQCNs a result carries on its single and embedded resource channels.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>
+     */
+    private static function resourceChannelFqcns(array $result): array
+    {
+        return [...(isset($result['resourceFqcn']) ? [$result['resourceFqcn']] : []), ...($result['embeddedResourceFqcns'] ?? [])];
     }
 }

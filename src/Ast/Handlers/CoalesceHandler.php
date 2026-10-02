@@ -15,8 +15,8 @@ use PhpParser\Node\Expr\BinaryOp;
 /**
  * Analyze a null-coalescing expression (`$left ?? $right`).
  *
- * Doesn't delegate to ValueResult::analyzeClosureUnion(): that would leave `null` in twice
- * (`Order | null | Order`). Only operands contributing a result member get their channels merged.
+ * Doesn't delegate to ValueResult::analyzeClosureUnion(): the left operand's `null` never reaches the result, so
+ * its arm is unioned with that `null` stripped. Only operands contributing a result member get their channels merged.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -55,11 +55,9 @@ final class CoalesceHandler implements ExpressionHandler
                 return ValueResult::mergeUnion([$leftType], [$leftResult]);
             }
 
-            if ($leftType === $rightType) {
-                return ValueResult::mergeUnion([$leftType], [$leftResult, $rightResult]);
-            }
-
-            return ValueResult::mergeUnion([$leftType, $rightType], [$leftResult, $rightResult]);
+            // The left arm goes in with its null stripped. Two arms that render alike are one member, unless they
+            // spell one name for two classes, which unionResults() keeps apart.
+            return ValueResult::unionResults([[...$leftResult, 'type' => $leftType], $rightResult]);
         }
 
         return null;

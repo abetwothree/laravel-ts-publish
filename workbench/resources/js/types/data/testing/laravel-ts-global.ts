@@ -720,6 +720,40 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
         }
+        /**
+         * Passes work between two models that share a name: an application User sends and a CRM User receives, so a union
+         * of the two spells `User` twice and each occurrence has to name its own class.
+         */
+        export interface Handover {
+            // Columns
+            id: number;
+            sender_id: number | null;
+            receiver_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** Whichever party is set: a union of two models that share a name. */
+            party: User | workbench.crm.models.User | null;
+            /** The same union over to-many relations, picked by a ternary. */
+            audience: User[] | workbench.crm.models.User[];
+            // Relations
+            /** The application user handing the work over. */
+            sender: User | null;
+            sender_count: number;
+            sender_exists: boolean;
+            /** The CRM user taking the work on. */
+            receiver: workbench.crm.models.User | null;
+            receiver_count: number;
+            receiver_exists: boolean;
+            /** The application users watching the handover. */
+            watchers: User[];
+            watchers_count: number;
+            watchers_exists: boolean;
+            /** The CRM users watching the handover. */
+            crm_watchers: workbench.crm.models.User[];
+            crm_watchers_count: number;
+            crm_watchers_exists: boolean;
+        }
         export interface Image {
             // Columns
             id: number;
@@ -3308,6 +3342,14 @@ declare global {
             id: number;
             archived?: boolean;
             [key: number]: workbench.app.models.OrderItem;
+        }
+        /** Unions two models that share a name, by `??`, by a ternary and inside an inline array. */
+        export interface HandoverResource {
+            id: number;
+            party: workbench.app.models.User | workbench.crm.models.User | null;
+            picked: workbench.crm.models.User | workbench.app.models.User | null;
+            pair: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
+            audience: workbench.app.models.User[] | workbench.crm.models.User[];
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon

@@ -5924,6 +5924,87 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Handover": {
+            "name": "Handover",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "receiver_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "party",
+                    "type": "ModelsUser | CrmUser | null"
+                },
+                {
+                    "name": "audience",
+                    "type": "ModelsUser[] | CrmUser[]"
+                },
+                {
+                    "name": "sender",
+                    "type": "ModelsUser | null"
+                },
+                {
+                    "name": "receiver",
+                    "type": "CrmUser | null"
+                },
+                {
+                    "name": "watchers",
+                    "type": "ModelsUser[]"
+                },
+                {
+                    "name": "crm_watchers",
+                    "type": "CrmUser[]"
+                },
+                {
+                    "name": "sender_count",
+                    "type": "number"
+                },
+                {
+                    "name": "receiver_count",
+                    "type": "number"
+                },
+                {
+                    "name": "watchers_count",
+                    "type": "number"
+                },
+                {
+                    "name": "crm_watchers_count",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "receiver_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "watchers_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "crm_watchers_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Image": {
             "name": "Image",
             "properties": [
@@ -12981,6 +13062,36 @@
                 {
                     "name": "[key: number]",
                     "type": "OrderItem",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverResource": {
+            "name": "HandoverResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "party",
+                    "type": "ModelsUser | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "picked",
+                    "type": "CrmUser | ModelsUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "pair",
+                    "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "audience",
+                    "type": "ModelsUser[] | CrmUser[]",
                     "optional": false
                 }
             ]

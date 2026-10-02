@@ -1,0 +1,476 @@
+<?php
+
+declare(strict_types=1);
+
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairArchive;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairArchiveResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairHandover;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairThird\User as ThirdUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverPairTransfer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use PhpParser\Node\Expr;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Comment;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
+use Workbench\Crm\Models\User as CrmUser;
+
+/** Parses one PHP expression the way the engine reads source. */
+function receiverPairExpr(string $php): Expr
+{
+    return new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+}
+
+/** The scope a ReceiverPairResource's own body is read in. */
+function receiverPairScope(): AnalysisScope
+{
+    return new AnalysisScope(new ReflectionClass(ReceiverPairResource::class), ReceiverPairHandover::class);
+}
+
+/** The property a `$flag ? new A : new B` receiver reads, answered by the rule that types a property on a class. */
+function receiverPairProperty(string $property): ?array
+{
+    $receiver = '($flag ? new '.ReceiverPairHandover::class.' : new '.ReceiverPairTransfer::class.')->';
+
+    return new ReceiverPropertyFetchHandler()->resolve(receiverPairExpr($receiver.$property), receiverPairScope(), chainHandlersThrowingEngine());
+}
+
+describe('a receiver holding two models that share a name', function () {
+    test('the method rule publishes one member per class', function () {
+        $result = resolve(ReceiverMethodReturnResolver::class)->resolve(new ReceiverType([User::class, CrmUser::class]), 'fresh', receiverPairScope());
+
+        expect($result)->toBe([
+            'type' => 'User | User | null',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, CrmUser::class],
+        ]);
+    });
+
+    test('the property rule publishes one member per class', function () {
+        expect(receiverPairProperty('sender'))->toBe([
+            'type' => 'User | User | null',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, CrmUser::class],
+        ]);
+    });
+
+    test('an accessor publishes both classes, each under its own alias, in source order', function (string $accessor, string $type) {
+        $data = (new ModelTransformer(ReceiverPairHandover::class))->data();
+
+        expect($data->mutators[$accessor]['type'])->toBe($type);
+    })->with([
+        'a ternary over the call on a coalesced pair' => ['replica', 'WorkbenchUser | CrmUser | null'],
+        'a ternary over the call on a morph relation' => ['reviewer_copy_wrapped', 'CrmUser | WorkbenchUser | null'],
+        'a coalesce over the call on a morph relation' => ['reviewer_copy_or_label', 'CrmUser | WorkbenchUser | string'],
+        'the call on a morph relation, with no ternary' => ['reviewer_copy', 'CrmUser | WorkbenchUser | null'],
+    ]);
+
+    test('a resource publishes the same unions, read through an accessor and made by the call itself', function () {
+        $properties = (new ResourceTransformer(ReceiverPairResource::class))->properties;
+
+        expect($properties['replica']['type'])->toBe('WorkbenchUser | CrmUser | null')
+            ->and($properties['reviewer_copy']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['reviewer_copy_wrapped']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['reviewer_copy_or_label']['type'])->toBe('CrmUser | WorkbenchUser | string')
+            ->and($properties['copy']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['copy_wrapped']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['replica_direct']['type'])->toBe('WorkbenchUser | CrmUser | null');
+    });
+});
+
+// Nothing is read twice here, so a merge by text and a merge by class are the same merge.
+describe('a receiver holding two models with different names', function () {
+    test('the method rule publishes what a merge by text published', function () {
+        $result = resolve(ReceiverMethodReturnResolver::class)->resolve(new ReceiverType([User::class, Post::class]), 'fresh', receiverPairScope());
+
+        expect($result)->toBe([
+            'type' => 'User | Post | null',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, Post::class],
+        ]);
+    });
+
+    test('the property rule publishes what a merge by text published', function () {
+        expect(receiverPairProperty('item'))->toBe([
+            'type' => 'Comment | Post | null',
+            'optional' => false,
+            'embeddedModelFqcns' => [Comment::class, Post::class],
+        ]);
+    });
+});
+
+/**
+ * An arm that renders one token and holds both models that share a name behind it.
+ *
+ * @return array{type: string, optional: bool, embeddedModelFqcns: list<class-string>}
+ */
+function receiverPairShortArm(): array
+{
+    return ['type' => 'User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]];
+}
+
+/**
+ * The same pair behind one array token, as a member typed by a docblock union of the two models renders.
+ *
+ * @return array{type: string, optional: bool, embeddedModelFqcns: list<class-string>}
+ */
+function receiverPairArrayArm(): array
+{
+    return ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]];
+}
+
+/**
+ * The type each property of ReceiverPairArchiveResource publishes.
+ *
+ * @return array<string, string>
+ */
+function receiverPairArchiveTypes(): array
+{
+    return array_map(
+        static fn (array $property): string => $property['type'],
+        (new ResourceTransformer(ReceiverPairArchiveResource::class))->properties,
+    );
+}
+
+// The member queues one name for two classes and spells it once, so its queue cannot say which class its token names,
+// and nothing beside it can say so either. A union over such an arm stays the merge by text, with every class queued.
+describe('a member that holds two models of one name under a single token', function () {
+    test('an accessor over it publishes unknown, as before the task', function (string $accessor) {
+        $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+
+        expect($data->mutators[$accessor]['type'])->toBe('unknown');
+    })->with([
+        'the property of two receivers that hold the same pair' => ['owners_of_either'],
+        'the method of two receivers that hold the same pair' => ['owner_list_of_either'],
+        'the property of two receivers, one holding another model' => ['owners_of_mixed'],
+        'the method of two receivers, one holding another model' => ['owner_list_of_mixed'],
+        'the property of one receiver, behind a ternary' => ['owners_or_null'],
+        'the method of one receiver, behind a ternary' => ['owner_list_or_null'],
+    ]);
+
+    test('a resource reading those accessors publishes unknown as well', function () {
+        expect(receiverPairArchiveTypes())->toMatchArray([
+            'owners_of_either' => 'unknown',
+            'owner_list_of_either' => 'unknown',
+            'owners_of_mixed' => 'unknown',
+            'owner_list_of_mixed' => 'unknown',
+            'owners_or_null' => 'unknown',
+            'owner_list_or_null' => 'unknown',
+        ]);
+    });
+
+    test('a union of it stays the merge by text, every class queued, whatever sits beside it', function (array $arms, array $merged) {
+        expect(ValueResult::unionResults($arms))->toBe($merged);
+    })->with(fn () => [
+        'beside a string' => [
+            [receiverPairShortArm(), ['type' => 'string', 'optional' => false]],
+            ['type' => 'User | string | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+        'beside the same model' => [
+            [receiverPairShortArm(), ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]],
+            ['type' => 'User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, User::class]],
+        ],
+        'beside the other model' => [
+            [receiverPairShortArm(), ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class]],
+            ['type' => 'User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]],
+        ],
+        'as an array, beside the other model under another text' => [
+            [receiverPairArrayArm(), ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class]],
+            ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]],
+        ],
+        'as an array, after the other model under another text' => [
+            [['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class], receiverPairArrayArm()],
+            ['type' => 'User | User[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class, User::class, CrmUser::class]],
+        ],
+        'as an array, beside an array of the other model' => [
+            [receiverPairArrayArm(), ['type' => 'User[]', 'optional' => false, 'modelFqcn' => CrmUser::class]],
+            ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]],
+        ],
+        'as an array, beside the same pair held the other way round' => [
+            [receiverPairArrayArm(), ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class, User::class]]],
+            ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class, User::class]],
+        ],
+        'as an array, beside an array of the other model and an array of a third' => [
+            [
+                receiverPairArrayArm(),
+                ['type' => 'User[]', 'optional' => false, 'modelFqcn' => CrmUser::class],
+                ['type' => 'User[]', 'optional' => false, 'modelFqcn' => ThirdUser::class],
+            ],
+            ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class, ThirdUser::class]],
+        ],
+        'in an arm that spells another name as well, beside an array of the other model' => [
+            [
+                ['type' => 'User[] | Post', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, Post::class]],
+                ['type' => 'User[]', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'User[] | Post', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, Post::class, CrmUser::class]],
+        ],
+        'two resources that share a name, beside a string' => [
+            [
+                ['type' => 'UserResource | null', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+                ['type' => 'string', 'optional' => false],
+            ],
+            ['type' => 'UserResource | string | null', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+        ],
+        'two resources that share a name, beside the other resource' => [
+            [
+                ['type' => 'UserResource | null', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+                ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => CrmUserResource::class],
+            ],
+            ['type' => 'UserResource | null', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+        ],
+        'two resources that share a name, in an arm that spells another name as well' => [
+            [
+                [
+                    'type' => 'UserResource[] | PostResource',
+                    'optional' => false,
+                    'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class, PostResource::class],
+                ],
+                ['type' => 'UserResource[]', 'optional' => false, 'resourceFqcn' => CrmUserResource::class],
+            ],
+            [
+                'type' => 'UserResource[] | PostResource',
+                'optional' => false,
+                'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class, PostResource::class],
+            ],
+        ],
+    ]);
+
+    // Nothing vouches for the class behind the token: a member that names it does not say which token is whose.
+    describe('beside a member that names the other class', function () {
+        test('an accessor publishes unknown all the same', function (string $accessor) {
+            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+
+            expect($data->mutators[$accessor]['type'])->toBe('unknown');
+        })->with([
+            'the CRM watchers, behind a ternary' => ['owners_or_crm_watchers'],
+            'both watchers, then the property, in a ternary of a ternary' => ['both_watchers_or_owners'],
+        ]);
+
+        test('a resource publishes what it did before the task: unknown through an accessor, one class by its own reads', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with([
+            'through an accessor: the property, then the CRM watchers' => ['owners_or_crm_watchers', 'unknown'],
+            'through an accessor: both watchers, then the property' => ['both_watchers_or_owners', 'unknown'],
+            'by the reads themselves: the property, then the CRM watchers' => ['direct_owners_or_crm_watchers', 'WorkbenchUser[]'],
+            'by the reads themselves: both watchers, then the property' => ['direct_both_watchers_or_owners', 'WorkbenchUser[]'],
+            'by the reads themselves: a `when()` pair, then the receiver' => ['direct_when_pair_or_receiver', 'WorkbenchUser | null'],
+        ]);
+    });
+
+    describe('with no member to name the other class', function () {
+        test('an accessor publishes unknown', function (string $accessor) {
+            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+
+            expect($data->mutators[$accessor]['type'])->toBe('unknown');
+        })->with([
+            'on its own' => ['owners_alone'],
+            'beside a string' => ['owners_or_label'],
+            'beside the watchers of the class its token names' => ['owners_or_watchers'],
+        ]);
+
+        test('a resource reading those accessors publishes unknown as well', function (string $property) {
+            expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
+        })->with([
+            'on its own' => ['owners_alone'],
+            'beside a string' => ['owners_or_label'],
+            'beside the watchers of the class its token names' => ['owners_or_watchers'],
+        ]);
+    });
+
+    describe('with a third model of that name in the union', function () {
+        test('an accessor publishes unknown, whatever the other two arms render', function (string $accessor) {
+            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+
+            expect($data->mutators[$accessor]['type'])->toBe('unknown');
+        })->with([
+            'the CRM user or the third user' => ['owners_or_receiver_or_third'],
+            'the third watchers or the CRM user' => ['owners_or_third_watchers_or_receiver'],
+            'the CRM watchers or the third watchers' => ['owners_or_crm_watchers_or_third_watchers'],
+        ]);
+
+        test('a resource reading those accessors publishes unknown as well', function (string $property) {
+            expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
+        })->with([
+            'the CRM user or the third user' => ['owners_or_receiver_or_third'],
+            'the third watchers or the CRM user' => ['owners_or_third_watchers_or_receiver'],
+            'the CRM watchers or the third watchers' => ['owners_or_crm_watchers_or_third_watchers'],
+        ]);
+    });
+
+    describe('under a key of an inline array, before a key that reads the application user', function () {
+        // Both are the lines the merge by text published before the task. In the second, `first` is mislabelled: the
+        // union keeps the CRM class queued behind its one token, and the next key's token reads it. That line stands
+        // until the member is fixed where it is made.
+        test('a resource publishes the line it did before the task', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with([
+            'beside the application user' => [
+                'keyed_owners_or_sender',
+                '{ either: WorkbenchUser[] | CrmUser | null; first: WorkbenchUser | null }',
+            ],
+            'beside the CRM watchers' => [
+                'keyed_owners_or_crm_watchers',
+                '{ either: WorkbenchUser[]; first: CrmUser | null }',
+            ],
+        ]);
+    });
+});
+
+// A union that stayed the merge by text queues its name more often than it spells it, like the member it was made
+// over, even where each of its classes has a token. As an arm of another union it keeps that union the merge by text.
+describe('a union that stayed the merge by text, as an arm of another union', function () {
+    test('keeps the outer union the merge by text, though each of its classes has a token', function () {
+        $arms = [
+            ['type' => 'User[] | User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]],
+            ['type' => 'User | null', 'optional' => false, 'modelFqcn' => ThirdUser::class],
+        ];
+
+        expect(ValueResult::unionResults($arms))->toBe([
+            'type' => 'User[] | User | null',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class, ThirdUser::class],
+        ]);
+    });
+
+    test('an accessor publishes unknown beside a third model of that name', function (string $accessor) {
+        $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+
+        expect($data->mutators[$accessor]['type'])->toBe('unknown');
+    })->with([
+        'the property or the CRM user, then the third user' => ['owners_or_receiver_then_third'],
+        'the property or the application user, then the third user' => ['owners_or_sender_then_third'],
+        'the third user, else the CRM user, else the property' => ['third_or_else_receiver_or_else_owners'],
+    ]);
+
+    test('a resource reading those accessors publishes unknown as well', function (string $property) {
+        expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
+    })->with([
+        'the property or the CRM user, then the third user' => ['owners_or_receiver_then_third'],
+        'the property or the application user, then the third user' => ['owners_or_sender_then_third'],
+        'the third user, else the CRM user, else the property' => ['third_or_else_receiver_or_else_owners'],
+    ]);
+
+    test('a resource that makes the union itself publishes the line it did before the task', function (string $property, string $type) {
+        expect(receiverPairArchiveTypes()[$property])->toBe($type);
+    })->with([
+        'the watchers, then the property or the application user' => [
+            'direct_watchers_then_owners_or_sender',
+            'WorkbenchUser[] | WorkbenchUser | null',
+        ],
+        'the CRM watchers, then the property or the application user' => [
+            'direct_crm_watchers_then_owners_or_sender',
+            'CrmUser[] | WorkbenchUser | null',
+        ],
+        'the first of those under a key, before a key that reads the CRM user' => [
+            'keyed_watchers_then_owners_or_sender',
+            '{ either: WorkbenchUser[] | WorkbenchUser | null; second: CrmUser | null }',
+        ],
+        'the watchers, then a `when()` over the property and the application user' => [
+            'direct_watchers_then_when_owners_or_sender',
+            'WorkbenchUser[] | WorkbenchUser | null',
+        ],
+    ]);
+});
+
+// A union read by class queues one class per rendered token, and nothing else.
+describe('a union read by class', function () {
+    test('gives each class a member when no arm queues a name for two classes more often than it spells it', function (array $arms, array $union) {
+        expect(ValueResult::unionResults($arms))->toBe($union);
+    })->with([
+        'two arms of one text, a model each' => [
+            [
+                ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class],
+                ['type' => 'User | null', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+        'an arm that queues one model twice behind one token, beside the other model' => [
+            [
+                ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, User::class]],
+                ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+    ]);
+
+    test('keeps no queue of a kind none of its tokens names', function (array $carrier) {
+        expect(ValueResult::unionResults([$carrier, ['type' => 'string', 'optional' => false]]))
+            ->toBe(['type' => 'number | string', 'optional' => false]);
+    })->with([
+        'both models of one name' => [['type' => 'number', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]]],
+        'both resources of one name' => [
+            ['type' => 'number', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+        ],
+    ]);
+
+    test('leaves out a class whose name no token of its arm spells', function (array $arms, array $union) {
+        expect(ValueResult::unionResults($arms))->toBe($union);
+    })->with([
+        'one model' => [
+            [
+                ['type' => 'number', 'optional' => false, 'modelFqcn' => User::class],
+                ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'number | User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+        ],
+        'both models of one name' => [
+            [
+                ['type' => 'number', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+                ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'number | User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+        ],
+        'both resources of one name' => [
+            [
+                ['type' => 'number', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+                ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => CrmUserResource::class],
+            ],
+            ['type' => 'number | UserResource', 'optional' => false, 'embeddedResourceFqcns' => [CrmUserResource::class]],
+        ],
+    ]);
+
+    test('keeps a class under the token of its own arm that names it, whichever member of that arm spells its name', function (array $arms, array $union) {
+        expect(ValueResult::unionResults($arms))->toBe($union);
+    })->with([
+        'two resources under one text' => [
+            [['type' => 'UserResource | UserResource', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]]],
+            ['type' => 'UserResource | UserResource', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+        ],
+        'two models under two texts, beside the second model under the first text' => [
+            [
+                ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+                ['type' => 'User[]', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ],
+            ['type' => 'User[] | User | User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]],
+        ],
+        'two models under two texts, the second a member an earlier arm already gave' => [
+            [
+                ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class],
+                ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class, User::class]],
+            ],
+            ['type' => 'User | User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+        'two resources under two texts, beside the second resource under the first text' => [
+            [
+                ['type' => 'UserResource[] | UserResource', 'optional' => false, 'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class]],
+                ['type' => 'UserResource[]', 'optional' => false, 'resourceFqcn' => CrmUserResource::class],
+            ],
+            [
+                'type' => 'UserResource[] | UserResource | UserResource[]',
+                'optional' => false,
+                'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class, CrmUserResource::class],
+            ],
+        ],
+    ]);
+});

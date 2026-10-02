@@ -49,7 +49,7 @@ class AuthoredPost extends Model
         return Attribute::get(fn () => $this->crmAuthor);
     }
 
-    /** Either of two models that share a name, which one token cannot name both of. */
+    /** Either of two models that share a name, each of which needs a token of its own. */
     protected function authorOrLead(): Attribute
     {
         return Attribute::get(fn () => $this->author ?? $this->crmAuthor);

@@ -58,6 +58,7 @@ use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
+use Workbench\App\Http\Resources\HandoverResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
@@ -3055,4 +3056,15 @@ test('a morph union over two resources that share a name spells each one by its 
             '../../../crm/http/resources' => ['UserResource as CrmUserResource'],
             '.' => ['UserResource as WorkbenchUserResource'],
         ]);
+});
+
+describe('a union of two models that share a name', function () {
+    test('keeps both arms, each under its own alias, by `??`, by a ternary and inside an inline array', function () {
+        $properties = (new ResourceTransformer(HandoverResource::class))->properties;
+
+        expect($properties['party']['type'])->toBe('WorkbenchUser | CrmUser | null')
+            ->and($properties['picked']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['pair']['type'])->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }')
+            ->and($properties['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
+    });
 });

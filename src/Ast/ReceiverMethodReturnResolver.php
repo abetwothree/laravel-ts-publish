@@ -62,7 +62,7 @@ final class ReceiverMethodReturnResolver
 
         $result = count($results) === 1
             ? $results[0]
-            : ValueResult::mergeUnion(array_values(array_unique(array_column($results, 'type'))), $results);
+            : ValueResult::unionResults($results);
 
         return in_array($methodName, $this->supportedAttributeFilters(), true) && ! $scope->carriesImports
             ? $this->filterReturnWithoutImports($result, $methodName, $call)

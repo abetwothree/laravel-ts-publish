@@ -128,6 +128,44 @@ it('collapses to a single type when both arms resolve identically', function () 
     expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
 
+it('keeps both arms when they render alike but name two different models', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'User | null', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+        [$right, ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\Crm\Models\User']],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe([
+        'type' => 'User | User',
+        'optional' => false,
+        'embeddedModelFqcns' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User'],
+    ]);
+});
+
+it('still collapses two arms that render alike and name the same model', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'User | null', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+        [$right, ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe([
+        'type' => 'User',
+        'optional' => false,
+        'embeddedModelFqcns' => ['Workbench\App\Models\User'],
+    ]);
+});
+
 it('falls through entirely to the right arm when the left is unknown, propagating its modelFqcn', function () {
     $handler = new CoalesceHandler;
     $left = new Variable('a');
