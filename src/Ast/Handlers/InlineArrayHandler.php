@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
@@ -439,7 +440,7 @@ final class InlineArrayHandler implements ExpressionHandler
             $queue = $this->memberQueue($memberName, $queues, $singles);
             $shared = $sharedNames[$memberName] ?? [];
 
-            array_push($fqcns, ...$this->perToken($queue, $types[$memberName], $nameOf, $shared));
+            array_push($fqcns, ...ClassTokenQueue::perToken($queue, $types[$memberName], $nameOf, $shared));
         }
 
         return $fqcns;
@@ -480,58 +481,6 @@ final class InlineArrayHandler implements ExpressionHandler
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
-    }
-
-    /**
-     * One member's queue with one entry per token for each name it gives a single class.
-     *
-     * A merge by text can queue that class more or less often than the member spells it, and the next member's tokens
-     * would read the difference. A name the member queues on both channels, one class on each, is left as it came.
-     *
-     * @param  list<class-string>  $queue
-     * @param  Closure(class-string): string  $nameOf
-     * @param  list<string>  $sharedNames  the names the member queues on both channels
-     * @return list<class-string>
-     */
-    private function perToken(array $queue, string $type, Closure $nameOf, array $sharedNames): array
-    {
-        /** @var array<string, list<class-string>> $classesOf name => the classes queued for it, in order */
-        $classesOf = [];
-
-        foreach ($queue as $fqcn) {
-            $classesOf[$nameOf($fqcn)][] = $fqcn;
-        }
-
-        /** @var array<string, int> $room name => the entries it still gets, for a name that has one class behind it */
-        $room = [];
-
-        foreach ($classesOf as $name => $classes) {
-            if (count(array_unique($classes)) === 1 && ! in_array($name, $sharedNames, true)) {
-                // At least one: this rule leaves an entry for a class the member's type does not spell as it came.
-                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name]), $type));
-            }
-        }
-
-        $perToken = [];
-
-        foreach ($queue as $fqcn) {
-            $name = $nameOf($fqcn);
-
-            if (! isset($room[$name])) {
-                $perToken[] = $fqcn;
-            } elseif ($room[$name] > 0) {
-                $perToken[] = $fqcn;
-                $room[$name]--;
-            }
-        }
-
-        foreach ($room as $name => $left) {
-            for ($i = 0; $i < $left; $i++) {
-                $perToken[] = $classesOf[$name][0];
-            }
-        }
-
-        return $perToken;
     }
 
     /**

@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
 
@@ -172,7 +174,7 @@ final class ValueResult
      *
      * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
-     * With $countMembers, a union of enum resources is told by the count of its members, not of its arms' types.
+     * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -207,28 +209,62 @@ final class ValueResult
     }
 
     /**
+     * The result's model queue, when two of its models share a name and the queue does not outrun the type's tokens.
+     *
+     * Reads the model channels only. ResultTypeInfoBridge hands the queue on as a type info's classTokenFqcns.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>|null
+     */
+    public static function modelQueueByToken(array $result): ?array
+    {
+        $models = self::modelChannelFqcns($result);
+
+        if (! self::sharesAName($models, class_basename(...))) {
+            return null;
+        }
+
+        $queue = new ClassTokenQueue($models, class_basename(...));
+        $queue->take($result['type']);
+
+        return $queue->outrunsItsTokens() ? null : $models;
+    }
+
+    /**
      * Whether one name spells two different models, or two different resources, among the given results.
      *
      * @param  list<ValueExpressionResult>  $results
      */
-    public static function spellsTwoClassesAlike(array $results): bool
+    private static function spellsTwoClassesAlike(array $results): bool
     {
-        /** @var array<string, class-string> $models */
+        /** @var list<class-string> $models */
         $models = [];
-        /** @var array<string, class-string> $resources */
+        /** @var list<class-string> $resources */
         $resources = [];
 
         foreach ($results as $result) {
-            foreach (self::modelChannelFqcns($result) as $fqcn) {
-                if (($models[class_basename($fqcn)] ??= $fqcn) !== $fqcn) {
-                    return true;
-                }
-            }
+            array_push($models, ...self::modelChannelFqcns($result));
+            array_push($resources, ...self::resourceChannelFqcns($result));
+        }
 
-            foreach (self::resourceChannelFqcns($result) as $fqcn) {
-                if (($resources[TsNaming::resourceTypeName($fqcn)] ??= $fqcn) !== $fqcn) {
-                    return true;
-                }
+        return self::sharesAName($models, class_basename(...))
+            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn));
+    }
+
+    /**
+     * Whether two different classes of the list are spelled with one name.
+     *
+     * @param  list<class-string>  $fqcns
+     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
+     */
+    private static function sharesAName(array $fqcns, Closure $nameOf): bool
+    {
+        /** @var array<string, class-string> $firstOf name => the first class seen under it */
+        $firstOf = [];
+
+        foreach ($fqcns as $fqcn) {
+            if (($firstOf[$nameOf($fqcn)] ??= $fqcn) !== $fqcn) {
+                return true;
             }
         }
 
@@ -241,7 +277,7 @@ final class ValueResult
      * @param  ValueExpressionResult  $result
      * @return list<class-string>
      */
-    public static function modelChannelFqcns(array $result): array
+    private static function modelChannelFqcns(array $result): array
     {
         return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
     }
@@ -250,14 +286,11 @@ final class ValueResult
      * Fold union member types and their branch results into one ValueExpressionResult, carrying every
      * FQCN/import channel across so no emitted token loses its import.
      *
-     * Shared by unionResults() and by the callers that hold their own member list: ConditionalMethodHandler, and the
-     * one-arm fall-throughs of coalesce.
-     *
      * @param  list<string>  $types
      * @param  list<ValueExpressionResult>  $branchResults
      * @return ValueExpressionResult
      */
-    public static function mergeUnion(array $types, array $branchResults): array
+    private static function mergeUnion(array $types, array $branchResults): array
     {
         /** @var list<class-string> $enumResourceFqcns FQCNs from EnumResource::make() / new EnumResource() branches */
         $enumResourceFqcns = [];
@@ -320,6 +353,7 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
+        // Safe to dedupe: a name with one class reads alike at every entry; two classes under one are read by class.
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {

@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -159,3 +160,109 @@ it('answers with the class behind each token when the info carries that queue, e
         [],
     ],
 ]);
+
+it('gives a name that has one class one entry per token, and leaves every other name as it came', function (array $queue, string $type, array $leave, array $repaired) {
+    expect(ClassTokenQueue::perToken($queue, $type, class_basename(...), $leave))->toBe($repaired);
+})->with([
+    'a surplus trimmed to the tokens' => [
+        [User::class, User::class, User::class],
+        'User | null',
+        [],
+        [User::class],
+    ],
+    'a shortfall filled up to the tokens' => [
+        [User::class],
+        'User | User[] | Record<string, User>',
+        [],
+        [User::class, User::class, User::class],
+    ],
+    'the floor of one entry for a class the type does not spell' => [
+        [User::class, User::class],
+        'string | null',
+        [],
+        [User::class],
+    ],
+    'a name with two classes behind it, with fewer tokens than entries' => [
+        [User::class, CrmUser::class, CrmUser::class],
+        'User | null',
+        [],
+        [User::class, CrmUser::class, CrmUser::class],
+    ],
+    'a name with two classes behind it, with more tokens than entries' => [
+        [User::class, CrmUser::class],
+        '{ a: User; b: User; c: User }',
+        [],
+        [User::class, CrmUser::class],
+    ],
+    'a name to leave, with fewer tokens than entries' => [
+        [User::class, User::class, User::class],
+        'User',
+        ['User'],
+        [User::class, User::class, User::class],
+    ],
+    'a name to leave, with more tokens than entries' => [
+        [User::class],
+        'User | User[]',
+        ['User'],
+        [User::class],
+    ],
+    'a name to leave beside a name that is repaired' => [
+        [User::class, User::class, Post::class, Post::class],
+        'User | Post',
+        ['User'],
+        [User::class, User::class, Post::class],
+    ],
+    'a surplus on each of two names keeps the first entries, in order' => [
+        [User::class, Post::class, User::class, Post::class],
+        'User | Post',
+        [],
+        [User::class, Post::class],
+    ],
+    'a trim on one name and a fill on another' => [
+        [User::class, User::class, Post::class],
+        'User | Post | Post',
+        [],
+        [User::class, Post::class, Post::class],
+    ],
+    'fills follow the order the names first appear in the queue, post first' => [
+        [Post::class, User::class],
+        '{ a: User; b: User; c: Post; d: Post }',
+        [],
+        [Post::class, User::class, Post::class, User::class],
+    ],
+    'fills follow the order the names first appear in the queue, user first' => [
+        [User::class, Post::class],
+        '{ a: User; b: User; c: Post; d: Post }',
+        [],
+        [User::class, Post::class, User::class, Post::class],
+    ],
+    'a name inside a longer name is no token' => [
+        [User::class, User::class],
+        'UserResource | User',
+        [],
+        [User::class],
+    ],
+    'a name after a dot is no token' => [
+        [User::class, User::class],
+        'crm.User | User',
+        [],
+        [User::class],
+    ],
+    'a queue with no classes' => [
+        [],
+        'User | null',
+        [],
+        [],
+    ],
+]);
+
+it('reads each class under the name its closure gives it, and leaves nothing by default', function () {
+    $nameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+
+    expect(ClassTokenQueue::perToken([AddressResource::class], 'Address | Address[]', $nameOf))
+        ->toBe([AddressResource::class, AddressResource::class])
+        ->and(ClassTokenQueue::perToken([AddressResource::class, AddressResource::class, AddressResource::class], 'Address | null', $nameOf))
+        ->toBe([AddressResource::class])
+        ->and(ClassTokenQueue::perToken([UserResource::class, CrmUserResource::class], 'UserResource | null', $nameOf))
+        ->toBe([UserResource::class, CrmUserResource::class]);
+});

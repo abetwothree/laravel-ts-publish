@@ -238,18 +238,93 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
     ]);
 });
 
-describe('ValueResult::spellsTwoClassesAlike()', function () {
-    test('is true only when one name spells two different models or two different resources', function () {
-        $app = ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class];
-        $crm = ['type' => 'User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]];
-        $resource = ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class];
-        $crmResource = ['type' => 'UserResource', 'optional' => false, 'embeddedResourceFqcns' => [CrmUserResource::class]];
+describe('ValueResult::unionResults() over arms that carry their classes on different channels', function () {
+    $app = ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class];
+    $crm = ['type' => 'User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]];
+    $resource = ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class];
+    $crmResource = ['type' => 'UserResource', 'optional' => false, 'embeddedResourceFqcns' => [CrmUserResource::class]];
 
-        expect(ValueResult::spellsTwoClassesAlike([$app, $crm]))->toBeTrue()
-            ->and(ValueResult::spellsTwoClassesAlike([$resource, $crmResource]))->toBeTrue()
-            ->and(ValueResult::spellsTwoClassesAlike([$app, $app, $resource]))->toBeFalse()
-            ->and(ValueResult::spellsTwoClassesAlike([['type' => 'string', 'optional' => false]]))->toBeFalse();
-    });
+    test('reads two models or two resources under one name by class, and any other arms by their text', function (array $arms, array $union) {
+        expect(ValueResult::unionResults($arms))->toBe($union);
+    })->with([
+        'a model on the single channel and another on the embedded one' => [
+            [$app, $crm],
+            ['type' => 'User | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+        'a resource on the single channel and another on the embedded one' => [
+            [$resource, $crmResource],
+            [
+                'type' => 'UserResource | UserResource',
+                'optional' => false,
+                'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class],
+            ],
+        ],
+        'one model twice, beside a resource under another name' => [
+            [$app, $app, $resource],
+            [
+                'type' => 'User | UserResource',
+                'optional' => false,
+                'embeddedModelFqcns' => [User::class],
+                'embeddedResourceFqcns' => [UserResource::class],
+            ],
+        ],
+        'an arm that names no class' => [
+            [['type' => 'string', 'optional' => false]],
+            ['type' => 'string', 'optional' => false],
+        ],
+    ]);
+});
+
+describe('ValueResult::modelQueueByToken()', function () {
+    test('answers with the model queue when two models share a name and it lines up with the type', function (array $result, array $queue) {
+        expect(ValueResult::modelQueueByToken($result))->toBe($queue);
+    })->with([
+        'one entry per token, two classes under one name' => [
+            [
+                'type' => '{ first: User | null; either: User | User | null }',
+                'optional' => false,
+                'embeddedModelFqcns' => [User::class, User::class, CrmUser::class],
+            ],
+            [User::class, User::class, CrmUser::class],
+        ],
+        'the single channel ahead of the embedded one' => [
+            [
+                'type' => 'User | { a: User }',
+                'optional' => false,
+                'modelFqcn' => User::class,
+                'embeddedModelFqcns' => [CrmUser::class],
+            ],
+            [User::class, CrmUser::class],
+        ],
+    ]);
+
+    test('answers with nothing otherwise', function (array $result) {
+        expect(ValueResult::modelQueueByToken($result))->toBeNull();
+    })->with([
+        'every model has a name of its own' => [
+            [
+                'type' => '{ a: User; b: Comment; c: User }',
+                'optional' => false,
+                'embeddedModelFqcns' => [User::class, Comment::class, User::class],
+            ],
+        ],
+        'a queue that outruns the tokens' => [
+            [
+                'type' => '{ lead: User | string; author: User }',
+                'optional' => false,
+                'embeddedModelFqcns' => [CrmUser::class, CrmUser::class, User::class],
+            ],
+        ],
+        'two resources under one name, and no two models' => [
+            [
+                'type' => 'User | UserResource | UserResource',
+                'optional' => false,
+                'modelFqcn' => User::class,
+                'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class],
+            ],
+        ],
+        'no class at all' => [['type' => 'string', 'optional' => false]],
+    ]);
 });
 
 describe('ValueResult::withAttributeChannels() and a per-token class queue', function () {

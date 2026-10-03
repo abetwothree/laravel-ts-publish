@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
@@ -54,12 +55,12 @@ function isTaggedInternal(string|false|null $docComment): bool
 it('tags every class under src/Ast except the two the engine exposes', function () {
     $public = [AstEngine::class, AnalysisResult::class];
 
-    // This sweep is per-directory, so a class that leaves src/Ast silently leaves it too. StringSerialization
-    // moved to src/Support and stays internal, so it is named here to keep the tag enforced.
-    $alsoInternal = [StringSerialization::class];
+    // This sweep is per-directory, so a class that leaves src/Ast silently leaves it too. StringSerialization and
+    // ClassTokenQueue moved to src/Support and stay internal, so they are named here to keep the tag enforced.
+    $alsoInternal = [ClassTokenQueue::class, StringSerialization::class];
     $untagged = [];
 
-    expect(packageReflections())->toHaveKey(StringSerialization::class);
+    expect(packageReflections())->toHaveKeys($alsoInternal);
 
     foreach (packageReflections() as $fqcn => $reflection) {
         $swept = str_starts_with($fqcn, 'AbeTwoThree\\LaravelTsPublish\\Ast\\') || in_array($fqcn, $alsoInternal, true);

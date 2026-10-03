@@ -180,8 +180,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $default['type'] = implode(' | ', array_diff($defaultMembers, ['never[]']));
         }
 
-        // This path has always counted the union's members, so a `null` member counts. Counting arms would read more
-        // unions as enum resources, and not every reader honours one.
+        // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
+        // which an inline array's member and Inertia shared data do not honour.
         return [...ValueResult::unionResults([$value, $default], countMembers: true), 'optional' => false];
     }
 

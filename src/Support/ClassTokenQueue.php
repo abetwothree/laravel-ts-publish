@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast;
+namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
@@ -52,6 +52,58 @@ final class ClassTokenQueue
     public static function fqcnsOf(array $info): array
     {
         return $info['classTokenFqcns'] ?? $info['classFqcns'];
+    }
+
+    /**
+     * A queue with one entry per token of its type for each name that has a single class behind it.
+     *
+     * A merge by text can queue that class more or less often than the type spells it, and the next queue joined on
+     * would read the difference. A name with two classes, or one to leave, is left as it came.
+     *
+     * @param  list<class-string>  $queue
+     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
+     * @param  list<string>  $leave  names to leave as they came: a queue joined to this one gives them a class too
+     * @return list<class-string>
+     */
+    public static function perToken(array $queue, string $type, Closure $nameOf, array $leave = []): array
+    {
+        /** @var array<string, list<class-string>> $classesOf name => the classes queued for it, in order */
+        $classesOf = [];
+
+        foreach ($queue as $fqcn) {
+            $classesOf[$nameOf($fqcn)][] = $fqcn;
+        }
+
+        /** @var array<string, int> $room name => the entries it still gets, for a name that has one class behind it */
+        $room = [];
+
+        foreach ($classesOf as $name => $classes) {
+            if (count(array_unique($classes)) === 1 && ! in_array($name, $leave, true)) {
+                // At least one: this rule leaves an entry for a class the type does not spell as it came.
+                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name]), $type));
+            }
+        }
+
+        $perToken = [];
+
+        foreach ($queue as $fqcn) {
+            $name = $nameOf($fqcn);
+
+            if (! isset($room[$name])) {
+                $perToken[] = $fqcn;
+            } elseif ($room[$name] > 0) {
+                $perToken[] = $fqcn;
+                $room[$name]--;
+            }
+        }
+
+        foreach ($room as $name => $left) {
+            for ($i = 0; $i < $left; $i++) {
+                $perToken[] = $classesOf[$name][0];
+            }
+        }
+
+        return $perToken;
     }
 
     /**
