@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -51,7 +52,7 @@ final class ReflectedTypeAcceptor
             $modelFqcn = $tsInfo['classFqcns'][0];
             $result['modelFqcn'] = $modelFqcn;
         } elseif ($tsInfo['classFqcns'] !== []) {
-            $result['embeddedModelFqcns'] = $tsInfo['classFqcns'];
+            $result['embeddedModelFqcns'] = ClassTokenQueue::fqcnsOf($tsInfo);
         }
 
         if ($tsInfo['customImports'] !== []) {

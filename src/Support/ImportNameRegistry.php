@@ -39,6 +39,16 @@ class ImportNameRegistry
     }
 
     /**
+     * Reserve several local names the generated file already uses, such as another registry's imports.
+     */
+    public function reserveMany(string ...$localNames): void
+    {
+        foreach ($localNames as $localName) {
+            $this->reserve($localName);
+        }
+    }
+
+    /**
      * Register an FQCN to import under $typeName, optionally suggesting an alias.
      */
     public function register(string $fqcn, string $typeName, ?string $preferredAlias = null): void

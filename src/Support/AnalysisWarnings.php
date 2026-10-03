@@ -23,6 +23,16 @@ final class AnalysisWarnings
     }
 
     /**
+     * Record a warning unless this run already holds the same one, for a check that can run more than once per run.
+     */
+    public static function addOnce(string $subject, string $message): void
+    {
+        if (! in_array(['subject' => $subject, 'message' => $message], self::$warnings, true)) {
+            self::add($subject, $message);
+        }
+    }
+
+    /**
      * All warnings recorded so far this run.
      *
      * @return list<AnalysisWarning>

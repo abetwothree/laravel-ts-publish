@@ -48,6 +48,17 @@ trait TracksEnumImports
      */
     protected function enumPropertyFqcns(): array
     {
-        return array_values(array_unique(array_column($this->enumProperties(), 'fqcn')));
+        return $this->enumPropertyFqcnsOf($this->enumProperties());
+    }
+
+    /**
+     * Return unique FQCNs from the given part of the enum property info array.
+     *
+     * @param  EnumPropertyFqcnMap  $properties
+     * @return list<string>
+     */
+    protected function enumPropertyFqcnsOf(array $properties): array
+    {
+        return array_values(array_unique(array_column($properties, 'fqcn')));
     }
 }

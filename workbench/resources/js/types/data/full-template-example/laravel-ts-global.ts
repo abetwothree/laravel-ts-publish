@@ -8,7 +8,7 @@ export {}
 
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
-import type { ProductMetadata, ProductJsonMetaData } from '@js/types/product';
+import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -207,6 +207,26 @@ declare global {
             reading_time_minutes: number | null;
             featured_image_url: string | null;
             is_pinned: boolean;
+        }
+        /**
+         * Imports names that cross between types and consts: Clearance's type and ClearanceType's const are both
+         * `ClearanceType`, and the Grade model's type and the Grade enum's const are both `Grade`.
+         */
+        export interface Badge {
+            // Columns
+            id: number;
+            label: string;
+            clearance: app.enums.ClearanceType;
+            clearance_type: crm.enums.ClearanceTypeType;
+            minimum_grade: app.enums.GradeType;
+            grade_id: number;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The grade record the badge was awarded for. */
+            grade: Grade;
+            grade_count: number;
+            grade_exists: boolean;
         }
         export interface BaseExtendableModel extends ParentModelInterface {
         }
@@ -577,6 +597,27 @@ declare global {
             featured_image_url: string | null;
             is_pinned: boolean;
         }
+        /**
+         * Shares keys between attributes and relations: a `supervisor` column beside a `supervisor()` relation, and an
+         * `orders_count` counter-cache column beside the `orders()` relation's own count key.
+         */
+        export interface Depot {
+            // Columns
+            id: number;
+            name: string;
+            supervisor_id: number | null;
+            orders_count: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The user who runs the depot. */
+            supervisor: User | null;
+            supervisor_count: number;
+            supervisor_exists: boolean;
+            /** The orders the depot ships. */
+            orders: Order[];
+            orders_exists: boolean;
+        }
         /** Docblock-engine fixtures: every accessor's type lives only in its docblock. */
         export interface DocblockGenericsFixture {
             // Columns
@@ -621,6 +662,81 @@ declare global {
             posts: Post[];
             posts_count: number;
             posts_exists: boolean;
+        }
+        /**
+         * Relates to a model outside every configured model directory, which is published on demand, and to a
+         * #[TsExclude]d model, whose relation is left out.
+         */
+        export interface Facility {
+            // Columns
+            id: number;
+            name: string;
+            inspector_type: string | null;
+            inspector_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** Names a model that is never published, so it has no file to import. */
+            last_excluded: unknown;
+            /** Names a class that is neither a model nor a resource, so no file is ever published for it. */
+            handle: unknown;
+            // Relations
+            /** Published on demand: AuditTrail sits in no configured model directory. */
+            audit_trails: app.packages.audit.models.AuditTrail[];
+            audit_trails_count: number;
+            audit_trails_exists: boolean;
+            /**
+             * Names its targets in the docblock generic: AuditInspector sits in no configured model directory and is
+             * published on demand, and the #[TsExclude]d model is left out of the union.
+             */
+            inspector: app.packages.audit.models.AuditInspector | User | null;
+            inspector_count: number;
+            inspector_exists: boolean;
+        }
+        /** Named like the enum it casts to, so its file declares `Grade` and imports a const named `Grade`. */
+        export interface Grade {
+            // Columns
+            id: number;
+            subject: string;
+            grade: app.enums.GradeType;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+        /**
+         * Passes work between two models that share a name: an application User sends and a CRM User receives, so a union
+         * of the two spells `User` twice and each occurrence has to name its own class.
+         */
+        export interface Handover {
+            // Columns
+            id: number;
+            sender_id: number | null;
+            receiver_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** Whichever party is set: a union of two models that share a name. */
+            party: User | crm.models.User | null;
+            /** The same union over to-many relations, picked by a ternary. */
+            audience: User[] | crm.models.User[];
+            /** One key naming a single model, and one naming the union of both. */
+            parties: { first: User | null; either: User | crm.models.User | null };
+            // Relations
+            /** The application user handing the work over. */
+            sender: User | null;
+            sender_count: number;
+            sender_exists: boolean;
+            /** The CRM user taking the work on. */
+            receiver: crm.models.User | null;
+            receiver_count: number;
+            receiver_exists: boolean;
+            /** The application users watching the handover. */
+            watchers: User[];
+            watchers_count: number;
+            watchers_exists: boolean;
+            /** The CRM users watching the handover. */
+            crm_watchers: crm.models.User[];
+            crm_watchers_count: number;
+            crm_watchers_exists: boolean;
         }
         export interface Image {
             // Columns
@@ -922,6 +1038,31 @@ declare global {
             channel: string;
             created_at: string | null;
             updated_at: string | null;
+        }
+        /**
+         * Shares three keys between attributes and relations, each attribute bringing an import of its own: a `handler`
+         * column cast to an enum, an appended `sender` accessor typed by the same enum, and a `manifest` column typed by a
+         * `#[TsCasts]` import. The `priority` column is cast to an enum no relation shares.
+         */
+        export interface Parcel {
+            // Columns
+            id: number;
+            handler_id: number;
+            sender_id: number;
+            manifest_id: number;
+            priority: app.enums.PriorityType;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            handler: User;
+            handler_count: number;
+            handler_exists: boolean;
+            sender: User;
+            sender_count: number;
+            sender_exists: boolean;
+            manifest: Order;
+            manifest_count: number;
+            manifest_exists: boolean;
         }
         export interface Post {
             // Columns
@@ -1291,7 +1432,7 @@ declare global {
             order_count: number;
             order_exists: boolean;
             /** The CRM user assigned as the support agent (optional). */
-            crm_agent: User | null;
+            crm_agent: crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
         }
@@ -1773,6 +1914,51 @@ declare global {
             kpis_exists: boolean;
         }
     }
+    export namespace app.packages.audit.models {
+        /** Named only by a morphTo docblock generic on Facility, so it is published on demand through that generic. */
+        export interface AuditInspector {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+        }
+        /** Reached only through AuditTrail, which is itself published on demand. */
+        export interface AuditNote {
+            // Columns
+            id: number;
+            audit_trail_id: number;
+            body: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The entry the note belongs to. */
+            trail: AuditTrail;
+            trail_count: number;
+            trail_exists: boolean;
+        }
+        /**
+         * Lives outside every configured model directory, as a package's model does, so it is published only because
+         * Facility relates to it.
+         */
+        export interface AuditTrail {
+            // Columns
+            id: number;
+            facility_id: number;
+            action: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            /** The facility the entry was recorded for. */
+            facility: app.models.Facility;
+            facility_count: number;
+            facility_exists: boolean;
+            /** Published on demand in turn: reached only through this model. */
+            notes: AuditNote[];
+            notes_count: number;
+            notes_exists: boolean;
+        }
+    }
     export namespace blog.models {
         export interface Article {
             // Columns
@@ -1844,7 +2030,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: app.enums.StatusType;
+            status: crm.enums.StatusType;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -1942,6 +2128,15 @@ declare global {
         export type PaymentStatusKind = 'Pending' | 'Completed' | 'Failed' | 'Refunded';
     }
     export namespace app.enums {
+        /** Publishes the type `ClearanceType`, the name Crm's ClearanceType enum publishes its const under. */
+        export interface Clearance
+        {
+            Open: 'open',
+            Restricted: 'restricted',
+        }
+        export type ClearanceType = 'open' | 'restricted';
+        export type ClearanceKind = 'Open' | 'Restricted';
+
         /** String-backed enum with TsCase attribute overrides on individual cases. */
         export interface Color
         {
@@ -1982,6 +2177,15 @@ declare global {
         }
         export type ExcludableEnumType = 'alpha' | 'beta';
         export type ExcludableEnumKind = 'Alpha' | 'Beta';
+
+        /** Shares its name with the Grade model, whose own file imports this enum's const. */
+        export interface Grade
+        {
+            Pass: 'pass',
+            Fail: 'fail',
+        }
+        export type GradeType = 'pass' | 'fail';
+        export type GradeKind = 'Pass' | 'Fail';
 
         /** String-backed enum with both instance and static methods. */
         export interface MediaType
@@ -2148,6 +2352,15 @@ declare global {
         export type ContentTypeKind = 'Post' | 'Tutorial' | 'Review' | 'News';
     }
     export namespace crm.enums {
+        /** Publishes the const `ClearanceType`, the name App's Clearance enum publishes its type under. */
+        export interface ClearanceType
+        {
+            Temporary: 'temporary',
+            Permanent: 'permanent',
+        }
+        export type ClearanceTypeType = 'temporary' | 'permanent';
+        export type ClearanceTypeKind = 'Temporary' | 'Permanent';
+
         export interface Status
         {
             Lead: 'lead',
@@ -2297,6 +2510,17 @@ declare global {
         export interface ArtistResource {
             id: number;
             name: string;
+        }
+        /**
+         * Reads one enum bare and wraps the other, so the file imports Clearance's type and ClearanceType's const: two
+         * imports that would both be named `ClearanceType`.
+         */
+        export interface BadgeResource {
+            id: number;
+            label: string;
+            clearance: app.enums.ClearanceType;
+            clearance_type: crm.enums.ClearanceTypeType;
+            summary: { clearance: app.enums.ClearanceType; clearance_type: crm.enums.ClearanceTypeType };
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
@@ -2998,8 +3222,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -3033,8 +3257,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -3092,6 +3316,16 @@ declare global {
             extra: Record<string, unknown>;
             extra_field: string;
         }
+        /** Reads a relation whose model is published on demand, and one whose model is never published. */
+        export interface FacilityResource {
+            id: number;
+            name: string;
+            audit_trails: app.packages.audit.models.AuditTrail[];
+            latest_trail: app.packages.audit.models.AuditTrail | null;
+            excluded_records: unknown;
+            first_excluded: unknown;
+            summary: { trails: app.packages.audit.models.AuditTrail[]; excluded: unknown };
+        }
         /**
          * Regression fixture for Task 17C: a fluent method chained onto a receiver that resolves to a
          * resource (`new self($x)`, `self::make($x)`, or a chain of both) keeps the receiver's type when
@@ -3135,6 +3369,46 @@ declare global {
             id: number;
             archived?: boolean;
             [key: number]: app.models.OrderItem;
+        }
+        /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
+        export interface HandoverNoticeResource {
+            id: number;
+            counterparty: crm.models.User | app.models.User | null;
+            unclaimed: crm.models.User | null;
+        }
+        /** Unions two models that share a name by `??`, a ternary and an inline array, and reads an accessor that does the same. */
+        export interface HandoverResource {
+            id: number;
+            party: app.models.User | crm.models.User | null;
+            picked: crm.models.User | app.models.User | null;
+            pair: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
+            parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
+            audience: app.models.User[] | crm.models.User[];
+        }
+        /** Reads members typed by a docblock union whose arms render alike for two models that share a name. */
+        export interface HandoverRosterResource {
+            id: number;
+            members: app.models.User[] | crm.models.User[];
+            reviewers: app.models.User[] | crm.models.User[];
+            involved: app.models.User[] | crm.models.User[] | app.models.User | null;
+        }
+        /**
+         * Declares no toArray(), so it publishes the model's own serialization, appended `parties` accessor included: the
+         * union of two same-named models inside it has to survive the delegation with each token naming its own class.
+         */
+        export interface HandoverSummaryResource {
+            id: number;
+            sender_id: number | null;
+            receiver_id: number | null;
+            created_at: string | null;
+            updated_at: string | null;
+            party: app.models.User | crm.models.User | null;
+            parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
+            audience: app.models.User[] | crm.models.User[];
+            sender: app.models.User | null;
+            receiver: crm.models.User | null;
+            watchers: app.models.User[];
+            crmWatchers: crm.models.User[];
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
@@ -3240,6 +3514,16 @@ declare global {
             size_bytes: number;
             width?: number;
             height?: number;
+        }
+        /**
+         * Exposes a morphTo whose targets' resources share a basename: Crm's UserResource and this namespace's UserResource
+         * must each be named by its own alias, inside an inline array as well.
+         */
+        export interface ImageReviewResource {
+            id: number;
+            reviewable?: crm.http.resources.UserResource | UserResource;
+            reviewer: crm.http.resources.UserResource | UserResource;
+            review: { subject: crm.http.resources.UserResource | UserResource; label: string | null };
         }
         /**
          * Base class for ChildInlineFqcnResource. Both regional_hub_* properties carry Warehouse::regionalHub()'s
@@ -3827,6 +4111,23 @@ declare global {
             headline: app.models.Comment | null;
             spotlight: { comment: app.models.Comment | null };
         }
+        /**
+         * Lays a cast over each key that holds an enum resource: each key publishes its cast, and imports an enum only where
+         * the cast writes its wrap.
+         */
+        export interface PostStateCastResource {
+            id: number;
+            status: string;
+            visibility: string;
+            either: string | null;
+            held: string | null;
+            wrapped: app.enums.StatusType | app.enums.VisibilityType | null;
+        }
+        /** Publishes a union of two enum resources and no enum resource of its own: the union brings the file's enum imports. */
+        export interface PostStateResource {
+            id: number;
+            either: app.enums.StatusType | app.enums.VisibilityType | null;
+        }
         /** A resource that carries a value next to its model through a promoted constructor property. */
         export interface PostStatsResource {
             id: number;
@@ -4098,6 +4399,11 @@ declare global {
             columns: { named: { major: number; minor: number }; rest: { id: number; major: number; minor: number; created_at: string | null; updated_at: string | null }; picked: Record<string, unknown>; left: Record<string, unknown> };
             picks: { named: Pick<app.models.Release, 'major' | 'minor'>; rest: Pick<app.models.Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
         }
+        /** Nests a resource from a multi-word namespace segment, so the globals file qualifies it across namespaces. */
+        export interface ReportCardResource {
+            id: number;
+            summary: app.http.resources.reportCards.SummaryCardResource;
+        }
         /**
          * Exercises issue #43: EnumResource wrapping an enum accessed via `$this->resource->property`
          * returns `unknown` instead of the correct `AsEnum` utility type.
@@ -4253,8 +4559,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4295,8 +4601,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4697,8 +5003,8 @@ declare global {
             posts: app.models.Post[];
             comments: app.models.Comment[];
             orders: app.models.Order[];
-            addresses: Address[];
-            primaryAddress: Address | null;
+            addresses: app.models.Address[];
+            primaryAddress: app.models.Address | null;
             teams: app.models.Team[];
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
@@ -4833,6 +5139,13 @@ declare global {
             data: Store[];
         }
     }
+    export namespace app.http.resources.reportCards {
+        /** Lives under a multi-word namespace segment, which the globals file must spell as an identifier. */
+        export interface SummaryCardResource {
+            id: number;
+            title: string;
+        }
+    }
     export namespace blog.http.resources {
         export interface ApiArticleResource {
             morphValue: string;
@@ -4936,7 +5249,7 @@ declare global {
             name: string;
             email: string;
             company: string | null;
-            status: app.enums.StatusType;
+            status: crm.enums.StatusType;
         }
     }
     export namespace shipping.http.resources {
@@ -5253,6 +5566,11 @@ declare global {
         export interface EnumBroadcastEvent {
             status: app.enums.StatusType;
             color: app.enums.ColorType;
+        }
+        export interface FacilityAudited {
+            facility: Partial<app.models.Facility>;
+            trail: Partial<app.packages.audit.models.AuditTrail>;
+            record: unknown;
         }
         export interface MixedTypesEvent {
             post: PostSnapshot;

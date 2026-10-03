@@ -11,8 +11,10 @@
 # type rejects it, e.g. Pick<Model, K> over a key the interface never declares.
 # TS2305/TS2724 cover the name that IS imported from a module that resolves but
 # never exports it - the shape that only became reachable once the stubs landed.
-# TS6196 is an import the generated file never uses - the trace a dropped extends
-# clause or an overridden cast leaves behind.
+# TS6196 (a type import never used), TS6133 (a value import, local or parameter never read) and TS6192 (an import line
+# with no name used) catch the import a dropped extends clause or an overridden cast leaves behind.
+# TS2320 is one interface extending two that declare the same key with different types, as a model's
+# combined interface does when a column and a relation share a name.
 #
 # A leaked token named like a DOM global (`Comment`) binds to the DOM type and raises none of those, so a second
 # program per tree runs without the DOM lib and counts, on its own line, each name only it cannot find, minus
@@ -56,7 +58,9 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # Plant an unresolvable relative import in a .ts and a .d.ts, run the real gate, demand it FAILs
   # on the relative sub-gate, clean up. A gate that cannot fail is not a gate.
   ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"; dom="tests/types/__selftest_dom.ts"
-  trap 'rm -f "$ts" "$dts" "$dom"' EXIT
+  clash="tests/types/__selftest_clash.ts"
+  unused="tests/types/__selftest_unused.ts"; unused_dep="tests/types/__selftest_unused_dep.ts"
+  trap 'rm -f "$ts" "$dts" "$dom" "$clash" "$unused" "$unused_dep"' EXIT
   for scratch in "$ts" "$dts"; do
     printf "import type { Nope } from './does-not-exist';\nexport type SelfTest = Nope;\n" > "$scratch"
     if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
@@ -91,6 +95,47 @@ if [[ "${1:-}" == "--selftest" ]]; then
   fi
   rm -f "$dom"
   echo "PASS - selftest: DOM-global sub-gate fires for a leaked Comment and allows File"
+
+  # An interface extending two that give one key different types is TS2320, which only the main count reads: it must
+  # count exactly 1, and the histogram must name that interface.
+  cat > "$clash" <<'TS'
+interface Left {
+    key: string;
+}
+interface Right {
+    key: number;
+}
+export interface SelfTestClash extends Left, Right {}
+TS
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with an interface extending two that clash, in $clash"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE "^TS2300/.* in generated tree: 1$" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^FAIL - token count" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^ +1 +SelfTestClash$" /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on the main count for SelfTestClash alone, for $clash"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$clash"
+  echo "PASS - selftest: the main count fires for an interface extending two that clash (TS2320)"
+
+  # An import line whose every name goes unused is TS6192, whose message names nothing: the main count must read
+  # exactly 1, and the histogram must print the code's own label.
+  printf 'export interface SelfTestAlpha {}\nexport interface SelfTestBeta {}\n' > "$unused_dep"
+  printf "import type { SelfTestAlpha, SelfTestBeta } from './__selftest_unused_dep';\nexport type SelfTestUnused = string;\n" > "$unused"
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with an import line whose names all go unused, in $unused"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE "^TS2300/.* in generated tree: 1$" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^FAIL - token count" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^ +1 +\(import line with no name used\)$" /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on the main count for one unused import line, for $unused"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$unused" "$unused_dep"
+  echo "PASS - selftest: the main count fires for an import line with no name used (TS6192)"
   exit 0
 fi
 
@@ -145,11 +190,13 @@ gate_one() {
   owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
 
   local errs count
-  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2344|2440|2552|2724|6196)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6133|6192|6196)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
-  echo "TS2300/TS2304/TS2305/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / bad type argument / import-local conflict / unused import) in generated tree: $count"
-  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but never used\.?.*/  \1/" | sort | uniq -c | sort -rn
+  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6133/TS6192/TS6196 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / value import, local or parameter never read / import line with no name used / unused type import) in generated tree: $count"
+  if [ "$count" -gt 0 ]; then
+    printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but (never used|its value is never read)\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/; s/.*All imports in import declaration are unused.*/  (import line with no name used)/" | sort | uniq -c | sort -rn
+  fi
 
   # A relative specifier (./ or ../) only ever resolves against a file this package itself writes, so an
   # unresolved one is never an app-side alias a stub could cover - it is
@@ -161,7 +208,9 @@ gate_one() {
   rel_count=$(printf '%s' "$rel_errs" | grep -c . || true)
 
   echo "TS2307 (cannot find module) with a relative specifier in generated tree: $rel_count"
-  printf '%s\n' "$rel_errs" | sed -E "s/.*Cannot find module '([^']+)'.*/  \1/"
+  if [ "$rel_count" -gt 0 ]; then
+    printf '%s\n' "$rel_errs" | sed -E "s/.*Cannot find module '([^']+)'.*/  \1/"
+  fi
 
   # Everything else with TS2307: a bare specifier such as @/types/geo, naming a module that lives in
   # the consuming app. Those are stubbed under tests/types/stubs and mapped by tsconfig `paths`, so an
@@ -171,7 +220,9 @@ gate_one() {
   bare_count=$(printf '%s' "$bare_errs" | grep -c . || true)
 
   echo "TS2307 (cannot find module) with a bare specifier in generated tree: $bare_count"
-  printf '%s\n' "$bare_errs" | sed -E "s/.*Cannot find module '([^']+)'.*/  \1/"
+  if [ "$bare_count" -gt 0 ]; then
+    printf '%s\n' "$bare_errs" | sed -E "s/.*Cannot find module '([^']+)'.*/  \1/"
+  fi
 
   # The same program without the DOM lib. A name it cannot find that the program above found is one only the DOM
   # declares; unless DOM_GLOBALS lists it, it is a token emitted without its import that bound to the DOM's type.
@@ -191,11 +242,13 @@ gate_one() {
   dom_count=$(printf '%s' "$dom_errs" | grep -c . || true)
 
   echo "TS2304/TS2552 (cannot find name) for names only the DOM lib declares, in generated tree: $dom_count"
-  printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
+  if [ "$dom_count" -gt 0 ]; then
+    printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
+  fi
 
   if [ "$have_baseline" -eq 1 ]; then
     if [ "$count" -gt "$baseline" ]; then
-      echo "FAIL - token count rose from $baseline to $count: a token was emitted without its import, or two imports collided on one name"
+      echo "FAIL - token count rose from $baseline to $count: a token lost its import, two names or keys clash, a type argument is rejected, or an import, local or parameter goes unused"
       printf '%s\n' "$errs"
       return 1
     fi

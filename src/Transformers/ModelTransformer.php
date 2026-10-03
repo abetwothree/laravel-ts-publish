@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
@@ -16,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
@@ -44,6 +47,12 @@ use ReflectionClass;
  *
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
+ * @phpstan-type ResolvedImports = array{
+ *    typeImports: TypesImportMap,
+ *    valueImports: ValuesImportMap,
+ *    combinedTypeImports?: TypesImportMap,
+ *    combinedValueImports?: ValuesImportMap,
+ * }
  *
  * @extends CoreTransformer<Model>
  */
@@ -100,13 +109,13 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> FQCN => list of relation method names that reference it */
     protected array $modelFqcnRelations = [];
 
-    /** @var array<string, list<string>> column_name => list of FQCNs (enum or model) referenced by that column */
+    /** @var array<string, list<string>> column_name => enums, then the class queue aliasing walks against its type */
     protected array $columnFqcns = [];
 
-    /** @var array<string, list<string>> mutator_name => list of FQCNs (enum or model) referenced by that mutator */
+    /** @var array<string, list<string>> mutator_name => enums, then the class queue aliasing walks against its type */
     protected array $mutatorFqcns = [];
 
-    /** @var array<string, list<string>> append_name => list of FQCNs (enum or model) referenced by that append */
+    /** @var array<string, list<string>> append_name => enums, then the class queue aliasing walks against its type */
     protected array $appendsFqcns = [];
 
     /** @var array<string, list<string>> relation_name => target FQCNs, one per occurrence, in type-string order */
@@ -152,6 +161,9 @@ class ModelTransformer extends CoreTransformer
     {
         $hasEnums = $this->shouldGenerateHasEnums();
         $imports = $this->buildResolvedImports();
+        $enumColumns = $hasEnums ? $this->buildEnumColumns() : [];
+        $enumMutators = $hasEnums ? $this->buildEnumMutators() : [];
+        $enumAppends = $hasEnums ? $this->buildEnumAppends() : [];
 
         return new TsModelDto(
             modelName: $this->modelName,
@@ -163,12 +175,23 @@ class ModelTransformer extends CoreTransformer
             mutators: $this->mutators,
             appends: $this->appends,
             relations: $this->relations,
+            shadowedKeys: $this->shadowedKeys(),
+            relationCountKeys: $this->relationCountKeys(),
+            relationExistsKeys: $this->relationExistsKeys(),
             typeImports: $imports['typeImports'],
             valueImports: $imports['valueImports'],
-            enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
-            enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
-            enumAppends: $hasEnums ? $this->buildEnumAppends() : [],
+            enumColumns: $enumColumns,
+            enumMutators: $enumMutators,
+            enumAppends: $enumAppends,
             tsExtends: $this->tsExtends,
+            combinedColumns: $this->combinedColumns(),
+            combinedMutators: $this->combinedMutators(),
+            combinedAppends: $this->combinedAppends(),
+            combinedEnums: $this->withoutShadowed($enumColumns + $enumMutators + $enumAppends),
+            // An override of buildResolvedImports() may return only the two keys it first had, the whole file's
+            // imports, so each combined list falls back to its full one.
+            combinedTypeImports: $imports['combinedTypeImports'] ?? $imports['typeImports'],
+            combinedValueImports: $imports['combinedValueImports'] ?? $imports['valueImports'],
         );
     }
 
@@ -176,6 +199,81 @@ class ModelTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->modelName);
+    }
+
+    /**
+     * The columns a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return ColumnsList
+     */
+    public function combinedColumns(): array
+    {
+        return $this->withoutShadowed($this->columns);
+    }
+
+    /**
+     * The mutators a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return MutatorsList
+     */
+    public function combinedMutators(): array
+    {
+        return $this->withoutShadowed($this->mutators);
+    }
+
+    /**
+     * The appends a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return AppendsList
+     */
+    public function combinedAppends(): array
+    {
+        return $this->withoutShadowed($this->appends);
+    }
+
+    /**
+     * The #[TsExtends], #[TsCasts] and #[TsType] imports a combined interface uses: each name a type it prints spells.
+     *
+     * @return array<string, list<string>>
+     */
+    public function combinedCustomImports(): array
+    {
+        return $this->customImportsSpelledIn($this->combinedTypes());
+    }
+
+    /**
+     * The column, mutator and append keys a relation also publishes: Model::toArray() merges loaded relations over the
+     * attributes, so a combined interface leaves each such key to the relation.
+     *
+     * Read from the current lists, as the count and exists keys are, so a subclass may adjust them after transform().
+     *
+     * @return list<string>
+     */
+    public function shadowedKeys(): array
+    {
+        $attributes = $this->columns + $this->appends + $this->mutators;
+
+        return array_map(strval(...), array_keys(array_intersect_key($this->relations, $attributes)));
+    }
+
+    /**
+     * Each relation's `_count` key that no attribute or relation already publishes, as a counter-cache column can.
+     *
+     * @return list<string>
+     */
+    public function relationCountKeys(): array
+    {
+        return $this->freeRelationKeys('_count');
+    }
+
+    /**
+     * Each relation's `_exists` key that no attribute or relation already publishes.
+     *
+     * @return list<string>
+     */
+    public function relationExistsKeys(): array
+    {
+        return $this->freeRelationKeys('_exists');
     }
 
     protected function initInstance(): self
@@ -265,6 +363,7 @@ class ModelTransformer extends CoreTransformer
                 };
             }
 
+            $typings = $this->exportedTypeInfo($typings);
             $type = $typings['type'];
 
             if ($attribute['nullable'] && ! str_contains($type, 'null')) {
@@ -293,6 +392,9 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($typings['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $typings['classes'][$i];
+            }
+
+            foreach (ClassTokenQueue::fqcnsOf($typings) as $fqcn) {
                 $this->columnFqcns[$name][] = $fqcn;
             }
 
@@ -337,6 +439,8 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
+            $resolved = $this->exportedTypeInfo($resolved);
+
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
             } else {
@@ -372,7 +476,9 @@ class ModelTransformer extends CoreTransformer
 
             foreach ($resolved['classFqcns'] as $i => $fqcn) {
                 $this->modelFqcnMap[$fqcn] = $resolved['classes'][$i];
+            }
 
+            foreach (ClassTokenQueue::fqcnsOf($resolved) as $fqcn) {
                 if ($isAppended) {
                     $this->appendsFqcns[$name][] = $fqcn;
                 } else {
@@ -422,6 +528,10 @@ class ModelTransformer extends CoreTransformer
                 fn (Collection $relations, array $excluded) => $relations->filter(
                     fn (array $relation) => $isMorphToRelation($relation) || ! in_array($relation['related'], $excluded)
                 )
+            )
+            // A model this run does not publish has no file to import, so its relation is left out.
+            ->filter(
+                fn (array $relation) => $isMorphToRelation($relation) || PublishedModelRegistry::isPublished($relation['related'])
             );
 
         foreach ($relations as $relation) {
@@ -500,6 +610,89 @@ class ModelTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * The type info as resolved, or `unknown` when it names a class no generated file exports.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return TypeScriptTypeInfo
+     */
+    protected function exportedTypeInfo(array $info): array
+    {
+        foreach ($info['classFqcns'] as $fqcn) {
+            if (! PublishedClasses::exports($fqcn)) {
+                return LaravelTsPublish::emptyTypeScriptInfo();
+            }
+        }
+
+        return $info;
+    }
+
+    /**
+     * Each relation's key with the given suffix, unless an attribute or a relation already publishes it.
+     *
+     * @return list<string>
+     */
+    protected function freeRelationKeys(string $suffix): array
+    {
+        $taken = $this->columns + $this->appends + $this->mutators + $this->relations;
+        $keys = array_map(fn (int|string $name): string => $name.$suffix, array_keys($this->relations));
+
+        return array_values(array_filter($keys, fn (string $key): bool => ! isset($taken[$key])));
+    }
+
+    /**
+     * A keyed list without the keys a relation shares, which a combined interface leaves to the relation.
+     *
+     * @template TEntry
+     *
+     * @param  array<string, TEntry>  $list
+     * @return array<string, TEntry>
+     */
+    protected function withoutShadowed(array $list): array
+    {
+        return array_diff_key($list, array_flip($this->shadowedKeys()));
+    }
+
+    /**
+     * Every type a combined interface prints: its extends clause, its attributes and its relations.
+     *
+     * @return list<string>
+     */
+    protected function combinedTypes(): array
+    {
+        return [
+            ...$this->tsExtends,
+            ...array_column($this->combinedColumns(), 'type'),
+            ...array_column($this->combinedMutators(), 'type'),
+            ...array_column($this->combinedAppends(), 'type'),
+            ...array_column($this->relations, 'type'),
+        ];
+    }
+
+    /**
+     * Each custom import path's names that one of these types spells, without a path none of them spells.
+     *
+     * @param  list<string>  $types
+     * @return array<string, list<string>>
+     */
+    protected function customImportsSpelledIn(array $types): array
+    {
+        $imports = [];
+
+        foreach ($this->customImports as $path => $names) {
+            $spelled = array_values(array_filter(
+                $names,
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$types),
+            ));
+
+            if ($spelled !== []) {
+                $imports[$path] = $spelled;
+            }
+        }
+
+        return $imports;
     }
 
     protected function isMutatorExcluded(string $name): bool
@@ -585,9 +778,8 @@ class ModelTransformer extends CoreTransformer
         $registry = new ImportNameRegistry;
         $registry->reserve($this->modelName);
 
-        // A sibling registry resolves const names independently rather than string-slicing the type
-        // alias, which breaks on a numeric tiebreak suffix. The two registries can't see each other, so
-        // a const name equal to another enum's type name still collides — see the docs' known limitation.
+        // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
+        // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry;
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
@@ -611,10 +803,11 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
-        $this->applyResolvedImportNames(
-            $registry->resolve(),
+        $this->applyImportNameRegistries(
+            $registry,
+            $constRegistry,
             $this->enumFqcnMap + $this->modelFqcnMap,
-            $constRegistry->resolve(),
+            $this->customImports,
         );
 
         return $this;
@@ -653,14 +846,20 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Build the type and value import maps from accumulated FQCNs and custom imports.
+     * Build the type and value import maps from accumulated FQCNs and custom imports, for every interface and for a
+     * combined one.
      *
-     * @return array{typeImports: TypesImportMap, valueImports: ValuesImportMap}
+     * A combined interface imports a type only when a type it prints spells its local name, and an enum's const only
+     * when an enum key its `Resource` re-declares names the enum. The registries named every import beforehand, so an
+     * alias keeps its spelling whichever of its neighbors a combined interface drops.
+     *
+     * @return ResolvedImports
      */
     protected function buildResolvedImports(): array
     {
         $typeImports = [];
         $valueImports = [];
+        $combinedValueImports = [];
         $hasEnums = $this->shouldGenerateHasEnums();
 
         $modelFqcnMap = array_filter(
@@ -674,15 +873,32 @@ class ModelTransformer extends CoreTransformer
             ...$this->collectModularTypeImports($modelFqcnMap),
         ];
 
+        $types = $this->combinedTypes();
+        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
+            $this->localImportName($fqcn, $typeName),
+            ...$types,
+        );
+
+        $combinedTypeImports = [
+            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+            ...$this->collectModularTypeImports(array_filter($modelFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+        ];
+
         if ($hasEnums) {
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
+            $combinedValueImports = $this->collectModularValueImports(
+                $this->enumPropertyFqcnsOf($this->withoutShadowed($this->enumProperties())),
+            );
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
+        $combinedTypeImports = $this->mergeCustomImports($combinedTypeImports, $this->customImportsSpelledIn($types));
 
         return [
             'typeImports' => $this->deduplicateAndSortImports($typeImports),
             'valueImports' => $this->deduplicateAndSortImports($valueImports),
+            'combinedTypeImports' => $this->deduplicateAndSortImports($combinedTypeImports),
+            'combinedValueImports' => $this->deduplicateAndSortImports($combinedValueImports),
         ];
     }
 
@@ -697,15 +913,25 @@ class ModelTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }
 
         return $map;
+    }
+
+    /**
+     * Map every type name this model's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /** @return list<string> */

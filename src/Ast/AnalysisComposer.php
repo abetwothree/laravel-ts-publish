@@ -69,7 +69,7 @@ final class AnalysisComposer
         $this->collectNameMaps($analysis);
         $this->propertyFqcnQueues = $this->buildPropertyFqcnQueues($analysis);
 
-        $this->resolveImportConflicts();
+        $this->resolveImportConflicts($analysis->customImports);
         $this->rewriteEnumResourceTypes($analysis);
 
         return new AnalysisResult(
@@ -151,10 +151,11 @@ final class AnalysisComposer
     /**
      * Assign collision-free local names across every FQCN map, then rewrite the types that use them.
      *
-     * Two sibling registries, exactly as ResourceTransformer runs them: a const name equal to another
-     * enum's type name still collides, which is that class's own documented limitation.
+     * Two sibling registries, exactly as ResourceTransformer runs them.
+     *
+     * @param  array<string, list<string>>  $customImports
      */
-    private function resolveImportConflicts(): void
+    private function resolveImportConflicts(array $customImports): void
     {
         $this->importAliases = [];
         $this->constImportAliases = [];
@@ -183,10 +184,11 @@ final class AnalysisComposer
             }
         }
 
-        $this->applyResolvedImportNames(
-            $registry->resolve(),
+        $this->applyImportNameRegistries(
+            $registry,
+            $constRegistry,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
-            $constRegistry->resolve(),
+            $customImports,
         );
     }
 
@@ -233,13 +235,14 @@ final class AnalysisComposer
         }
 
         // analyzeInlineArray() already wrote `AsEnum<typeof {bare}>` into the inline object type, and
-        // rewriteTypeReferences() cannot alias it — its name map holds type names, never const ones.
+        // rewriteTypeReferences() cannot alias it: its name map holds type names, never const ones. Only the name after
+        // `typeof` is a const; the same name bare is another enum's type, so it stays.
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             if (! isset($this->properties[$propName])) {
                 continue;
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
+            $this->properties[$propName]['type'] = TsTypeString::aliasTypeofConst(
                 $this->properties[$propName]['type'],
                 $fqcns,
                 $this->enumConstMap,
@@ -415,13 +418,15 @@ final class AnalysisComposer
             }
         }
 
-        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns] as $map) {
+        // The inline lists go models first, then resources: InlineArrayHandler::sharedNames() relies on that order.
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $propName => $fqcns) {
                 $queues[$propName] = [...($queues[$propName] ?? []), ...$fqcns];
             }
         }
 
-        return $queues;
+        // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
+        return array_diff_key($queues, $analysis->importedCastKeys);
     }
 
     /**

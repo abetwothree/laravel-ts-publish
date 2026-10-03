@@ -177,14 +177,26 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
             ->and(resolve(ModelAttributeResolver::class)->resolveAttribute(Image::class, 'no_docblock_accessor')['type'])->toBe('null');
     });
 
-    test('two models sharing a name decline under one token, and publish under a token each', function () {
+    test('two models sharing a name publish under a token each, in a union as under separate keys', function (string $accessor, string $type) {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
-        $data = (new ModelTransformer(AuthoredPost::class))->data();
-
-        expect($data->mutators['author_or_lead']['type'])->toBe('unknown')
-            ->and($data->mutators['both_authors']['type'])->toBe('{ author: AuthorUser; lead: CrmAuthorUser }');
-    });
+        expect((new ModelTransformer(AuthoredPost::class))->data()->mutators[$accessor]['type'])->toBe($type);
+    })->with([
+        'a union' => ['author_or_lead', 'AuthorUser | CrmAuthorUser'],
+        'a union a `??` falls through to, past an operand the engine cannot type' => [
+            'cached_author_or_lead',
+            'AuthorUser | CrmAuthorUser',
+        ],
+        'separate keys' => ['both_authors', '{ author: AuthorUser; lead: CrmAuthorUser }'],
+        'a key naming one model beside a key naming the union' => [
+            'author_and_either',
+            '{ author: AuthorUser; either: AuthorUser | CrmAuthorUser }',
+        ],
+        'a model queued twice behind one token, before a key naming the other model' => [
+            'lead_or_label_and_author',
+            '{ lead: CrmAuthorUser | string; author: AuthorUser }',
+        ],
+    ]);
 
     test('a resource the body returns declines, since the model file cannot import it', function (string $attribute) {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AuthoredPost::class, $attribute)['type'])->toBe('unknown');

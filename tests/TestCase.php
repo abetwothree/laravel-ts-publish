@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublishServiceProvider;
@@ -58,10 +59,11 @@ class TestCase extends Orchestra
         $prop->setValue(null, null);
 
         // Same reason again for the process-static side-channel registries: a populated
-        // PublishedResourceRegistry would gate resolution in unrelated tests.
+        // PublishedResourceRegistry or PublishedModelRegistry would gate resolution in unrelated tests.
         DependencyRecorder::reset();
         OutputRecorder::reset();
         PublishedResourceRegistry::reset();
+        PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
         CallArguments::reset();
         CoreCollector::flushClassMapCache();

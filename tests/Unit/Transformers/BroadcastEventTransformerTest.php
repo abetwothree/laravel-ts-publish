@@ -592,3 +592,12 @@ it('never ships a class name broadcastWith()\'s own `@return` names without impo
 
     expect($transformer->properties['user']['type'])->toBe('unknown');
 });
+
+test('globalTypeReferenceMap() maps each alias to the class it aliases', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => SameBasenameModelEvent::class]);
+
+    expect($transformer->globalTypeReferenceMap())->toBe([
+        'AppUser' => 'workbench.app.models.User',
+        'CrmUser' => 'workbench.crm.models.User',
+    ]);
+});

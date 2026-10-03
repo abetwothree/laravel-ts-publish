@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use Closure;
 
@@ -20,6 +21,7 @@ use Closure;
  *     recording: bool,
  *     dropped: int,
  *     resources: int,
+ *     models: int,
  * }
  * @phpstan-type MemoEntry = array{
  *     value: mixed,
@@ -28,6 +30,7 @@ use Closure;
  *     recording: bool,
  *     dropped: int,
  *     resources: int,
+ *     models: int,
  *     stamp: int,
  *     pinned: bool,
  * }
@@ -116,6 +119,7 @@ final class AnalysisMemo
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
             'resources' => PublishedResourceRegistry::version(),
+            'models' => PublishedModelRegistry::version(),
         ];
 
         try {
@@ -132,11 +136,20 @@ final class AnalysisMemo
     }
 
     /**
-     * Drop every answer not pinned, when a run starts or an input they read changes.
+     * Drop every answer not pinned, when an input they read changes.
      */
     public function forget(): void
     {
         $this->entries = array_filter($this->entries, fn (array $entry): bool => $entry['pinned']);
+    }
+
+    /**
+     * Drop every answer, pinned or not, when a run starts, since two runs in one process can publish different sets.
+     */
+    public function reset(): void
+    {
+        $this->entries = [];
+        $this->pinnedAt = [];
     }
 
     /**
@@ -149,6 +162,7 @@ final class AnalysisMemo
     {
         // An answer worked out while dependencies went unrecorded has none to replay into a recording run.
         if ($entry['resources'] !== PublishedResourceRegistry::version()
+            || $entry['models'] !== PublishedModelRegistry::version()
             || (! $entry['recording'] && DependencyRecorder::isRecording())) {
             return false;
         }
@@ -221,6 +235,7 @@ final class AnalysisMemo
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'resources' => $frame['resources'],
+            'models' => $frame['models'],
             'stamp' => ++$this->clock,
             'pinned' => $pin,
         ];

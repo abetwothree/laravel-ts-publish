@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -44,6 +45,8 @@ use Throwable;
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type AttributeInfo from ModelInfo
  * @phpstan-import-type RelationInfo from ModelInfo
+ *
+ * @phpstan-type RelationContext = array{instance: Model, relations: Collection<int, RelationInfo>}
  */
 class ModelAttributeResolver
 {
@@ -61,6 +64,20 @@ class ModelAttributeResolver
      * }>
      */
     protected array $contexts = [];
+
+    /**
+     * Per-FQCN cache of a model's instance and relations read without its table, for a run that generates no model.
+     *
+     * @var array<class-string, RelationContext>
+     */
+    protected array $relationContexts = [];
+
+    /**
+     * Per-FQCN message of the exception a context read caught: the reason a related model is left out.
+     *
+     * @var array<class-string, string>
+     */
+    protected array $contextFailures = [];
 
     /**
      * Reverse morph-target map: parent FQCNs declaring a MorphOne/MorphMany pointing at a child.
@@ -85,6 +102,9 @@ class ModelAttributeResolver
      * @var array<string, class-string|null>
      */
     protected array $attributeClassCache = [];
+
+    /** Whether the morph target map being built reads each model's relations without its table. */
+    private bool $buildsWithoutTables = false;
 
     /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
@@ -633,6 +653,11 @@ class ModelAttributeResolver
             return $this->buildMorphUnionInfo($targets, $relation, $ctx);
         }
 
+        // A model this run does not publish has no file to import, so the relation names nothing.
+        if (! PublishedModelRegistry::isPublished($relation['related'])) {
+            return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
+        }
+
         DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
@@ -882,17 +907,102 @@ class ModelAttributeResolver
     }
 
     /**
+     * The given models, then every model their relations reach, transitively, that the filter accepts, sorted by name.
+     * With `$withoutTables`, relations are read by reflection alone, so no model's table is read. A reached model whose
+     * context that read cannot resolve stays out, with a warning.
+     *
+     * @param  list<class-string>  $modelFqcns
+     * @param  Closure(class-string): bool  $accepts
+     * @return list<class-string>
+     */
+    public function withRelatedModels(array $modelFqcns, Closure $accepts, bool $withoutTables = false): array
+    {
+        $seen = array_fill_keys($modelFqcns, true);
+        $pending = $modelFqcns;
+        $related = [];
+
+        while ($pending !== []) {
+            $model = array_shift($pending);
+
+            foreach ($this->contextFor($model, $withoutTables)['relations'] ?? [] as $relation) {
+                // A morphTo names its own model as the related one; only a docblock generic names models to add,
+                // because the reverse map's parents are in the set already.
+                $targets = str_ends_with($relation['type'], 'MorphTo')
+                    ? $this->morphToDocblockTargets($model, $relation['name'])
+                    : [$relation['related']];
+
+                foreach ($targets as $target) {
+                    if (isset($seen[$target])) {
+                        continue;
+                    }
+
+                    $seen[$target] = true;
+
+                    if (! $accepts($target)) {
+                        continue;
+                    }
+
+                    // Generating a model its reader cannot inspect would stop the run, so it stays out and says why.
+                    if ($this->contextFor($target, $withoutTables) === null) {
+                        AnalysisWarnings::add($target, sprintf(
+                            'Is reached through a relation, but inspecting it threw [%s], so it is not published and no generated file names it.',
+                            $this->contextFailures[$target] ?? '',
+                        ));
+
+                        continue;
+                    }
+
+                    $related[] = $target;
+                    $pending[] = $target;
+                }
+            }
+        }
+
+        sort($related);
+
+        return [...$modelFqcns, ...$related];
+    }
+
+    /**
      * Scan every model's MorphOne/MorphMany relations to build the child → parents morph target map.
      *
      * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
      */
     public function buildMorphTargetMap(array $modelFqcns): void
     {
+        $this->buildMorphTargetMapFrom($modelFqcns, $this->buildsWithoutTables);
+    }
+
+    /**
+     * Build the same map with relations read by reflection alone, so no model's table is read.
+     *
+     * Goes through buildMorphTargetMap(), so a project's override of it runs in a run that reads no table too.
+     *
+     * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
+     */
+    public function buildMorphTargetMapWithoutTables(array $modelFqcns): void
+    {
+        $this->buildsWithoutTables = true;
+
+        try {
+            $this->buildMorphTargetMap($modelFqcns);
+        } finally {
+            $this->buildsWithoutTables = false;
+        }
+    }
+
+    /**
+     * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
+     *
+     * @param  list<class-string>  $modelFqcns
+     */
+    private function buildMorphTargetMapFrom(array $modelFqcns, bool $withoutTables): void
+    {
         /** @var array<string, list<class-string>> $map */
         $map = [];
 
         foreach ($modelFqcns as $parentFqcn) {
-            $ctx = $this->resolveContext($parentFqcn);
+            $ctx = $this->contextFor($parentFqcn, $withoutTables);
 
             if ($ctx === null) {
                 continue;
@@ -963,9 +1073,9 @@ class ModelAttributeResolver
             return true;
         }
 
-        $reflection = $this->getReflection($parentFqcn);
+        $reflection = new ReflectionClass($parentFqcn);
 
-        if ($reflection === null || ! $reflection->hasMethod($relation['name'])) {
+        if (! $reflection->hasMethod($relation['name'])) {
             return false;
         }
 
@@ -1057,7 +1167,7 @@ class ModelAttributeResolver
         $docblockTargets = $this->morphToDocblockTargets($modelFqcn, $relationName);
 
         if ($docblockTargets !== []) {
-            return $docblockTargets;
+            return array_values(array_filter($docblockTargets, PublishedModelRegistry::isPublished(...)));
         }
 
         $ctx = $this->resolveContext($modelFqcn);
@@ -1068,7 +1178,10 @@ class ModelAttributeResolver
 
         $morphName = $this->relationMorphName($ctx['instance'], $relationName) ?? '';
 
-        return $this->getMorphToTargets($modelFqcn, $morphName);
+        return array_values(array_filter(
+            $this->getMorphToTargets($modelFqcn, $morphName),
+            PublishedModelRegistry::isPublished(...),
+        ));
     }
 
     /**
@@ -1092,10 +1205,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * Concrete Model subclasses named by a morphTo method's `@return MorphTo<X|Y, ...>` docblock generic.
-     *
-     * Bare `Model` and abstract targets yield `[]`, so the caller falls through to the
-     * reverse-relation map instead of importing a useless base class.
+     * Concrete Model subclasses a morphTo docblock generic names, each by the name its class declares, so an alias
+     * or a mis-cased spelling reads as its model. Bare `Model` and abstract targets yield `[]`, so the caller falls
+     * through to the reverse-relation map instead of importing a useless base class.
      *
      * @param  class-string  $modelFqcn
      * @return list<class-string<Model>>
@@ -1109,12 +1221,15 @@ class ModelAttributeResolver
                 return [];
             }
 
-            if ((new ReflectionClass($fqcn))->isAbstract()) {
+            $reflection = new ReflectionClass($fqcn);
+
+            if ($reflection->isAbstract()) {
                 return [];
             }
 
-            /** @var class-string<Model> $fqcn */
-            $targets[] = $fqcn;
+            /** @var class-string<Model> $declared */
+            $declared = $reflection->getName();
+            $targets[] = $declared;
         }
 
         return $targets;
@@ -1129,9 +1244,14 @@ class ModelAttributeResolver
      */
     protected function morphToGenericMembers(string $modelFqcn, string $relationName): ?array
     {
-        $reflection = $this->getReflection($modelFqcn);
+        // Reflected here, not through getReflection(), so reading a docblock never inspects the model's table.
+        if (! class_exists($modelFqcn)) {
+            return null;
+        }
 
-        if ($reflection === null || ! $reflection->hasMethod($relationName)) {
+        $reflection = new ReflectionClass($modelFqcn);
+
+        if (! $reflection->hasMethod($relationName)) {
             return null;
         }
 
@@ -1266,8 +1386,48 @@ class ModelAttributeResolver
             ];
 
             return $this->contexts[$modelFqcn];
-        } catch (Throwable) { // @codeCoverageIgnore
-            return null; // @codeCoverageIgnore
+        } catch (Throwable $exception) {
+            $this->contextFailures[$modelFqcn] = $exception->getMessage();
+
+            return null;
+        }
+    }
+
+    /**
+     * A model's instance and relations, read without its table: the full context's when one is cached already.
+     *
+     * @param  class-string  $modelFqcn
+     * @return RelationContext|null
+     */
+    protected function resolveRelationContext(string $modelFqcn): ?array
+    {
+        if (isset($this->contexts[$modelFqcn])) {
+            return [
+                'instance' => $this->contexts[$modelFqcn]['instance'],
+                'relations' => $this->contexts[$modelFqcn]['relations'],
+            ];
+        }
+
+        if (isset($this->relationContexts[$modelFqcn])) {
+            return $this->relationContexts[$modelFqcn];
+        }
+
+        if (! class_exists($modelFqcn)) {
+            return null;
+        }
+
+        try {
+            /** @var Model $instance */
+            $instance = resolve($modelFqcn);
+
+            return $this->relationContexts[$modelFqcn] = [
+                'instance' => $instance,
+                'relations' => resolve(ModelInspector::class)->relationsOf($instance),
+            ];
+        } catch (Throwable $exception) {
+            $this->contextFailures[$modelFqcn] = $exception->getMessage();
+
+            return null;
         }
     }
 
@@ -1284,5 +1444,16 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * A model's context through the reader a pass uses: its instance and relations alone without tables, else in full.
+     *
+     * @param  class-string  $modelFqcn
+     * @return RelationContext|null
+     */
+    private function contextFor(string $modelFqcn, bool $withoutTables): ?array
+    {
+        return $withoutTables ? $this->resolveRelationContext($modelFqcn) : $this->resolveContext($modelFqcn);
     }
 }

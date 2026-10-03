@@ -2,23 +2,31 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Models\Activity;
@@ -30,6 +38,8 @@ use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\DocblockGenericsFixture;
+use Workbench\App\Models\ExcludedModel;
+use Workbench\App\Models\Facility;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Label;
@@ -55,6 +65,10 @@ use Workbench\App\Models\User;
 use Workbench\App\Models\Venue;
 use Workbench\App\Models\VenueReview;
 use Workbench\App\Models\Warehouse;
+use Workbench\App\Packages\Audit\Models\AuditArchive;
+use Workbench\App\Packages\Audit\Models\AuditInspector;
+use Workbench\App\Packages\Audit\Models\AuditNote;
+use Workbench\App\Packages\Audit\Models\AuditTrail;
 use Workbench\App\ValueObjects\Coordinate;
 
 describe('resolveAttributeClass()', function () {
@@ -382,6 +396,14 @@ test('morph target map includes parents declaring custom MorphOne subclasses', f
     $info = $resolver->resolveRelation(Attachment::class, 'attachable');
 
     expect($info['type'])->toContain('Post');
+});
+
+test('a resolver overriding buildMorphTargetMap() with its one parameter builds the map through the override', function () {
+    $resolver = new RecordingModelAttributeResolver;
+    $resolver->buildMorphTargetMap([Post::class, Attachment::class]);
+
+    expect($resolver->morphTargetMapBuilds)->toBe([[Post::class, Attachment::class]])
+        ->and($resolver->resolveMorphToTargets(Attachment::class, 'attachable'))->toBe([Post::class]);
 });
 
 test('a bare @return MorphTo<Model, $this> generic is not narrowing and falls through to the reverse map', function () {
@@ -828,5 +850,258 @@ describe('resolveAttribute() @property fallback for virtual attributes', functio
     test('never answers a relation name from an ide-helper @property-read tag', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(DocblockGenericsFixture::class, 'child_rows')['type'])
             ->toBe('unknown');
+    });
+});
+
+describe('models this run does not publish', function () {
+    test('resolveRelation names a related model while there is no published set to read', function () {
+        expect(resolve(ModelAttributeResolver::class)->resolveRelation(Comment::class, 'post'))
+            ->toBe(['type' => 'Post', 'modelFqcn' => Post::class, 'morphFqcns' => []]);
+    });
+
+    test('resolveRelation names nothing for a related model outside the published set', function () {
+        PublishedModelRegistry::register([Comment::class]);
+
+        expect(resolve(ModelAttributeResolver::class)->resolveRelation(Comment::class, 'post'))
+            ->toBe(['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []]);
+    });
+
+    test('a morphTo docblock generic keeps only the targets in the published set', function () {
+        PublishedModelRegistry::register([Image::class, User::class]);
+
+        // Image::reviewable() is documented as MorphTo<Crm\User|User>, and Crm's User is outside the set.
+        $result = resolve(ModelAttributeResolver::class)->resolveRelation(Image::class, 'reviewable');
+
+        expect($result['type'])->toBe('User | null')
+            ->and($result['morphFqcns'])->toBe([User::class]);
+    });
+
+    test('the reverse morph map keeps only the targets in the published set', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->buildMorphTargetMap([User::class, Post::class, Product::class, Image::class]);
+
+        PublishedModelRegistry::register([User::class, Image::class]);
+
+        expect($resolver->resolveMorphToTargets(Image::class, 'imageable'))->toBe([User::class]);
+    });
+});
+
+describe('withRelatedModels()', function () {
+    test('adds each accepted model a relation reaches, transitively, sorted after the given ones', function () {
+        $related = resolve(ModelAttributeResolver::class)->withRelatedModels(
+            [Facility::class],
+            fn (string $class): bool => str_starts_with($class, 'Workbench\\App\\Packages\\Audit\\'),
+        );
+
+        // AuditNote is reached only through AuditTrail, and AuditInspector only through a morphTo docblock generic.
+        expect($related)->toBe([
+            Facility::class,
+            AuditArchive::class,
+            AuditInspector::class,
+            AuditNote::class,
+            AuditTrail::class,
+        ]);
+    });
+
+    test('asks about each candidate once, and never about a model it was given', function () {
+        $asked = [];
+
+        resolve(ModelAttributeResolver::class)->withRelatedModels(
+            [Facility::class, AuditTrail::class],
+            function (string $class) use (&$asked): bool {
+                $asked[] = $class;
+
+                return str_starts_with($class, 'Workbench\\App\\Packages\\Audit\\');
+            },
+        );
+
+        sort($asked);
+
+        expect($asked)->toBe([
+            ExcludedModel::class,
+            User::class,
+            AuditArchive::class,
+            AuditInspector::class,
+            AuditNote::class,
+        ]);
+    });
+
+    test('leaves out, with one warning, a model reached whose context cannot be read at all', function (bool $withoutTables) {
+        $inspector = new class(app()) extends ModelInspector
+        {
+            public function relationsOf(Model $model): Collection
+            {
+                if ($model instanceof AuditTrail) {
+                    throw new RuntimeException('The trail store is offline.');
+                }
+
+                return parent::relationsOf($model);
+            }
+
+            public function inspect($model, $connection = null): Arrayable
+            {
+                if ($model === AuditTrail::class) {
+                    throw new RuntimeException('The trail store is offline.');
+                }
+
+                return parent::inspect($model, $connection);
+            }
+        };
+        app()->instance(ModelInspector::class, $inspector);
+
+        $related = (new ModelAttributeResolver)->withRelatedModels(
+            [Facility::class],
+            fn (string $class): bool => str_starts_with($class, 'Workbench\\App\\Packages\\Audit\\'),
+            $withoutTables,
+        );
+
+        // AuditArchive and AuditNote are reached only through AuditTrail, so neither is reached at all.
+        expect($related)->toBe([Facility::class, AuditInspector::class])
+            ->and(AnalysisWarnings::all())->toBe([[
+                'subject' => AuditTrail::class,
+                'message' => 'Is reached through a relation, but inspecting it threw [The trail store is offline.], '
+                    .'so it is not published and no generated file names it.',
+            ]]);
+    })->with(['reading tables' => [false], 'reading no table' => [true]]);
+
+    test('never follows the relations of a model the filter refused', function () {
+        $related = resolve(ModelAttributeResolver::class)->withRelatedModels(
+            [Facility::class],
+            fn (string $class): bool => $class === AuditInspector::class,
+        );
+
+        // AuditTrail was refused, so AuditNote behind it is never reached.
+        expect($related)->toBe([Facility::class, AuditInspector::class]);
+    });
+});
+
+describe('reading relations without reading any table', function () {
+    test('withRelatedModels() lists the same models as the default read and makes no query', function () {
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+        $accepts = fn (string $class): bool => str_starts_with($class, 'Workbench\\App\\Packages\\Audit\\');
+
+        $withoutTables = (new ModelAttributeResolver)->withRelatedModels([Facility::class], $accepts, withoutTables: true);
+        $queriesWithoutTables = $queries;
+        $withTables = (new ModelAttributeResolver)->withRelatedModels([Facility::class], $accepts);
+
+        // The default read inspects each model's table, so the zero only means something beside a count above it.
+        expect($withoutTables)->toBe($withTables)
+            ->and($queriesWithoutTables)->toBe(0)
+            ->and($queries)->toBeGreaterThan(0);
+    });
+
+    test('buildMorphTargetMapWithoutTables() builds the same map as buildMorphTargetMap() and makes no query', function () {
+        $models = [User::class, Post::class, Product::class, Image::class];
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        $withoutTables = new ModelAttributeResolver;
+        $withoutTables->buildMorphTargetMapWithoutTables($models);
+        $queriesWithoutTables = $queries;
+
+        $withTables = new ModelAttributeResolver;
+        $withTables->buildMorphTargetMap($models);
+
+        expect($queriesWithoutTables)->toBe(0)
+            ->and($withoutTables->resolveMorphToTargets(Image::class, 'imageable'))
+            ->toBe($withTables->resolveMorphToTargets(Image::class, 'imageable'))
+            ->not->toBeEmpty();
+    });
+
+    test('a table-free build that throws leaves the next build reading tables', function () {
+        $resolver = new class extends ModelAttributeResolver
+        {
+            public bool $throws = true;
+
+            public function buildMorphTargetMap(array $modelFqcns): void
+            {
+                if ($this->throws) {
+                    $this->throws = false;
+
+                    throw new RuntimeException('The project\'s override failed.');
+                }
+
+                parent::buildMorphTargetMap($modelFqcns);
+            }
+        };
+
+        expect(fn () => $resolver->buildMorphTargetMapWithoutTables([Image::class]))
+            ->toThrow(RuntimeException::class, 'The project\'s override failed.');
+
+        // The first query of a test migrates the lazily refreshed database, so it must not be counted.
+        DB::select('select 1');
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        $resolver->buildMorphTargetMap([Image::class]);
+
+        expect($queries)->toBeGreaterThan(0);
+    });
+
+    test('a class that does not exist or cannot be constructed has no relations to follow', function () {
+        $given = ['Workbench\\App\\Models\\NoSuchModel', UnconstructableModel::class];
+
+        $related = (new ModelAttributeResolver)->withRelatedModels($given, fn (): bool => true, withoutTables: true);
+
+        expect($related)->toBe($given);
+    });
+
+    test('a model with a cached full context gives its relations from it, and any other from the container\'s inspector', function () {
+        $inspector = new class(app()) extends ModelInspector
+        {
+            public int $relationReads = 0;
+
+            public function relationsOf(Model $model): Collection
+            {
+                $this->relationReads++;
+
+                return parent::relationsOf($model);
+            }
+        };
+        app()->instance(ModelInspector::class, $inspector);
+
+        $withContext = new ModelAttributeResolver;
+        $withContext->getRelations(Facility::class);
+        $withContext->withRelatedModels([Facility::class], fn (): bool => false, withoutTables: true);
+        $readsWithContext = $inspector->relationReads;
+
+        (new ModelAttributeResolver)->withRelatedModels([Facility::class], fn (): bool => false, withoutTables: true);
+
+        expect($readsWithContext)->toBe(0)
+            ->and($inspector->relationReads)->toBe(1);
+    });
+});
+
+describe('a morphTo docblock that names a class_alias', function () {
+    beforeEach(function () {
+        // class_alias() cannot be undone, and every test in the process shares the one alias.
+        if (! class_exists(FacilityAlias::class)) {
+            class_alias(Facility::class, FacilityAlias::class);
+        }
+    });
+
+    test('withRelatedModels() lists the class it already has once, not again as its alias', function () {
+        $related = resolve(ModelAttributeResolver::class)->withRelatedModels(
+            [AliasedSubjectModel::class, Facility::class],
+            fn (string $class): bool => in_array($class, [Facility::class, FacilityAlias::class], true),
+        );
+
+        expect($related)->toBe([AliasedSubjectModel::class, Facility::class]);
+    });
+
+    test('resolveRelation() keeps the target the set publishes and names it by the declared class', function () {
+        PublishedModelRegistry::register([AliasedSubjectModel::class, Facility::class]);
+
+        $result = resolve(ModelAttributeResolver::class)->resolveRelation(AliasedSubjectModel::class, 'subject');
+
+        expect($result['morphFqcns'])->toBe([Facility::class])
+            ->and($result['type'])->toBe('Facility | null');
     });
 });

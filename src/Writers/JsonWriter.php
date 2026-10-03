@@ -76,35 +76,41 @@ class JsonWriter
         $data = [];
 
         foreach ($transformers as $transformer) {
+            // A loaded relation overwrites an attribute of the same name, so a model lists its properties as one
+            // combined interface declares them.
+            $ownColumns = $transformer->combinedColumns();
+            $ownMutators = $transformer->combinedMutators();
+            $ownAppends = $transformer->combinedAppends();
+
             $columns = array_map(fn ($entry, $col) => [
                 'name' => $col,
                 'type' => $entry['type'],
-            ], $transformer->columns, array_keys($transformer->columns));
+            ], $ownColumns, array_keys($ownColumns));
 
             $mutators = array_map(fn ($entry, $col) => [
                 'name' => $col,
                 'type' => $entry['type'],
-            ], $transformer->mutators, array_keys($transformer->mutators));
+            ], $ownMutators, array_keys($ownMutators));
 
             $appends = array_map(fn ($entry, $col) => [
                 'name' => $col,
                 'type' => $entry['type'],
-            ], $transformer->appends, array_keys($transformer->appends));
+            ], $ownAppends, array_keys($ownAppends));
 
             $relations = array_map(fn ($entry, $col) => [
                 'name' => $col,
                 'type' => $entry['type'],
             ], $transformer->relations, array_keys($transformer->relations));
 
-            $relationCounts = array_map(fn ($entry, $col) => [
-                'name' => $col.'_count',
+            $relationCounts = array_map(fn (string $name) => [
+                'name' => $name,
                 'type' => 'number',
-            ], $transformer->relations, array_keys($transformer->relations));
+            ], $transformer->relationCountKeys());
 
-            $relationExists = array_map(fn ($entry, $col) => [
-                'name' => $col.'_exists',
+            $relationExists = array_map(fn (string $name) => [
+                'name' => $name,
                 'type' => 'boolean',
-            ], $transformer->relations, array_keys($transformer->relations));
+            ], $transformer->relationExistsKeys());
 
             $data[$transformer->fqcn()] = [
                 'name' => $transformer->modelName,

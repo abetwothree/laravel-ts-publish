@@ -273,8 +273,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   removes, so the key publishes optional.
 - **An explicit default makes the key required**: `hasExplicitDefaultArg()` counts arguments the way
   `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
-  `applyConditionalDefault()` then unions the default's type in through `ValueResult::mergeUnion()`, which carries its
-  import channels. Joining the type strings by hand would emit a token with no import.
+  `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
+  its import channels. Joining the type strings by hand would emit a token with no import.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s, keeps the key `unknown`, since `T | unknown` is `unknown`. The key stays required
   either way. This drop is not recorded in `DroppedUnionArms`; see
@@ -405,6 +405,8 @@ The registry fails open: while it is empty, `isPublished()` answers `true`, so `
 registers, analyzes without narrowing. `Runner::run()` and `RunnerForSource::run()` reset it first.
 `Runner::generateResources()` registers the whole collected list before generating, because a resource may reference
 one collected after it. The registry is process-static, so `Tests\TestCase::setUp()` resets it too.
+Models have the same check through `PublishedModelRegistry`, which a source run does fill. See
+[ModelAttributeResolver § Models a run publishes](model-attribute-resolver.md#models-a-run-publishes).
 
 In the modular files a leaked guess fails `tsc` with TS2305 or TS2724, or with TS2307 when the run writes nothing into
 the guessed class's directory. In `laravel-ts-global.ts` it fails with TS2304 or TS2552. `unimportable-token-gate.sh`
@@ -420,6 +422,8 @@ union, such as `reviewable?: ArtistResource | VenueResource`, reporting the clas
 union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is wrong
 for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
+`MethodAnalysis::addProperty()` also queues the union's classes under the property in `inlineResourceFqcns`, one per
+token, and `InlineArrayHandler` builds the same queue for an inline array. `ImageReviewResource` pins both.
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
@@ -509,8 +513,8 @@ beside a signature are all known:
   `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
   must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
   reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` keeps
-  them, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource` key, and making it drop them like the
-  others would stop that rewrite.
+  them while the cast holds the enum's type name, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource`
+  key, and making it drop them like the others would stop that rewrite.
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
 an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts. The pattern is
@@ -568,6 +572,13 @@ channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`
 `customImports`. It unions `customImports` rather than replacing them. Reading any other channel, such as a resource
 channel, changes behavior and needs its own audit.
 
+The bridge merges the classes the result names, replaces the merged type with the result's, and drops the merge's
+`classTokenFqcns`, which queued the old type. Where the result spells one name for two classes, it sets the result's own
+queue instead, unless that queue outruns its tokens.
+[Import name registry § Rewriting aliased type references](import-name-registry.md#rewriting-aliased-type-references)
+states the queue's contract. `Handover::parties` pins it through the model file, a resource that reads the accessor and
+one that delegates.
+
 ### `directEnumFqcns` holds two kinds of entry
 
 `MethodAnalysis::addProperty()` keys `directEnumFqcns` by property name for a value's own `directEnumFqcn`. It also
@@ -582,10 +593,13 @@ Its import clean-up compares values, so it is right for both kinds.
 `TsTypeString::typeNameOccursIn()`, because an unused import fails `tsc` with TS6196 under `noUnusedLocals`. Two
 steps depend on it:
 
-- **After a `#[TsCasts]` override**: `pruneOverriddenAnalysisImports()` and `pruneOverriddenEnumImports()` drop each
-  model, `#[TsType]` and enum type import that no property type or extends clause still spells. The model prune reads
-  class basenames before aliasing, so two same-basename models both stay imported while either is spelled, and one can
-  stay imported unused under its alias.
+- **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
+  holds none of the enums' type names, and runs before `pruneOverriddenEnumImports()`, which removes the names it reads.
+  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name and no key
+  reads it bare, since `pruneOverriddenEnumImports()` cannot tell the two apart. `pruneOverriddenAnalysisImports()` and
+  `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
+  clause still spells. The model prune reads class basenames before aliasing, so two same-basename models both stay
+  imported while either is spelled, and one can stay imported unused under its alias.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
   every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and
@@ -616,14 +630,21 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
+`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`, which
+reads it by class through [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
+`ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
+`mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary, to-many and inline-array
+shapes, and `HandoverNoticeResource` the `when()` and `whenNull()` ones.
+
 Three more rules keep each FQCN beside its own token:
 
 - **Inline members keep their own arms**: `ThisPropertyHandler` carries a multi-class accessor's FQCNs through
   `ValueResult::withAttributeChannels()`. `InlineArrayHandler` walks members in order, taking each member's
   `inlineModelFqcns` over the self-keyed `modelFqcns` map. `WarehouseResource::$probe_nested` pins it.
 - **An overriding key clears its parent's channels**: when a key overrides a spread parent's key,
-  `analyzeReturnArray()` clears every channel for it, the three inline ones included. The child's occurrences then
-  never consume the parent's queue.
+  `analyzeReturnArray()` clears every channel for it through `MethodAnalysis::forgetChannels()`, the inline ones
+  included. The child's occurrences then never consume the parent's queue.
 - **Arm order is kept**: the branch union hoists one trailing `| null` through `TsTypeString::hoistNull()` and moves
   no type-name token relative to its queue.
 
@@ -650,7 +671,8 @@ the same PHP shape, and they must never disagree.
 `resolveImportConflicts()` has assigned any alias. A top-level key never shows that bare name, because
 `rewriteEnumResourceTypes()` builds its string from `constImportAliases` itself. For a nested wrap,
 `ResourceTransformer` and `AnalysisComposer` alias the bare name after `resolveImportConflicts()`. They call
-`TsTypeString::aliasPropertyType()` over `inlineEnumResourceFqcns`, in the order `InlineArrayHandler` built it.
+`TsTypeString::aliasTypeofConst()` over `inlineEnumResourceFqcns`, in the order `InlineArrayHandler` built it.
+`aliasTypeofConst()` changes only the name after `typeof`. The same name bare is another enum's type.
 
 The order matters because two members can wrap different enums that share one const name. `DealResource::$status_pair`
 pins two `Status` enums, each keeping its own alias:
@@ -704,6 +726,5 @@ These [known gaps](../known-gaps.md) come from the rules on this page:
 - [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)
 - [`Model::toArray()` on a receiver declines, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
-- [A morph union whose targets' resources share a basename spells the same token twice](../known-gaps.md#a-morph-union-whose-targets-resources-share-a-basename-spells-the-same-token-twice)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
 - [A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals](../known-gaps.md#a-mixed-enum-ternary-whose-arms-are-both-array-shaped-ships-a-duplicated-union-member-in-the-globals)

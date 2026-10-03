@@ -25,7 +25,8 @@ it('round-trips a model transformer through serialize without transients', funct
         ->and($restored->modelName)->toBe($original->modelName)
         ->and($restored->namespacePath)->toBe($original->namespacePath)
         ->and($restored->columns)->toBe($original->columns)
-        ->and($restored->globalAliasMap())->toBe($original->globalAliasMap());
+        ->and($restored->globalAliasMap())->toBe($original->globalAliasMap())
+        ->and($restored->globalTypeReferenceMap())->toBe($original->globalTypeReferenceMap());
 });
 
 it('does not retain reflection state after restore', function () {
@@ -57,7 +58,8 @@ it('round-trips a resource transformer through serialize without transients', fu
     $restored = unserialize(serialize($original));
 
     expect($restored)->toBeInstanceOf(ResourceTransformer::class)
-        ->and($restored->resourceName)->toBe($original->resourceName);
+        ->and($restored->resourceName)->toBe($original->resourceName)
+        ->and($restored->globalTypeReferenceMap())->toBe($original->globalTypeReferenceMap());
 });
 
 it('round-trips an enum transformer through serialize without transients', function () {

@@ -213,6 +213,39 @@ An unresolved `morphTo` publishes bare `unknown`, never `unknown | null`, since 
 `buildMorphUnionInfo()` and `transformRelations()` each apply that guard to their own nullable suffix, and they must
 agree.
 
+## Models a run publishes
+
+Every site that names a model asks [`PublishedModelRegistry`](../../src/Cache/PublishedModelRegistry.php) first.
+`BaseRunner::buildModelMorphTargetMap()` fills it with the collected models, then with each model `withRelatedModels()`
+reaches from them through relations and `morphTo` docblock targets, and theirs in turn. A reached model joins only when
+`CoreCollector::accepts()` allows it and its table or view exists, so `Notifiable`'s `DatabaseNotification` stays out of
+an app that never migrated `notifications`. A relation method that throws on a blank model, such as one that reads
+runtime state, is left out of its model with a warning (`ModelInspector::getRelations()`). A model whose context still
+cannot be read stays out, with a warning naming the exception, since generating it would stop the run.
+
+These sites read the set:
+
+- `resolveRelation()` answers `unknown` for a related model outside it, and `resolveMorphToTargets()` drops a target
+  outside it.
+- `ModelTransformer::transformRelations()` leaves such a relation out, with its `_count` and `_exists` keys, and
+  `exportedTypeInfo()` publishes `unknown` for a column or accessor type naming such a class.
+- `MethodAnalysis::addProperty()` declines a value whose model channels name one, through
+  `ValueResult::namesOnlyExportedClasses()`. It is the last check, for a class no earlier site caught.
+
+[`PublishedClasses::exports()`](../../src/Cache/PublishedClasses.php) is the question they share.
+
+The registry fails open until a run registers its set. A registered empty set, as when `models.included` matches
+nothing, publishes no model. A full run fills it in the model phase. A run that skips that phase fills it
+when a later phase runs and `models.enabled` is on, and `RunnerForSource` fills it for every class but an enum, so a
+partial or watcher run names the same models as a full one.
+
+Two caches follow the set. `BaseRunner::cachedGenerate()` folds `PublishedModelRegistry::signature()` into every
+fingerprint, because a model joining or leaving the set changes what its neighbors may name without touching their
+files, and `AnalysisMemo` keys each answer on the registry's version. `RunnerTest`'s
+`PublishedModelRegistry run boundary` group and the `Facility` fixtures pin the behavior, and
+[Known gaps](../known-gaps.md#a-model-published-on-demand-gets-no-metadata-companion-and-is-not-watched) lists what
+such a model does not get.
+
 ## `publishedColumnNames()` and the `exclude_hidden` coupling
 
 `databaseColumnNames()` lists every real column, `$hidden` included. `publishedColumnNames()` lists the columns that

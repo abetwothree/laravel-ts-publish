@@ -190,7 +190,7 @@ describe('aliasPropertyType', function () {
 
     // The trailing (?![A-Za-z0-9_$]) is what stops `User` claiming `UserProfile`: it fails on the `P` and
     // PCRE backtracks into the longer alternative. Passes with the longest-first usort deleted, so this
-    // guards the outcome, not that sort — the sort is defensive only.
+    // guards the outcome, not that sort. The next test pins the sort.
     test('a longer registered name is not shadowed by a shorter one that prefixes it', function () use ($nameMap) {
         expect($this->service->aliasPropertyType(
             'UserProfile | User',
@@ -198,6 +198,17 @@ describe('aliasPropertyType', function () {
             $nameMap,
             ['App\\Models\\User' => 'AppUser', 'App\\Models\\UserProfile' => 'AppUserProfile'],
         ))->toBe('AppUserProfile | AppUser');
+    });
+
+    // The lookahead stops at ASCII, so it cannot reject `Caf` inside `Café`; only trying `Café` first reads it whole.
+    // The aliases differ from the names' spelling, so a `Caf` cut out of `Café` cannot spell the right string.
+    test('a name that a longer one continues with a non-ASCII letter is read whole', function () {
+        expect($this->service->aliasPropertyType(
+            'Café | Caf',
+            ['App\\Models\\Caf', 'App\\Models\\Café'],
+            ['App\\Models\\Café' => 'Café', 'App\\Models\\Caf' => 'Caf'],
+            ['App\\Models\\Café' => 'AppCafe', 'App\\Models\\Caf' => 'AppCaf'],
+        ))->toBe('AppCafe | AppCaf');
     });
 
     // Pick<>/Omit<> relation-filter references (e.g. `Pick<User, 'id' | 'user'>`) carry a bare model
@@ -215,6 +226,109 @@ describe('aliasPropertyType', function () {
     test('an item with no mapped FQCN is returned untouched', function () use ($nameMap) {
         expect($this->service->aliasPropertyType('User | Post', ['App\\Models\\Team'], $nameMap, []))
             ->toBe('User | Post');
+    });
+});
+
+describe('aliasTypeofConst', function () {
+    $constNames = [
+        'App\\Enums\\Status' => 'Status',
+        'Crm\\Enums\\Status' => 'Status',
+        'Crm\\Enums\\ClearanceType' => 'ClearanceType',
+    ];
+
+    test('aliases the const named after typeof, in a collection wrap and across extra whitespace', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof ClearanceType>[] | AsEnum<typeof   ClearanceType>',
+            ['Crm\\Enums\\ClearanceType', 'Crm\\Enums\\ClearanceType'],
+            $constNames,
+            ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'],
+        ))->toBe('AsEnum<typeof CrmClearanceType>[] | AsEnum<typeof   CrmClearanceType>');
+    });
+
+    // aliasPropertyType() would alias both tokens here, which writes one enum's const alias into another enum's type.
+    test('leaves a bare token spelled like the const, which is another enum\'s type', function () use ($constNames) {
+        $aliases = ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'];
+
+        expect($this->service->aliasTypeofConst(
+            '{ clearance: ClearanceType; clearance_type: AsEnum<typeof ClearanceType> }',
+            ['Crm\\Enums\\ClearanceType'],
+            $constNames,
+            $aliases,
+        ))->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+            ->and($this->service->aliasTypeofConst(
+                '{ clearance_type: AsEnum<typeof ClearanceType>; clearance: ClearanceType }',
+                ['Crm\\Enums\\ClearanceType'],
+                $constNames,
+                $aliases,
+            ))->toBe('{ clearance_type: AsEnum<typeof CrmClearanceType>; clearance: ClearanceType }');
+    });
+
+    test('two typeof tokens of one name take two aliases in queue order, and a bare token between them takes none', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            '{ app: AsEnum<typeof Status>; plain: Status; crm: AsEnum<typeof Status> }',
+            ['App\\Enums\\Status', 'Crm\\Enums\\Status'],
+            $constNames,
+            ['App\\Enums\\Status' => 'EnumsStatus', 'Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('{ app: AsEnum<typeof EnumsStatus>; plain: Status; crm: AsEnum<typeof CrmStatus> }');
+    });
+
+    test('the last FQCN covers a typeof past the end of a short queue', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof Status> | AsEnum<typeof Status>[]',
+            ['Crm\\Enums\\Status'],
+            $constNames,
+            ['Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('AsEnum<typeof CrmStatus> | AsEnum<typeof CrmStatus>[]');
+    });
+
+    test('word boundaries keep a longer name and a qualified name intact', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst(
+            'AsEnum<typeof StatusExtra> | AsEnum<typeof other.Status> | AsEnum<typeof Status>',
+            ['Crm\\Enums\\Status'],
+            $constNames,
+            ['Crm\\Enums\\Status' => 'CrmStatus'],
+        ))->toBe('AsEnum<typeof StatusExtra> | AsEnum<typeof other.Status> | AsEnum<typeof CrmStatus>');
+    });
+
+    test('an item with no mapped FQCN is returned untouched', function () use ($constNames) {
+        expect($this->service->aliasTypeofConst('AsEnum<typeof Status>', ['Other\\Enums\\Role'], $constNames, []))
+            ->toBe('AsEnum<typeof Status>');
+    });
+});
+
+describe('queuedTokenPattern', function () {
+    test('reads a name as a whole token, never inside a longer name or after a dot', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['User']),
+            'User | UserResource | AdminUser | crm.models.User | User[]',
+            $matches,
+        );
+
+        expect($matches[0])->toBe(['User', 'User']);
+    });
+
+    test('tries the longest name first, whatever order the names arrive in', function () {
+        preg_match_all($this->service->queuedTokenPattern(['Caf', 'Café']), 'Café | Caf', $matches);
+
+        expect($matches[0])->toBe(['Café', 'Caf']);
+    });
+
+    test('puts an anchor before every name, and a \K in it keeps the anchor out of the match', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['Status', 'Role'], 'typeof\s+\K'),
+            'typeof Status | Role | typeof  Role',
+            $matches,
+        );
+
+        expect($matches[0])->toBe(['Status', 'Role']);
+    });
+});
+
+describe('queuePosition', function () {
+    test('walks a queue in order, then holds its last entry for every occurrence after it', function () {
+        expect(array_map(fn (int $occurrence): int => $this->service->queuePosition($occurrence, 3), [0, 1, 2, 3, 4, 9]))
+            ->toBe([0, 1, 2, 2, 2, 2])
+            ->and($this->service->queuePosition(5, 1))->toBe(0);
     });
 });
 
@@ -275,7 +389,7 @@ describe('TS_PRIMITIVES', function () {
 });
 
 describe('qualifyGlobalType', function () {
-    test('resolves import alias to fully-qualified name (Pass 1)', function () {
+    test('resolves import alias to fully-qualified name', function () {
         $result = $this->service->qualifyGlobalType(
             'CrmUser | null',
             ['crm.models' => ['User']],
@@ -286,7 +400,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('crm.models.User | null');
     });
 
-    test('uses bare name when alias target is in the skip namespace (Pass 1)', function () {
+    test('uses bare name when alias target is in the skip namespace', function () {
         $result = $this->service->qualifyGlobalType(
             'CrmUser | null',
             ['crm.models' => ['User']],
@@ -297,7 +411,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('User | null');
     });
 
-    test('qualifies a bare type name with its namespace prefix (Pass 2)', function () {
+    test('qualifies a bare type name with its namespace prefix', function () {
         $result = $this->service->qualifyGlobalType(
             'User | null',
             ['app.models' => ['User', 'Post']],
@@ -307,7 +421,7 @@ describe('qualifyGlobalType', function () {
         expect($result)->toBe('app.models.User | null');
     });
 
-    test('skips qualification for types in the skip namespace (Pass 2)', function () {
+    test('skips qualification for types in the skip namespace', function () {
         $result = $this->service->qualifyGlobalType(
             'User | Post',
             ['app.models' => ['User', 'Post']],
@@ -338,7 +452,7 @@ describe('qualifyGlobalType', function () {
     });
 
     test('does not re-qualify bare names that belong to the skip namespace', function () {
-        // After Pass 1, AppUser becomes bare 'User'; Pass 2 must not re-qualify it with crm.models.
+        // AppUser resolves to this namespace's bare 'User', which crm.models' own 'User' must not then claim.
         $result = $this->service->qualifyGlobalType(
             'Post | Product | AppUser | CrmUser',
             ['app.models' => ['User', 'Post', 'Product'], 'crm.models' => ['User']],
@@ -347,6 +461,34 @@ describe('qualifyGlobalType', function () {
         );
 
         expect($result)->toBe('Post | Product | User | crm.models.User');
+    });
+
+    test('reads a name through the file\'s own map, whichever namespace also owns it', function () {
+        $types = ['app.models' => ['User', 'ServiceDesk'], 'crm.models' => ['User']];
+
+        expect($this->service->qualifyGlobalType('User | null', $types, 'app.models', ['User' => 'crm.models.User']))
+            ->toBe('crm.models.User | null')
+            ->and($this->service->qualifyGlobalType('User | null', $types, 'crm.models', ['User' => 'crm.models.User']))
+            ->toBe('User | null');
+    });
+
+    test('reads each name once, so a name one entry wrote is never rewritten by another', function () {
+        // AppUser resolves to this namespace's bare `User`, which the `User` entry must not then send to crm.models.
+        $result = $this->service->qualifyGlobalType(
+            'AppUser | User',
+            ['app.models' => ['User'], 'crm.models' => ['User']],
+            'app.models',
+            ['AppUser' => 'app.models.User', 'User' => 'crm.models.User'],
+        );
+
+        expect($result)->toBe('User | crm.models.User');
+    });
+
+    test('a name several namespaces own goes to the first one, unless the current namespace owns it', function () {
+        $types = ['app.enums' => ['StatusType'], 'crm.enums' => ['StatusType'], 'app.models' => ['Post']];
+
+        expect($this->service->qualifyGlobalType('StatusType', $types, 'app.models'))->toBe('app.enums.StatusType')
+            ->and($this->service->qualifyGlobalType('StatusType', $types, 'crm.enums'))->toBe('StatusType');
     });
 
     test('never rewrites a name inside a quoted string literal, whatever the literal escapes', function (string $type, string $qualified) {
@@ -376,6 +518,20 @@ describe('qualifyGlobalType', function () {
 
         expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
     });
+
+    test('reads a name spelled with non-ASCII letters whole, as a type name and as an alias', function (string $type, string $qualified) {
+        $result = $this->service->qualifyGlobalType(
+            $type,
+            ['app.models' => ['Ünï', 'User']],
+            '',
+            ['AliasÜnï' => 'app.models.Ünï'],
+        );
+
+        expect($result)->toBe($qualified);
+    })->with([
+        'a type name' => ['Ünï | null', 'app.models.Ünï | null'],
+        'an alias' => ['AliasÜnï', 'app.models.Ünï'],
+    ]);
 
     test('qualifies each type once per namespace under the same maps, and reads a repeat back', function () {
         $service = new CountingTsTypeString;

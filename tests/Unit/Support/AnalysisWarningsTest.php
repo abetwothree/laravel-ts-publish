@@ -27,6 +27,17 @@ it('accumulates across add() calls', function () {
         ->and(AnalysisWarnings::all()[1])->toBe(['subject' => 'Baz@qux', 'message' => 'second']);
 });
 
+it('records a warning once through addOnce(), however often it is raised', function () {
+    AnalysisWarnings::addOnce('Foo', 'first');
+    AnalysisWarnings::addOnce('Foo', 'first');
+    AnalysisWarnings::addOnce('Foo', 'second');
+
+    expect(AnalysisWarnings::all())->toBe([
+        ['subject' => 'Foo', 'message' => 'first'],
+        ['subject' => 'Foo', 'message' => 'second'],
+    ]);
+});
+
 it('returns to empty on reset()', function () {
     AnalysisWarnings::add('Foo@bar', 'first');
     AnalysisWarnings::reset();

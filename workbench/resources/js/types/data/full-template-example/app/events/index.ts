@@ -2,6 +2,7 @@ export * from './ComputedNameEvent';
 export * from './DeclaredPropsEvent';
 export * from './DocblockShapedEvent';
 export * from './EnumBroadcastEvent';
+export * from './FacilityAudited';
 export * from './MixedTypesEvent';
 export * from './MultiModelEvent';
 export * from './OrderShipped';

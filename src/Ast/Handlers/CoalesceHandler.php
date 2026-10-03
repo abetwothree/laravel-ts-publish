@@ -15,8 +15,8 @@ use PhpParser\Node\Expr\BinaryOp;
 /**
  * Analyze a null-coalescing expression (`$left ?? $right`).
  *
- * Doesn't delegate to ValueResult::analyzeClosureUnion(): that would leave `null` in twice
- * (`Order | null | Order`). Only operands contributing a result member get their channels merged.
+ * Doesn't delegate to ValueResult::analyzeClosureUnion(): the left operand's `null` never reaches the result, so
+ * its arm is unioned with that `null` stripped. Only operands contributing a result member get their channels merged.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -37,29 +37,20 @@ final class CoalesceHandler implements ExpressionHandler
             $leftResult = $engine->resolve($expr->left);
             $rightResult = $engine->resolve($expr->right);
 
-            $leftType = $leftResult['type'];
-            $rightType = $rightResult['type'];
-
             // Strip `| null` from the left: with a non-null fallback, null is never the final result.
-            $leftType = ValueResult::stripNullArm($leftType);
+            $leftResult['type'] = ValueResult::stripNullArm($leftResult['type']);
 
-            if ($leftType === 'unknown' || $leftType === '') {
+            // unionResults() leaves out an operand the engine could not type, so only the audit is told which one:
+            // the left one alone when neither has a type.
+            if ($leftResult['type'] === 'unknown') {
                 DroppedUnionArms::record($expr->left, $scope, 'coalesce-left');
-
-                return ValueResult::mergeUnion([$rightType], [$rightResult]);
-            }
-
-            if ($rightType === 'unknown') {
+            } elseif ($rightResult['type'] === 'unknown') {
                 DroppedUnionArms::record($expr->right, $scope, 'coalesce-right');
-
-                return ValueResult::mergeUnion([$leftType], [$leftResult]);
             }
 
-            if ($leftType === $rightType) {
-                return ValueResult::mergeUnion([$leftType], [$leftResult, $rightResult]);
-            }
-
-            return ValueResult::mergeUnion([$leftType, $rightType], [$leftResult, $rightResult]);
+            // Two arms that render alike are one member, unless they spell one name for two classes, which
+            // unionResults() keeps apart.
+            return ValueResult::unionResults([$leftResult, $rightResult]);
         }
 
         return null;

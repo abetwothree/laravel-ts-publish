@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
@@ -51,10 +52,14 @@ use UnitEnum;
  *    customImports: array<string, list<string>>,
  *    enumFqcns: list<class-string>,
  *    classFqcns: list<class-string>,
+ *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
  * }
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
+ * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
+ * `type` spells one name for two classes and the queue does not outrun those tokens: `classFqcns` lists each class
+ * once, so its order alone cannot say which token is which.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
  *
@@ -1917,7 +1922,9 @@ class LaravelTsPublish
      * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
      *
      * Class-backed and bare-enum entries dedupe by FQCN, not short name, so two classes or enums sharing a name keep
-     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned.
+     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned. A
+     * decorated arm stays unless an earlier one repeats its text and classes, and once two classes share a name the
+     * result's `classTokenFqcns` names the class behind each token.
      *
      * @param  list<TypeScriptTypeInfo>  $infos
      * @return TypeScriptTypeInfo
@@ -1940,6 +1947,12 @@ class LaravelTsPublish
         /** @var list<string> $seenTypeTokens */
         $seenTypeTokens = [];
 
+        /** @var array<string, list<list<class-string>>> $decoratedQueues decorated text => each kept arm's queue */
+        $decoratedQueues = [];
+
+        /** @var list<class-string> $classTokenFqcns the class behind each class token kept, in order */
+        $classTokenFqcns = [];
+
         foreach ($infos as $info) {
             if ($info['classFqcns'] !== []) {
                 $isPlainClassUnion = $info['type'] === implode(' | ', $info['classes']);
@@ -1950,6 +1963,7 @@ class LaravelTsPublish
                             $classFqcnToName[$fqcn] = $info['classes'][$i];
                             $orderedClassFqcns[] = $fqcn;
                             $types[] = $info['classes'][$i];
+                            $classTokenFqcns[] = $fqcn;
                         }
                     }
                 } else {
@@ -1961,9 +1975,13 @@ class LaravelTsPublish
                         }
                     }
 
-                    if (! in_array($info['type'], $seenTypeTokens, true)) {
+                    $queue = $this->unrepeatedArmQueue($info, $decoratedQueues, $seenTypeTokens);
+
+                    if ($queue !== null) {
+                        $decoratedQueues[$info['type']][] = $queue;
                         $seenTypeTokens[] = $info['type'];
                         $types[] = $info['type'];
+                        array_push($classTokenFqcns, ...$queue);
                     }
                 }
             } elseif (count($info['enumFqcns']) === 1 && $info['type'] === $info['enumTypes'][0]) {
@@ -2001,7 +2019,41 @@ class LaravelTsPublish
         $result['enumFqcns'] = $enumFqcns;
         $result['classFqcns'] = $orderedClassFqcns;
 
+        // `classFqcns` lists each class once, so it cannot say which token is whose when two classes share a name. An
+        // empty queue would keep ClassTokenQueue::fqcnsOf() from falling back to `classFqcns`.
+        if ($classTokenFqcns !== [] && count(array_unique($result['classes'])) < count($result['classes'])) {
+            $result['classTokenFqcns'] = $classTokenFqcns;
+        }
+
         return $result;
+    }
+
+    /**
+     * The class behind each token of a decorated arm, or null when an arm kept before repeats it.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @param  array<string, list<list<class-string>>>  $decoratedQueues  decorated text => each kept arm's queue
+     * @param  list<string>  $seenTypeTokens  every text kept so far
+     * @return list<class-string>|null
+     */
+    private function unrepeatedArmQueue(array $info, array $decoratedQueues, array $seenTypeTokens): ?array
+    {
+        // `classes[i]` is the name the tokens spell for `classFqcns[i]`.
+        $names = array_combine($info['classFqcns'], $info['classes']);
+        $queue = ClassTokenQueue::perToken(
+            ClassTokenQueue::fqcnsOf($info),
+            $info['type'],
+            fn (string $fqcn): string => $names[$fqcn],
+        );
+
+        // Against a decorated arm kept under its text, an arm repeats only when the classes behind its tokens match
+        // too, each queue read one entry per token: `User[] | Record<string, User>` spells a class twice. A text that
+        // only a class-less arm kept is repeated outright.
+        $repeats = isset($decoratedQueues[$info['type']])
+            ? in_array($queue, $decoratedQueues[$info['type']], true)
+            : in_array($info['type'], $seenTypeTokens, true);
+
+        return $repeats ? null : $queue;
     }
 
     /**

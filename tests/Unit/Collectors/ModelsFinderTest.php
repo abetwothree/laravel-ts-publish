@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
 use Illuminate\Support\Collection;
 
 use function Orchestra\Testbench\workbench_path;
@@ -15,7 +16,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(82)
+        ->toHaveCount(88)
         ->toContain('Workbench\App\Models\TrackingEvent')
         ->toContain('Workbench\App\Models\PostMeta');
 });
@@ -132,4 +133,38 @@ test('collect resolves an excluded directory through the same per-process class 
     CoreCollector::flushClassMapCache();
 
     expect($collector->collect())->not->toContain('Workbench\\App\\Models\\User');
+});
+
+describe('accepts()', function () {
+    test('a model outside every scanned directory is accepted', function () {
+        expect(resolve(ModelsCollector::class)->accepts(AuthoredPost::class))->toBeTrue();
+    });
+
+    test('a model carrying #[TsExclude], a class that is no model, and a name that is no class are refused', function () {
+        $collector = resolve(ModelsCollector::class);
+
+        expect($collector->accepts('Workbench\App\Models\ExcludedModel'))->toBeFalse()
+            ->and($collector->accepts('Workbench\App\ValueObjects\OpaqueHandle'))->toBeFalse()
+            ->and($collector->accepts('Totally\Made\Up\Model'))->toBeFalse();
+    });
+
+    test('a model the excluded list names is refused', function () {
+        config()->set('ts-publish.models.excluded', [AuthoredPost::class]);
+
+        expect(resolve(ModelsCollector::class)->accepts(AuthoredPost::class))->toBeFalse();
+    });
+
+    test('an included allow-list refuses every model it does not name', function () {
+        config()->set('ts-publish.models.included', ['Workbench\App\Models\User']);
+        $collector = resolve(ModelsCollector::class);
+
+        expect($collector->accepts('Workbench\App\Models\User'))->toBeTrue()
+            ->and($collector->accepts(AuthoredPost::class))->toBeFalse();
+    });
+
+    test('every class collect() returns is accepted, so the two checks cannot drift apart', function () {
+        $collector = resolve(ModelsCollector::class);
+
+        expect($collector->collect()->reject(fn (string $class): bool => $collector->accepts($class))->all())->toBe([]);
+    });
 });

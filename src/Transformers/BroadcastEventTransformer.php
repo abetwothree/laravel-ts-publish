@@ -219,16 +219,7 @@ class BroadcastEventTransformer extends CoreTransformer
         // A #[TsCasts] override replaces the property's type outright, so the type it displaced
         // must not keep an import alive.
         foreach (array_keys($this->tsTypeOverrides) as $name) {
-            unset(
-                $analysis->enumResources[$name],
-                $analysis->nestedResources[$name],
-                $analysis->directEnumFqcns[$name],
-                $analysis->modelFqcns[$name],
-                $analysis->multiEnumResourceFqcns[$name],
-                $analysis->inlineEnumFqcns[$name],
-                $analysis->inlineModelFqcns[$name],
-                $analysis->inlineEnumResourceFqcns[$name],
-            );
+            $analysis->forgetChannels((string) $name);
         }
 
         $this->properties = $this->resolveProperties($analysis);
@@ -503,10 +494,10 @@ class BroadcastEventTransformer extends CoreTransformer
 
         foreach ($this->importAliases as $fqcn => $alias) {
             if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
             } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
+                $ns = TsNaming::globalNamespace($fqcn);
                 $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
             }
         }
@@ -524,21 +515,7 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     public function globalTypeReferenceMap(): array
     {
-        $map = [];
-
-        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
-            $map[$key] = $ns.'.'.$typeName;
-        }
-
-        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-            $key = $this->importAliases[$fqcn] ?? $typeName;
-            $ns = str_replace('/', '.', TsNaming::namespaceToPath($fqcn));
-            $map[$key] = $ns.'.'.$typeName;
-        }
-
-        return $map;
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /**

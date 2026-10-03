@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use ReflectionClass;
@@ -22,7 +23,7 @@ use ReflectionClass;
  * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  *
- * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, customImports: array<string, list<string>>}
+ * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, classTokenFqcns?: list<class-string>, customImports: array<string, list<string>>}
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
 trait ResolvesModelTypes
@@ -78,6 +79,8 @@ trait ResolvesModelTypes
             'type' => $tsInfo['type'],
             'enumFqcn' => $enumFqcn,
             'classFqcns' => $tsInfo['classFqcns'],
+            // Present only where the type spells one name for two classes; see TypeScriptTypeInfo.
+            ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
         ];
     }
@@ -127,7 +130,7 @@ trait ResolvesModelTypes
                 'type' => $info['type'],
                 'optional' => false,
                 ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
-                ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => $classFqcns] : []),
+                ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => ClassTokenQueue::fqcnsOf($info)] : []),
                 ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
                 ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
             ]);

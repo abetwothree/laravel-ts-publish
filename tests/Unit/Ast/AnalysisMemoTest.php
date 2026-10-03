@@ -5,8 +5,10 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Post;
 
 /**
  * A computation that counts its runs and answers which run it was.
@@ -113,6 +115,16 @@ test('computes an answer again once the published resource set changes', functio
     expect([$before, $memo->remember('k', $counting($runs))])->toBe([1, 2]);
 });
 
+test('computes an answer again once the published model set changes', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+
+    $before = $memo->remember('k', $counting($runs));
+    PublishedModelRegistry::register([Post::class]);
+
+    expect([$before, $memo->remember('k', $counting($runs))])->toBe([1, 2]);
+});
+
 test('computes an answer again when it was worked out without recording the dependencies a reuse now needs', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;
@@ -161,4 +173,48 @@ test('forget drops every answer but the pinned ones', function () use ($counting
 
     expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('kept')
         ->and($memo->remember('k', $counting($runs)))->toBe(2);
+});
+
+test('reset drops every answer, the pinned ones too', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+
+    $memo->remember('pinned', fn (): string => 'stale', pin: true);
+    $memo->remember('k', $counting($runs));
+    $memo->reset();
+
+    expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('recomputed')
+        ->and($memo->remember('k', $counting($runs)))->toBe(2);
+});
+
+test('reset forgets which analyses were pinned, so a pin in the next run is measured from that run', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $outerRuns = new ArrayObject;
+    $innerRuns = new ArrayObject;
+    $inner = function () use ($memo, $counting, $innerRuns): int {
+        if ($memo->enter('inner')) {
+            $memo->leave('inner');
+        }
+
+        return $counting($innerRuns)();
+    };
+    $outer = function () use ($memo, $counting, $outerRuns, $inner): int {
+        $memo->remember('inner', $inner);
+
+        return $counting($outerRuns)();
+    };
+    $pinInner = function () use ($memo, $inner): void {
+        $memo->enter('inner');
+        $memo->remember('inner', $inner, pin: true);
+        $memo->leave('inner');
+    };
+
+    $pinInner();
+    $memo->reset();
+
+    // In the next run `outer` reads `inner`, and `inner` is pinned to a fresh result afterwards.
+    $memo->remember('outer', $outer);
+    $pinInner();
+
+    expect($memo->remember('outer', $outer))->toBe(2);
 });

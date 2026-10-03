@@ -51,20 +51,33 @@ The result holds two invariants:
 
 ## Rewriting aliased type references
 
-`applyResolvedImportNames()` records an alias only where the resolved name differs from the type name, then calls the
-transformer's `rewriteTypeReferences()` once if anything was aliased. Its leftover pass over the const names handles a
-const with no type import, such as an enum reached only through an inline `EnumResource::make()`. That pass is live
-for `ResourceTransformer` and `AnalysisComposer`, and finds nothing for `ModelTransformer`, whose const map mirrors
-its enum map, or for `BroadcastEventTransformer`, which passes no const names.
+`applyResolvedImportNames()` aliases a type and a const each on its own account, since an enum reached only through an
+inline `EnumResource::make()` has no type import to alias. It calls the consumer's `rewriteTypeReferences()` once if a
+type was aliased.
 
-`rewriteTypeReferences()` hands each property's type and FQCN list to `TsTypeString::aliasPropertyType()`. The list is a
-queue per type name, so occurrence N of a name in the type string takes the Nth FQCN registered under that name. Order
-and multiplicity are the contract, so never sort or dedupe the list. Deduping `Crm, App, Crm` to `Crm, App` retypes the
-third occurrence as the app model. `WarehouseResource::regional_hub_contacts` pins that interleaved case.
+`rewriteTypeReferences()` hands each property's type and FQCN list to `TsTypeString::aliasPropertyType()`, except that
+`ResourceTransformer` skips a key whose `#[TsCasts]` entry brings its own import, since that text is the app's own. The
+list is a queue per type name, so occurrence N of a name in the type string takes the Nth FQCN registered under that
+name. Order and multiplicity are the contract, so never sort or dedupe the list. Deduping `Crm, App, Crm` to
+`Crm, App` retypes the third occurrence as the app model. `WarehouseResource::regional_hub_contacts` pins that
+interleaved case.
 
 The queue lines up with the type string because each builder writes a union's arms and its FQCN list in one loop:
 `LaravelTsPublish::mergeTypeScriptInfos()` for a class union and `ModelAttributeResolver::buildMorphUnionInfo()` for a
 morph union. Reorder one without the other and aliases land on the wrong arms.
+
+In `mergeTypeScriptInfos()`, a decorated arm such as `User[]` repeats an earlier one only when its text and the classes
+behind its tokens both match, so `User[]|CrmUser[]` merges to `User[] | User[]`. `classFqcns` lists each class once, so
+when two classes share a name the merged info also carries `classTokenFqcns`, the class behind each token it kept.
+Consumers read the queue through [`ClassTokenQueue::fqcnsOf()`](../../src/Support/ClassTokenQueue.php), which falls back
+to `classFqcns`.
+
+Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
+class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineArrayHandler::memberFqcns()`
+queues each member of an inline array through `ClassTokenQueue::perToken()`, as `mergeTypeScriptInfos()` does for each
+decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
+resource do not both queue, so `User[] | Record<string, User>` queues its class twice.
 
 Callers fill their queues in one of two ways:
 
@@ -91,23 +104,28 @@ matching the start of `UserProfile`.
 
 Each transformer's `resolveImportConflicts()` reserves its file's own interface name, registers the FQCNs from its own
 maps, and passes the result to `applyResolvedImportNames()`. `AnalysisComposer` runs the same two registries as
-`ResourceTransformer`, with the same skip list, and reserves nothing because its caller names the interface. Only
-`ModelTransformer` suggests preferred aliases, derived from relation names. The others have no relation to derive one
-from.
+`ResourceTransformer`, with the same skip list, and reserves no interface name because its caller names the interface.
+Only `ModelTransformer` suggests preferred aliases, derived from relation names. The others have no relation to derive
+one from.
 
 Every consumer unions its FQCN maps with `+`, which is safe only because no FQCN lands in two of them. The analyzers
 put only `JsonResource` subclasses in a resource map and only Eloquent models in a model map, and an enum is neither.
 PHP does not enforce the resource and model split, and a class extending both would break it.
 
-**Known limitation.** `ModelTransformer`, `ResourceTransformer` and `AnalysisComposer` resolve enum const names through
-a second, sibling `ImportNameRegistry` with the same skip list. Slicing a const name out of a type alias would break at
-the numeric tiebreak, and the two registries run in lockstep, so `StatusType` aliased to `CrmStatusType` pairs with
-`Status` aliased to `CrmStatus`. They do not see each other, though, and TypeScript gives value and type imports one
-identifier namespace. An enum `Role` (const `Role`, type `RoleType`) imported beside an enum `RoleType` (const
-`RoleType`, type `RoleTypeType`) collides on `RoleType` across the two registries, and the file gets a `TS2300`. It
-takes an enum named like another imported enum's `…Type` form, and no workbench fixture has one.
-[Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records what a user sees,
-including the barrel conflict when both enums share a namespace.
+**Types resolve first, and a const steps aside.** `ModelTransformer`, `ResourceTransformer` and `AnalysisComposer`
+resolve enum const names through a second, sibling `ImportNameRegistry` with the same skip list, because slicing a const
+name out of a type alias would break at the numeric tiebreak. The two run in lockstep, so `StatusType` aliased to
+`CrmStatusType` pairs with `Status` aliased to `CrmStatus`. TypeScript gives value and type imports one identifier
+namespace, so `ResolvesImportConflicts::applyImportNameRegistries()` resolves the types first and reserves every name
+they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`)
+keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's const. The `Badge`
+fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom imports bring
+(`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
+
+The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
+name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
+collision, which no alias can settle.
+[Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records it.
 
 ### `ModelTransformer`
 
@@ -123,7 +141,7 @@ transformed is never registered.
   `$enumFqcnMap`, because it needs no bare type import. A second loop registers those leftover consts, so two with one
   name resolve apart instead of shipping as two identical value imports from different files (`TS2300`).
 - **The inline wrap's own token**: aliasing the import does not rename the const inside `AsEnum<typeof …>`.
-  `rewriteEnumResourceTypes()` substitutes it later, through its own `aliasPropertyType()` call keyed on the const
+  `rewriteEnumResourceTypes()` substitutes it later, through its own `aliasTypeofConst()` call keyed on the const
   maps. [ResourceAstAnalyzer § The inline wrap's own const token is aliased by the transformer, not
   here](resource-ast-analyzer.md#the-inline-wraps-own-const-token-is-aliased-by-the-transformer-not-here) explains why
   it cannot reuse `rewriteTypeReferences()`.

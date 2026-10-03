@@ -6,12 +6,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisComposer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Http\Resources\ApiPostResource;
+use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
+use Workbench\App\Http\Resources\ImageReviewResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\UserResource;
@@ -31,6 +34,40 @@ describe('AstEngine::analyze()', function () {
             ->and($result->typeImports)->toBe([
                 '../../models' => ['Profile'],
                 '.' => ['PostResource'],
+            ]);
+    });
+
+    test('aliases an EnumResource const whose name another enum\'s type import took', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $result = resolve(AstEngine::class)->analyze(BadgeResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'clearance')['type'])->toBe('ClearanceType')
+            ->and(collect($result->properties)->firstWhere('name', 'clearance_type')['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+            ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
+            ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
+    });
+
+    test('keeps a bare enum type apart from another enum\'s const alias inside an inline array', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $result = resolve(AstEngine::class)->analyze(BadgeResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'summary')['type'])
+            ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+            ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
+            ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
+    });
+
+    test('aliases the two same-named resources of one morph union apart, in an inline array too', function () {
+        $result = resolve(AstEngine::class)->analyze(ImageReviewResource::class, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'reviewer')['type'])->toBe('CrmUserResource | WorkbenchUserResource')
+            ->and(collect($result->properties)->firstWhere('name', 'review')['type'])
+            ->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')
+            ->and($result->typeImports)->toBe([
+                '../../../crm/http/resources' => ['UserResource as CrmUserResource'],
+                '.' => ['UserResource as WorkbenchUserResource'],
             ]);
     });
 
@@ -69,6 +106,25 @@ describe('AstEngine::analyze()', function () {
         expect($properties['status_resource_or_type']['type'])->toBe('AsEnum<typeof Status> | StatusType')
             ->and($properties['status_or_visibility']['type'])
             ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
+    });
+
+    test('aliases an EnumResource const whose name a custom import brings', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $analysis = new MethodAnalysis(
+            properties: [
+                ['name' => 'label', 'type' => 'Clearance', 'optional' => false, 'description' => ''],
+                ['name' => 'clearance', 'type' => 'ClearanceType', 'optional' => false, 'description' => ''],
+            ],
+            enumResources: ['clearance' => Clearance::class],
+            customImports: ['@js/types/clearance' => ['Clearance']],
+        );
+
+        $result = new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'clearance')['type'])->toBe('AsEnum<typeof WorkbenchClearance>')
+            ->and($result->typeImports)->toBe(['@js/types/clearance' => ['Clearance']])
+            ->and($result->valueImports)->toBe(['../../enums' => ['Clearance as WorkbenchClearance']]);
     });
 
     test('drops the value import of an enum whose wrap no longer survives in the type', function () {

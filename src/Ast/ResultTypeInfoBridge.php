@@ -41,7 +41,17 @@ final class ResultTypeInfoBridge
                 $fqcns,
             ));
 
+        // The merge queued a token per class for its own type. The engine's type replaces it, so that queue goes too.
         $info['type'] = $result['type'];
+        unset($info['classTokenFqcns']);
+
+        // The merged info lists each class once. Where two models share a name, `ValueResult::modelQueueByToken()`
+        // hands on the engine's own queue unless it outruns the type's tokens, as a merge by text can.
+        $models = ValueResult::modelQueueByToken($result);
+
+        if ($models !== null) {
+            $info['classTokenFqcns'] = $models;
+        }
 
         // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result
         // carries the ones its expression named, and dropping either emits a token with no import.

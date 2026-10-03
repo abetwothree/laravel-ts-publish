@@ -133,14 +133,14 @@ rather than by property name, so narrow it to one enum.
 
 ### An enum named like another enum's type name collides with it
 
-An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` publishes a const
-with the same identifier. A file that imports `Role`'s type and `RoleType`'s const gets two imports named `RoleType`
-and fails `tsc` with TS2300, in one namespace or across two. Type names and const names go through two registries that
-never see each other ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). When the
-two enums share a namespace, the enums barrel also re-exports `RoleType` from both files and fails with TS2308, even
-when no file imports them. No workbench fixture has this naming, and the token gate does not count TS2308, so neither
-failure shows in CI. Give one enum a distinct name, such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames
-both its const and its type.
+An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` in the same
+namespace publishes a const with the same identifier. The enums barrel then re-exports `RoleType` from both files and
+fails with TS2308, and `laravel-ts-global.ts` declares both in one namespace and fails with TS2300. No alias can settle
+it, because both names are the published ones. `Runner::warnOfCollidingEnumNames()` names the pair in a warning after
+the run, and covers a backed enum's `…Kind` name the same way. The token gate does not count TS2308. Across two
+namespaces nothing collides, because a file that imports both aliases the const
+([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one enum a distinct name,
+such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type.
 
 ### An empty `[]` under an imported type alias still ships as `[]`
 
@@ -158,6 +158,16 @@ implies, without checking `enums.excluded`, `#[TsExclude]` or `enums.additional_
 leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of `ts:publish` failing. Resources have
 `PublishedResourceRegistry` for this check, and enums have no equivalent. Publish the enum, or cast the property with
 an import-aware `#[TsCasts]`.
+
+### A model published on demand gets no metadata companion and is not watched
+
+A model outside every configured directory is published, with its interfaces only, when a published model relates to it.
+The metadata phase reads its own collector, so the model has no `_meta` companion, and `WatcherJsonWriter` lists
+collected classes only, so editing the model's file does not republish it. A relation to a model with no table or view,
+a `#[TsExclude]`d model, or one in `models.excluded` or outside `models.included` is left out instead, with no warning.
+A custom `models.collector_class` that narrows `collect()` must narrow `accepts()` too, or the models its list relates
+to are published on demand. Add the model's class or directory to `models.additional_directories` to publish it like
+any other model.
 
 ### A model class name containing an underscore can collide with a metadata companion
 
@@ -192,16 +202,6 @@ $this->app->singleton(TsNaming::class, MyTsNaming::class);
 
 A subclass that overrode `importSortGroup()` or `$resourceTypeNames` extends `TsNaming` instead, where both are
 protected. [Support helpers](./components/support-helpers.md) sets which class owns a helper.
-
-### A morph union whose targets' resources share a basename spells the same token twice
-
-A `morphTo` exposed through `whenLoaded('reviewable', fn ($subject) => $subject->toResource())`, whose targets'
-resources share a basename, publishes `reviewable?: UserResource | UserResource;` beside two aliased imports, so the
-file fails `tsc` with TS2552 and TS6196. A union reports its classes on the FQCN-keyed `embeddedResourceFqcns` channel,
-which `ResourceTransformer::rewriteTypeReferences()` never looks up, and the fix, a property-keyed channel, is
-cross-cutting because `InlineArrayHandler` builds the same shape. `Image::reviewable` has this shape, but no workbench
-resource exposes it, so the token gate never sees it. Give one resource a distinct `#[TsResource(name: ...)]`, rename
-the class, or cast the property with an import-aware `#[TsCasts]`.
 
 ### A `#[TsCasts]` value that spells an imported name inside a string, template or comment keeps the import
 
@@ -268,6 +268,15 @@ with no model, so `InlineArrayHandler::spreadModelToArrayFqcn()` falls back to t
 relation `map()` set. At the top level there is none, and only `{ flag: boolean }` publishes. Inside
 `whenLoaded('author', …)` the element publishes as `Omit<User, 'flag'> & …`, though it is a `Comment`. Use the
 relation chain, `$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, which binds the model.
+
+### An index-signature model with a shared key loses its attribute types in `{Model}All` and `{Model}AllResource`
+
+A model that extends an index-signature type, such as `#[TsExtends('Record<string, unknown>')]`, gets
+`{Model}All extends Omit<{Model}, 'key'>, {Model}Relations {}` from the `model-split` template when a relation shares
+`key` with an attribute. `Omit` over an index signature keeps only the signature, so every attribute of `{Model}` reads
+as `unknown` in `{Model}All`, and in `{Model}AllResource`, whose `Omit<{Model}Resource, 'key'>` loses the same keys.
+Read the attributes from `{Model}` and the relations from `{Model}Relations`, which keep their types, or give the
+relation a name no attribute takes.
 
 ## Deliberate non-goals
 

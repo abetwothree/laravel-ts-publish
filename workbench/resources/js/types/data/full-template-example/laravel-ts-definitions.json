@@ -68,6 +68,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\FacilityAudited": {
+            "name": "FacilityAudited",
+            "eventName": "FacilityAudited",
+            "broadcastName": ".Workbench.App.Events.FacilityAudited",
+            "properties": [
+                {
+                    "name": "facility",
+                    "type": "Partial<Facility>",
+                    "optional": false
+                },
+                {
+                    "name": "trail",
+                    "type": "Partial<AuditTrail>",
+                    "optional": false
+                },
+                {
+                    "name": "record",
+                    "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\MixedTypesEvent": {
             "name": "MixedTypesEvent",
             "eventName": "MixedTypesEvent",
@@ -474,6 +496,31 @@
             "methods": [],
             "staticMethods": []
         },
+        "Workbench\\App\\Enums\\Clearance": {
+            "name": "Clearance",
+            "cases": [
+                {
+                    "name": "Open",
+                    "value": "open",
+                    "description": ""
+                },
+                {
+                    "name": "Restricted",
+                    "value": "restricted",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Open'",
+                "'Restricted'"
+            ],
+            "caseTypes": [
+                "'open'",
+                "'restricted'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
         "Workbench\\App\\Enums\\Color": {
             "name": "Color",
             "cases": [
@@ -691,6 +738,31 @@
             "caseTypes": [
                 "'alpha'",
                 "'beta'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Workbench\\App\\Enums\\Grade": {
+            "name": "Grade",
+            "cases": [
+                {
+                    "name": "Pass",
+                    "value": "pass",
+                    "description": ""
+                },
+                {
+                    "name": "Fail",
+                    "value": "fail",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Pass'",
+                "'Fail'"
+            ],
+            "caseTypes": [
+                "'pass'",
+                "'fail'"
             ],
             "methods": [],
             "staticMethods": []
@@ -1525,6 +1597,31 @@
                 "'tutorial'",
                 "'review'",
                 "'news'"
+            ],
+            "methods": [],
+            "staticMethods": []
+        },
+        "Workbench\\Crm\\Enums\\ClearanceType": {
+            "name": "ClearanceType",
+            "cases": [
+                {
+                    "name": "Temporary",
+                    "value": "temporary",
+                    "description": ""
+                },
+                {
+                    "name": "Permanent",
+                    "value": "permanent",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Temporary'",
+                "'Permanent'"
+            ],
+            "caseTypes": [
+                "'temporary'",
+                "'permanent'"
             ],
             "methods": [],
             "staticMethods": []
@@ -4320,6 +4417,55 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Badge": {
+            "name": "Badge",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "label",
+                    "type": "string"
+                },
+                {
+                    "name": "clearance",
+                    "type": "ClearanceType"
+                },
+                {
+                    "name": "clearance_type",
+                    "type": "ClearanceTypeType"
+                },
+                {
+                    "name": "minimum_grade",
+                    "type": "GradeType"
+                },
+                {
+                    "name": "grade_id",
+                    "type": "number"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "grade",
+                    "type": "Grade"
+                },
+                {
+                    "name": "grade_count",
+                    "type": "number"
+                },
+                {
+                    "name": "grade_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\BaseExtendableModel": {
             "name": "BaseExtendableModel",
             "properties": []
@@ -5509,6 +5655,55 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Depot": {
+            "name": "Depot",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "supervisor_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "orders_count",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "supervisor",
+                    "type": "User | null"
+                },
+                {
+                    "name": "orders",
+                    "type": "Order[]"
+                },
+                {
+                    "name": "supervisor_count",
+                    "type": "number"
+                },
+                {
+                    "name": "supervisor_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "orders_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\DocblockGenericsFixture": {
             "name": "DocblockGenericsFixture",
             "properties": [
@@ -5639,6 +5834,177 @@
                 },
                 {
                     "name": "posts_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Facility": {
+            "name": "Facility",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "inspector_type",
+                    "type": "string | null"
+                },
+                {
+                    "name": "inspector_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "last_excluded",
+                    "type": "unknown"
+                },
+                {
+                    "name": "handle",
+                    "type": "unknown"
+                },
+                {
+                    "name": "audit_trails",
+                    "type": "AuditTrail[]"
+                },
+                {
+                    "name": "inspector",
+                    "type": "AuditInspector | User | null"
+                },
+                {
+                    "name": "audit_trails_count",
+                    "type": "number"
+                },
+                {
+                    "name": "inspector_count",
+                    "type": "number"
+                },
+                {
+                    "name": "audit_trails_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "inspector_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Grade": {
+            "name": "Grade",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "subject",
+                    "type": "string"
+                },
+                {
+                    "name": "grade",
+                    "type": "GradeType"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Handover": {
+            "name": "Handover",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "receiver_id",
+                    "type": "number | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "parties",
+                    "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }"
+                },
+                {
+                    "name": "party",
+                    "type": "ModelsUser | CrmUser | null"
+                },
+                {
+                    "name": "audience",
+                    "type": "ModelsUser[] | CrmUser[]"
+                },
+                {
+                    "name": "sender",
+                    "type": "ModelsUser | null"
+                },
+                {
+                    "name": "receiver",
+                    "type": "CrmUser | null"
+                },
+                {
+                    "name": "watchers",
+                    "type": "ModelsUser[]"
+                },
+                {
+                    "name": "crm_watchers",
+                    "type": "CrmUser[]"
+                },
+                {
+                    "name": "sender_count",
+                    "type": "number"
+                },
+                {
+                    "name": "receiver_count",
+                    "type": "number"
+                },
+                {
+                    "name": "watchers_count",
+                    "type": "number"
+                },
+                {
+                    "name": "crm_watchers_count",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "receiver_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "watchers_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "crm_watchers_exists",
                     "type": "boolean"
                 }
             ]
@@ -6622,6 +6988,75 @@
                 {
                     "name": "updated_at",
                     "type": "string | null"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Parcel": {
+            "name": "Parcel",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "handler_id",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number"
+                },
+                {
+                    "name": "manifest_id",
+                    "type": "number"
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "handler",
+                    "type": "User"
+                },
+                {
+                    "name": "sender",
+                    "type": "User"
+                },
+                {
+                    "name": "manifest",
+                    "type": "Order"
+                },
+                {
+                    "name": "handler_count",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_count",
+                    "type": "number"
+                },
+                {
+                    "name": "manifest_count",
+                    "type": "number"
+                },
+                {
+                    "name": "handler_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "sender_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "manifest_exists",
+                    "type": "boolean"
                 }
             ]
         },
@@ -9273,6 +9708,113 @@
                     "type": "boolean"
                 }
             ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditInspector": {
+            "name": "AuditInspector",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditNote": {
+            "name": "AuditNote",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "audit_trail_id",
+                    "type": "number"
+                },
+                {
+                    "name": "body",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "trail",
+                    "type": "AuditTrail"
+                },
+                {
+                    "name": "trail_count",
+                    "type": "number"
+                },
+                {
+                    "name": "trail_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Packages\\Audit\\Models\\AuditTrail": {
+            "name": "AuditTrail",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "facility_id",
+                    "type": "number"
+                },
+                {
+                    "name": "action",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "facility",
+                    "type": "Facility"
+                },
+                {
+                    "name": "notes",
+                    "type": "AuditNote[]"
+                },
+                {
+                    "name": "facility_count",
+                    "type": "number"
+                },
+                {
+                    "name": "notes_count",
+                    "type": "number"
+                },
+                {
+                    "name": "facility_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "notes_exists",
+                    "type": "boolean"
+                }
+            ]
         }
     },
     "resources": {
@@ -9722,6 +10264,36 @@
                 {
                     "name": "name",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BadgeResource": {
+            "name": "BadgeResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "clearance",
+                    "type": "ClearanceType",
+                    "optional": false
+                },
+                {
+                    "name": "clearance_type",
+                    "type": "AsEnum<typeof CrmClearanceType>",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }",
                     "optional": false
                 }
             ]
@@ -12422,6 +12994,46 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\FacilityResource": {
+            "name": "FacilityResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "audit_trails",
+                    "type": "AuditTrail[]",
+                    "optional": false
+                },
+                {
+                    "name": "latest_trail",
+                    "type": "AuditTrail | null",
+                    "optional": false
+                },
+                {
+                    "name": "excluded_records",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "first_excluded",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ trails: AuditTrail[]; excluded: unknown }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\FluentSelfResource": {
             "name": "FluentSelfResource",
             "properties": [
@@ -12523,6 +13135,151 @@
                 {
                     "name": "[key: number]",
                     "type": "OrderItem",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverNoticeResource": {
+            "name": "HandoverNoticeResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "counterparty",
+                    "type": "CrmUser | ModelsUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "unclaimed",
+                    "type": "CrmUser | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverResource": {
+            "name": "HandoverResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "party",
+                    "type": "ModelsUser | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "picked",
+                    "type": "CrmUser | ModelsUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "pair",
+                    "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "parties",
+                    "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "audience",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverRosterResource": {
+            "name": "HandoverRosterResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "members",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "reviewers",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "involved",
+                    "type": "ModelsUser[] | CrmUser[] | ModelsUser | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverSummaryResource": {
+            "name": "HandoverSummaryResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "receiver_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "party",
+                    "type": "ModelsUser | CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "parties",
+                    "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }",
+                    "optional": false
+                },
+                {
+                    "name": "audience",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "sender",
+                    "type": "ModelsUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "receiver",
+                    "type": "CrmUser | null",
+                    "optional": false
+                },
+                {
+                    "name": "watchers",
+                    "type": "ModelsUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "crmWatchers",
+                    "type": "CrmUser[]",
                     "optional": false
                 }
             ]
@@ -12879,6 +13636,31 @@
                     "name": "height",
                     "type": "number",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ImageReviewResource": {
+            "name": "ImageReviewResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable",
+                    "type": "CrmUserResource | ResourcesUserResource",
+                    "optional": true
+                },
+                {
+                    "name": "reviewer",
+                    "type": "CrmUserResource | ResourcesUserResource",
+                    "optional": false
+                },
+                {
+                    "name": "review",
+                    "type": "{ subject: CrmUserResource | ResourcesUserResource; label: string | null }",
+                    "optional": false
                 }
             ]
         },
@@ -14480,6 +15262,56 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostStateCastResource": {
+            "name": "PostStateCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "held",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostStateResource": {
+            "name": "PostStateResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostStatsResource": {
             "name": "PostStatsResource",
             "properties": [
@@ -15384,6 +16216,36 @@
                 {
                     "name": "picks",
                     "type": "{ named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReportCardResource": {
+            "name": "ReportCardResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "SummaryCardResource",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReportCards\\SummaryCardResource": {
+            "name": "SummaryCardResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
                     "optional": false
                 }
             ]

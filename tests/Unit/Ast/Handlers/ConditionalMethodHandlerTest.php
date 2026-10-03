@@ -10,7 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Filesystem\Filesystem;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -25,6 +29,8 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ImageResource;
@@ -43,6 +49,8 @@ use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Venue;
 use Workbench\App\Models\VenueReview;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * An AnalysisScope for tests that don't need a real backing model.
@@ -122,6 +130,30 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
     }
+}
+
+/**
+ * Resolve `$this->{$method}($value, $default)`, after a condition for `when()`, with each arm stubbed to a result.
+ *
+ * @param  array<string, mixed>  $value
+ * @param  array<string, mixed>|null  $default  null for a call that passes no default
+ * @return array<string, mixed>|null
+ */
+function conditionalMethodHandlerResolveArms(string $method, array $value, ?array $default = null): ?array
+{
+    $valueExpr = new Variable('valueArm');
+    $defaultExpr = new Variable('defaultArm');
+    $arms = [[$valueExpr, $value], ...($default === null ? [] : [[$defaultExpr, $default]])];
+    $args = [
+        ...($method === 'when' ? [new Arg(new Variable('condition'))] : []),
+        ...array_map(static fn (array $arm): Arg => new Arg($arm[0]), $arms),
+    ];
+
+    return (new ConditionalMethodHandler)->resolve(
+        new MethodCall(new Variable('this'), $method, $args),
+        conditionalMethodHandlerScope(),
+        new ConditionalMethodHandlerArmStubEngine($arms),
+    );
 }
 
 /**
@@ -787,3 +819,128 @@ it('keeps an optional or variadic parameter off the property its writer would bi
     'when(), variadic' => ['$this->when($this->author, fn (...$a) => ["email" => $a?->email])', '{ email: unknown }'],
     'whenHas(), variadic' => ['$this->whenHas("author", fn (...$a) => ["email" => $a?->email])', '{ email: unknown }'],
 ]);
+
+// A value and a default that spell one name for two classes cannot be told apart by their text, so each keeps a member.
+describe('an explicit default that spells its value\'s name for another class', function () {
+    it('keeps a member and a queue entry for each class, the value\'s first', function (array $value, array $default, array $union) {
+        expect(conditionalMethodHandlerResolveArms('when', $value, $default))->toBe($union);
+    })->with([
+        'two models' => [
+            ['type' => 'User | null', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class],
+            ['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class, User::class]],
+        ],
+        'two resources' => [
+            ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class],
+            ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => CrmUserResource::class],
+            [
+                'type' => 'UserResource | UserResource',
+                'optional' => false,
+                'embeddedResourceFqcns' => [UserResource::class, CrmUserResource::class],
+            ],
+        ],
+    ]);
+
+    it('still leaves `[]` out beside a real array, whichever arm holds it', function (array $value, array $default) {
+        expect(conditionalMethodHandlerResolveArms('when', $value, $default))->toBe([
+            'type' => 'User[] | User[]',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, CrmUser::class],
+        ]);
+    })->with([
+        'the value' => [
+            ['type' => 'User[] | never[]', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+            ['type' => 'User[]', 'optional' => false, 'modelFqcn' => CrmUser::class],
+        ],
+        'the default' => [
+            ['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class],
+            ['type' => 'never[] | User[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+        ],
+        'a default that is nothing else, beside a value that spells both classes' => [
+            ['type' => 'User[] | User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+            ['type' => 'never[]', 'optional' => false],
+        ],
+    ]);
+});
+
+// whenNull() returns its value only when that value is null, so nothing the value names reaches the key.
+describe('whenNull()', function () {
+    it('names the default\'s class alone, whatever model its value is', function (array $default, array $result) {
+        $value = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+
+        expect(conditionalMethodHandlerResolveArms('whenNull', $value, $default))->toBe($result);
+    })->with([
+        'a default of the same name' => [
+            ['type' => 'User | null', 'optional' => false, 'modelFqcn' => CrmUser::class],
+            ['type' => 'User | null', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+        ],
+        'a default of another name' => [
+            ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class],
+            ['type' => 'Post | null', 'optional' => false, 'embeddedModelFqcns' => [Post::class]],
+        ],
+    ]);
+
+    it('carries no class, enum or import its value names', function (array $value) {
+        expect(conditionalMethodHandlerResolveArms('whenNull', $value))->toBe(['type' => 'null', 'optional' => true]);
+    })->with([
+        'a model' => [['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class]],
+        'two models that share a name' => [
+            ['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class]],
+        ],
+        'a resource' => [['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class]],
+        'an enum' => [['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class]],
+        'an imported type' => [['type' => 'Money | null', 'optional' => false, 'customImports' => ['@/types/money' => ['Money']]]],
+    ]);
+
+    // The value is still resolved, so the arm it drops is counted and the local's `@var` type answers for its null.
+    it('counts an arm dropped inside its value, so an annotated local publishes its declared type', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(WhenNullDroppedArmResource::class));
+
+        expect(array_values(preg_grep('/^\s*label\b/', explode("\n", $content)) ?: []))->toBe(['    label?: string | null;']);
+    });
+});
+
+// `[]` is assignable to an array type and to nothing else, so it leaves the union only beside an array, in either arm.
+it('drops an empty-array arm only where the other arm holds an array', function (string $value, string $default, string $type) {
+    $result = conditionalMethodHandlerResolveArms(
+        'when',
+        ['type' => $value, 'optional' => false],
+        ['type' => $default, 'optional' => false],
+    );
+
+    expect($result)->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    'an empty value beside an array default' => ['never[]', 'string[]', 'string[]'],
+    'an empty default beside an array value' => ['string[]', 'never[]', 'string[]'],
+    'an empty value beside a default that is no array' => ['never[]', 'string', 'never[] | string'],
+]);
+
+// Where no two classes share a name, the union by class is the union by text.
+it('unions a value and a default of two different names as a merge by text does', function (string $method, string $type) {
+    $value = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+    $default = ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class];
+
+    expect(conditionalMethodHandlerResolveArms($method, $value, $default))->toBe([
+        'type' => $type,
+        'optional' => false,
+        'embeddedModelFqcns' => [User::class, Post::class],
+    ]);
+})->with([
+    'when()' => ['when', 'User | Post | null'],
+    'whenNotNull(), which keeps its value\'s class and strips its null' => ['whenNotNull', 'User | Post'],
+]);
+
+// A default's union counts its members, so a `null` beside two enum resources keeps it from being read as a union of
+// enum resources: the enums are embedded, and publish as their own types.
+it('does not read two enum resources and a null as a union of enum resources', function () {
+    $value = ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class];
+    $default = ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class];
+
+    expect(conditionalMethodHandlerResolveArms('when', $value, $default))->toBe([
+        'type' => 'StatusType | VisibilityType | null',
+        'optional' => false,
+        'embeddedEnumFqcns' => [Status::class, Visibility::class],
+    ]);
+});

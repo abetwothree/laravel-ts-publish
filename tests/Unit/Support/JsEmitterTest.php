@@ -104,6 +104,10 @@ describe('safeJsIdentifier', function () {
             ->and($this->service->safeJsIdentifier('delete', 'Controller'))->toBe('deleteController');
     });
 
+    test('enum is reserved, so a method or namespace named for it takes the suffix', function () {
+        expect($this->service->safeJsIdentifier('enum', 'Method'))->toBe('enumMethod');
+    });
+
     test('returns non-reserved identifiers unchanged', function () {
         expect($this->service->safeJsIdentifier('index', 'Method'))->toBe('index')
             ->and($this->service->safeJsIdentifier('show', 'Method'))->toBe('show');

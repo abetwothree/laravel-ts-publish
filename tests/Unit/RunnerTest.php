@@ -4,29 +4,51 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\Access;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HeaderedBarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ListOnlyModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MagicCallModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnreadableRelationFacility;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnreadableRelationTrail;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
+use Workbench\App\Models\BaseExtendableModel;
+use Workbench\App\Models\ExcludedModel;
+use Workbench\App\Models\Facility;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\Packages\Audit\Models\AuditArchive;
+use Workbench\App\Packages\Audit\Models\AuditInspector;
+use Workbench\App\Packages\Audit\Models\AuditNote;
+use Workbench\App\Packages\Audit\Models\AuditTrail;
 use Workbench\Blog\Enums\ArticleStatus;
 use Workbench\Blog\Enums\ContentType;
 use Workbench\Blog\Models\Article;
@@ -880,6 +902,405 @@ describe('PublishedResourceRegistry run boundary', function () {
         expect($merchantGenerator->content)
             ->toContain('registrar?: unknown;')
             ->not->toContain('RegistrarResource');
+    });
+});
+
+// ─── PublishedModelRegistry run boundary ────────────────────────
+
+describe('PublishedModelRegistry run boundary', function () {
+    /** The generated content of one model file, by its filename. */
+    $modelContent = fn (Runner $runner, string $filename): ?string => $runner->modelGenerators
+        ->first(fn (ModelGenerator $generator): bool => $generator->filename() === $filename)
+        ?->content;
+
+    test('a run publishes each model a collected model relates to, and the models those relate to in turn', function () use ($modelContent) {
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(Facility::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(AuditNote::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(AuditInspector::class))->toBeTrue()
+            ->and($modelContent($runner, 'facility'))
+            ->toContain("import type { AuditInspector, AuditTrail } from '../packages/audit/models';")
+            ->toContain('audit_trails: AuditTrail[];')
+            ->toContain('inspector: AuditInspector | User | null;')
+            ->and($modelContent($runner, 'audit-trail'))->toContain('notes: AuditNote[];')
+            ->and($modelContent($runner, 'audit-note'))->toContain('trail: AuditTrail;');
+    });
+
+    test('a model with #[TsExclude] is never published on demand, and nothing names it', function () use ($modelContent) {
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(ExcludedModel::class))->toBeFalse()
+            ->and($modelContent($runner, 'excluded-model'))->toBeNull()
+            ->and($modelContent($runner, 'facility'))->not->toContain('excluded_records')->not->toContain('ExcludedModel');
+    });
+
+    test('a model with no table is never published on demand, and raises no warning', function () use ($modelContent) {
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(AuditArchive::class))->toBeFalse()
+            ->and($modelContent($runner, 'audit-archive'))->toBeNull()
+            ->and($modelContent($runner, 'audit-trail'))->not->toContain('archive')
+            ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(AuditArchive::class);
+    });
+
+    test('an excluded model is not published on demand, nor is a model only it reaches', function () use ($modelContent) {
+        config()->set('ts-publish.models.excluded', [AuditTrail::class]);
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeFalse()
+            ->and(PublishedModelRegistry::isPublished(AuditNote::class))->toBeFalse()
+            ->and($modelContent($runner, 'facility'))->not->toContain('audit_trails')->not->toContain('AuditTrail');
+    });
+
+    test('an included allow-list publishes nothing on demand', function () use ($modelContent) {
+        config()->set('ts-publish.models.included', [Facility::class]);
+
+        $runner = new Runner;
+        $runner->run();
+
+        // A morphTo keeps its key, as one with no known target always has; every target here is outside the list.
+        expect($runner->modelGenerators)->toHaveCount(1)
+            ->and($modelContent($runner, 'facility'))
+            ->not->toContain('audit_trails')
+            ->not->toContain('import type')
+            ->toContain('inspector: unknown;');
+    });
+
+    test('a vendor model the config never lists is published when a collected model relates to it', function () use ($modelContent) {
+        // The stock install: Notifiable relates User to a model in no application directory.
+        config()->set('ts-publish.models.additional_directories', array_values(array_diff(
+            config()->array('ts-publish.models.additional_directories'),
+            [DatabaseNotification::class],
+        )));
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(DatabaseNotification::class))->toBeTrue()
+            ->and($modelContent($runner, 'database-notification'))->toContain('export interface DatabaseNotification')
+            ->and($modelContent($runner, 'user'))->toContain('notifications: DatabaseNotification[];');
+    });
+
+    test('the same vendor model is left out, without a warning, while its table does not exist', function () use ($modelContent) {
+        config()->set('ts-publish.models.additional_directories', array_values(array_diff(
+            config()->array('ts-publish.models.additional_directories'),
+            [DatabaseNotification::class],
+        )));
+        Schema::drop('notifications');
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(DatabaseNotification::class))->toBeFalse()
+            ->and($modelContent($runner, 'database-notification'))->toBeNull()
+            ->and($modelContent($runner, 'user'))->not->toContain('DatabaseNotification')
+            ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(DatabaseNotification::class);
+    });
+
+    // Collects a model whose relation reaches one with a relation that throws when read on a blank instance.
+    $reachUnreadableRelation = function (): void {
+        config()->set('ts-publish.models.additional_directories', [
+            ...config()->array('ts-publish.models.additional_directories'),
+            UnreadableRelationFacility::class,
+        ]);
+    };
+
+    $unreadableRelationWarning = [[
+        'subject' => UnreadableRelationTrail::class,
+        'message' => 'Reading its notes() relation threw [Attempt to read property "name" on null], so the relation is left out.',
+    ]];
+
+    $trailWarnings = fn (): array => array_values(array_filter(
+        AnalysisWarnings::all(),
+        fn (array $warning): bool => $warning['subject'] === UnreadableRelationTrail::class,
+    ));
+
+    test('a model a relation reaches is published without the relation it cannot read, with one warning', function () use ($modelContent, $reachUnreadableRelation, $unreadableRelationWarning, $trailWarnings) {
+        $reachUnreadableRelation();
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(UnreadableRelationTrail::class))->toBeTrue()
+            ->and($modelContent($runner, 'unreadable-relation-trail'))
+            ->toContain('facility: UnreadableRelationFacility;')
+            ->toContain('trail_notes: AuditNote[];')
+            ->not->toContain('    notes: ')
+            ->and($modelContent($runner, 'unreadable-relation-facility'))
+            ->toContain("import type { UnreadableRelationTrail } from '.';")
+            ->toContain('trails: UnreadableRelationTrail[];')
+            ->and($trailWarnings())->toBe($unreadableRelationWarning);
+    });
+
+    test('a run that reads no table reads the same set, with the same warning', function () use ($reachUnreadableRelation, $unreadableRelationWarning, $trailWarnings) {
+        $reachUnreadableRelation();
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(UnreadableRelationTrail::class))->toBeTrue()
+            ->and($trailWarnings())->toBe($unreadableRelationWarning);
+    });
+
+    test('a run whose models collector finds no model names none', function () {
+        config()->set('ts-publish.models.included', ['Workbench\App\Models\NoSuchModel']);
+
+        $runner = new Runner;
+        $runner->run();
+
+        $resource = $runner->resourceGenerators
+            ->first(fn (ResourceGenerator $generator): bool => $generator->filename() === 'facility-resource');
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and(PublishedModelRegistry::isEmpty())->toBeFalse()
+            ->and($resource->content)
+            ->toContain('audit_trails: unknown;')
+            ->not->toContain('AuditTrail')
+            ->not->toContain('import type');
+    });
+
+    test('a run that skips the model phase still reads the set, so its other phases name the same models', function () {
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->run();
+
+        $resource = fn (string $filename): string => $runner->resourceGenerators
+            ->first(fn (ResourceGenerator $generator): bool => $generator->filename() === $filename)
+            ->content;
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(ExcludedModel::class))->toBeFalse()
+            ->and($resource('facility-resource'))
+            ->toContain('audit_trails: AuditTrail[];')
+            ->toContain('excluded_records: unknown;')
+            // A morphTo's targets come from the same pass, so the union is the one a full run publishes.
+            ->and($resource('image-morph-resource'))->toContain('imageable: Post | Product | WorkbenchUser | CrmUser;');
+    });
+
+    test('a run that publishes nothing after the model phase clears the previous run\'s set and reads none', function () {
+        config()->set('ts-publish.inertia.enabled', false);
+
+        (new Runner)->run();
+
+        expect(PublishedModelRegistry::isEmpty())->toBeFalse();
+
+        $secondRunner = new Runner;
+        $secondRunner->shouldPublishModels = false;
+        $secondRunner->shouldPublishModelMetadata = false;
+        $secondRunner->shouldPublishResources = false;
+        $secondRunner->shouldPublishRoutes = false;
+        $secondRunner->shouldPublishFormRequests = false;
+        $secondRunner->shouldPublishBroadcastEvents = false;
+        $secondRunner->run();
+
+        expect(PublishedModelRegistry::isEmpty())->toBeTrue();
+    });
+
+    test('a run with model publishing turned off in config reads no set', function () {
+        config()->set('ts-publish.models.enabled', false);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isEmpty())->toBeTrue();
+    });
+
+    // Every phase after the models is off, so only the Inertia config, which every run writes, can still name a model.
+    $enumsOnly = function (): Runner {
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishResources = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastEvents = false;
+
+        return $runner;
+    };
+
+    test('an enums-only run with Inertia on reads the set, since the Inertia config types the shared data', function () use ($enumsOnly) {
+        $enumsOnly()->run();
+
+        expect(PublishedModelRegistry::isEmpty())->toBeFalse();
+    });
+
+    // Builds a run's published set, and says what that took and gave: its queries, its models and its signature.
+    $buildTheSet = function (bool $generatesModels): array {
+        PublishedModelRegistry::reset();
+
+        // The first query of a test migrates the lazily refreshed database, so it must not be counted.
+        DB::select('select 1');
+
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        $runner = new class extends Runner
+        {
+            /** @return list<class-string> */
+            public function buildSet(): array
+            {
+                return $this->buildModelMorphTargetMap();
+            }
+        };
+        $runner->shouldPublishModels = $generatesModels;
+        $models = $runner->buildSet();
+
+        return ['queries' => $queries, 'models' => $models, 'signature' => PublishedModelRegistry::signature()];
+    };
+
+    test('a run that generates no model builds the set without reading the table of every model', function () use ($buildTheSet) {
+        expect($buildTheSet(false)['queries'])->toBeLessThan(resolve(ModelsCollector::class)->collect()->count())
+            ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(BaseExtendableModel::class);
+    });
+
+    test('a run that generates the models reads the table of each model while it builds the set', function () use ($buildTheSet) {
+        expect($buildTheSet(true)['queries'])->toBeGreaterThan(resolve(ModelsCollector::class)->collect()->count())
+            ->and(array_column(AnalysisWarnings::all(), 'subject'))->toContain(BaseExtendableModel::class);
+    });
+
+    test('the set built without tables is the set built with them, over every collected model', function () use ($buildTheSet) {
+        // Without tables first: built the other way round, it would answer from the contexts the first build cached.
+        $withoutTables = $buildTheSet(false);
+        $withTables = $buildTheSet(true);
+
+        expect($withoutTables['models'])->toBe($withTables['models'])
+            ->toContain(AuditTrail::class)
+            ->and($withoutTables['signature'])->toBe($withTables['signature'])
+            ->not->toBe('');
+    });
+
+    test('a run builds the morph map once through a project\'s buildMorphTargetMap() override', function (bool $generatesModels) {
+        $resolver = new RecordingModelAttributeResolver;
+        app()->instance(ModelAttributeResolver::class, $resolver);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = $generatesModels;
+        $runner->shouldPublishModelMetadata = $generatesModels;
+        $runner->run();
+
+        expect($resolver->morphTargetMapBuilds)->toHaveCount(1)
+            ->and($resolver->morphTargetMapBuilds[0])->toContain(Facility::class, AuditTrail::class);
+    })->with([
+        'a run that generates the models' => [true],
+        'a run that skips the model phase, so reads no table' => [false],
+    ]);
+
+    test('a models collector that only lists its classes is not asked for related models, so a run publishes its list', function () {
+        config()->set('ts-publish.models.collector_class', ListOnlyModelsCollector::class);
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect($runner->modelGenerators)->toHaveCount(1)
+            ->and($runner->modelGenerators->first()->filename())->toBe('facility')
+            ->and(PublishedModelRegistry::isPublished(AuditTrail::class))->toBeFalse();
+    });
+
+    test('a models collector with no collect() stops the run with a message that names it', function () {
+        config()->set('ts-publish.models.collector_class', stdClass::class);
+
+        expect(fn () => (new Runner)->run())
+            ->toThrow(InvalidArgumentException::class, 'Configured models collector [stdClass] must offer collect().');
+    });
+
+    test('a models collector that serves collect() through __call completes a run and publishes its list', function () {
+        config()->set('ts-publish.models.collector_class', MagicCallModelsCollector::class);
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect($runner->modelGenerators)->toHaveCount(1)
+            ->and($runner->modelGenerators->first()->filename())->toBe('facility');
+    });
+
+    test('a run starts with an empty analysis memo, pinned answers included', function () use ($enumsOnly) {
+        $memo = resolve(AnalysisMemo::class);
+        $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+
+        $enumsOnly()->run();
+
+        expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
+    });
+
+    test('a resource, an event and an Inertia page name an on-demand model and decline an unpublished one', function () {
+        $runner = new Runner;
+        $runner->run();
+
+        $resource = $runner->resourceGenerators
+            ->first(fn (ResourceGenerator $generator): bool => $generator->filename() === 'facility-resource');
+        $event = $runner->broadcastEventGenerators
+            ->first(fn ($generator): bool => $generator->filename() === 'FacilityAudited');
+        $page = $runner->routeGenerators
+            ->first(fn ($generator): bool => $generator->filename() === 'inertia-facility-controller');
+
+        expect($resource->content)
+            ->toContain('audit_trails: AuditTrail[];')
+            ->toContain('latest_trail: AuditTrail | null;')
+            ->toContain('excluded_records: unknown;')
+            ->toContain('summary: { trails: AuditTrail[]; excluded: unknown };')
+            ->not->toContain('ExcludedModel')
+            ->and($event->content)
+            ->toContain('trail: Partial<AuditTrail>;')
+            ->toContain('record: unknown;')
+            ->not->toContain('ExcludedModel')
+            ->and($page->content)
+            ->toContain('trail: AuditTrail | null, record: unknown }')
+            ->not->toContain('ExcludedModel');
+    });
+});
+
+// ─── Enum names two enums in one namespace both publish ────────────────────────
+
+describe('enum names that collide inside one namespace', function () {
+    test('a run warns when one enum\'s const is another enum\'s type name in the same namespace', function () {
+        config()->set('ts-publish.enums.additional_directories', [Access::class, AccessType::class]);
+        config()->set('ts-publish.enums.included', [Access::class, AccessType::class]);
+
+        (new Runner)->run();
+
+        expect(AnalysisWarnings::all())->toContain([
+            'subject' => AccessType::class,
+            'message' => 'Publishes the name [AccessType], which ['.Access::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+        ]);
+    });
+
+    test('a run warns when one enum\'s const is the kind name a backed enum publishes in the same namespace', function () {
+        config()->set('ts-publish.enums.additional_directories', [Access::class, AccessKind::class]);
+        config()->set('ts-publish.enums.included', [Access::class, AccessKind::class]);
+
+        (new Runner)->run();
+
+        expect(AnalysisWarnings::all())->toContain([
+            'subject' => AccessKind::class,
+            'message' => 'Publishes the name [AccessKind], which ['.Access::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file do not compile. Give one enum another name with #[TsEnum].',
+        ]);
+    });
+
+    test('a run raises no such warning for enums that share a name across namespaces', function () {
+        // Clearance and Crm's ClearanceType cross names too, but each in its own namespace, where an alias settles it.
+        (new Runner)->run();
+
+        expect(array_filter(
+            AnalysisWarnings::all(),
+            fn (array $warning): bool => str_contains($warning['message'], 'also publishes in the same namespace'),
+        ))->toBe([]);
     });
 });
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Composer\ClassMapGenerator\PhpFileParser;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
@@ -89,18 +90,34 @@ class TsNaming
      */
     public function namespaceToPath(string $fqcn): string
     {
-        $namespace = Str::beforeLast($fqcn, '\\');
+        return implode('/', array_map(
+            fn (string $segment): string => Str::kebab($segment),
+            $this->namespaceSegments($fqcn),
+        ));
+    }
 
-        $prefix = Config::string('ts-publish.namespace_strip_prefix', '');
+    /**
+     * The global namespace a class's types are declared under in the globals file: its namespace with each segment
+     * spelled as an identifier, such as `app.http.resources.reportCards`.
+     */
+    public function globalNamespace(string $fqcn): string
+    {
+        // An acronym lowers as one word: HTTPClient is httpClient, API2 is api2.
+        $segments = array_map(
+            fn (string $segment): string => (string) preg_replace_callback(
+                '/^(?:[A-Z]+(?=[A-Z][a-z]|[0-9])|[A-Z]+$|[A-Z])/',
+                static fn (array $match): string => strtolower($match[0]),
+                $segment,
+            ),
+            $this->namespaceSegments($fqcn),
+        );
 
-        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
-            $namespace = substr($namespace, strlen($prefix));
+        // TypeScript rejects a reserved word only as the first name of a namespace declaration.
+        if ($segments !== []) {
+            $segments[0] = JsEmitter::safeJsIdentifier($segments[0], '_');
         }
 
-        return collect(explode('\\', $namespace))
-            ->filter()
-            ->map(fn (string $segment) => Str::kebab($segment))
-            ->implode('/');
+        return implode('.', $segments);
     }
 
     /**
@@ -191,6 +208,24 @@ class TsNaming
         $classes = PhpFileParser::findClasses($absolutePath);
 
         return $classes[0] ?? null;
+    }
+
+    /**
+     * A FQCN's namespace segments, after the configured prefix is stripped.
+     *
+     * @return list<string>
+     */
+    protected function namespaceSegments(string $fqcn): array
+    {
+        $namespace = Str::beforeLast($fqcn, '\\');
+
+        $prefix = Config::string('ts-publish.namespace_strip_prefix', '');
+
+        if ($prefix !== '' && str_starts_with($namespace, $prefix)) {
+            $namespace = substr($namespace, strlen($prefix));
+        }
+
+        return array_values(array_filter(explode('\\', $namespace)));
     }
 
     /**

@@ -250,8 +250,9 @@ Subject mode types `$this->prop` from the subject's own declaration. It always a
 is `null`, as for a broadcast event, a DTO or any plain class. On a model-backed subject, it applies to a property
 `SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
 PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
-publishes that object, not a same-named attribute. A result naming an abstract or `Illuminate\` model declines rather
-than emit a token nothing imports.
+publishes that object, not a same-named attribute. A result naming a model the run does not publish declines rather
+than emit a token nothing imports, and with no published set to read, an abstract or `Illuminate\` model is still
+known to have no file. [ModelAttributeResolver § Models a run publishes][published-models] covers the set.
 
 A name the framework declares is never the subject's own, however the subject redeclares it: `JsonResource`'s
 `resource`, `with` and `additional`, `ResourceCollection`'s `collects` and `collection`, every `Model` property, and
@@ -298,8 +299,8 @@ dropped-arm count, and happens only where computing the answer again could not d
 `AnalysisMemo::reproducible()`. The outermost `analyzeMethod()` in a chain is pinned instead: stored even when a cycle
 cut it short, and reused whatever is on the stack.
 
-`AnalysisMemo::forget()` drops every unpinned answer. `Runner::run()`, `RunnerForSource::run()` and
-`ModelAttributeResolver::buildMorphTargetMap()` call it, so a pinned answer outlives a run in the same process.
+`AnalysisMemo::forget()` drops every unpinned answer, and `ModelAttributeResolver::buildMorphTargetMap()` calls it.
+`reset()` drops every answer, and `Runner::run()` and `RunnerForSource::run()` call it, so none outlives a run.
 
 ## MethodAnalysis
 
@@ -313,10 +314,15 @@ the result carries. Every collector goes through it, so a channel added to `Valu
 at once. A collector that built rows by hand would miss a new channel silently. Nothing throws, the property still
 types, and only the generated TypeScript shows the missing import or alias.
 
-Never deduplicate the three inline queues, `inlineEnumFqcns`, `inlineModelFqcns` and `inlineEnumResourceFqcns`.
-`addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return branches and a spread parent
-alike. `TsTypeString::aliasPropertyType()` walks each as a positional queue against the type's tokens, so a property
-naming the same class twice needs two entries.
+Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
+`inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
+branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `aliasTypeofConst()` for
+`inlineEnumResourceFqcns`, walks each as a positional queue against the type's tokens, so a property naming the same
+class twice needs two entries.
+
+`forgetChannels()` drops every channel entry, and the `importedCastKeys` mark, keyed by one property, when another
+value takes the key over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset
+channels by hand would miss the next channel added.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
 owns its rules.
@@ -343,11 +349,11 @@ see. Return-branch merges outside a spread helper keep the strict rule, where on
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
 `KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
-`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` builds its
-own member list, because `??` never returns its left operand's `null`. It strips that arm with
-`ValueResult::stripNullArm()`, which the ternary union would keep. `ConditionalMethodHandler::applyConditionalDefault()`
-also leaves an `unknown` default arm out, but records nothing, so neither the drop count nor `DroppedUnionArmsAuditTest`
-sees that drop.
+`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
+left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
+union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
+`ConditionalMethodHandler::applyConditionalDefault()` also leaves an `unknown` default arm out, but records nothing, so
+neither the drop count nor `DroppedUnionArmsAuditTest` sees that drop.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
@@ -459,6 +465,7 @@ These pages cover the engine's neighbors:
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
+[published-models]: model-attribute-resolver.md#models-a-run-publishes
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
 [spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
 [ternary]: receiver-types.md#a-ternarys-instanceof-condition

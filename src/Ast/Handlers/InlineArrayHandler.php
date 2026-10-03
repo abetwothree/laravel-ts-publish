@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
@@ -31,8 +33,12 @@ use PhpParser\Node\Identifier;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
+ * @phpstan-import-type ClassMapType from MethodAnalysis
+ * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
+ * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
  *
  * @phpstan-type InlineSpreadArm = array{fqcn: class-string, isModel: bool, isCollection: bool}
+ * @phpstan-type MemberNames = array<string, list<string>>
  *
  * @internal
  */
@@ -342,22 +348,22 @@ final class InlineArrayHandler implements ExpressionHandler
         $spreadModelFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => $arm['isModel']), 'fqcn');
         $spreadResourceFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => ! $arm['isModel']), 'fqcn');
 
-        // Walk members in declaration order and keep every occurrence: the self-keyed $analysis->modelFqcns
-        // map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor member's own arms.
-        /** @var list<class-string> $embeddedModelFqcns */
-        $embeddedModelFqcns = [];
+        $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+        $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
 
-        foreach ($analysis->properties as $property) {
-            $memberName = $property['name'];
-
-            if (isset($analysis->inlineModelFqcns[$memberName])) {
-                array_push($embeddedModelFqcns, ...$analysis->inlineModelFqcns[$memberName]);
-            } elseif (isset($analysis->modelFqcns[$memberName])) {
-                $embeddedModelFqcns[] = $analysis->modelFqcns[$memberName];
-            }
-        }
-
-        array_push($embeddedModelFqcns, ...$spreadModelFqcns);
+        // Spread arms lead the type, then each key once, at its first position, with every occurrence kept: the
+        // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
+        // member's own arms.
+        $embeddedModelFqcns = [
+            ...$spreadModelFqcns,
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineModelFqcns,
+                $analysis->modelFqcns,
+                class_basename(...),
+                $sharedNames,
+            ),
+        ];
 
         // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
         // wrapped one) must not claim an import the transformer would then emit unused.
@@ -381,13 +387,22 @@ final class InlineArrayHandler implements ExpressionHandler
             $result['embeddedModelFqcns'] = $embeddedModelFqcns;
         }
 
-        // Nested resources are tracked separately so they merge into resource imports, not model imports.
-        // Spread resources travel the same channel so their import reaches the outer analysis too.
-        if ($analysis->nestedResources !== [] || $spreadResourceFqcns !== []) {
-            $result['embeddedResourceFqcns'] = array_values(array_unique([
-                ...array_values($analysis->nestedResources),
-                ...$spreadResourceFqcns,
-            ]));
+        // Nested resources are tracked separately so they merge into resource imports, not model imports. One entry
+        // per resource token, in the order the type spells them: spread arms lead the type, then each member, and a
+        // member whose own union names two resources carries both. Never deduped, as for the models above.
+        $embeddedResourceFqcns = [
+            ...$spreadResourceFqcns,
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineResourceFqcns,
+                $analysis->nestedResources,
+                $resourceNameOf,
+                $sharedNames,
+            ),
+        ];
+
+        if ($embeddedResourceFqcns !== []) {
+            $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
         }
 
         // A #[TsType(import: …)] token inside the inline object is spelled in the emitted type string,
@@ -397,6 +412,75 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         return $result;
+    }
+
+    /**
+     * The class behind each token of the members' types, in the order the inline object type spells them.
+     *
+     * That type keeps a key declared twice at its first position with its last value, so each key is walked once: a
+     * second row for it would queue the same classes again and push every later token onto the wrong alias.
+     *
+     * @param  InlineModelFqcnsMap|InlineResourceFqcnsMap  $queues  member name => the class behind each of its tokens
+     * @param  ClassMapType  $singles  member name => the one class its type names, for a member without a queue
+     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
+     * @param  MemberNames  $sharedNames  member name => the names it queues on both channels
+     * @return list<class-string>
+     */
+    private function memberFqcns(
+        MethodAnalysis $analysis,
+        array $queues,
+        array $singles,
+        Closure $nameOf,
+        array $sharedNames,
+    ): array {
+        $fqcns = [];
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
+            $queue = $this->memberQueue($memberName, $queues, $singles);
+            $shared = $sharedNames[$memberName] ?? [];
+
+            array_push($fqcns, ...ClassTokenQueue::perToken($queue, $types[$memberName], $nameOf, $shared));
+        }
+
+        return $fqcns;
+    }
+
+    /**
+     * The names each member queues on both channels, a class on each: a model and a resource under one name.
+     *
+     * Both queues are merged for aliasing, models first, so a name queued on both is left as it came on both.
+     *
+     * @param  Closure(class-string): string  $resourceNameOf
+     * @return MemberNames
+     */
+    private function sharedNames(MethodAnalysis $analysis, Closure $resourceNameOf): array
+    {
+        $shared = [];
+
+        foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
+            $models = $this->memberQueue($memberName, $analysis->inlineModelFqcns, $analysis->modelFqcns);
+            $resources = $this->memberQueue($memberName, $analysis->inlineResourceFqcns, $analysis->nestedResources);
+
+            $shared[$memberName] = array_values(array_intersect(
+                array_map(class_basename(...), $models),
+                array_map($resourceNameOf, $resources),
+            ));
+        }
+
+        return $shared;
+    }
+
+    /**
+     * The classes a member's own analysis queued on one channel: its queue, else the one class its type names.
+     *
+     * @param  InlineModelFqcnsMap|InlineResourceFqcnsMap  $queues
+     * @param  ClassMapType  $singles
+     * @return list<class-string>
+     */
+    private function memberQueue(string $memberName, array $queues, array $singles): array
+    {
+        return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
     }
 
     /**

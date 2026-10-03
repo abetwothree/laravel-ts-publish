@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -128,6 +129,44 @@ it('collapses to a single type when both arms resolve identically', function () 
     expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
 
+it('keeps both arms when they render alike but name two different models', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'User | null', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+        [$right, ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\Crm\Models\User']],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe([
+        'type' => 'User | User',
+        'optional' => false,
+        'embeddedModelFqcns' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User'],
+    ]);
+});
+
+it('still collapses two arms that render alike and name the same model', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'User | null', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+        [$right, ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe([
+        'type' => 'User',
+        'optional' => false,
+        'embeddedModelFqcns' => ['Workbench\App\Models\User'],
+    ]);
+});
+
 it('falls through entirely to the right arm when the left is unknown, propagating its modelFqcn', function () {
     $handler = new CoalesceHandler;
     $left = new Variable('a');
@@ -166,6 +205,73 @@ it('falls through entirely to the left arm when the right is unknown, propagatin
     ]);
 });
 
+it('falls through to the left arm with its null stripped and its model queued when the right is unknown', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'SomeModel | null', 'optional' => false, 'modelFqcn' => stdClass::class]],
+        [$right, ['type' => 'unknown', 'optional' => false]],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe([
+        'type' => 'SomeModel',
+        'optional' => false,
+        'embeddedModelFqcns' => [stdClass::class],
+    ]);
+});
+
+it('falls through to a right arm that names two models sharing a name with a member for each', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $pair = ['Workbench\App\Models\User', 'Workbench\Crm\Models\User'];
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'unknown', 'optional' => false]],
+        [$right, ['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => $pair]],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe(['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => $pair]);
+});
+
+it('falls through to a left arm that names two models sharing a name with a member for each, less its null', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $pair = ['Workbench\App\Models\User', 'Workbench\Crm\Models\User'];
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'User | User | null', 'optional' => false, 'embeddedModelFqcns' => $pair]],
+        [$right, ['type' => 'unknown', 'optional' => false]],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe(['type' => 'User | User', 'optional' => false, 'embeddedModelFqcns' => $pair]);
+});
+
+// An `unknown` spells no class, so a class kept beside it would be imported for nothing, or read by a later token.
+it('answers a bare unknown when neither arm has a type, whatever the right arm carries', function () {
+    $handler = new CoalesceHandler;
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $expr = new BinaryOp\Coalesce($left, $right);
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => 'unknown', 'optional' => false]],
+        [$right, ['type' => 'unknown', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']],
+    ]);
+
+    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
+
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+});
+
 it('strips a top-level `| null` arm from the left before deciding whether it is unknown', function () {
     // `null ?? $x` — the left operand is exactly `null`, which stripNullArm() reduces to 'unknown',
     // so the right arm is returned alone, matching the runtime evaluation of `null ?? $x` as `$x`.
@@ -182,6 +288,32 @@ it('strips a top-level `| null` arm from the left before deciding whether it is 
 
     expect($result)->toBe(['type' => 'number', 'optional' => false]);
 });
+
+// The audit names the operand a `??` leaves out: the left one alone when neither has a type.
+it('records the operand it drops', function (string $leftType, string $rightType, array $recorded) {
+    $left = new Variable('a');
+    $right = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$left, ['type' => $leftType, 'optional' => false]],
+        [$right, ['type' => $rightType, 'optional' => false]],
+    ]);
+
+    DroppedUnionArms::start();
+
+    try {
+        (new CoalesceHandler)->resolve(new BinaryOp\Coalesce($left, $right), coalesceHandlerTestScope(), $engine);
+    } finally {
+        $dropped = DroppedUnionArms::stop();
+    }
+
+    expect(array_map(fn (array $arm): string => $arm['expression'].' at '.$arm['site'], $dropped))->toBe($recorded);
+})->with([
+    'the left one' => ['unknown', 'string', ['$a at coalesce-left']],
+    'the left one, when it is null alone' => ['null', 'string', ['$a at coalesce-left']],
+    'the right one' => ['string', 'unknown', ['$b at coalesce-right']],
+    'the left one alone when neither has a type' => ['unknown', 'unknown', ['$a at coalesce-left']],
+    'none when both have a type' => ['string | null', 'number', []],
+]);
 
 it('declines a non-coalesce BinaryOp', function () {
     $handler = new CoalesceHandler;

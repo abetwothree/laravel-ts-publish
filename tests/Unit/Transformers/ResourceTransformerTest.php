@@ -2,7 +2,14 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
@@ -42,6 +49,7 @@ use Workbench\App\Http\Resources\AddressMixinResource;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\Admin\Store as AdminStoreResource;
 use Workbench\App\Http\Resources\ApiPostResource;
+use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\BodylessOrderResource;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\BranchedInlineFqcnResource;
@@ -57,10 +65,15 @@ use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
+use Workbench\App\Http\Resources\HandoverNoticeResource;
+use Workbench\App\Http\Resources\HandoverResource;
+use Workbench\App\Http\Resources\HandoverRosterResource;
+use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
 use Workbench\App\Http\Resources\ImageMorphResource;
 use Workbench\App\Http\Resources\ImageNullableArmsResource;
+use Workbench\App\Http\Resources\ImageReviewResource;
 use Workbench\App\Http\Resources\InheritedInlineFqcnResource;
 use Workbench\App\Http\Resources\KpiResource;
 use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
@@ -74,6 +87,8 @@ use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
+use Workbench\App\Http\Resources\PostStateCastResource;
+use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
@@ -89,6 +104,7 @@ use Workbench\App\Http\Resources\TeamStatusAuditResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
+use Workbench\App\Http\Resources\UserExceptResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Address;
@@ -1526,6 +1542,14 @@ describe('ResourceTransformer import collision deconfliction', function () {
         // list-element handling instead of being re-deduped there.
         expect($data->properties['matrix']['type'])
             ->toBe('{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]');
+    });
+
+    test('two colliding Status wraps, one repeated, keep their own alias through the positional queue', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        // The wraps' own list must keep all three entries, or the third occurrence reads the last entry's alias.
+        expect((new ResourceTransformer(EnumResourceWrapTrioResource::class))->properties['trio']['type'])
+            ->toBe('{ a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof CrmStatus>; c: AsEnum<typeof WorkbenchStatus> }');
     });
 });
 
@@ -3011,4 +3035,170 @@ test('a numeric-string key in a model-backed resource publishes as written, wher
         ->toBe(['id' => 'number', 6 => 'string'])
         ->and($content)->toContain('"6": string;')
         ->not->toContain('int-key');
+});
+
+test('globalTypeReferenceMap() maps every name the file imports, aliased or not, to the class it imports', function () {
+    expect((new ResourceTransformer(ServiceDeskResource::class))->globalTypeReferenceMap())->toBe([
+        'CrmUser' => 'workbench.crm.models.User',
+        'WorkbenchUser' => 'workbench.app.models.User',
+    ])
+        // The resources namespace owns a resource named Address; this file's Address is the model.
+        ->and((new ResourceTransformer(UserExceptResource::class))->globalTypeReferenceMap()['Address'])
+        ->toBe('workbench.app.models.Address');
+});
+
+test('an inline array that reads one enum bare and wraps another keeps each enum\'s own name', function () {
+    $transformer = new ResourceTransformer(BadgeResource::class);
+
+    expect($transformer->properties['summary']['type'])
+        ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
+        ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('an EnumResource const steps aside for another enum\'s type name the resource also imports', function () {
+    $transformer = new ResourceTransformer(BadgeResource::class);
+
+    expect($transformer->properties['clearance']['type'])->toBe('ClearanceType')
+        ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+        ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('an EnumResource const steps aside for a name the resource\'s own cast imports', function () {
+    $transformer = new ResourceTransformer(CustomImportBadgeResource::class);
+
+    expect($transformer->properties['label']['type'])->toBe('ClearanceType')
+        ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+        ->and($transformer->typeImports['@js/types/clearance'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../../workbench/crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('a morph union over two resources that share a name spells each one by its own alias', function () {
+    $transformer = new ResourceTransformer(ImageReviewResource::class);
+
+    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource', 'optional' => true])
+        ->and($transformer->properties['reviewer']['type'])->toBe('CrmUserResource | WorkbenchUserResource')
+        // The same union one level down, inside an inline array.
+        ->and($transformer->properties['review']['type'])->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')
+        ->and($transformer->typeImports)->toBe([
+            '../../../crm/http/resources' => ['UserResource as CrmUserResource'],
+            '.' => ['UserResource as WorkbenchUserResource'],
+        ]);
+});
+
+describe('a union of two models that share a name', function () {
+    test('keeps both arms, each under its own alias, by `??`, by a ternary and inside an inline array', function () {
+        $properties = (new ResourceTransformer(HandoverResource::class))->properties;
+
+        expect($properties['party']['type'])->toBe('WorkbenchUser | CrmUser | null')
+            ->and($properties['picked']['type'])->toBe('CrmUser | WorkbenchUser | null')
+            ->and($properties['pair']['type'])->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }')
+            ->and($properties['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
+    });
+
+    test('reads the same union through a model accessor, token for token', function () {
+        expect((new ResourceTransformer(HandoverResource::class))->properties['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
+
+    test('keeps it through a resource that delegates to the model\'s own serialization', function () {
+        expect((new ResourceTransformer(HandoverSummaryResource::class))->properties['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
+
+    test('keeps both arms of a `when()` with a default, the value\'s first', function () {
+        expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['counterparty']['type'])
+            ->toBe('CrmUser | WorkbenchUser | null');
+    });
+
+    test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
+        expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
+            ->toBe('CrmUser | null');
+    });
+});
+
+describe('a member typed by a docblock union whose arms render alike for two models that share a name', function () {
+    test('publishes an array of each model, read as a property, a method and an arm of a ternary', function () {
+        $transformer = new ResourceTransformer(HandoverRosterResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'id' => 'number',
+            'members' => 'WorkbenchUser[] | CrmUser[]',
+            'reviewers' => 'WorkbenchUser[] | CrmUser[]',
+            'involved' => 'WorkbenchUser[] | CrmUser[] | WorkbenchUser | null',
+        ])
+            ->and($transformer->typeImports)->toBe([
+                '../../../crm/models' => ['User as CrmUser'],
+                '../../models' => ['User as WorkbenchUser'],
+            ]);
+    });
+
+    test('an accessor typed by one publishes an array of each model, however a resource reads it', function (string $resource, string $property, string $type) {
+        expect((new ResourceTransformer($resource))->properties[$property]['type'])->toBe($type);
+    })->with([
+        '$this->attr, a mutator' => [HandoverCrewResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->attr, an append' => [HandoverCrewResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->attr, on a column' => [HandoverCrewResource::class, 'updated_at', 'WorkbenchUser[] | CrmUser[] | null'],
+        '$this->only(), a mutator' => [HandoverCrewOnlyResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->only(), an append' => [HandoverCrewOnlyResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
+        'a relation\'s only()' => [HandoverCrewResource::class, 'twin_crew', '{ crew: WorkbenchUser[] | CrmUser[] }'],
+        'a variable bound to the model' => [HandoverCrewResource::class, 'bound_crew', 'WorkbenchUser[] | CrmUser[]'],
+    ]);
+
+    test('publishes an array and a record of each model where each arm spells its model twice', function () {
+        expect((new ResourceTransformer(HandoverKeyedRosterResource::class))->properties['members']['type'])
+            ->toBe('WorkbenchUser[] | Record<string, WorkbenchUser> | CrmUser[] | Record<string, CrmUser>');
+    });
+
+    test('keeps the key after it in an inline array on its own class', function () {
+        $transformer = new ResourceTransformer(HandoverCrewResource::class);
+
+        expect($transformer->properties['keyed_crew']['type'])->toBe('{ crew: WorkbenchUser[] | CrmUser[]; sender: WorkbenchUser | null }')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
+});
+
+describe('a union whose every arm is an enum resource', function () {
+    test('wraps each enum of a ternary in a workbench resource that holds no single enum resource', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        expect((new ResourceTransformer(PostStateResource::class))->properties['either']['type'])
+            ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
+    });
+
+    // Two enums that share a name still fold into one token, so each line below is missing its other enum. These pin
+    // the wrap, not the fold.
+    test('wraps the one token that two enums sharing a name fold into', function (string $key, string $type) {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        expect((new ResourceTransformer(EnumResourceArmsWarehouseResource::class))->properties[$key]['type'])->toBe($type);
+    })->with([
+        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | null'],
+        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | null'],
+    ]);
+});
+
+// The class's cast types four keys and the one on `toArray()` a fifth. Only `wrapped` writes wraps, so only its enums
+// are imported, and the globals file qualifies them.
+test('publishes each cast over an enum resource as written, importing only the enums a cast writes as wraps', function () {
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $transformer = new ResourceTransformer(PostStateCastResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'id' => 'number',
+        'status' => 'string',
+        'visibility' => 'string',
+        'either' => 'string | null',
+        'held' => 'string | null',
+        'wrapped' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
+    ])
+        ->and($transformer->typeImports)->toBe([])
+        ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
+        ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
+        ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
 });

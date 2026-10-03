@@ -46,6 +46,19 @@ class TsTypeString
     protected array $qualifiedTypes = [];
 
     /**
+     * The namespace map the two indexes below were read from.
+     *
+     * @var array<string, list<string>>|null
+     */
+    protected ?array $indexedNamespaces = null;
+
+    /** @var array<string, string> type name => the first namespace that owns it */
+    protected array $typeOwners = [];
+
+    /** @var array<string, array<string, true>> namespace => the type names it owns */
+    protected array $ownedTypes = [];
+
+    /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
      * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
@@ -126,42 +139,57 @@ class TsTypeString
      */
     public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
     {
-        /** @var array<string, non-empty-list<string>> $queues */
-        $queues = [];
+        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '');
+    }
 
-        foreach ($itemFqcns as $fqcn) {
-            $name = $nameMap[$fqcn] ?? null;
+    /**
+     * Alias every `typeof <const>` occurrence in one item's type string, in the queue order aliasPropertyType() uses.
+     *
+     * A type string spells a const only after `typeof`, as in `AsEnum<typeof Const>`. The same name bare is a type, and
+     * can be another enum's: an inline array may read one enum bare and wrap another whose const has that name.
+     *
+     * @param  list<string>  $itemFqcns  FQCN per `typeof` occurrence, in source order, never deduped
+     * @param  array<string, string>  $constNames  FQCN => unaliased const name
+     * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     */
+    public function aliasTypeofConst(string $type, array $itemFqcns, array $constNames, array $aliases): string
+    {
+        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, 'typeof\s+\K');
+    }
 
-            if ($name !== null) {
-                $queues[$name][] = $aliases[$fqcn] ?? $name;
-            }
-        }
-
-        if ($queues === []) {
-            return $type;
-        }
-
-        $names = array_keys($queues);
+    /**
+     * The pattern that reads a name as a whole token of a type string: not inside a longer name, not after a dot.
+     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match.
+     *
+     * Longer names come first: the lookahead stops at ASCII, so a name that a longer one continues with a non-ASCII
+     * letter is read whole only that way.
+     *
+     * @param  non-empty-list<string>  $names
+     */
+    public function queuedTokenPattern(array $names, string $anchor = ''): string
+    {
         usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
         $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
 
-        $pattern = '/(?<![A-Za-z0-9_$.])(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
-        $cursors = [];
+        return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+    }
 
-        return preg_replace_callback($pattern, static function (array $match) use ($queues, &$cursors): string {
-            $name = $match[0];
-            $cursor = $cursors[$name] ?? 0;
-            $cursors[$name] = min($cursor + 1, count($queues[$name]) - 1);
-
-            return $queues[$name][$cursor];
-        }, $type) ?? $type;
+    /**
+     * The queue position the Nth occurrence of a name reads, counting from zero: the last entry covers every occurrence
+     * after the queue runs out.
+     *
+     * @param  positive-int  $entries
+     */
+    public function queuePosition(int $occurrence, int $entries): int
+    {
+        return min($occurrence, $entries - 1);
     }
 
     /**
      * Prefix unqualified type names in a TypeScript type string with their global namespace.
      *
-     * Pass 1 resolves per-file import aliases (`CrmUser` → `models.User`) first, so aliased names
-     * reach the namespace-qualification pass already resolved. A quoted string literal is left as written.
+     * An alias in the file's own map (`CrmUser` → `models.User`) resolves through it, in the same pass as every other
+     * name. A quoted string literal is left as written.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, list<string>>  $namespacedTypes  Map of namespace prefix → type names it owns.
@@ -187,6 +215,9 @@ class TsTypeString
     {
         $this->qualificationMaps = null;
         $this->qualifiedTypes = [];
+        $this->indexedNamespaces = null;
+        $this->typeOwners = [];
+        $this->ownedTypes = [];
     }
 
     /**
@@ -335,7 +366,48 @@ class TsTypeString
     }
 
     /**
+     * Replace each registered name with its alias, the Nth occurrence of a name taking the Nth FQCN queued under it.
+     *
+     * $anchor is a pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
+     *
+     * @param  list<string>  $itemFqcns
+     * @param  array<string, string>  $nameMap  FQCN => unaliased name
+     * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     */
+    protected function aliasInQueueOrder(string $type, array $itemFqcns, array $nameMap, array $aliases, string $anchor): string
+    {
+        /** @var array<string, non-empty-list<string>> $queues */
+        $queues = [];
+
+        foreach ($itemFqcns as $fqcn) {
+            $name = $nameMap[$fqcn] ?? null;
+
+            if ($name !== null) {
+                $queues[$name][] = $aliases[$fqcn] ?? $name;
+            }
+        }
+
+        if ($queues === []) {
+            return $type;
+        }
+
+        $pattern = $this->queuedTokenPattern(array_keys($queues), $anchor);
+        $seen = [];
+
+        return preg_replace_callback($pattern, function (array $match) use ($queues, &$seen): string {
+            $name = $match[0];
+            $occurrence = $seen[$name] ?? 0;
+            $seen[$name] = $occurrence + 1;
+
+            return $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
+        }, $type) ?? $type;
+    }
+
+    /**
      * Qualify one type string under the given maps, leaving each quoted string literal as written.
+     *
+     * Each name is read once: through the file's own map when it has an entry, else as the current namespace's own
+     * name, else as the first namespace that owns it. A name after a `.` is already qualified.
      *
      * @param  array<string, list<string>>  $namespacedTypes
      * @param  array<string, string>  $aliasResolution
@@ -351,58 +423,54 @@ class TsTypeString
             static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),
             ARRAY_FILTER_USE_BOTH,
         );
-        [$patterns, $replacements] = $this->qualificationRules($namespacedTypes, $skipNamespace, $aliasResolution);
-        $qualified = preg_replace($patterns, $replacements, $qualifiable);
+
+        if ($this->indexedNamespaces !== $namespacedTypes) {
+            $this->indexNamespaces($namespacedTypes);
+        }
+
+        $owners = $this->typeOwners;
+        $own = $this->ownedTypes[$skipNamespace] ?? [];
+
+        $qualified = preg_replace_callback(
+            '/(?<![A-Za-z0-9_$.\x80-\xff])[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/',
+            static function (array $match) use ($aliasResolution, $skipNamespace, $owners, $own): string {
+                $name = $match[0];
+
+                if (isset($aliasResolution[$name])) {
+                    $target = $aliasResolution[$name];
+                    $lastDot = strrpos($target, '.');
+
+                    return $lastDot !== false && substr($target, 0, $lastDot) === $skipNamespace
+                        ? substr($target, $lastDot + 1)
+                        : $target;
+                }
+
+                return isset($own[$name]) || ! isset($owners[$name]) ? $name : $owners[$name].'.'.$name;
+            },
+            $qualifiable,
+        );
 
         return implode('', array_replace($segments, $qualified));
     }
 
     /**
-     * The rewrites that qualify a name, applied in order: per-file aliases first, then every other namespace's names.
+     * Index a namespace map by type name, once per map: who owns each name first, and what each namespace owns.
      *
      * @param  array<string, list<string>>  $namespacedTypes
-     * @param  array<string, string>  $aliasResolution
-     * @return array{list<string>, list<string>} the patterns, and the replacement for each
      */
-    protected function qualificationRules(array $namespacedTypes, string $skipNamespace, array $aliasResolution): array
+    protected function indexNamespaces(array $namespacedTypes): void
     {
-        $patterns = [];
-        $replacements = [];
-
-        // Pass 1: resolve per-file import aliases to their namespace-qualified equivalents
-        foreach ($aliasResolution as $alias => $qualified) {
-            $lastDot = strrpos($qualified, '.');
-            $targetNs = $lastDot !== false ? substr($qualified, 0, $lastDot) : '';
-            $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($alias, '/').'(?![A-Za-z0-9_$])/';
-            $replacements[] = ($targetNs === $skipNamespace)
-                ? substr($qualified, $lastDot + 1)
-                : $qualified;
-        }
-
-        // Pass 2: names that also exist in the skip namespace belong to the current context,
-        // so they must not be re-qualified with another namespace.
-        /** @var list<string> $skipTypeNames */
-        $skipTypeNames = $namespacedTypes[$skipNamespace] ?? [];
+        $this->indexedNamespaces = $namespacedTypes;
+        $this->typeOwners = [];
+        $this->ownedTypes = [];
 
         foreach ($namespacedTypes as $namespace => $typeNames) {
-            if ($namespace === $skipNamespace) {
-                continue;
-            }
-
-            // Match longer names first to avoid partial replacements (e.g. 'StatusType' before 'Status')
-            usort($typeNames, fn (string $a, string $b): int => strlen($b) - strlen($a));
+            $this->ownedTypes[$namespace] = array_fill_keys($typeNames, true);
 
             foreach ($typeNames as $typeName) {
-                if (in_array($typeName, $skipTypeNames, true)) {
-                    continue;
-                }
-
-                $patterns[] = '/(?<![A-Za-z0-9_$.])'.preg_quote($typeName, '/').'(?![A-Za-z0-9_$])/';
-                $replacements[] = $namespace.'.'.$typeName;
+                $this->typeOwners[$typeName] ??= $namespace;
             }
         }
-
-        return [$patterns, $replacements];
     }
 
     /**

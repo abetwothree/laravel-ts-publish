@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,11 +21,16 @@ use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Badge;
 use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\ExcludableModel;
+use Workbench\App\Models\Facility;
+use Workbench\App\Models\Grade;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Laravel13Attributes;
@@ -29,10 +41,12 @@ use Workbench\App\Models\ModelWithNestedTraitExtends;
 use Workbench\App\Models\ModelWithParentExtends;
 use Workbench\App\Models\ModelWithTraitExtends;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Parcel;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Sales\Report\Report as SalesReport;
+use Workbench\App\Models\ServiceDesk;
 use Workbench\App\Models\StrictCompositeComment;
 use Workbench\App\Models\StrictTaskAssignment;
 use Workbench\App\Models\Tag;
@@ -42,6 +56,8 @@ use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\UntypedColumn;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\App\Packages\Audit\Models\AuditInspector;
+use Workbench\App\Packages\Audit\Models\AuditTrail;
 use Workbench\App\Relations\CompositeMorphTo;
 use Workbench\Crm\Models\Deal;
 use Workbench\Crm\Models\User as CrmUser;
@@ -1635,4 +1651,263 @@ describe('ModelTransformer with Laravel13Connection model using the #[Connection
         ! class_exists('Illuminate\Database\Eloquent\Attributes\Connection'),
         'Connection attribute requires Laravel 13+',
     );
+});
+
+describe('ModelTransformer with keys an attribute and a relation both publish', function () {
+    test('a relation named like a column shadows it, and both stay in their own lists', function () {
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['supervisor'])
+            ->and($data->columns['supervisor']['type'])->toBe('string | null')
+            ->and($data->relations['supervisor']['type'])->toBe('User | null');
+    });
+
+    test('a count key a column already publishes is not synthesized again', function () {
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect($data->relationCountKeys)->toBe(['supervisor_count'])
+            ->and($data->relationExistsKeys)->toBe(['supervisor_exists', 'orders_exists'])
+            ->and($data->columns['orders_count']['type'])->toBe('number | null');
+    });
+
+    test('a relation named like an accessor shadows the mutator key', function () {
+        $data = (new ModelTransformer(ShadowedAccessorPost::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['author'])
+            ->and($data->mutators['author']['type'])->toBe('string');
+    });
+
+    test('a model with no shared key reports none and keeps every count and exists key', function () {
+        $data = (new ModelTransformer(Address::class))->data();
+
+        expect($data->shadowedKeys)->toBe([])
+            ->and($data->relationCountKeys)->toBe(['user_count'])
+            ->and($data->relationExistsKeys)->toBe(['user_exists']);
+    });
+
+    test('a combined interface drops each shared key, and the imports only its attribute used', function () {
+        $data = (new ModelTransformer(Parcel::class))->data();
+
+        expect(array_keys($data->combinedColumns))
+            ->toBe(['id', 'handler_id', 'sender_id', 'manifest_id', 'priority', 'created_at', 'updated_at'])
+            ->and($data->combinedMutators)->toBe([])
+            ->and($data->combinedAppends)->toBe([])
+            ->and($data->combinedEnums)
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false]])
+            ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
+            ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
+    });
+
+    test('the full lists and imports keep every attribute a relation shares', function () {
+        $data = (new ModelTransformer(Parcel::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['handler', 'sender', 'manifest'])
+            ->and($data->columns['handler']['type'])->toBe('RoleType')
+            ->and($data->columns['manifest']['type'])->toBe('ParcelManifest')
+            ->and($data->appends['sender']['type'])->toBe('RoleType')
+            ->and(array_keys($data->enumColumns + $data->enumAppends))->toBe(['handler', 'priority', 'sender'])
+            ->and($data->typeImports)->toBe([
+                '@js/types/manifest' => ['ParcelManifest'],
+                '../enums' => ['PriorityType', 'RoleType'],
+                '.' => ['Order', 'User'],
+            ])
+            ->and($data->valueImports)->toBe(['../enums' => ['Priority', 'Role']]);
+    });
+
+    test('a combined interface keeps no enum key, const or model import that only a shared key used', function () {
+        $data = (new ModelTransformer(ShadowedEnumParcel::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['handler', 'courier'])
+            ->and($data->typeImports['../../../../workbench/app/models'])->toBe(['Order', 'User'])
+            ->and($data->combinedEnums)->toBe([])
+            ->and($data->combinedValueImports)->toBe([])
+            ->and($data->combinedTypeImports)->toBe(['../../../../workbench/app/models' => ['User']])
+            ->and($data->relationCountKeys)->toBe([])
+            ->and($data->relationExistsKeys)->toBe([]);
+    });
+
+    test('with no shared key, a combined interface keeps every import, an aliased one under its alias', function () {
+        expect((new ModelTransformer(Warehouse::class))->data()->combinedTypeImports)->toBe([
+            '@js/types/settings' => ['MenuSettingsType'],
+            '@/types/audit' => ['Auditable'],
+            '@/types/common' => ['HasTimestamps'],
+            '../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../../crm/models' => ['User as CrmUser'],
+            '../enums' => ['ColorType', 'PriorityType', 'StatusType as WorkbenchStatusType'],
+            '.' => ['Image', 'User as ManagerUser'],
+        ]);
+    });
+
+    test('the custom imports a combined interface uses leave out the one only a shared key spelled', function () {
+        expect((new ModelTransformer(Parcel::class))->combinedCustomImports())->toBe([]);
+    });
+
+    test('a combined interface keeps the custom imports its extends clause and its own keys spell', function () {
+        expect((new ModelTransformer(Warehouse::class))->combinedCustomImports())->toBe([
+            '@/types/common' => ['HasTimestamps'],
+            '@/types/audit' => ['Auditable'],
+            '@js/types/settings' => ['MenuSettingsType'],
+        ])
+            ->and((new ModelTransformer(Product::class))->combinedCustomImports())
+            ->toBe(['@js/types/product' => ['ProductMetadata', 'ProductJsonMetaData']]);
+    });
+});
+
+describe('ModelTransformer with a published model set', function () {
+    test('a relation to a model outside the set is left out, with its count and exists keys', function () {
+        PublishedModelRegistry::register([Depot::class, User::class]);
+
+        $data = (new ModelTransformer(Depot::class))->data();
+
+        expect(array_keys($data->relations))->toBe(['supervisor'])
+            ->and($data->relationCountKeys)->toBe(['supervisor_count'])
+            ->and($data->relationExistsKeys)->toBe(['supervisor_exists'])
+            ->and(json_encode($data->typeImports))->not->toContain('Order');
+    });
+
+    test('nothing is left out while there is no published set to read', function (string $model, array $relations) {
+        expect(array_keys((new ModelTransformer($model))->data()->relations))->toBe($relations);
+    })->with([
+        'Depot' => [Depot::class, ['supervisor', 'orders']],
+        'Facility, beside a #[TsExclude]d model' => [Facility::class, ['audit_trails', 'excluded_records', 'inspector']],
+    ]);
+
+    test('an accessor naming a model outside the set publishes unknown and imports nothing', function () {
+        PublishedModelRegistry::register([AuthoredPost::class]);
+
+        $data = (new ModelTransformer(AuthoredPost::class))->data();
+
+        expect($data->mutators['author_model']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('User');
+    });
+
+    // Keyed rows: older Pest calls a flat [Model::class, string] list as a static method (a model has __callStatic).
+    test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function (string $model) {
+        $data = (new ModelTransformer($model))->data();
+
+        expect($data->mutators['handle']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
+    })->with(['AuthoredPost' => [AuthoredPost::class], 'Facility' => [Facility::class]]);
+});
+
+describe('ModelTransformer with a published set that leaves out a #[TsExclude]d model and a morphTo target', function () {
+    test('the relation to the #[TsExclude]d model is left out with its keys, and the morphTo union drops it', function () {
+        PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
+
+        $data = (new ModelTransformer(Facility::class))->data();
+
+        expect(array_keys($data->relations))->toBe(['audit_trails', 'inspector'])
+            ->and($data->relations['inspector']['type'])->toBe('AuditInspector | User | null')
+            ->and($data->relationCountKeys)->toBe(['audit_trails_count', 'inspector_count'])
+            ->and($data->relationExistsKeys)->toBe(['audit_trails_exists', 'inspector_exists']);
+    });
+
+    test('an accessor naming the #[TsExclude]d model publishes unknown and imports nothing', function () {
+        PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
+
+        $data = (new ModelTransformer(Facility::class))->data();
+
+        expect($data->mutators['last_excluded']['type'])->toBe('unknown')
+            ->and(json_encode($data->typeImports))->not->toContain('ExcludedModel');
+    });
+});
+
+describe('ModelTransformer subclassed through the methods a project overrides', function () {
+    test('an enumPropertyFqcns() override shapes the value imports, and old-shape imports serve as the combined ones', function () {
+        $data = (new CustomImportsModelTransformer(Parcel::class))->data();
+
+        expect($data->valueImports)->toBe(['../enums' => ['Priority']])
+            ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']])
+            ->and($data->combinedTypeImports)->toBe([
+                '@js/types/manifest' => ['ParcelManifest'],
+                '../enums' => ['PriorityType', 'RoleType'],
+                '.' => ['Order', 'User'],
+            ]);
+    });
+});
+
+describe('globalTypeReferenceMap()', function () {
+    test('maps a name the file imports unaliased to the class that import names', function () {
+        // app.models owns a User too, but the only User this file imports is Crm's.
+        expect((new ModelTransformer(ServiceDesk::class))->globalTypeReferenceMap())->toBe([
+            'Order' => 'workbench.app.models.Order',
+            'User' => 'workbench.crm.models.User',
+        ]);
+    });
+
+    test('maps each alias to the class it aliases, and the model\'s own name to itself', function () {
+        expect((new ModelTransformer(Warehouse::class))->globalTypeReferenceMap())->toMatchArray([
+            'WorkbenchStatusType' => 'workbench.app.enums.StatusType',
+            'CrmStatusType' => 'workbench.crm.enums.StatusType',
+            'CrmUser' => 'workbench.crm.models.User',
+            'ManagerUser' => 'workbench.app.models.User',
+            'Warehouse' => 'workbench.app.models.Warehouse',
+        ]);
+    });
+});
+
+describe('ModelTransformer with a const and a type that share a name', function () {
+    test('an enum const steps aside for another enum\'s type name', function () {
+        $data = (new ModelTransformer(Badge::class))->data();
+
+        // Clearance publishes the type ClearanceType; Crm's ClearanceType enum publishes a const of that name.
+        expect($data->typeImports['../enums'])->toContain('ClearanceType')
+            ->and($data->valueImports['../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType'])
+            ->and($data->enumColumns['clearance_type']['constName'])->toBe('CrmClearanceType')
+            ->and($data->enumColumns['clearance']['constName'])->toBe('Clearance');
+    });
+
+    test('an enum const steps aside for an imported model of the same name', function () {
+        $data = (new ModelTransformer(Badge::class))->data();
+
+        expect($data->typeImports['.'])->toBe(['Grade'])
+            ->and($data->valueImports['../enums'])->toBe(['Clearance', 'Grade as WorkbenchGrade'])
+            ->and($data->enumColumns['minimum_grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->relations['grade']['type'])->toBe('Grade');
+    });
+
+    test('an enum const steps aside for a name the model\'s own cast imports', function () {
+        $data = (new ModelTransformer(CustomImportBadge::class))->data();
+
+        expect($data->columns['label']['type'])->toBe('Clearance')
+            ->and($data->typeImports['@js/types/clearance'])->toBe(['Clearance'])
+            ->and($data->valueImports['../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
+            ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
+    });
+
+    test('a const named like the model\'s own interface keeps its name: a value import merges with a local interface', function () {
+        $data = (new ModelTransformer(Grade::class))->data();
+
+        expect($data->valueImports['../enums'])->toBe(['Grade'])
+            ->and($data->enumColumns['grade']['constName'])->toBe('Grade');
+    });
+});
+
+describe('ModelTransformer with accessors that union two models sharing a name', function () {
+    test('each token of the union names its own class, by `??` and by a ternary', function () {
+        $data = (new ModelTransformer(Handover::class))->data();
+
+        expect($data->mutators['party']['type'])->toBe('WorkbenchUser | CrmUser | null')
+            ->and($data->mutators['audience']['type'])->toBe('WorkbenchUser[] | CrmUser[]');
+    });
+
+    test('a shape keeps the union apart from a key that names one of the two alone', function () {
+        $data = (new ModelTransformer(Handover::class))->data();
+
+        expect($data->appends['parties']['type'])
+            ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
+
+    // One relation, `sender`, uses the application model, so the file aliases that model after the relation.
+    test('an accessor typed by a docblock union whose arms render alike publishes an array of each model', function () {
+        $data = (new ModelTransformer(HandoverCrew::class))->data();
+
+        expect($data->mutators['crew']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
+            ->and($data->typeImports)->toBe([
+                '../../../../workbench/app/models' => ['User as SenderUser'],
+                '../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
+    });
 });

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingImportNameRegistry;
 
 describe('ImportNameRegistry', function () {
     test('non-colliding names pass through unaliased', function () {
@@ -62,6 +63,33 @@ describe('ImportNameRegistry', function () {
         $registry->register('App\Models\Order', 'Order');
 
         expect($registry->resolve()['App\Models\Order'])->toBe('ModelsOrder');
+    });
+
+    test('several names can be reserved at once, as when a const registry learns the names a type registry took', function () {
+        $types = new ImportNameRegistry;
+        $types->register('App\Enums\Role', 'RoleType');
+        $types->register('App\Models\Grade', 'Grade');
+
+        $consts = new ImportNameRegistry;
+        $consts->reserveMany(...array_values($types->resolve()));
+        $consts->register('Crm\Enums\RoleType', 'RoleType');
+        $consts->register('App\Enums\Grade', 'Grade');
+        $consts->register('App\Enums\Role', 'Role');
+
+        expect($consts->resolve())->toBe([
+            'Crm\Enums\RoleType' => 'CrmRoleType',
+            'App\Enums\Grade' => 'EnumsGrade',
+            'App\Enums\Role' => 'Role',
+        ]);
+    });
+
+    test('a registry overriding reserve() with its one parameter loads, and reserveMany() reserves through it', function () {
+        $registry = new RecordingImportNameRegistry;
+        $registry->reserveMany('Order', 'Grade');
+        $registry->register('App\Models\Order', 'Order');
+
+        expect($registry->reservations)->toBe(['Order', 'Grade'])
+            ->and($registry->resolve())->toBe(['App\Models\Order' => 'ModelsOrder']);
     });
 
     test('preferred alias wins when unique and falls back when it collides', function () {
