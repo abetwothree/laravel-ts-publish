@@ -95,7 +95,8 @@ The gate runs `npx tsc --noEmit` over each generated tree and counts these diagn
   [`Pick<Model, K>`](../components/resource-ast-analyzer.md#when-a-pick-reference-is-emitted) key the model interface
   does not declare.
 - **TS6196 and TS6133 (declared but never used, or its value never read)**: an unused type import, or an unused value
-  import such as an enum's const, the trace a dropped `extends` clause or an overridden cast leaves.
+  import such as an enum's const, the trace a dropped `extends` clause or an overridden cast leaves. TS6133 also counts
+  an unused local or parameter, because `tsconfig.json` sets `noUnusedLocals` and `noUnusedParameters`.
 
 A leaked `toResource()` convention guess, the failure `PublishedResourceRegistry` prevents, shows up as TS2305 or
 TS2724 in the modular files, or as a relative TS2307 when the run writes nothing to the guessed class's directory. In

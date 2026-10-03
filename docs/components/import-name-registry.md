@@ -67,11 +67,18 @@ The queue lines up with the type string because each builder writes a union's ar
 `LaravelTsPublish::mergeTypeScriptInfos()` for a class union and `ModelAttributeResolver::buildMorphUnionInfo()` for a
 morph union. Reorder one without the other and aliases land on the wrong arms.
 
-In `mergeTypeScriptInfos()`, a decorated arm such as `User[]` repeats an earlier one only when its text and its classes
-both match, so `User[]|CrmUser[]` merges to `User[] | User[]`. `classFqcns` lists each class once, so when two classes
-share a name the merged info also carries `classTokenFqcns`, the class behind each token it kept.
-`ClassTokenQueue::perToken()` first gives each arm one entry per token, so `User[] | Record<string, User>` queues its
-class twice.
+In `mergeTypeScriptInfos()`, a decorated arm such as `User[]` repeats an earlier one only when its text and the classes
+behind its tokens both match, so `User[]|CrmUser[]` merges to `User[] | User[]`. `classFqcns` lists each class once, so
+when two classes share a name the merged info also carries `classTokenFqcns`, the class behind each token it kept.
+Consumers read the queue through [`ClassTokenQueue::fqcnsOf()`](../../src/Support/ClassTokenQueue.php), which falls back
+to `classFqcns`.
+
+Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
+class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`).
+`InlineArrayHandler::memberFqcns()` queues each member of an inline array through `ClassTokenQueue::perToken()`, which
+repairs a queue to one entry per token only for a name with one class behind it, so `User[] | Record<string, User>`
+queues its class twice.
 
 Callers fill their queues in one of two ways:
 
@@ -112,13 +119,11 @@ name out of a type alias would break at the numeric tiebreak. The two run in loc
 `CrmStatusType` pairs with `Status` aliased to `CrmStatus`. TypeScript gives value and type imports one identifier
 namespace, so each consumer resolves its types first and reserves every name they took in the const registry. An enum
 `Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`) keeps the type and aliases the const, and
-so does a model `Grade` imported beside the `Grade` enum's const. `applyResolvedImportNames()` applies a const alias on
-its own account, since a const's name can be taken while its enum's type name is free. The `Badge` fixtures pin both
-shapes.
+so does a model `Grade` imported beside the `Grade` enum's const. The `Badge` fixtures pin both shapes.
 
-The file's own interface name is reserved for types only. A value import merges with a local interface of the same
-name, so `import { Grade }` beside `export interface Grade` compiles, and the `Grade` model fixture pins that its
-const stays unaliased. Two enums in one namespace are a different collision, which no alias can settle:
+The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
+name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
+collision, which no alias can settle:
 [Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records it.
 
 ### `ModelTransformer`

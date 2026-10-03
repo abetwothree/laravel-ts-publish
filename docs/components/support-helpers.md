@@ -16,6 +16,8 @@ The helpers and the test that pins them live in these files:
 - [`Support\TsNaming`](../../src/Support/TsNaming.php): FQCNs, paths and keys in, TypeScript names and paths out.
 - [`Support\StringSerialization`](../../src/Support/StringSerialization.php): whether `json_encode()` writes a string
   for a class. Static, with no facade.
+- [`Support\ClassTokenQueue`](../../src/Support/ClassTokenQueue.php): which class each token of a type string names,
+  for aliasing. No facade, and `@internal` like `StringSerialization`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -66,14 +68,12 @@ The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only o
 wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
-`qualifyGlobalType()` reads each name of a type once: through the `$aliasResolution` map when the file has an entry
-for it, else as the current namespace's own name, else as the first namespace that owns it. The globals template
-passes each transformer's `globalTypeReferenceMap()`, which `ResolvesImportConflicts::qualifiedImportNames()` builds
-from every name the class's own file imports, aliased or not. A bare name two namespaces publish then resolves as the
-file's own import does, whatever order the classes were collected in. The by-name fallback remains for a name no FQCN
-map carries, such as one a `#[TsCasts]` string spells, and only there does the first owning namespace still decide.
-`GlobalsWriterTest` pins the shapes a merged alias map got wrong, and that both collection orders publish the same
-lines.
+`qualifyGlobalType()` reads each name once: through the `$aliasResolution` entry, else as the current namespace's own
+name, else as the first namespace that owns it. The globals template passes each transformer's
+`globalTypeReferenceMap()`, which `ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's
+file imports, aliased or not, so a name two namespaces publish resolves as that file's import does. The first owning
+namespace decides only for a name no FQCN map carries, such as one a `#[TsCasts]` string spells. `GlobalsWriterTest`
+pins both collection orders.
 
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
@@ -81,11 +81,10 @@ one home for their test or spelling, so a new caller uses them rather than a loc
 ### `TsNaming`
 
 `namespaceToPath()` and `globalNamespace()` read one namespace two ways, and neither stands in for the other. A path
-kebab-cases each segment, which a directory name allows and an identifier does not, so nothing derives a global
-namespace from a path. `globalNamespace()` lowers only a segment's leading capitals, so `ReportCards` is `reportCards`
-and `HTTPClient` is `httpClient`, and it suffixes `_` to a reserved word in the first position, the one place
-TypeScript rejects one. `CoreTransformer::globalNamespace()` is the accessor the globals file reads, for a declaration
-and for a qualified reference alike. `SummaryCardResource`, under `Http\Resources\ReportCards`, pins it in every
+kebab-cases each segment, which an identifier cannot hold. `globalNamespace()` lowers only a segment's leading
+capitals, so `ReportCards` is `reportCards` and `HTTPClient` is `httpClient`. It suffixes `_` to a reserved word in
+the first position, the only place TypeScript rejects one. The globals file reads it through
+`CoreTransformer::globalNamespace()`, and `SummaryCardResource`, under `Http\Resources\ReportCards`, pins it in every
 generated tree.
 
 ### `StringSerialization`

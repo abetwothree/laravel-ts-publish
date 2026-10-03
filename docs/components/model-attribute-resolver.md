@@ -215,13 +215,11 @@ agree.
 
 ## Models a run publishes
 
-A class token is only as good as the file behind it, so every site that names a model asks
-[`PublishedModelRegistry`](../../src/Cache/PublishedModelRegistry.php) first.
-`BaseRunner::buildModelMorphTargetMap()` fills it with the collected models, then with each model
-`withRelatedModels()` reaches from them: a relation's related model, a `morphTo` docblock generic's targets, and
-theirs in turn. A reached model joins only when `CoreCollector::accepts()` allows it, and when its table or view
-exists. A model with neither would publish no columns and warn about a table the app never migrated, as `Notifiable`'s
-`DatabaseNotification` would in an app with no `notifications` table.
+Every site that names a model asks [`PublishedModelRegistry`](../../src/Cache/PublishedModelRegistry.php) first.
+`BaseRunner::buildModelMorphTargetMap()` fills it with the collected models, then with each model `withRelatedModels()`
+reaches from them through relations and `morphTo` docblock targets, and theirs in turn. A reached model joins only when
+`CoreCollector::accepts()` allows it and its table or view exists, so `Notifiable`'s `DatabaseNotification` stays out of
+an app that never migrated `notifications`.
 
 These sites read the set:
 
@@ -236,15 +234,14 @@ These sites read the set:
 model set, a resource reads `PublishedResourceRegistry`, a plain class has no generated file, and an enum or a name
 that is no class stays as spelled.
 
-The registry fails open while it is empty, as the resource registry does. A full run fills it in the model phase. A
-run whose flags skip that phase still fills it when a later phase runs and `models.enabled` is on, and
-`RunnerForSource` fills it for every class but an enum. So a partial run and a watcher run name the same models, and
-type the same `morphTo` unions, as a full run. A run with model publishing off in config, or one that publishes
-nothing that can name a model, reads no set.
+The registry fails open while it is empty. A full run fills it in the model phase. A run that skips that phase fills it
+when a later phase runs and `models.enabled` is on, and `RunnerForSource` fills it for every class but an enum, so a
+partial or watcher run names the same models as a full one. A run with model publishing off in config, or one that
+publishes nothing that can name a model, reads no set.
 
 Two caches follow the set. `BaseRunner::cachedGenerate()` folds `PublishedModelRegistry::signature()` into every
 fingerprint, because a model joining or leaving the set changes what its neighbors may name without touching their
-files. `AnalysisMemo` keys each answer on the registry's version, and a run starts with an empty memo. `RunnerTest`'s
+files, and `AnalysisMemo` keys each answer on the registry's version. `RunnerTest`'s
 `PublishedModelRegistry run boundary` group and the `Facility` fixtures pin the behavior, and
 [Known gaps](../known-gaps.md#a-model-published-on-demand-gets-no-metadata-companion-and-is-not-watched) lists what
 such a model does not get.

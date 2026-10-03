@@ -281,9 +281,8 @@ an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `stri
 answers `null`, which reads as no false string, so `A`'s arm would publish as `string`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which tells same-named models or resources
-apart where it can, and one declining arm declines the read. A member typed by a docblock union whose arms render alike,
-such as `@var User[]|CrmUser[]`, has a token for each class, so a union over it tells those classes apart too. The read
-gains `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
+apart where it can ([Import name registry][queue-contract]), and one declining arm declines the read. The read gains
+`| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
 `VariableHandler` claim these node classes earlier. [The inventory][inventory] records where each steps aside, and where
 `VariableHandler` does not.
 
@@ -313,6 +312,7 @@ These pages cover the neighbors of receiver resolution:
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type
 [gap-to-array]: ../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately
 [inventory]: ast-engine.md#the-honest-ordering-inventory
+[queue-contract]: import-name-registry.md#rewriting-aliased-type-references
 [reader-no-import]: accessor-body-analyzer.md#a-reader-that-carries-no-import
 [resource-filter]: resource-ast-analyzer.md#this-resource-spells-the-same-filter
 [resource-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver

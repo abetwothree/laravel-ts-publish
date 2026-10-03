@@ -138,7 +138,7 @@ namespace publishes a const with the same identifier. The enums barrel then re-e
 fails with TS2308, and `laravel-ts-global.ts` declares both in one namespace and fails with TS2300. No alias can settle
 it, because both names are the published ones. `Runner::warnOfCollidingEnumNames()` names the pair in a warning after
 the run, and covers a backed enum's `…Kind` name the same way. The token gate does not count TS2308. Across two
-namespaces nothing collides any more, because a file that imports both aliases the const
+namespaces nothing collides, because a file that imports both aliases the const
 ([Import name registry § Consumers](./components/import-name-registry.md#consumers)). Give one enum a distinct name,
 such as `#[TsEnum('AccessLevel')]` on `RoleType`, which renames both its const and its type.
 
@@ -161,13 +161,13 @@ an import-aware `#[TsCasts]`.
 
 ### A model published on demand gets no metadata companion and is not watched
 
-A model outside every configured directory is published when a published model relates to it, so the relation has a
-file to import. That file is all it gets. The metadata phase reads its own collector, so the model has no `_meta`
-companion, and `WatcherJsonWriter` lists collected classes only, so editing the model's file does not republish it. A
-relation to a model with no table or view, a `#[TsExclude]`d model, or one in `models.excluded` or outside
-`models.included` is left out instead, with no warning. A custom `models.collector_class` that narrows `collect()` must
-narrow `accepts()` too, or the models its list relates to are published on demand. Add the model's class or directory
-to `models.additional_directories` to publish it like any other model.
+A model outside every configured directory is published, with its interfaces only, when a published model relates to it.
+The metadata phase reads its own collector, so the model has no `_meta` companion, and `WatcherJsonWriter` lists
+collected classes only, so editing the model's file does not republish it. A relation to a model with no table or view,
+a `#[TsExclude]`d model, or one in `models.excluded` or outside `models.included` is left out instead, with no warning.
+A custom `models.collector_class` that narrows `collect()` must narrow `accepts()` too, or the models its list relates
+to are published on demand. Add the model's class or directory to `models.additional_directories` to publish it like
+any other model.
 
 ### A model class name containing an underscore can collide with a metadata companion
 

@@ -404,8 +404,8 @@ A class the developer wrote down stays on `isResourceClass()`: an explicit argum
 The registry fails open: while it is empty, `isPublished()` answers `true`, so `RunnerForSource`, which never
 registers, analyzes without narrowing. `Runner::run()` and `RunnerForSource::run()` reset it first.
 `Runner::generateResources()` registers the whole collected list before generating, because a resource may reference
-one collected after it. The registry is process-static, so `Tests\TestCase::setUp()` resets it too. Models have the
-same check through `PublishedModelRegistry`, which a source run does fill; see
+one collected after it. The registry is process-static, so `Tests\TestCase::setUp()` resets it too.
+Models have the same check through `PublishedModelRegistry`, which a source run does fill. See
 [ModelAttributeResolver § Models a run publishes](model-attribute-resolver.md#models-a-run-publishes).
 
 In the modular files a leaked guess fails `tsc` with TS2305 or TS2724, or with TS2307 when the run writes nothing into
@@ -418,13 +418,13 @@ check itself with the `#[TsExclude]`d `AttachmentResource`, `AttachmentCollectio
 
 `ConditionalMethodHandler::analyzeWhenLoaded()` binds a `morphTo` closure parameter to every target, in
 `AnalysisScope::$varClassBindings`. `ToResourceHandler` then maps each target model to its resource and publishes the
-union, such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`.
-`MethodAnalysis::addProperty()` queues them under the property in `inlineResourceFqcns`, one per token, so two targets
-whose resources share a name are each spelled by their own alias. `InlineArrayHandler` builds the same queue for an
-inline array, spread arms first and then each member, and `ImageReviewResource` pins both. The
+union, such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`. The
 union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is wrong
 for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
+`MethodAnalysis::addProperty()` also queues those classes under the property in `inlineResourceFqcns`, one per token,
+and `InlineArrayHandler` builds the same queue for an inline array, spread arms first and then each member.
+`ImageReviewResource` pins both.
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
@@ -573,15 +573,12 @@ channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`
 `customImports`. It unions `customImports` rather than replacing them. Reading any other channel, such as a resource
 channel, changes behavior and needs its own audit.
 
-`classFqcns` lists each class once, so its order cannot say which of two same-named tokens is which.
-`LaravelTsPublish::mergeTypeScriptInfos()` sets `classTokenFqcns`, the queue aliasing walks, when two of its classes
-share a name. The bridge replaces the merged type with the result's and drops that queue with it. Where the result
-spells one name for two classes, the bridge sets the result's own queue, unless it outruns its tokens, as a merge by
-text leaves it. `InlineArrayHandler::memberFqcns()` queues each member of an inline array once per token for a name that
-has one class, however often its own union queued it. It keeps at least one entry, and it keeps the member's queue for a
-name with two classes behind it, on one channel or one on each. Every consumer that queues classes for aliasing calls
-[`ClassTokenQueue::fqcnsOf()`](../../src/Support/ClassTokenQueue.php), which falls back to `classFqcns`.
-`Handover::parties` pins it through the model file, a resource that reads the accessor and one that delegates.
+The bridge merges the classes the result names, replaces the merged type with the result's, and drops the merge's
+`classTokenFqcns`, which queued the old type. Where the result spells one name for two classes, it sets the result's own
+queue instead, unless that queue outruns its tokens.
+[Import name registry § Rewriting aliased type references](import-name-registry.md#rewriting-aliased-type-references)
+states the queue's contract. `Handover::parties` pins it through the model file, a resource that reads the accessor and
+one that delegates.
 
 ### `directEnumFqcns` holds two kinds of entry
 
@@ -599,9 +596,9 @@ steps depend on it:
 
 - **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
   holds none of the enums' type names. It runs first, since `pruneOverriddenEnumImports()` removes the names it reads.
-  An enum whose const the type writes after `typeof`, by its name or its alias, stays as an inline wrap.
-  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name, which
-  `pruneOverriddenEnumImports()`, reading names, cannot tell apart. `pruneOverriddenAnalysisImports()` and
+  An enum whose const the type writes after `typeof`, by name or alias, stays an inline wrap.
+  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name and no key
+  reads it bare, since `pruneOverriddenEnumImports()` cannot tell the two apart. `pruneOverriddenAnalysisImports()` and
   `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
   clause still spells. The model prune reads class basenames before aliasing, so two same-basename models both stay
   imported while either is spelled, and one can stay imported unused under its alias.
@@ -635,20 +632,13 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`unionResults()` goes one step further when its arms spell one name for two classes, which
-`ValueResult::spellsTwoClassesAlike()` detects. Their text no longer says which class a member names, so
-`withMembersByClass()` reads the members again arm by arm through
-[`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php). A member repeats an earlier one
-only when its text and the classes behind its tokens both match, and each kept member queues its own classes. So
-`$this->sender ?? $this->receiver` over two `User` models publishes `User | User`, which aliasing then spells apart,
-where a merge by text published one arm under the other's class. Every other union takes the text-merged path
-unchanged. So does a union with an arm that queues a name for two classes more often than it spells it, such as a
-union that itself stayed the merge by text:
-[`ClassTokenQueue::outrunsItsTokens()`](../../src/Support/ClassTokenQueue.php) asks it of each arm, since such an arm
-does not say which token is whose.
-`CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
-`unionResults()` too. `mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary,
-to-many and inline-array shapes, and `HandoverNoticeResource` pins the `when()` and `whenNull()` ones.
+`unionResults()` reads a union by class, not by text, when its arms spell one name for two classes, which
+`ValueResult::spellsTwoClassesAlike()` detects. `withMembersByClass()` does the reading, through
+[`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
+`ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
+`mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary, to-many and inline-array
+shapes, and `HandoverNoticeResource` the `when()` and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
