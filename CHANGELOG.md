@@ -2,6 +2,40 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.7.0 - 2026-10-03
+
+### v2.7.0
+
+Every name a generated file uses now points at a file the run actually writes. Related models are published for you, two classes with the same name each get their own alias, and the global declaration file always parses. Most projects should see far fewer TypeScript errors in their generated types.
+
+#### New
+
+- **Related models are published automatically.** When a published model relates to a model outside your configured directories, such as a vendor package's model or Laravel's `DatabaseNotification` through the `Notifiable` trait, that model is now published too, so the relation's import resolves. You no longer need to add these models to `models.additional_directories`. A related model is skipped when you exclude it (`models.excluded`, `models.included` or `#[TsExclude]`), or when its table doesn't exist. Models published this way get their interfaces only. List them in `models.additional_directories` if you also want their metadata file and Vite plugin updates. [Read more](https://tolki.abe.dev/ts/models.html#related-models-outside-your-directories)
+- **New warnings after `ts:publish`:**
+  - two enums in one namespace that publish the same name (rename one with `#[TsEnum]`);
+  - a relation that can't be read on a blank model, which is left out of its model;
+  - a related model that can't be read at all.
+  
+
+#### Fixed
+
+- `laravel-ts-global.ts` parses when a namespace has a multi-word segment. `ReportCards` is now `reportCards`; it used to be `report-cards`, which broke the whole file.
+- `laravel-ts-global.ts` now points a name shared by two namespaces at the right class.
+- Two classes with the same name in one property, such as two `User` models or two `UserResource` classes, are each imported under their own alias. A union no longer drops one of them or gives both the same class. This includes `when()`, `whenNull()`, `??`, ternaries, `morphTo` resources and docblock unions like `@return User[]|CrmUser[]`.
+- `{Model}All` no longer fails to compile when a relation has the same name as a column or accessor. The relation's type wins. [Read more](https://tolki.abe.dev/ts/models.html#a-relation-named-like-a-column-or-accessor)
+- No more duplicate imports when an enum is named like another enum's `…Type`, or when a `#[TsType]`, `#[TsCasts]` or `#[TsExtends]` import shares a name with an import the package adds.
+- No more imports of files that don't exist. A property typed by a class the package doesn't generate, such as a service class or a DTO, is published as `unknown`.
+- A `#[TsCasts]` cast on a key that holds an `EnumResource` no longer crashes `ts:publish`.
+- A relation that throws when read, for example one that depends on request state, no longer stops `ts:publish`.
+- `--only-resources` and `--source` runs now type `morphTo` unions the same way a full run does.
+
+### What's Changed
+
+* Bump actions/setup-node from 4 to 7 by @dependabot[bot] in https://github.com/abetwothree/laravel-ts-publish/pull/58
+* fix: class names in generated files (#88) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/107
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.6.0...v2.7.0
+
 ## v2.6.0 - 2026-09-28
 
 ### What's Changed
@@ -51,6 +85,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -64,6 +99,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -71,6 +107,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -102,6 +139,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -110,6 +148,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -125,6 +164,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -151,6 +191,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -194,6 +235,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
