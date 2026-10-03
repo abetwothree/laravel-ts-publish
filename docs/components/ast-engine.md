@@ -320,9 +320,9 @@ branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `ali
 `inlineEnumResourceFqcns`, walks each as a positional queue against the type's tokens, so a property naming the same
 class twice needs two entries.
 
-`forgetChannels()` drops every channel entry and cast mark keyed by one property, when another value takes the key
-over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset channels by hand would
-miss the next channel added.
+`forgetChannels()` drops every channel entry, and the `importedCastKeys` mark, keyed by one property, when another
+value takes the key over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset
+channels by hand would miss the next channel added.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
 owns its rules.

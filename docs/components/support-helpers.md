@@ -71,7 +71,8 @@ wants `toTsType()` is not a type-string helper, and would be in the same bind as
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
 `ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, so a
 name two namespaces publish resolves as that file's import does. For a name no FQCN map carries, such as one a
-`#[TsCasts]` string spells, the first namespace that owns it decides. `GlobalsWriterTest` pins both collection orders.
+`#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
+`GlobalsWriterTest` pins both collection orders.
 
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
