@@ -1054,6 +1054,23 @@ describe('PublishedModelRegistry run boundary', function () {
             ]]);
     });
 
+    test('a run whose models collector finds no model names none', function () {
+        config()->set('ts-publish.models.included', ['Workbench\App\Models\NoSuchModel']);
+
+        $runner = new Runner;
+        $runner->run();
+
+        $resource = $runner->resourceGenerators
+            ->first(fn (ResourceGenerator $generator): bool => $generator->filename() === 'facility-resource');
+
+        expect($runner->modelGenerators)->toBeEmpty()
+            ->and(PublishedModelRegistry::isEmpty())->toBeFalse()
+            ->and($resource->content)
+            ->toContain('audit_trails: unknown;')
+            ->not->toContain('AuditTrail')
+            ->not->toContain('import type');
+    });
+
     test('a run that skips the model phase still reads the set, so its other phases name the same models', function () {
         $runner = new Runner;
         $runner->shouldPublishModels = false;

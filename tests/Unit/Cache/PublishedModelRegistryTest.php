@@ -26,6 +26,14 @@ it('narrows to exactly the registered classes once populated', function () {
         ->and(PublishedModelRegistry::isPublished(Post::class))->toBeFalse();
 });
 
+it('narrows to nothing once an empty set is registered, which signs apart from no information', function () {
+    PublishedModelRegistry::register([]);
+
+    expect(PublishedModelRegistry::isEmpty())->toBeFalse()
+        ->and(PublishedModelRegistry::isPublished(User::class))->toBeFalse()
+        ->and(PublishedModelRegistry::signature())->not->toBe('');
+});
+
 it('accumulates across register() calls', function () {
     PublishedModelRegistry::register([User::class]);
     PublishedModelRegistry::register([Post::class]);

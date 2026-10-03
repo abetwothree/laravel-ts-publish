@@ -6,13 +6,16 @@ namespace AbeTwoThree\LaravelTsPublish\Cache;
 
 /**
  * The set of model classes this run emits a .ts file for: the collected ones, and each model their relations reach.
- * Empty means "no information", as in a run that skips the model phase, so callers must fail open.
+ * Until a run registers its set the registry holds no information and callers fail open; an empty set narrows to none.
  * A class name matches in any letter case, as PHP resolves one, and with or without a leading backslash.
  */
 class PublishedModelRegistry
 {
     /** @var array<string, true> */
     protected static array $published = [];
+
+    /** Whether a run registered its set, so an empty one means "nothing is published", not "no information". */
+    protected static bool $registered = false;
 
     /** Bumped on every change, so an analysis read against an older set is never reused. */
     protected static int $version = 0;
@@ -31,6 +34,7 @@ class PublishedModelRegistry
             static::$published[static::normalize($fqcn)] = true;
         }
 
+        static::$registered = true;
         static::$version++;
         static::$signature = null;
     }
@@ -41,6 +45,7 @@ class PublishedModelRegistry
     public static function reset(): void
     {
         static::$published = [];
+        static::$registered = false;
         static::$version++;
         static::$signature = null;
     }
@@ -50,15 +55,15 @@ class PublishedModelRegistry
      */
     public static function isEmpty(): bool
     {
-        return static::$published === [];
+        return ! static::$registered;
     }
 
     /**
-     * Whether this run emits the class — true for every class while the registry is empty.
+     * Whether this run emits the class — true for every class until a set is registered.
      */
     public static function isPublished(string $fqcn): bool
     {
-        return static::$published === [] || isset(static::$published[static::normalize($fqcn)]);
+        return ! static::$registered || isset(static::$published[static::normalize($fqcn)]);
     }
 
     /**
@@ -81,7 +86,7 @@ class PublishedModelRegistry
         $fqcns = array_keys(static::$published);
         sort($fqcns);
 
-        return static::$signature = $fqcns === [] ? '' : hash('xxh128', implode("\n", $fqcns));
+        return static::$signature = static::$registered ? hash('xxh128', implode("\n", $fqcns)) : '';
     }
 
     /**

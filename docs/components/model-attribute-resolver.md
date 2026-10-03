@@ -233,7 +233,8 @@ These sites read the set:
 
 [`PublishedClasses::exports()`](../../src/Cache/PublishedClasses.php) is the question they share.
 
-The registry fails open while it is empty. A full run fills it in the model phase. A run that skips that phase fills it
+The registry fails open until a run registers its set. A registered empty set, as when `models.included` matches
+nothing, publishes no model. A full run fills it in the model phase. A run that skips that phase fills it
 when a later phase runs and `models.enabled` is on, and `RunnerForSource` fills it for every class but an enum, so a
 partial or watcher run names the same models as a full one.
 
