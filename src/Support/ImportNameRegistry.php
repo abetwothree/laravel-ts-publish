@@ -31,12 +31,20 @@ class ImportNameRegistry
     ) {}
 
     /**
-     * Reserve local names the generated file already uses, such as its own interface or another registry's imports.
+     * Reserve a local name already used by the generated file itself.
      */
-    public function reserve(string ...$localNames): void
+    public function reserve(string $localName): void
+    {
+        $this->reserved[$localName] = true;
+    }
+
+    /**
+     * Reserve several local names the generated file already uses, such as another registry's imports.
+     */
+    public function reserveMany(string ...$localNames): void
     {
         foreach ($localNames as $localName) {
-            $this->reserved[$localName] = true;
+            $this->reserve($localName);
         }
     }
 

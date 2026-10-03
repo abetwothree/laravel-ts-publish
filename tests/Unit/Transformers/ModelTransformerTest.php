@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
@@ -1816,6 +1817,20 @@ describe('ModelTransformer with models this run does not publish', function () {
 
         expect($data->mutators['handle']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
+    });
+});
+
+describe('ModelTransformer subclassed through the methods a project overrides', function () {
+    test('an enumPropertyFqcns() override shapes the value imports, and old-shape imports serve as the combined ones', function () {
+        $data = (new CustomImportsModelTransformer(Parcel::class))->data();
+
+        expect($data->valueImports)->toBe(['../enums' => ['Priority']])
+            ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']])
+            ->and($data->combinedTypeImports)->toBe([
+                '@js/types/manifest' => ['ParcelManifest'],
+                '../enums' => ['PriorityType', 'RoleType'],
+                '.' => ['Order', 'User'],
+            ]);
     });
 });
 

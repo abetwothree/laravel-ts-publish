@@ -280,7 +280,12 @@ abstract class BaseRunner
             : $collected;
 
         PublishedModelRegistry::register($modelClasses);
-        $resolver->buildMorphTargetMap($modelClasses, $withoutTables);
+
+        if ($withoutTables) {
+            $resolver->buildMorphTargetMapWithoutTables($modelClasses);
+        } else {
+            $resolver->buildMorphTargetMap($modelClasses);
+        }
 
         return $modelClasses;
     }

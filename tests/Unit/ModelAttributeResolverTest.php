@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyPar
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Carbon\CarbonImmutable;
@@ -394,6 +395,14 @@ test('morph target map includes parents declaring custom MorphOne subclasses', f
     $info = $resolver->resolveRelation(Attachment::class, 'attachable');
 
     expect($info['type'])->toContain('Post');
+});
+
+test('a resolver overriding buildMorphTargetMap() with its one parameter builds the map through the override', function () {
+    $resolver = new RecordingModelAttributeResolver;
+    $resolver->buildMorphTargetMap([Post::class, Attachment::class]);
+
+    expect($resolver->morphTargetMapBuilds)->toBe([[Post::class, Attachment::class]])
+        ->and($resolver->resolveMorphToTargets(Attachment::class, 'attachable'))->toBe([Post::class]);
 });
 
 test('a bare @return MorphTo<Model, $this> generic is not narrowing and falls through to the reverse map', function () {
@@ -945,7 +954,7 @@ describe('reading relations without reading any table', function () {
             ->and($queries)->toBeGreaterThan(0);
     });
 
-    test('buildMorphTargetMap() builds the same map and makes no query', function () {
+    test('buildMorphTargetMapWithoutTables() builds the same map as buildMorphTargetMap() and makes no query', function () {
         $models = [User::class, Post::class, Product::class, Image::class];
         $queries = 0;
         DB::listen(function () use (&$queries): void {
@@ -953,7 +962,7 @@ describe('reading relations without reading any table', function () {
         });
 
         $withoutTables = new ModelAttributeResolver;
-        $withoutTables->buildMorphTargetMap($models, withoutTables: true);
+        $withoutTables->buildMorphTargetMapWithoutTables($models);
         $queriesWithoutTables = $queries;
 
         $withTables = new ModelAttributeResolver;

@@ -962,11 +962,30 @@ class ModelAttributeResolver
 
     /**
      * Scan every model's MorphOne/MorphMany relations to build the child → parents morph target map.
-     * With `$withoutTables`, relations are read by reflection alone, so no model's table is read.
      *
      * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
      */
-    public function buildMorphTargetMap(array $modelFqcns, bool $withoutTables = false): void
+    public function buildMorphTargetMap(array $modelFqcns): void
+    {
+        $this->buildMorphTargetMapFrom($modelFqcns, withoutTables: false);
+    }
+
+    /**
+     * Build the same map with relations read by reflection alone, so no model's table is read.
+     *
+     * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
+     */
+    public function buildMorphTargetMapWithoutTables(array $modelFqcns): void
+    {
+        $this->buildMorphTargetMapFrom($modelFqcns, withoutTables: true);
+    }
+
+    /**
+     * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
+     *
+     * @param  list<class-string>  $modelFqcns
+     */
+    private function buildMorphTargetMapFrom(array $modelFqcns, bool $withoutTables): void
     {
         /** @var array<string, list<class-string>> $map */
         $map = [];

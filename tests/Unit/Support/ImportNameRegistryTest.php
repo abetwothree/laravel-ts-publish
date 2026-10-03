@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingImportNameRegistry;
 
 describe('ImportNameRegistry', function () {
     test('non-colliding names pass through unaliased', function () {
@@ -70,7 +71,7 @@ describe('ImportNameRegistry', function () {
         $types->register('App\Models\Grade', 'Grade');
 
         $consts = new ImportNameRegistry;
-        $consts->reserve(...array_values($types->resolve()));
+        $consts->reserveMany(...array_values($types->resolve()));
         $consts->register('Crm\Enums\RoleType', 'RoleType');
         $consts->register('App\Enums\Grade', 'Grade');
         $consts->register('App\Enums\Role', 'Role');
@@ -80,6 +81,15 @@ describe('ImportNameRegistry', function () {
             'App\Enums\Grade' => 'EnumsGrade',
             'App\Enums\Role' => 'Role',
         ]);
+    });
+
+    test('a registry overriding reserve() with its one parameter loads, and reserveMany() reserves through it', function () {
+        $registry = new RecordingImportNameRegistry;
+        $registry->reserveMany('Order', 'Grade');
+        $registry->register('App\Models\Order', 'Order');
+
+        expect($registry->reservations)->toBe(['Order', 'Grade'])
+            ->and($registry->resolve())->toBe(['App\Models\Order' => 'ModelsOrder']);
     });
 
     test('preferred alias wins when unique and falls back when it collides', function () {

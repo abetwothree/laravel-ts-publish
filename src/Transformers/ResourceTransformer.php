@@ -969,7 +969,7 @@ class ResourceTransformer extends CoreTransformer
 
         // A type import and a const import are both local names in the file, so a const steps aside for every name
         // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
-        $constRegistry->reserve(...array_values($resolved));
+        $constRegistry->reserveMany(...array_values($resolved));
 
         $this->applyResolvedImportNames(
             $resolved,

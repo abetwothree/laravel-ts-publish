@@ -50,8 +50,8 @@ use ReflectionClass;
  * @phpstan-type ResolvedImports = array{
  *    typeImports: TypesImportMap,
  *    valueImports: ValuesImportMap,
- *    combinedTypeImports: TypesImportMap,
- *    combinedValueImports: ValuesImportMap,
+ *    combinedTypeImports?: TypesImportMap,
+ *    combinedValueImports?: ValuesImportMap,
  * }
  *
  * @extends CoreTransformer<Model>
@@ -188,8 +188,9 @@ class ModelTransformer extends CoreTransformer
             combinedMutators: $this->combinedMutators(),
             combinedAppends: $this->combinedAppends(),
             combinedEnums: $this->withoutShadowed($enumColumns + $enumMutators + $enumAppends),
-            combinedTypeImports: $imports['combinedTypeImports'],
-            combinedValueImports: $imports['combinedValueImports'],
+            // An override of buildResolvedImports() may return only the imports every interface uses.
+            combinedTypeImports: $imports['combinedTypeImports'] ?? $imports['typeImports'],
+            combinedValueImports: $imports['combinedValueImports'] ?? $imports['valueImports'],
         );
     }
 
@@ -805,7 +806,7 @@ class ModelTransformer extends CoreTransformer
 
         // A type import and a const import are both local names in the file, so a const steps aside for every name
         // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
-        $constRegistry->reserve(...array_values($resolved));
+        $constRegistry->reserveMany(...array_values($resolved));
 
         $this->applyResolvedImportNames(
             $resolved,
@@ -890,7 +891,7 @@ class ModelTransformer extends CoreTransformer
         if ($hasEnums) {
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
             $combinedValueImports = $this->collectModularValueImports(
-                $this->enumPropertyFqcns($this->withoutShadowed($this->enumProperties())),
+                $this->enumPropertyFqcnsOf($this->withoutShadowed($this->enumProperties())),
             );
         }
 

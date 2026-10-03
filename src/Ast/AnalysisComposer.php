@@ -184,7 +184,7 @@ final class AnalysisComposer
         }
 
         $resolved = $registry->resolve();
-        $constRegistry->reserve(...array_values($resolved));
+        $constRegistry->reserveMany(...array_values($resolved));
 
         $this->applyResolvedImportNames(
             $resolved,
