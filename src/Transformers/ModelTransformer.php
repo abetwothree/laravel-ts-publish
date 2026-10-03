@@ -188,7 +188,8 @@ class ModelTransformer extends CoreTransformer
             combinedMutators: $this->combinedMutators(),
             combinedAppends: $this->combinedAppends(),
             combinedEnums: $this->withoutShadowed($enumColumns + $enumMutators + $enumAppends),
-            // An override of buildResolvedImports() may return only the imports every interface uses.
+            // An override of buildResolvedImports() may return only the two keys it first had, the whole file's
+            // imports, so each combined list falls back to its full one.
             combinedTypeImports: $imports['combinedTypeImports'] ?? $imports['typeImports'],
             combinedValueImports: $imports['combinedValueImports'] ?? $imports['valueImports'],
         );

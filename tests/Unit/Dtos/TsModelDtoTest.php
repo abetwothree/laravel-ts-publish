@@ -58,8 +58,9 @@ describe('TsModelDto', function () {
             ->and($array['enumAppends'])->toBeEmpty();
     });
 
-    test('toArray carries the combined views beside the full lists, and null for one it was not given', function () {
+    test('toArray carries the combined views beside the full lists, and the full list for one it was not given', function () {
         $status = ['constName' => 'Status', 'nullable' => false, 'isCollection' => false];
+        $label = ['type' => 'string', 'description' => '', 'optional' => false];
 
         $array = (new TsModelDto(
             modelName: 'Depot',
@@ -71,7 +72,7 @@ describe('TsModelDto', function () {
                 'id' => ['type' => 'number', 'description' => '', 'optional' => false],
                 'supervisor' => ['type' => 'StatusType', 'description' => '', 'optional' => false],
             ],
-            mutators: [],
+            mutators: ['label' => $label],
             appends: [],
             relations: ['supervisor' => ['type' => 'User', 'description' => '']],
             typeImports: ['../enums' => ['StatusType'], '.' => ['User']],
@@ -86,14 +87,33 @@ describe('TsModelDto', function () {
 
         expect(array_keys($array['columns']))->toBe(['id', 'supervisor'])
             ->and(array_keys($array['combinedColumns']))->toBe(['id'])
-            ->and($array['combinedMutators'])->toBeNull()
-            ->and($array['combinedAppends'])->toBeNull()
+            ->and($array['combinedMutators'])->toBe(['label' => $label])
+            ->and($array['combinedAppends'])->toBe([])
+            ->and($array['relationCountKeys'])->toBe(['supervisor_count'])
+            ->and($array['relationExistsKeys'])->toBe(['supervisor_exists'])
             ->and($array['enumColumns'])->toBe(['supervisor' => $status])
             ->and($array['combinedEnums'])->toBe([])
             ->and($array['typeImports'])->toBe(['../enums' => ['StatusType'], '.' => ['User']])
             ->and($array['combinedTypeImports'])->toBe(['.' => ['User']])
             ->and($array['valueImports'])->toBe(['../enums' => ['Status']])
             ->and($array['combinedValueImports'])->toBe([]);
+    });
+
+    test('a DTO given only the full lists reads as a model that shares no key with a relation', function () {
+        expect($this->dto->shadowedKeys)->toBe([])
+            ->and($this->dto->relationCountKeys)->toBe(['posts_count'])
+            ->and($this->dto->relationExistsKeys)->toBe(['posts_exists'])
+            ->and($this->dto->combinedColumns)->toBe([
+                'id' => ['type' => 'number', 'description' => ''],
+                'name' => ['type' => 'string', 'description' => ''],
+            ])
+            ->and($this->dto->combinedMutators)->toBe(['initials' => ['type' => 'string', 'description' => '']])
+            ->and($this->dto->combinedAppends)->toBe(['full_name' => ['type' => 'string', 'description' => '']])
+            ->and($this->dto->combinedEnums)
+            ->toBe(['status' => ['constName' => 'Status', 'nullable' => false, 'isCollection' => false]])
+            ->and($this->dto->combinedTypeImports)->toBe(['../enums' => ['StatusType']])
+            ->and($this->dto->combinedValueImports)->toBe(['../enums' => ['Status']])
+            ->and($this->dto->withoutShadowedKeys('User', ['id', 'name']))->toBe('User');
     });
 
     test('toJson returns valid JSON string', function () {

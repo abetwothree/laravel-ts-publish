@@ -354,8 +354,8 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        // Safe to dedupe, as develop did: one class per name reads alike at every entry, and two under one name are
-        // read by class unless an arm outruns its tokens, where the merge by text stands.
+        // Safe to dedupe: one class per name reads alike at every entry, and two under one name are read by class
+        // unless an arm outruns its tokens, where the merge by text stands.
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {

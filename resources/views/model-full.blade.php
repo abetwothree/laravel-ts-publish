@@ -1,23 +1,12 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
-@php
-    // A DTO built without the combined lists or the shared keys renders as a model that shares no key with a relation.
-    $columns = $data->combinedColumns ?? $data->columns;
-    $mutators = $data->combinedMutators ?? $data->mutators;
-    $appends = $data->combinedAppends ?? $data->appends;
-    $enums = $data->combinedEnums ?? ($data->enumColumns + $data->enumMutators + $data->enumAppends);
-    $typeImports = $data->combinedTypeImports ?? $data->typeImports;
-    $valueImports = $data->combinedValueImports ?? $data->valueImports;
-    $countKeys = $data->relationCountKeys ?? array_map(fn ($name) => $name . '_count', array_keys($data->relations));
-    $existsKeys = $data->relationExistsKeys ?? array_map(fn ($name) => $name . '_exists', array_keys($data->relations));
-@endphp
-@if($usesTolkiPackage && count($valueImports) > 0)
+@if($usesTolkiPackage && count($data->combinedValueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 
 @endif{{-- end tolki package --}}
-@foreach ($valueImports as $path => $names)
+@foreach ($data->combinedValueImports as $path => $names)
 import { {{ implode(', ', $names) }} } from '{{ $path }}';
 @endforeach
-@foreach ($typeImports as $path => $types)
+@foreach ($data->combinedTypeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
 
@@ -33,24 +22,24 @@ import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 {!! JsEmitter::formatJsDoc($description) !!}
 export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
-@if (count($columns) > 0)
+@if (count($data->combinedColumns) > 0)
     // Columns
-@foreach ($columns as $name => $column)
+@foreach ($data->combinedColumns as $name => $column)
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 4) !!}
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!!  $column['type'] !!};
 @endforeach
 @endif
-@if (count($mutators) > 0 || count($appends) > 0)
+@if (count($data->combinedMutators) > 0 || count($data->combinedAppends) > 0)
     // Mutators
-@foreach ($mutators as $name => $mutator)
+@foreach ($data->combinedMutators as $name => $mutator)
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 4) !!}
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!!  $mutator['type'] !!};
 @endforeach
-@foreach ($appends as $name => $append)
+@foreach ($data->combinedAppends as $name => $append)
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 4) !!}
 @endif
@@ -65,28 +54,28 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
-@if (count($countKeys) > 0)
+@if (count($data->relationCountKeys) > 0)
     // Counts
-@foreach ($countKeys as $key)
+@foreach ($data->relationCountKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: number;
 @endforeach
 @endif
-@if (count($existsKeys) > 0)
+@if (count($data->relationExistsKeys) > 0)
     // Exists
-@foreach ($existsKeys as $key)
+@foreach ($data->relationExistsKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: boolean;
 @endforeach
 @endif
 @endif
 }
-@if (count($enums) > 0)
+@if (count($data->combinedEnums) > 0)
 
 @php
-    $omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($enums)));
+    $omitKeys = implode(' | ', array_map(fn($k) => "'" . $k . "'", array_keys($data->combinedEnums)));
 @endphp
 export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName }}, {!! $omitKeys !!}>
 {
-@foreach ($enums as $name => $enum)
+@foreach ($data->combinedEnums as $name => $enum)
     {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
