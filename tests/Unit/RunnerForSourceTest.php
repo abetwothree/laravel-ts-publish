@@ -14,11 +14,13 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityRoster;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RosterEntry;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
@@ -334,6 +336,16 @@ test('a model --source run reads the same published model set a full run does', 
         ->and($runner->modelGenerators->first()->content)
         ->toContain('audit_trails: AuditTrail[];')
         ->not->toContain('excluded_records');
+});
+
+test('a model --source run builds the morph map once through a project\'s buildMorphTargetMap() override', function () {
+    $resolver = new RecordingModelAttributeResolver;
+    app()->instance(ModelAttributeResolver::class, $resolver);
+
+    (new RunnerForSource(Facility::class))->run();
+
+    expect($resolver->morphTargetMapBuilds)->toHaveCount(1)
+        ->and($resolver->morphTargetMapBuilds[0])->toContain(Facility::class, AuditTrail::class);
 });
 
 test('a --source run generates the file of a model that is only published on demand', function () {

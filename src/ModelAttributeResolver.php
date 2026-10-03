@@ -103,6 +103,9 @@ class ModelAttributeResolver
      */
     protected array $attributeClassCache = [];
 
+    /** Whether the morph target map being built reads each model's relations without its table. */
+    private bool $buildsWithoutTables = false;
+
     /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
      *
@@ -967,17 +970,25 @@ class ModelAttributeResolver
      */
     public function buildMorphTargetMap(array $modelFqcns): void
     {
-        $this->buildMorphTargetMapFrom($modelFqcns, withoutTables: false);
+        $this->buildMorphTargetMapFrom($modelFqcns, $this->buildsWithoutTables);
     }
 
     /**
      * Build the same map with relations read by reflection alone, so no model's table is read.
      *
+     * Goes through buildMorphTargetMap(), so a project's override of it runs in a run that reads no table too.
+     *
      * @param  list<class-string>  $modelFqcns  All model FQCNs that will be processed.
      */
     public function buildMorphTargetMapWithoutTables(array $modelFqcns): void
     {
-        $this->buildMorphTargetMapFrom($modelFqcns, withoutTables: true);
+        $this->buildsWithoutTables = true;
+
+        try {
+            $this->buildMorphTargetMap($modelFqcns);
+        } finally {
+            $this->buildsWithoutTables = false;
+        }
     }
 
     /**

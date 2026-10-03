@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\Access;
@@ -28,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ListOnlyModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MagicCallModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UninspectableTrail;
@@ -1167,6 +1169,22 @@ describe('PublishedModelRegistry run boundary', function () {
             ->and($withoutTables['signature'])->toBe($withTables['signature'])
             ->not->toBe('');
     });
+
+    test('a run builds the morph map once through a project\'s buildMorphTargetMap() override', function (bool $generatesModels) {
+        $resolver = new RecordingModelAttributeResolver;
+        app()->instance(ModelAttributeResolver::class, $resolver);
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = $generatesModels;
+        $runner->shouldPublishModelMetadata = $generatesModels;
+        $runner->run();
+
+        expect($resolver->morphTargetMapBuilds)->toHaveCount(1)
+            ->and($resolver->morphTargetMapBuilds[0])->toContain(Facility::class, AuditTrail::class);
+    })->with([
+        'a run that generates the models' => [true],
+        'a run that skips the model phase, so reads no table' => [false],
+    ]);
 
     test('a models collector that only lists its classes is not asked for related models, so a run publishes its list', function () {
         config()->set('ts-publish.models.collector_class', ListOnlyModelsCollector::class);

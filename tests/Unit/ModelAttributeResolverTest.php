@@ -974,6 +974,38 @@ describe('reading relations without reading any table', function () {
             ->not->toBeEmpty();
     });
 
+    test('a table-free build that throws leaves the next build reading tables', function () {
+        $resolver = new class extends ModelAttributeResolver
+        {
+            public bool $throws = true;
+
+            public function buildMorphTargetMap(array $modelFqcns): void
+            {
+                if ($this->throws) {
+                    $this->throws = false;
+
+                    throw new RuntimeException('The project\'s override failed.');
+                }
+
+                parent::buildMorphTargetMap($modelFqcns);
+            }
+        };
+
+        expect(fn () => $resolver->buildMorphTargetMapWithoutTables([Image::class]))
+            ->toThrow(RuntimeException::class, 'The project\'s override failed.');
+
+        // The first query of a test migrates the lazily refreshed database, so it must not be counted.
+        DB::select('select 1');
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        $resolver->buildMorphTargetMap([Image::class]);
+
+        expect($queries)->toBeGreaterThan(0);
+    });
+
     test('a class that does not exist or cannot be constructed has no relations to follow', function () {
         $given = ['Workbench\\App\\Models\\NoSuchModel', UnconstructableModel::class];
 
