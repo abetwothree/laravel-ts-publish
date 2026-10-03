@@ -1039,6 +1039,31 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
         }
+        /**
+         * Shares three keys between attributes and relations, each attribute bringing an import of its own: a `handler`
+         * column cast to an enum, an appended `sender` accessor typed by the same enum, and a `manifest` column typed by a
+         * `#[TsCasts]` import. The `priority` column is cast to an enum no relation shares.
+         */
+        export interface Parcel {
+            // Columns
+            id: number;
+            handler_id: number;
+            sender_id: number;
+            manifest_id: number;
+            priority: app.enums.PriorityType;
+            created_at: string | null;
+            updated_at: string | null;
+            // Relations
+            handler: User;
+            handler_count: number;
+            handler_exists: boolean;
+            sender: User;
+            sender_count: number;
+            sender_exists: boolean;
+            manifest: Order;
+            manifest_count: number;
+            manifest_exists: boolean;
+        }
         export interface Post {
             // Columns
             id: number;

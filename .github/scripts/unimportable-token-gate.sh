@@ -11,8 +11,8 @@
 # type rejects it, e.g. Pick<Model, K> over a key the interface never declares.
 # TS2305/TS2724 cover the name that IS imported from a module that resolves but
 # never exports it - the shape that only became reachable once the stubs landed.
-# TS6196 is an import the generated file never uses - the trace a dropped extends
-# clause or an overridden cast leaves behind.
+# TS6196 (a type) and TS6133 (a value, such as an enum's const) are an import the generated file never uses - the
+# trace a dropped extends clause or an overridden cast leaves behind.
 # TS2320 is one interface extending two that declare the same key with different types, as a model's
 # combined interface does when a column and a relation share a name.
 #
@@ -58,7 +58,8 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # Plant an unresolvable relative import in a .ts and a .d.ts, run the real gate, demand it FAILs
   # on the relative sub-gate, clean up. A gate that cannot fail is not a gate.
   ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"; dom="tests/types/__selftest_dom.ts"
-  trap 'rm -f "$ts" "$dts" "$dom"' EXIT
+  clash="tests/types/__selftest_clash.ts"
+  trap 'rm -f "$ts" "$dts" "$dom" "$clash"' EXIT
   for scratch in "$ts" "$dts"; do
     printf "import type { Nope } from './does-not-exist';\nexport type SelfTest = Nope;\n" > "$scratch"
     if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
@@ -93,6 +94,30 @@ if [[ "${1:-}" == "--selftest" ]]; then
   fi
   rm -f "$dom"
   echo "PASS - selftest: DOM-global sub-gate fires for a leaked Comment and allows File"
+
+  # An interface extending two that give one key different types is TS2320, which only the main count reads: it must
+  # count exactly 1, and the histogram must name that interface.
+  cat > "$clash" <<'TS'
+interface Left {
+    key: string;
+}
+interface Right {
+    key: number;
+}
+export interface SelfTestClash extends Left, Right {}
+TS
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with an interface extending two that clash, in $clash"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE "^TS2300/.* in generated tree: 1$" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^FAIL - token count" /tmp/token-gate-selftest.out \
+      || ! grep -qE "^ +1 +SelfTestClash$" /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on the main count for SelfTestClash alone, for $clash"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$clash"
+  echo "PASS - selftest: the main count fires for an interface extending two that clash (TS2320)"
   exit 0
 fi
 
@@ -147,11 +172,13 @@ gate_one() {
   owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
 
   local errs count
-  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6196)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6133|6196)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
-  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6196 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / unused import) in generated tree: $count"
-  printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but never used\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/" | sort | uniq -c | sort -rn
+  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6133/TS6196 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / unused import) in generated tree: $count"
+  if [ "$count" -gt 0 ]; then
+    printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but (never used|its value is never read)\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/" | sort | uniq -c | sort -rn
+  fi
 
   # A relative specifier (./ or ../) only ever resolves against a file this package itself writes, so an
   # unresolved one is never an app-side alias a stub could cover - it is
@@ -193,7 +220,9 @@ gate_one() {
   dom_count=$(printf '%s' "$dom_errs" | grep -c . || true)
 
   echo "TS2304/TS2552 (cannot find name) for names only the DOM lib declares, in generated tree: $dom_count"
-  printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
+  if [ "$dom_count" -gt 0 ]; then
+    printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
+  fi
 
   if [ "$have_baseline" -eq 1 ]; then
     if [ "$count" -gt "$baseline" ]; then

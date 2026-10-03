@@ -47,6 +47,12 @@ use ReflectionClass;
  *
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
+ * @phpstan-type ResolvedImports = array{
+ *    typeImports: TypesImportMap,
+ *    valueImports: ValuesImportMap,
+ *    combinedTypeImports: TypesImportMap,
+ *    combinedValueImports: ValuesImportMap,
+ * }
  *
  * @extends CoreTransformer<Model>
  */
@@ -165,6 +171,9 @@ class ModelTransformer extends CoreTransformer
     {
         $hasEnums = $this->shouldGenerateHasEnums();
         $imports = $this->buildResolvedImports();
+        $enumColumns = $hasEnums ? $this->buildEnumColumns() : [];
+        $enumMutators = $hasEnums ? $this->buildEnumMutators() : [];
+        $enumAppends = $hasEnums ? $this->buildEnumAppends() : [];
 
         return new TsModelDto(
             modelName: $this->modelName,
@@ -181,10 +190,16 @@ class ModelTransformer extends CoreTransformer
             relationExistsKeys: $this->relationExistsKeys,
             typeImports: $imports['typeImports'],
             valueImports: $imports['valueImports'],
-            enumColumns: $hasEnums ? $this->buildEnumColumns() : [],
-            enumMutators: $hasEnums ? $this->buildEnumMutators() : [],
-            enumAppends: $hasEnums ? $this->buildEnumAppends() : [],
+            enumColumns: $enumColumns,
+            enumMutators: $enumMutators,
+            enumAppends: $enumAppends,
             tsExtends: $this->tsExtends,
+            combinedColumns: $this->combinedColumns(),
+            combinedMutators: $this->combinedMutators(),
+            combinedAppends: $this->combinedAppends(),
+            combinedEnums: $this->withoutShadowed($enumColumns + $enumMutators + $enumAppends),
+            combinedTypeImports: $imports['combinedTypeImports'],
+            combinedValueImports: $imports['combinedValueImports'],
         );
     }
 
@@ -192,6 +207,46 @@ class ModelTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->modelName);
+    }
+
+    /**
+     * The columns a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return ColumnsList
+     */
+    public function combinedColumns(): array
+    {
+        return $this->withoutShadowed($this->columns);
+    }
+
+    /**
+     * The mutators a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return MutatorsList
+     */
+    public function combinedMutators(): array
+    {
+        return $this->withoutShadowed($this->mutators);
+    }
+
+    /**
+     * The appends a combined interface declares, one that holds the attributes beside the relations.
+     *
+     * @return AppendsList
+     */
+    public function combinedAppends(): array
+    {
+        return $this->withoutShadowed($this->appends);
+    }
+
+    /**
+     * The #[TsExtends], #[TsCasts] and #[TsType] imports a combined interface uses: each name a type it prints spells.
+     *
+     * @return array<string, list<string>>
+     */
+    public function combinedCustomImports(): array
+    {
+        return $this->customImportsSpelledIn($this->combinedTypes());
     }
 
     protected function initInstance(): self
@@ -575,6 +630,59 @@ class ModelTransformer extends CoreTransformer
         return $this;
     }
 
+    /**
+     * A keyed list without the keys a relation shares, which a combined interface leaves to the relation.
+     *
+     * @template TEntry
+     *
+     * @param  array<string, TEntry>  $list
+     * @return array<string, TEntry>
+     */
+    protected function withoutShadowed(array $list): array
+    {
+        return array_diff_key($list, array_flip($this->shadowedKeys));
+    }
+
+    /**
+     * Every type a combined interface prints: its extends clause, its attributes and its relations.
+     *
+     * @return list<string>
+     */
+    protected function combinedTypes(): array
+    {
+        return [
+            ...$this->tsExtends,
+            ...array_column($this->combinedColumns(), 'type'),
+            ...array_column($this->combinedMutators(), 'type'),
+            ...array_column($this->combinedAppends(), 'type'),
+            ...array_column($this->relations, 'type'),
+        ];
+    }
+
+    /**
+     * Each custom import path's names that one of these types spells, without a path none of them spells.
+     *
+     * @param  list<string>  $types
+     * @return array<string, list<string>>
+     */
+    protected function customImportsSpelledIn(array $types): array
+    {
+        $imports = [];
+
+        foreach ($this->customImports as $path => $names) {
+            $spelled = array_values(array_filter(
+                $names,
+                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$types),
+            ));
+
+            if ($spelled !== []) {
+                $imports[$path] = $spelled;
+            }
+        }
+
+        return $imports;
+    }
+
     protected function isMutatorExcluded(string $name): bool
     {
         ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($name);
@@ -731,14 +839,20 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Build the type and value import maps from accumulated FQCNs and custom imports.
+     * Build the type and value import maps from accumulated FQCNs and custom imports, for every interface and for a
+     * combined one.
      *
-     * @return array{typeImports: TypesImportMap, valueImports: ValuesImportMap}
+     * A combined interface imports a type only when a type it prints spells its local name, and an enum's const only
+     * when an enum key its `Resource` re-declares names the enum. The registries named every import beforehand, so an
+     * alias keeps its spelling whichever of its neighbors a combined interface drops.
+     *
+     * @return ResolvedImports
      */
     protected function buildResolvedImports(): array
     {
         $typeImports = [];
         $valueImports = [];
+        $combinedValueImports = [];
         $hasEnums = $this->shouldGenerateHasEnums();
 
         $modelFqcnMap = array_filter(
@@ -752,15 +866,32 @@ class ModelTransformer extends CoreTransformer
             ...$this->collectModularTypeImports($modelFqcnMap),
         ];
 
+        $types = $this->combinedTypes();
+        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
+            $this->localImportName($fqcn, $typeName),
+            ...$types,
+        );
+
+        $combinedTypeImports = [
+            ...$this->collectModularTypeImports(array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+            ...$this->collectModularTypeImports(array_filter($modelFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH)),
+        ];
+
         if ($hasEnums) {
             $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
+            $combinedValueImports = $this->collectModularValueImports(
+                $this->enumPropertyFqcns($this->withoutShadowed($this->enumProperties())),
+            );
         }
 
         $typeImports = $this->mergeCustomImports($typeImports, $this->customImports);
+        $combinedTypeImports = $this->mergeCustomImports($combinedTypeImports, $this->customImportsSpelledIn($types));
 
         return [
             'typeImports' => $this->deduplicateAndSortImports($typeImports),
             'valueImports' => $this->deduplicateAndSortImports($valueImports),
+            'combinedTypeImports' => $this->deduplicateAndSortImports($combinedTypeImports),
+            'combinedValueImports' => $this->deduplicateAndSortImports($combinedValueImports),
         ];
     }
 

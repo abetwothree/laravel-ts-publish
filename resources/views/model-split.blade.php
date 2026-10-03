@@ -87,14 +87,18 @@ export interface {{ $data->modelName }}Relations
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
+@if (count($data->relationCountKeys) > 0)
     // Counts
 @foreach ($data->relationCountKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: number;
 @endforeach
+@endif
+@if (count($data->relationExistsKeys) > 0)
     // Exists
 @foreach ($data->relationExistsKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: boolean;
 @endforeach
+@endif
 }
 @endif{{-- end $data->relations --}}
 @if(count($data->mutators) > 0 || count($data->relations) > 0 || count($data->appends) > 0)

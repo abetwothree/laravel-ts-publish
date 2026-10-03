@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Models\Depot;
+use Workbench\App\Models\Parcel;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -354,5 +356,100 @@ describe('ModelWriter with keys an attribute and a relation both publish', funct
             ->and($content)->toContain('    supervisor: User | null;')
             ->and(substr_count($content, '    orders_count: '))->toBe(1)
             ->and($content)->toContain('    orders_count: number | null;');
+    });
+
+    test('the full template leaves a shared enum, appended enum and imported type to the relation', function () {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(Parcel::class));
+
+        expect($content)
+            ->toStartWith(<<<'TYPESCRIPT'
+import { type AsEnum } from '@tolki/ts';
+
+import { Priority } from '../enums';
+import type { PriorityType } from '../enums';
+import type { Order, User } from '.';
+
+TYPESCRIPT)
+            ->toContain("    handler: User;\n    sender: User;\n    manifest: Order;\n")
+            ->toContain(<<<'TYPESCRIPT'
+export interface ParcelResource extends Omit<Parcel, 'priority'>
+{
+    priority: AsEnum<typeof Priority>;
+}
+TYPESCRIPT)
+            ->not->toContain('RoleType')
+            ->not->toContain('ParcelManifest')
+            ->not->toContain('// Mutators')
+            ->and(substr_count($content, '    handler: '))->toBe(1)
+            ->and(substr_count($content, '    sender: '))->toBe(1)
+            ->and(substr_count($content, '    manifest: '))->toBe(1);
+    });
+
+    test('the full template gives no Resource and no AsEnum to a model whose every enum key is shared', function () {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(ShadowedEnumParcel::class));
+
+        expect($content)
+            ->toStartWith("import type { User } from '../../../../workbench/app/models';\n\n")
+            ->toContain(<<<'TYPESCRIPT'
+    // Relations
+    /** The parcel's handler. */
+    handler: User;
+    /** The parcel's courier. */
+    courier: User;
+}
+TYPESCRIPT)
+            ->toContain("    handler_count: number;\n")
+            ->toContain("    handler_exists: boolean;\n")
+            ->not->toContain('ShadowedEnumParcelResource')
+            ->not->toContain('AsEnum')
+            ->not->toContain('Role')
+            ->not->toContain('// Counts')
+            ->not->toContain('// Exists');
+    });
+
+    test('the split template keeps a shared attribute and its imports, which both All interfaces omit', function () {
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(Parcel::class));
+
+        expect($content)
+            ->toStartWith(<<<'TYPESCRIPT'
+import { type AsEnum } from '@tolki/ts';
+
+import { Priority, Role } from '../enums';
+import type { ParcelManifest } from '@js/types/manifest';
+import type { PriorityType, RoleType } from '../enums';
+import type { Order, User } from '.';
+
+TYPESCRIPT)
+            ->toContain("    handler: RoleType;\n")
+            ->toContain("    manifest: ParcelManifest;\n")
+            ->toContain("    sender: RoleType;\n")
+            ->toContain("export interface ParcelResource extends Omit<Parcel, 'handler' | 'priority' | 'sender'>")
+            ->toContain(<<<'TYPESCRIPT'
+export interface ParcelAll extends Omit<Parcel, 'handler' | 'sender' | 'manifest'>, ParcelRelations {}
+
+export interface ParcelAllResource extends Omit<ParcelResource, 'handler' | 'sender' | 'manifest'>, ParcelRelations {}
+TYPESCRIPT);
+    });
+
+    test('the split template prints no count or exists heading for a relation whose keys accessors take', function () {
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(ShadowedEnumParcel::class));
+
+        expect($content)
+            ->toContain(<<<'TYPESCRIPT'
+export interface ShadowedEnumParcelRelations
+{
+    // Relations
+    /** The parcel's handler. */
+    handler: User;
+    /** The parcel's courier. */
+    courier: User;
+}
+TYPESCRIPT)
+            ->not->toContain('// Counts')
+            ->not->toContain('// Exists');
     });
 });

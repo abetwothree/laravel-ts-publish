@@ -42,12 +42,13 @@ trait TracksEnumImports
     abstract protected function enumProperties(): array;
 
     /**
-     * Return unique FQCNs from the enum property info array.
+     * Return unique FQCNs from the enum property info array, or from the part of it given.
      *
+     * @param  EnumPropertyFqcnMap|null  $properties  the enum properties to read, every one when null
      * @return list<string>
      */
-    protected function enumPropertyFqcns(): array
+    protected function enumPropertyFqcns(?array $properties = null): array
     {
-        return array_values(array_unique(array_column($this->enumProperties(), 'fqcn')));
+        return array_values(array_unique(array_column($properties ?? $this->enumProperties(), 'fqcn')));
     }
 }

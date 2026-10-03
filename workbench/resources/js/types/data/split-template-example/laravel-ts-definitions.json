@@ -6991,6 +6991,75 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Parcel": {
+            "name": "Parcel",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "handler_id",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number"
+                },
+                {
+                    "name": "manifest_id",
+                    "type": "number"
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "handler",
+                    "type": "User"
+                },
+                {
+                    "name": "sender",
+                    "type": "User"
+                },
+                {
+                    "name": "manifest",
+                    "type": "Order"
+                },
+                {
+                    "name": "handler_count",
+                    "type": "number"
+                },
+                {
+                    "name": "sender_count",
+                    "type": "number"
+                },
+                {
+                    "name": "manifest_count",
+                    "type": "number"
+                },
+                {
+                    "name": "handler_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "sender_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "manifest_exists",
+                    "type": "boolean"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Post": {
             "name": "Post",
             "properties": [

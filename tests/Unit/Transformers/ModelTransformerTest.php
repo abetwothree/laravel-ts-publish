@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,6 +39,7 @@ use Workbench\App\Models\ModelWithNestedTraitExtends;
 use Workbench\App\Models\ModelWithParentExtends;
 use Workbench\App\Models\ModelWithTraitExtends;
 use Workbench\App\Models\Order;
+use Workbench\App\Models\Parcel;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
@@ -1677,8 +1679,75 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
         $data = (new ModelTransformer(Address::class))->data();
 
         expect($data->shadowedKeys)->toBe([])
-            ->and($data->relationCountKeys)->toBe(array_map(fn (string $name): string => $name.'_count', array_keys($data->relations)))
-            ->and($data->relationExistsKeys)->toBe(array_map(fn (string $name): string => $name.'_exists', array_keys($data->relations)));
+            ->and($data->relationCountKeys)->toBe(['user_count'])
+            ->and($data->relationExistsKeys)->toBe(['user_exists']);
+    });
+
+    test('a combined interface drops each shared key, and the imports only its attribute used', function () {
+        $data = (new ModelTransformer(Parcel::class))->data();
+
+        expect(array_keys($data->combinedColumns))
+            ->toBe(['id', 'handler_id', 'sender_id', 'manifest_id', 'priority', 'created_at', 'updated_at'])
+            ->and($data->combinedMutators)->toBe([])
+            ->and($data->combinedAppends)->toBe([])
+            ->and($data->combinedEnums)
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false]])
+            ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
+            ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
+    });
+
+    test('the full lists and imports keep every attribute a relation shares', function () {
+        $data = (new ModelTransformer(Parcel::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['handler', 'sender', 'manifest'])
+            ->and($data->columns['handler']['type'])->toBe('RoleType')
+            ->and($data->columns['manifest']['type'])->toBe('ParcelManifest')
+            ->and($data->appends['sender']['type'])->toBe('RoleType')
+            ->and(array_keys($data->enumColumns + $data->enumAppends))->toBe(['handler', 'priority', 'sender'])
+            ->and($data->typeImports)->toBe([
+                '@js/types/manifest' => ['ParcelManifest'],
+                '../enums' => ['PriorityType', 'RoleType'],
+                '.' => ['Order', 'User'],
+            ])
+            ->and($data->valueImports)->toBe(['../enums' => ['Priority', 'Role']]);
+    });
+
+    test('a combined interface keeps no enum key, const or model import that only a shared key used', function () {
+        $data = (new ModelTransformer(ShadowedEnumParcel::class))->data();
+
+        expect($data->shadowedKeys)->toBe(['handler', 'courier'])
+            ->and($data->typeImports['../../../../workbench/app/models'])->toBe(['Order', 'User'])
+            ->and($data->combinedEnums)->toBe([])
+            ->and($data->combinedValueImports)->toBe([])
+            ->and($data->combinedTypeImports)->toBe(['../../../../workbench/app/models' => ['User']])
+            ->and($data->relationCountKeys)->toBe([])
+            ->and($data->relationExistsKeys)->toBe([]);
+    });
+
+    test('with no shared key, a combined interface keeps every import, an aliased one under its alias', function () {
+        expect((new ModelTransformer(Warehouse::class))->data()->combinedTypeImports)->toBe([
+            '@js/types/settings' => ['MenuSettingsType'],
+            '@/types/audit' => ['Auditable'],
+            '@/types/common' => ['HasTimestamps'],
+            '../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../../crm/models' => ['User as CrmUser'],
+            '../enums' => ['ColorType', 'PriorityType', 'StatusType as WorkbenchStatusType'],
+            '.' => ['Image', 'User as ManagerUser'],
+        ]);
+    });
+
+    test('the custom imports a combined interface uses leave out the one only a shared key spelled', function () {
+        expect((new ModelTransformer(Parcel::class))->combinedCustomImports())->toBe([]);
+    });
+
+    test('a combined interface keeps the custom imports its extends clause and its own keys spell', function () {
+        expect((new ModelTransformer(Warehouse::class))->combinedCustomImports())->toBe([
+            '@/types/common' => ['HasTimestamps'],
+            '@/types/audit' => ['Auditable'],
+            '@js/types/settings' => ['MenuSettingsType'],
+        ])
+            ->and((new ModelTransformer(Product::class))->combinedCustomImports())
+            ->toBe(['@js/types/product' => ['ProductMetadata', 'ProductJsonMetaData']]);
     });
 });
 

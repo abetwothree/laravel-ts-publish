@@ -76,11 +76,11 @@ class JsonWriter
         $data = [];
 
         foreach ($transformers as $transformer) {
-            // A loaded relation overwrites an attribute of the same name, so only the relation is listed.
-            $shadowed = array_flip($transformer->shadowedKeys);
-            $ownColumns = array_diff_key($transformer->columns, $shadowed);
-            $ownMutators = array_diff_key($transformer->mutators, $shadowed);
-            $ownAppends = array_diff_key($transformer->appends, $shadowed);
+            // A loaded relation overwrites an attribute of the same name, so a model lists its properties as one
+            // combined interface declares them.
+            $ownColumns = $transformer->combinedColumns();
+            $ownMutators = $transformer->combinedMutators();
+            $ownAppends = $transformer->combinedAppends();
 
             $columns = array_map(fn ($entry, $col) => [
                 'name' => $col,

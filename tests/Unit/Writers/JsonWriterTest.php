@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use Illuminate\Filesystem\Filesystem;
+use Workbench\App\Models\Parcel;
 
 test('writes json content when enabled', function () {
     config()->set('ts-publish.json.enabled', true);
@@ -225,4 +227,25 @@ test('json models list a key an attribute and a relation share once, as the rela
 
     expect($properties->where('name', 'supervisor')->pluck('type')->all())->toBe(['User | null'])
         ->and($properties->where('name', 'orders_count')->pluck('type')->all())->toBe(['number | null']);
+});
+
+test('json models list a column, an append and a mutator a relation shares once, as the relation', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.additional_directories', [
+        ...config('ts-publish.models.additional_directories'),
+        ShadowedAccessorPost::class,
+    ]);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $json = json_decode((new JsonWriter(new Filesystem))->write($runner), true);
+    $parcel = collect($json['models'][Parcel::class]['properties']);
+    $post = collect($json['models'][ShadowedAccessorPost::class]['properties']);
+
+    expect($parcel->where('name', 'handler')->pluck('type')->all())->toBe(['User'])
+        ->and($parcel->where('name', 'manifest')->pluck('type')->all())->toBe(['Order'])
+        ->and($parcel->where('name', 'sender')->pluck('type')->all())->toBe(['User'])
+        ->and($post->where('name', 'author')->pluck('type')->all())->toBe(['User']);
 });

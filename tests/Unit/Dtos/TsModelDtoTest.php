@@ -58,6 +58,44 @@ describe('TsModelDto', function () {
             ->and($array['enumAppends'])->toBeEmpty();
     });
 
+    test('toArray carries the combined views beside the full lists', function () {
+        $status = ['constName' => 'Status', 'nullable' => false, 'isCollection' => false];
+
+        $array = (new TsModelDto(
+            modelName: 'Depot',
+            description: '',
+            fqcn: 'App\Models\Depot',
+            filePath: 'app/Models/Depot.php',
+            filename: 'depot',
+            columns: [
+                'id' => ['type' => 'number', 'description' => '', 'optional' => false],
+                'supervisor' => ['type' => 'StatusType', 'description' => '', 'optional' => false],
+            ],
+            mutators: [],
+            appends: [],
+            relations: ['supervisor' => ['type' => 'User', 'description' => '']],
+            typeImports: ['../enums' => ['StatusType'], '.' => ['User']],
+            valueImports: ['../enums' => ['Status']],
+            enumColumns: ['supervisor' => $status],
+            shadowedKeys: ['supervisor'],
+            combinedColumns: ['id' => ['type' => 'number', 'description' => '', 'optional' => false]],
+            combinedEnums: [],
+            combinedTypeImports: ['.' => ['User']],
+            combinedValueImports: [],
+        ))->toArray();
+
+        expect(array_keys($array['columns']))->toBe(['id', 'supervisor'])
+            ->and(array_keys($array['combinedColumns']))->toBe(['id'])
+            ->and($array['combinedMutators'])->toBe([])
+            ->and($array['combinedAppends'])->toBe([])
+            ->and($array['enumColumns'])->toBe(['supervisor' => $status])
+            ->and($array['combinedEnums'])->toBe([])
+            ->and($array['typeImports'])->toBe(['../enums' => ['StatusType'], '.' => ['User']])
+            ->and($array['combinedTypeImports'])->toBe(['.' => ['User']])
+            ->and($array['valueImports'])->toBe(['../enums' => ['Status']])
+            ->and($array['combinedValueImports'])->toBe([]);
+    });
+
     test('toJson returns valid JSON string', function () {
         $json = $this->dto->toJson();
 

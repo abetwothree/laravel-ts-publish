@@ -18,14 +18,22 @@ trait ResolvesImportConflicts
     protected array $constImportAliases = [];
 
     /**
+     * The name a file gives an imported type: the alias the registries chose for it, else the type's own name.
+     */
+    protected function localImportName(string $fqcn, string $typeName): string
+    {
+        return $this->importAliases[$fqcn] ?? $typeName;
+    }
+
+    /**
      * Format an import name, applying "OriginalName as Alias" syntax when aliased.
      */
     protected function formatImportName(string $fqcn, string $typeName): string
     {
-        $alias = $this->importAliases[$fqcn] ?? null;
+        $localName = $this->localImportName($fqcn, $typeName);
 
-        if ($alias !== null && $alias !== $typeName) {
-            return $typeName.' as '.$alias;
+        if ($localName !== $typeName) {
+            return $typeName.' as '.$localName;
         }
 
         return $typeName;
@@ -61,7 +69,7 @@ trait ResolvesImportConflicts
 
         foreach ($fqcnMaps as $fqcnMap) {
             foreach ($fqcnMap as $fqcn => $typeName) {
-                $map[$this->importAliases[$fqcn] ?? $typeName] = TsNaming::globalNamespace($fqcn).'.'.$typeName;
+                $map[$this->localImportName($fqcn, $typeName)] = TsNaming::globalNamespace($fqcn).'.'.$typeName;
             }
         }
 

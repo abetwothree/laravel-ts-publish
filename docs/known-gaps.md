@@ -269,6 +269,15 @@ relation `map()` set. At the top level there is none, and only `{ flag: boolean 
 `whenLoaded('author', …)` the element publishes as `Omit<User, 'flag'> & …`, though it is a `Comment`. Use the
 relation chain, `$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, which binds the model.
 
+### An index-signature model with a shared key loses its attribute types in `{Model}All` and `{Model}AllResource`
+
+A model that extends an index-signature type, such as `#[TsExtends('Record<string, unknown>')]`, gets
+`{Model}All extends Omit<{Model}, 'key'>, {Model}Relations {}` from the `model-split` template when a relation shares
+`key` with an attribute. `Omit` over an index signature keeps only the signature, so every attribute of `{Model}` reads
+as `unknown` in `{Model}All`, and in `{Model}AllResource`, whose `Omit<{Model}Resource, 'key'>` loses the same keys.
+Read the attributes from `{Model}` and the relations from `{Model}Relations`, which keep their types, or give the
+relation a name no attribute takes.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

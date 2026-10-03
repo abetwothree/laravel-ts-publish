@@ -74,13 +74,13 @@ class GlobalsWriter
         }
 
         // Collect external (non-relative) type imports needed at the top of the globals file.
-        // Model customImports hold imports from #[TsExtends] and #[TsType] with custom paths.
+        // A model's combined custom imports are the #[TsExtends], #[TsCasts] and #[TsType] ones its interface uses.
         // Resource, broadcast-event and form-request typeImports hold all resolved imports; non-relative only.
         /** @var array<string, list<string>> $externalTypeImports */
         $externalTypeImports = [];
 
         foreach ($runner->modelGenerators as $gen) {
-            foreach ($gen->transformer->customImports as $path => $types) {
+            foreach ($gen->transformer->combinedCustomImports() as $path => $types) {
                 foreach ($types as $type) {
                     if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
                         $externalTypeImports[$path][] = $type;
@@ -136,8 +136,8 @@ class GlobalsWriter
 
         $externalTypeImports = TsNaming::sortImportPaths($externalTypeImports);
 
-        // Build a merged alias map from all transformers so the globals template can resolve
-        // per-file import aliases (e.g. CrmUser, WorkbenchStatusType) to namespace-qualified names.
+        // The package's template qualifies through each transformer's own globalTypeReferenceMap(). This merged map
+        // stays in the view data because a template a project published before that may still read it.
         /** @var array<string, string> $globalAliasMap */
         $globalAliasMap = [];
 
