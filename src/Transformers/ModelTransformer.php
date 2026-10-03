@@ -803,7 +803,12 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
-        $this->applyImportNameRegistries($registry, $constRegistry, $this->enumFqcnMap + $this->modelFqcnMap);
+        $this->applyImportNameRegistries(
+            $registry,
+            $constRegistry,
+            $this->enumFqcnMap + $this->modelFqcnMap,
+            $this->customImports,
+        );
 
         return $this;
     }

@@ -973,6 +973,7 @@ class ResourceTransformer extends CoreTransformer
             $registry,
             $constRegistry,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
+            $this->customImports,
         );
 
         return $this;

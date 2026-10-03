@@ -87,15 +87,23 @@ trait ResolvesImportConflicts
      * Resolve a type registry and its sibling const registry, then apply both, the types first.
      *
      * A type import and a const import are both local names in the file, so a const steps aside for every name a type
-     * took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
+     * took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`. Both step aside for the
+     * names the file's custom imports bring, which the app wrote and no alias may rename.
      *
      * @param  array<string, string>  $typeNames  FQCN => unaliased TypeScript type name
+     * @param  array<string, list<string>>  $customImports  import path => the names a `#[TsType]`, `#[TsCasts]` or
+     *                                                      `#[TsExtends]` import brings into the file
      */
     protected function applyImportNameRegistries(
         ImportNameRegistry $types,
         ImportNameRegistry $consts,
         array $typeNames,
+        array $customImports = [],
     ): void {
+        $customNames = array_values(array_unique(array_merge(...array_values($customImports))));
+        $types->reserveMany(...$customNames);
+        $consts->reserveMany(...$customNames);
+
         $resolved = $types->resolve();
         $consts->reserveMany(...array_values($resolved));
 

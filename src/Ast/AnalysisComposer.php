@@ -69,7 +69,7 @@ final class AnalysisComposer
         $this->collectNameMaps($analysis);
         $this->propertyFqcnQueues = $this->buildPropertyFqcnQueues($analysis);
 
-        $this->resolveImportConflicts();
+        $this->resolveImportConflicts($analysis->customImports);
         $this->rewriteEnumResourceTypes($analysis);
 
         return new AnalysisResult(
@@ -152,8 +152,10 @@ final class AnalysisComposer
      * Assign collision-free local names across every FQCN map, then rewrite the types that use them.
      *
      * Two sibling registries, exactly as ResourceTransformer runs them.
+     *
+     * @param  array<string, list<string>>  $customImports
      */
-    private function resolveImportConflicts(): void
+    private function resolveImportConflicts(array $customImports): void
     {
         $this->importAliases = [];
         $this->constImportAliases = [];
@@ -186,6 +188,7 @@ final class AnalysisComposer
             $registry,
             $constRegistry,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
+            $customImports,
         );
     }
 

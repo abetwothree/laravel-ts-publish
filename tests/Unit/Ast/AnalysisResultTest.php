@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisComposer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\PayloadDiffersEvent;
@@ -105,6 +106,25 @@ describe('AstEngine::analyze()', function () {
         expect($properties['status_resource_or_type']['type'])->toBe('AsEnum<typeof Status> | StatusType')
             ->and($properties['status_or_visibility']['type'])
             ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
+    });
+
+    test('aliases an EnumResource const whose name a custom import brings', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $analysis = new MethodAnalysis(
+            properties: [
+                ['name' => 'label', 'type' => 'Clearance', 'optional' => false, 'description' => ''],
+                ['name' => 'clearance', 'type' => 'ClearanceType', 'optional' => false, 'description' => ''],
+            ],
+            enumResources: ['clearance' => Clearance::class],
+            customImports: ['@js/types/clearance' => ['Clearance']],
+        );
+
+        $result = new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources');
+
+        expect(collect($result->properties)->firstWhere('name', 'clearance')['type'])->toBe('AsEnum<typeof WorkbenchClearance>')
+            ->and($result->typeImports)->toBe(['@js/types/clearance' => ['Clearance']])
+            ->and($result->valueImports)->toBe(['../../enums' => ['Clearance as WorkbenchClearance']]);
     });
 
     test('drops the value import of an enum whose wrap no longer survives in the type', function () {

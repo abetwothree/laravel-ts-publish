@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
@@ -3062,6 +3063,15 @@ test('an EnumResource const steps aside for another enum\'s type name the resour
         ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
         ->and($transformer->typeImports['../../enums'])->toBe(['ClearanceType'])
         ->and($transformer->valueImports['../../../crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+});
+
+test('an EnumResource const steps aside for a name the resource\'s own cast imports', function () {
+    $transformer = new ResourceTransformer(CustomImportBadgeResource::class);
+
+    expect($transformer->properties['label']['type'])->toBe('ClearanceType')
+        ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
+        ->and($transformer->typeImports['@js/types/clearance'])->toBe(['ClearanceType'])
+        ->and($transformer->valueImports['../../../../workbench/crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
 });
 
 test('a morph union over two resources that share a name spells each one by its own alias', function () {

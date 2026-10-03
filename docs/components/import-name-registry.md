@@ -119,7 +119,8 @@ name out of a type alias would break at the numeric tiebreak. The two run in loc
 namespace, so `ResolvesImportConflicts::applyImportNameRegistries()` resolves the types first and reserves every name
 they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`)
 keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's const. The `Badge`
-fixtures pin both shapes.
+fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom imports bring
+(`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different

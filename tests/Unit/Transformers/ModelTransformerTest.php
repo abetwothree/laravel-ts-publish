@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
@@ -1863,6 +1864,15 @@ describe('ModelTransformer with a const and a type that share a name', function 
             ->and($data->valueImports['../enums'])->toBe(['Clearance', 'Grade as WorkbenchGrade'])
             ->and($data->enumColumns['minimum_grade']['constName'])->toBe('WorkbenchGrade')
             ->and($data->relations['grade']['type'])->toBe('Grade');
+    });
+
+    test('an enum const steps aside for a name the model\'s own cast imports', function () {
+        $data = (new ModelTransformer(CustomImportBadge::class))->data();
+
+        expect($data->columns['label']['type'])->toBe('Clearance')
+            ->and($data->typeImports['@js/types/clearance'])->toBe(['Clearance'])
+            ->and($data->valueImports['../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
+            ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
     });
 
     test('a const named like the model\'s own interface keeps its name: a value import merges with a local interface', function () {
