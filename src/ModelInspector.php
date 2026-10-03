@@ -136,7 +136,7 @@ class ModelInspector extends EloquentModelInspector
             } catch (Throwable $exception) {
                 // A relation the model excludes is never published, so its failure is nothing to report.
                 if ($method->getAttributes(TsExclude::class) === []) {
-                    $this->warnOnce($model::class, sprintf(
+                    AnalysisWarnings::addOnce($model::class, sprintf(
                         'Reading its %s() relation threw [%s], so the relation is left out.',
                         $name,
                         $exception->getMessage(),
@@ -180,15 +180,5 @@ class ModelInspector extends EloquentModelInspector
             $this->relationMethods,
             fn (string $builder): bool => str_contains($code, '$this->'.$builder.'('),
         );
-    }
-
-    /**
-     * Record a warning unless this run already holds the same one: a model's relations are read more than once.
-     */
-    private function warnOnce(string $subject, string $message): void
-    {
-        if (! in_array(['subject' => $subject, 'message' => $message], AnalysisWarnings::all(), true)) {
-            AnalysisWarnings::add($subject, $message);
-        }
     }
 }
