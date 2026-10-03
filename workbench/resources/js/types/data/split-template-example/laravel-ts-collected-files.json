@@ -151,6 +151,7 @@
     "app\/Http\/Resources\/GuardedCollectionSpreadResource.php",
     "app\/Http\/Resources\/HandoverNoticeResource.php",
     "app\/Http\/Resources\/HandoverResource.php",
+    "app\/Http\/Resources\/HandoverRosterResource.php",
     "app\/Http\/Resources\/HandoverSummaryResource.php",
     "app\/Http\/Resources\/HelperCallResource.php",
     "app\/Http\/Resources\/ImageDelegatedResource.php",

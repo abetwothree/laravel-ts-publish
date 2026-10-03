@@ -9,7 +9,7 @@ use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * A test-only class whose members are typed by a docblock union of two models that share a name. Each member renders
- * one `User[]` token with both classes behind it.
+ * a `User[]` token for each class.
  */
 class ReceiverPairDirectory
 {

@@ -29,6 +29,8 @@ use Illuminate\Support\Collection;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\DocblockGenericsFixture;
 use Workbench\App\Models\Order;
@@ -42,6 +44,7 @@ use Workbench\App\ValueObjects\GridConfigDto;
 use Workbench\App\ValueObjects\Money;
 use Workbench\App\ValueObjects\OpaqueHandle;
 use Workbench\Crm\Enums\Status as CrmStatus;
+use Workbench\Crm\Models\User as CrmUser;
 use Workbench\Shipping\Enums\Status as ShippingStatus;
 
 beforeEach(function () {
@@ -1601,6 +1604,154 @@ describe('mergeTypeScriptInfos', function () {
             ->and($result['enumTypes'])->toBe(['StatusType', 'StatusType', 'RoleType'])
             ->and($result['enums'])->toBe(['Status', 'Status', 'Role']);
     });
+
+    test('keeps a token for each class two decorated arms of one text name, listing each class once', function () {
+        $workbenchUsers = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]];
+        $crmUsers = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]];
+
+        $result = $this->service->mergeTypeScriptInfos([$workbenchUsers, $crmUsers]);
+
+        expect($result['type'])->toBe('User[] | User[]')
+            ->and($result['classes'])->toBe(['User', 'User'])
+            ->and($result['classFqcns'])->toBe([User::class, CrmUser::class])
+            ->and($result['classTokenFqcns'] ?? null)->toBe([User::class, CrmUser::class]);
+    });
+
+    test('queues the class behind each token it keeps once two of its classes share a name', function (array $arms, string $type, array $classFqcns, array $queue) {
+        $result = $this->service->mergeTypeScriptInfos(array_map(fn (array $arm): array => [...$this->service->emptyTypeScriptInfo(), ...$arm], $arms));
+
+        expect($result['type'])->toBe($type)
+            ->and($result['classFqcns'])->toBe($classFqcns)
+            ->and($result['classTokenFqcns'] ?? null)->toBe($queue);
+    })->with([
+        'a class that returns under another text' => [
+            [
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+                ['type' => '{ lead: User }', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            'User[] | User[] | { lead: User }',
+            [User::class, CrmUser::class],
+            [User::class, CrmUser::class, User::class],
+        ],
+        'two bare arms' => [
+            [
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            'User | User',
+            [User::class, CrmUser::class],
+            [User::class, CrmUser::class],
+        ],
+        'a bare arm repeated before the other class' => [
+            [
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            'User | User[]',
+            [User::class, CrmUser::class],
+            [User::class, CrmUser::class],
+        ],
+        'an arm that queues its own tokens' => [
+            [
+                [
+                    'type' => '{ lead: User; backup: User; next: User }',
+                    'classes' => ['User', 'User'],
+                    'classFqcns' => [CrmUser::class, User::class],
+                    'classTokenFqcns' => [CrmUser::class, User::class, CrmUser::class],
+                ],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            '{ lead: User; backup: User; next: User } | User[]',
+            [CrmUser::class, User::class],
+            [CrmUser::class, User::class, CrmUser::class, User::class],
+        ],
+        'two arms that each spell their class twice' => [
+            [
+                ['type' => 'User[] | Record<string, User>', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User[] | Record<string, User>', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            'User[] | Record<string, User> | User[] | Record<string, User>',
+            [User::class, CrmUser::class],
+            [User::class, User::class, CrmUser::class, CrmUser::class],
+        ],
+        'an arm that repeats an earlier one once each queue has an entry per token' => [
+            [
+                [
+                    'type' => 'User | User | Comment[] | Record<string, Comment>',
+                    'classes' => ['User', 'User', 'Comment'],
+                    'classFqcns' => [User::class, CrmUser::class, Comment::class],
+                    'classTokenFqcns' => [User::class, CrmUser::class, Comment::class],
+                ],
+                [
+                    'type' => 'User | User | Comment[] | Record<string, Comment>',
+                    'classes' => ['User', 'User', 'Comment'],
+                    'classFqcns' => [User::class, CrmUser::class, Comment::class],
+                    'classTokenFqcns' => [User::class, CrmUser::class, Comment::class, Comment::class],
+                ],
+            ],
+            'User | User | Comment[] | Record<string, Comment>',
+            [User::class, CrmUser::class, Comment::class],
+            [User::class, CrmUser::class, Comment::class, Comment::class],
+        ],
+        'a resource published under another name, beside the model of that name' => [
+            [
+                ['type' => 'Address[] | Record<string, Address>', 'classes' => ['Address'], 'classFqcns' => [AddressResource::class]],
+                ['type' => 'Address[] | Record<string, Address>', 'classes' => ['Address'], 'classFqcns' => [Address::class]],
+            ],
+            'Address[] | Record<string, Address> | Address[] | Record<string, Address>',
+            [AddressResource::class, Address::class],
+            [AddressResource::class, AddressResource::class, Address::class, Address::class],
+        ],
+    ]);
+
+    test('carries no token queue while every class has a name of its own', function (array $arms, string $type) {
+        $result = $this->service->mergeTypeScriptInfos(array_map(fn (array $arm): array => [...$this->service->emptyTypeScriptInfo(), ...$arm], $arms));
+
+        expect($result['type'])->toBe($type)
+            ->and($result)->not->toHaveKey('classTokenFqcns');
+    })->with([
+        'a decorated arm repeated, text and class' => [
+            [
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            'User[]',
+        ],
+        'decorated arms of two names' => [
+            [
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'Comment[]', 'classes' => ['Comment'], 'classFqcns' => [Comment::class]],
+            ],
+            'User[] | Comment[]',
+        ],
+        'bare arms of two names' => [
+            [
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'Comment', 'classes' => ['Comment'], 'classFqcns' => [Comment::class]],
+            ],
+            'User | Comment',
+        ],
+    ]);
+
+    test('merges a docblock union of arrays to a token per class, in each array form', function (string $docblock, string $type, ?array $queue) {
+        $useMap = ['User' => User::class, 'CrmUser' => CrmUser::class];
+        $arms = array_map(
+            fn (string $part): array => $this->service->resolveDocblockTypePart(trim($part), $useMap, 'Workbench\\App\\Models'),
+            $this->service->splitPhpDocUnionType($docblock),
+        );
+
+        $result = $this->service->mergeTypeScriptInfos($arms);
+
+        expect($result['type'])->toBe($type)
+            ->and($result['classTokenFqcns'] ?? null)->toBe($queue);
+    })->with([
+        'an array of each model' => ['User[]|CrmUser[]', 'User[] | User[]', [User::class, CrmUser::class]],
+        'an int-keyed array of each model' => ['array<int, User>|array<int, CrmUser>', 'User[] | User[]', [User::class, CrmUser::class]],
+        'a list of each model' => ['list<User>|list<CrmUser>', 'User[] | User[]', [User::class, CrmUser::class]],
+        'two forms of an array of one model' => ['User[]|array<int, User>', 'User[]', null],
+    ]);
 });
 
 describe('callCommandUsing and callCommandWith', function () {

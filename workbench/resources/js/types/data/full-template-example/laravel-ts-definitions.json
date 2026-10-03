@@ -13125,6 +13125,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\HandoverRosterResource": {
+            "name": "HandoverRosterResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "members",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "reviewers",
+                    "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                },
+                {
+                    "name": "involved",
+                    "type": "ModelsUser[] | CrmUser[] | ModelsUser | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\HandoverSummaryResource": {
             "name": "HandoverSummaryResource",
             "properties": [

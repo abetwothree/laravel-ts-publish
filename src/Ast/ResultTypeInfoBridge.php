@@ -41,7 +41,9 @@ final class ResultTypeInfoBridge
                 $fqcns,
             ));
 
+        // The merge queued a token per class for its own type. The engine's type replaces it, so that queue goes too.
         $info['type'] = $result['type'];
+        unset($info['classTokenFqcns']);
 
         // The merged info lists each class once. Where the type spells one name for two classes, the engine's own
         // queue tells the tokens apart, provided it lines up with them: a merge by text can outrun its tokens.

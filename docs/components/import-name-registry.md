@@ -67,6 +67,12 @@ The queue lines up with the type string because each builder writes a union's ar
 `LaravelTsPublish::mergeTypeScriptInfos()` for a class union and `ModelAttributeResolver::buildMorphUnionInfo()` for a
 morph union. Reorder one without the other and aliases land on the wrong arms.
 
+In `mergeTypeScriptInfos()`, a decorated arm such as `User[]` repeats an earlier one only when its text and its classes
+both match, so `User[]|CrmUser[]` merges to `User[] | User[]`. `classFqcns` lists each class once, so when two classes
+share a name the merged info also carries `classTokenFqcns`, the class behind each token it kept.
+`ClassTokenQueue::perToken()` first gives each arm one entry per token, so `User[] | Record<string, User>` queues its
+class twice.
+
 Callers fill their queues in one of two ways:
 
 - **Exact**: `ModelTransformer` fills one entry per occurrence.

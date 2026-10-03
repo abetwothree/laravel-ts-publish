@@ -62,6 +62,7 @@ export * from './guard-clause-closure-resource';
 export * from './guarded-collection-spread-resource';
 export * from './handover-notice-resource';
 export * from './handover-resource';
+export * from './handover-roster-resource';
 export * from './handover-summary-resource';
 export * from './helper-call-resource';
 export * from './image-delegated-resource';

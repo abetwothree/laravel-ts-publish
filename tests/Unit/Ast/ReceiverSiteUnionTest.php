@@ -120,7 +120,7 @@ function receiverPairShortArm(): array
 }
 
 /**
- * The same pair behind one array token, as a member typed by a docblock union of the two models renders.
+ * The same pair behind one array token, as a merge by text of an array of each model leaves it.
  *
  * @return array{type: string, optional: bool, embeddedModelFqcns: list<class-string>}
  */
@@ -142,33 +142,113 @@ function receiverPairArchiveTypes(): array
     );
 }
 
-// The member queues one name for two classes and spells it once, so its queue cannot say which class its token names,
-// and nothing beside it can say so either. A union over such an arm stays the merge by text, with every class queued.
-describe('a member that holds two models of one name under a single token', function () {
-    test('an accessor over it publishes unknown, as before the task', function (string $accessor) {
-        $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
+dataset('reads of a member that renders alike', [
+    'the property of one receiver' => ['owners_alone', 'WorkbenchUser[] | CrmUser[]'],
+    'the property of two receivers that hold the same pair' => ['owners_of_either', 'WorkbenchUser[] | CrmUser[]'],
+    'the method of two receivers that hold the same pair' => ['owner_list_of_either', 'WorkbenchUser[] | CrmUser[]'],
+    'the property of two receivers, one holding another model' => ['owners_of_mixed', 'WorkbenchUser[] | CrmUser[] | Post[]'],
+    'the method of two receivers, one holding another model' => ['owner_list_of_mixed', 'WorkbenchUser[] | CrmUser[] | Post[]'],
+]);
 
-        expect($data->mutators[$accessor]['type'])->toBe('unknown');
-    })->with([
-        'the property of two receivers that hold the same pair' => ['owners_of_either'],
-        'the method of two receivers that hold the same pair' => ['owner_list_of_either'],
-        'the property of two receivers, one holding another model' => ['owners_of_mixed'],
-        'the method of two receivers, one holding another model' => ['owner_list_of_mixed'],
-        'the property of one receiver, behind a ternary' => ['owners_or_null'],
-        'the method of one receiver, behind a ternary' => ['owner_list_or_null'],
-    ]);
+dataset('unions over a member that renders alike', [
+    'the property of one receiver, behind a ternary' => ['owners_or_null', 'WorkbenchUser[] | CrmUser[] | null'],
+    'the method of one receiver, behind a ternary' => ['owner_list_or_null', 'WorkbenchUser[] | CrmUser[] | null'],
+    'beside a string' => ['owners_or_label', 'WorkbenchUser[] | CrmUser[] | string'],
+    'beside the application watchers' => ['owners_or_watchers', 'WorkbenchUser[] | CrmUser[]'],
+    'beside the CRM watchers' => ['owners_or_crm_watchers', 'WorkbenchUser[] | CrmUser[]'],
+    'both watchers, then the property, in a ternary of a ternary' => ['both_watchers_or_owners', 'WorkbenchUser[] | CrmUser[]'],
+    'the CRM user or the third user' => [
+        'owners_or_receiver_or_third',
+        'WorkbenchUser[] | CrmUser[] | CrmUser | ReceiverPairThirdUser | null',
+    ],
+    'the third watchers or the CRM user' => [
+        'owners_or_third_watchers_or_receiver',
+        'WorkbenchUser[] | CrmUser[] | ReceiverPairThirdUser[] | CrmUser | null',
+    ],
+    'the CRM watchers or the third watchers' => [
+        'owners_or_crm_watchers_or_third_watchers',
+        'WorkbenchUser[] | CrmUser[] | ReceiverPairThirdUser[]',
+    ],
+    'the property or the CRM user, then the third user' => [
+        'owners_or_receiver_then_third',
+        'WorkbenchUser[] | CrmUser[] | CrmUser | ReceiverPairThirdUser | null',
+    ],
+    'the property or the application user, then the third user' => [
+        'owners_or_sender_then_third',
+        'WorkbenchUser[] | CrmUser[] | WorkbenchUser | ReceiverPairThirdUser | null',
+    ],
+    'the third user, else the CRM user, else the property' => [
+        'third_or_else_receiver_or_else_owners',
+        'ReceiverPairThirdUser | CrmUser | WorkbenchUser[] | CrmUser[]',
+    ],
+]);
 
-    test('a resource reading those accessors publishes unknown as well', function () {
-        expect(receiverPairArchiveTypes())->toMatchArray([
-            'owners_of_either' => 'unknown',
-            'owner_list_of_either' => 'unknown',
-            'owners_of_mixed' => 'unknown',
-            'owner_list_of_mixed' => 'unknown',
-            'owners_or_null' => 'unknown',
-            'owner_list_or_null' => 'unknown',
+// ReceiverPairDirectory's members are typed `User[]|CrmUser[]` and `list<User>|list<CrmUser>`, whose arms render
+// alike for two models that share a name. Each arm keeps a token of its own.
+describe('a member typed by a docblock union whose arms render alike for two models that share a name', function () {
+    describe('holds a token for each model', function () {
+        test('an accessor over it publishes an array of each model, each under its own alias', function (string $accessor, string $type) {
+            expect((new ModelTransformer(ReceiverPairArchive::class))->data()->mutators[$accessor]['type'])->toBe($type);
+        })->with('reads of a member that renders alike');
+
+        test('a resource reading those accessors publishes the same line', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with('reads of a member that renders alike');
+    });
+
+    // Each token has its class, so the union is read by class: an arm that repeats a member's text and class adds none.
+    describe('in a union, which is read by class', function () {
+        test('an accessor publishes each class the union holds, each under its own alias', function (string $accessor, string $type) {
+            expect((new ModelTransformer(ReceiverPairArchive::class))->data()->mutators[$accessor]['type'])->toBe($type);
+        })->with('unions over a member that renders alike');
+
+        test('a resource reading those accessors publishes the same line', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with('unions over a member that renders alike');
+
+        test('a resource that makes the union itself publishes it the same way', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with([
+            'the property, then the CRM watchers' => ['direct_owners_or_crm_watchers', 'WorkbenchUser[] | CrmUser[]'],
+            'both watchers, then the property' => ['direct_both_watchers_or_owners', 'WorkbenchUser[] | CrmUser[]'],
+            'the watchers, then the property or the application user' => [
+                'direct_watchers_then_owners_or_sender',
+                'WorkbenchUser[] | CrmUser[] | WorkbenchUser | null',
+            ],
+            'the CRM watchers, then the property or the application user' => [
+                'direct_crm_watchers_then_owners_or_sender',
+                'CrmUser[] | WorkbenchUser[] | WorkbenchUser | null',
+            ],
+            'the watchers, then a `when()` over the property and the application user' => [
+                'direct_watchers_then_when_owners_or_sender',
+                'WorkbenchUser[] | CrmUser[] | WorkbenchUser | null',
+            ],
         ]);
     });
 
+    describe('under a key of an inline array', function () {
+        test('the key after it keeps its own class', function (string $property, string $type) {
+            expect(receiverPairArchiveTypes()[$property])->toBe($type);
+        })->with([
+            'beside the application user' => [
+                'keyed_owners_or_sender',
+                '{ either: WorkbenchUser[] | CrmUser[] | WorkbenchUser | null; first: WorkbenchUser | null }',
+            ],
+            'beside the CRM watchers' => [
+                'keyed_owners_or_crm_watchers',
+                '{ either: WorkbenchUser[] | CrmUser[]; first: WorkbenchUser | null }',
+            ],
+            'after the watchers, beside the application user, before a key that reads the CRM user' => [
+                'keyed_watchers_then_owners_or_sender',
+                '{ either: WorkbenchUser[] | CrmUser[] | WorkbenchUser | null; second: CrmUser | null }',
+            ],
+        ]);
+    });
+});
+
+// An arm that queues one name for two classes and spells it once cannot say which class its token names, and nothing
+// beside it can. ClassTokenQueue::outrunsItsTokens() finds such an arm, and a union over it stays the merge by text.
+describe('an arm that holds two models of one name under a single token', function () {
     test('a union of it stays the merge by text, every class queued, whatever sits beside it', function (array $arms, array $merged) {
         expect(ValueResult::unionResults($arms))->toBe($merged);
     })->with(fn () => [
@@ -245,89 +325,10 @@ describe('a member that holds two models of one name under a single token', func
             ],
         ],
     ]);
-
-    // Nothing vouches for the class behind the token: a member that names it does not say which token is whose.
-    describe('beside a member that names the other class', function () {
-        test('an accessor publishes unknown all the same', function (string $accessor) {
-            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
-
-            expect($data->mutators[$accessor]['type'])->toBe('unknown');
-        })->with([
-            'the CRM watchers, behind a ternary' => ['owners_or_crm_watchers'],
-            'both watchers, then the property, in a ternary of a ternary' => ['both_watchers_or_owners'],
-        ]);
-
-        test('a resource publishes what it did before the task: unknown through an accessor, one class by its own reads', function (string $property, string $type) {
-            expect(receiverPairArchiveTypes()[$property])->toBe($type);
-        })->with([
-            'through an accessor: the property, then the CRM watchers' => ['owners_or_crm_watchers', 'unknown'],
-            'through an accessor: both watchers, then the property' => ['both_watchers_or_owners', 'unknown'],
-            'by the reads themselves: the property, then the CRM watchers' => ['direct_owners_or_crm_watchers', 'WorkbenchUser[]'],
-            'by the reads themselves: both watchers, then the property' => ['direct_both_watchers_or_owners', 'WorkbenchUser[]'],
-        ]);
-    });
-
-    describe('with no member to name the other class', function () {
-        test('an accessor publishes unknown', function (string $accessor) {
-            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
-
-            expect($data->mutators[$accessor]['type'])->toBe('unknown');
-        })->with([
-            'on its own' => ['owners_alone'],
-            'beside a string' => ['owners_or_label'],
-            'beside the watchers of the class its token names' => ['owners_or_watchers'],
-        ]);
-
-        test('a resource reading those accessors publishes unknown as well', function (string $property) {
-            expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
-        })->with([
-            'on its own' => ['owners_alone'],
-            'beside a string' => ['owners_or_label'],
-            'beside the watchers of the class its token names' => ['owners_or_watchers'],
-        ]);
-    });
-
-    describe('with a third model of that name in the union', function () {
-        test('an accessor publishes unknown, whatever the other two arms render', function (string $accessor) {
-            $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
-
-            expect($data->mutators[$accessor]['type'])->toBe('unknown');
-        })->with([
-            'the CRM user or the third user' => ['owners_or_receiver_or_third'],
-            'the third watchers or the CRM user' => ['owners_or_third_watchers_or_receiver'],
-            'the CRM watchers or the third watchers' => ['owners_or_crm_watchers_or_third_watchers'],
-        ]);
-
-        test('a resource reading those accessors publishes unknown as well', function (string $property) {
-            expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
-        })->with([
-            'the CRM user or the third user' => ['owners_or_receiver_or_third'],
-            'the third watchers or the CRM user' => ['owners_or_third_watchers_or_receiver'],
-            'the CRM watchers or the third watchers' => ['owners_or_crm_watchers_or_third_watchers'],
-        ]);
-    });
-
-    describe('under a key of an inline array, before a key that reads the application user', function () {
-        // Both are the lines the merge by text published before the task. In the second, `first` is mislabelled: the
-        // union keeps the CRM class queued behind its one token, and the next key's token reads it. That line stands
-        // until the member is fixed where it is made.
-        test('a resource publishes the line it did before the task', function (string $property, string $type) {
-            expect(receiverPairArchiveTypes()[$property])->toBe($type);
-        })->with([
-            'beside the application user' => [
-                'keyed_owners_or_sender',
-                '{ either: WorkbenchUser[] | CrmUser | null; first: WorkbenchUser | null }',
-            ],
-            'beside the CRM watchers' => [
-                'keyed_owners_or_crm_watchers',
-                '{ either: WorkbenchUser[]; first: CrmUser | null }',
-            ],
-        ]);
-    });
 });
 
-// A union that stayed the merge by text queues its name more often than it spells it, like the member it was made
-// over, even where each of its classes has a token. As an arm of another union it keeps that union the merge by text.
+// A union that stayed the merge by text queues its name more often than it spells it, like the arm it was made over,
+// even where each of its classes has a token. As an arm of another union it keeps that union the merge by text.
 describe('a union that stayed the merge by text, as an arm of another union', function () {
     test('keeps the outer union the merge by text, though each of its classes has a token', function () {
         $arms = [
@@ -341,45 +342,6 @@ describe('a union that stayed the merge by text, as an arm of another union', fu
             'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class, ThirdUser::class],
         ]);
     });
-
-    test('an accessor publishes unknown beside a third model of that name', function (string $accessor) {
-        $data = (new ModelTransformer(ReceiverPairArchive::class))->data();
-
-        expect($data->mutators[$accessor]['type'])->toBe('unknown');
-    })->with([
-        'the property or the CRM user, then the third user' => ['owners_or_receiver_then_third'],
-        'the property or the application user, then the third user' => ['owners_or_sender_then_third'],
-        'the third user, else the CRM user, else the property' => ['third_or_else_receiver_or_else_owners'],
-    ]);
-
-    test('a resource reading those accessors publishes unknown as well', function (string $property) {
-        expect(receiverPairArchiveTypes()[$property])->toBe('unknown');
-    })->with([
-        'the property or the CRM user, then the third user' => ['owners_or_receiver_then_third'],
-        'the property or the application user, then the third user' => ['owners_or_sender_then_third'],
-        'the third user, else the CRM user, else the property' => ['third_or_else_receiver_or_else_owners'],
-    ]);
-
-    test('a resource that makes the union itself publishes the line it did before the task', function (string $property, string $type) {
-        expect(receiverPairArchiveTypes()[$property])->toBe($type);
-    })->with([
-        'the watchers, then the property or the application user' => [
-            'direct_watchers_then_owners_or_sender',
-            'WorkbenchUser[] | WorkbenchUser | null',
-        ],
-        'the CRM watchers, then the property or the application user' => [
-            'direct_crm_watchers_then_owners_or_sender',
-            'CrmUser[] | WorkbenchUser | null',
-        ],
-        'the first of those under a key, before a key that reads the CRM user' => [
-            'keyed_watchers_then_owners_or_sender',
-            '{ either: WorkbenchUser[] | WorkbenchUser | null; second: CrmUser | null }',
-        ],
-        'the watchers, then a `when()` over the property and the application user' => [
-            'direct_watchers_then_when_owners_or_sender',
-            'WorkbenchUser[] | WorkbenchUser | null',
-        ],
-    ]);
 });
 
 // A union read by class queues one class per rendered token, and nothing else.

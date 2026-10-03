@@ -281,9 +281,11 @@ an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `stri
 answers `null`, which reads as no false string, so `A`'s arm would publish as `string`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which tells same-named models or resources
-apart where it can, and one declining arm declines the read. The read gains `| null` for its own `?->` or the receiver's
-`shortCircuits` flag, never twice. `PropertyChainHandler` and `VariableHandler` claim these node classes earlier.
-[The inventory][inventory] records where each steps aside, and where `VariableHandler` does not.
+apart where it can, and one declining arm declines the read. A member typed by a docblock union whose arms render alike,
+such as `@var User[]|CrmUser[]`, has a token for each class, so a union over it tells those classes apart too. The read
+gains `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
+`VariableHandler` claim these node classes earlier. [The inventory][inventory] records where each steps aside, and where
+`VariableHandler` does not.
 
 ## Related
 

@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -1810,5 +1811,18 @@ describe('ModelTransformer with accessors that union two models sharing a name',
 
         expect($data->appends['parties']['type'])
             ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
+    });
+
+    // One relation, `sender`, uses the application model, so the file aliases that model after the relation.
+    test('an accessor typed by a docblock union whose arms render alike publishes an array of each model', function () {
+        $data = (new ModelTransformer(HandoverCrew::class))->data();
+
+        expect($data->mutators['crew']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
+            ->and($data->typeImports)->toBe([
+                '../../../../workbench/app/models' => ['User as SenderUser'],
+                '../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
     });
 });

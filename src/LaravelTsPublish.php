@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
@@ -57,8 +58,8 @@ use UnitEnum;
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
- * `type` spells one name for two classes and the engine's queue does not outrun those tokens: `classFqcns` lists each
- * class once, so its order alone cannot say which token is which.
+ * `type` spells one name for two classes and the queue does not outrun those tokens: `classFqcns` lists each class
+ * once, so its order alone cannot say which token is which.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
  *
@@ -1944,6 +1945,12 @@ class LaravelTsPublish
         /** @var list<string> $seenTypeTokens */
         $seenTypeTokens = [];
 
+        /** @var array<string, list<list<class-string>>> $decoratedQueues decorated text => each kept arm's queue */
+        $decoratedQueues = [];
+
+        /** @var list<class-string> $classTokenFqcns the class behind each class token kept, in order */
+        $classTokenFqcns = [];
+
         foreach ($infos as $info) {
             if ($info['classFqcns'] !== []) {
                 $isPlainClassUnion = $info['type'] === implode(' | ', $info['classes']);
@@ -1954,6 +1961,7 @@ class LaravelTsPublish
                             $classFqcnToName[$fqcn] = $info['classes'][$i];
                             $orderedClassFqcns[] = $fqcn;
                             $types[] = $info['classes'][$i];
+                            $classTokenFqcns[] = $fqcn;
                         }
                     }
                 } else {
@@ -1965,9 +1973,21 @@ class LaravelTsPublish
                         }
                     }
 
-                    if (! in_array($info['type'], $seenTypeTokens, true)) {
+                    // A decorated arm repeats an earlier one only when its text and the classes behind its tokens both
+                    // match, each queue read one entry per token: `User[] | Record<string, User>` spells a class twice.
+                    // Classes go by the arm's own names: a resource can publish under a name other than its basename.
+                    $names = array_combine($info['classFqcns'], $info['classes']);
+                    $queue = ClassTokenQueue::perToken(
+                        ClassTokenQueue::fqcnsOf($info),
+                        $info['type'],
+                        fn (string $fqcn): string => $names[$fqcn],
+                    );
+
+                    if (! in_array($queue, $decoratedQueues[$info['type']] ?? [], true)) {
+                        $decoratedQueues[$info['type']][] = $queue;
                         $seenTypeTokens[] = $info['type'];
                         $types[] = $info['type'];
+                        array_push($classTokenFqcns, ...$queue);
                     }
                 }
             } elseif (count($info['enumFqcns']) === 1 && $info['type'] === $info['enumTypes'][0]) {
@@ -2004,6 +2024,11 @@ class LaravelTsPublish
         $result['customImports'] = $customImports;
         $result['enumFqcns'] = $enumFqcns;
         $result['classFqcns'] = $orderedClassFqcns;
+
+        // `classFqcns` lists each class once, so it cannot say which token is whose when two classes share a name.
+        if (count(array_unique($result['classes'])) < count($result['classes'])) {
+            $result['classTokenFqcns'] = $classTokenFqcns;
+        }
 
         return $result;
     }

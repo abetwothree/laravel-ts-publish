@@ -13,8 +13,8 @@ use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
 /**
- * A test-only model on the `handovers` table whose accessors read a member that holds two models sharing a name under
- * one token: through a receiver of two classes, and through a ternary over one. Each is read as a property and as a
+ * A test-only model on the `handovers` table whose accessors read a member typed by a docblock union of two models that
+ * share a name: through a receiver of two classes, and through a ternary over one. Each is read as a property and as a
  * method, the two forms the receiver rules take. Its relations are the other members those reads sit beside.
  */
 class ReceiverPairArchive extends Model
@@ -129,13 +129,13 @@ class ReceiverPairArchive extends Model
         return Attribute::get(fn () => $this->exists ? (new ReceiverPairDirectory)->owners : 'none');
     }
 
-    /** A property of one receiver, beside the watchers of the application class its token names. */
+    /** A property of one receiver, beside the watchers of the application class. */
     protected function ownersOrWatchers(): Attribute
     {
         return Attribute::get(fn () => $this->exists ? (new ReceiverPairDirectory)->owners : $this->watchers);
     }
 
-    /** A property of one receiver, beside the watchers of the other class, which is the one its token leaves out. */
+    /** A property of one receiver, beside the watchers of the CRM class. */
     protected function ownersOrCrmWatchers(): Attribute
     {
         return Attribute::get(fn () => $this->exists ? (new ReceiverPairDirectory)->owners : $this->crmWatchers);

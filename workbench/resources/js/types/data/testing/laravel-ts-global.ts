@@ -3360,6 +3360,13 @@ declare global {
             parties: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
             audience: workbench.app.models.User[] | workbench.crm.models.User[];
         }
+        /** Reads members typed by a docblock union whose arms render alike for two models that share a name. */
+        export interface HandoverRosterResource {
+            id: number;
+            members: workbench.app.models.User[] | workbench.crm.models.User[];
+            reviewers: workbench.app.models.User[] | workbench.crm.models.User[];
+            involved: workbench.app.models.User[] | workbench.crm.models.User[] | workbench.app.models.User | null;
+        }
         /**
          * Declares no toArray(), so it publishes the model's own serialization, appended `parties` accessor included: the
          * union of two same-named models inside it has to survive the delegation with each token naming its own class.

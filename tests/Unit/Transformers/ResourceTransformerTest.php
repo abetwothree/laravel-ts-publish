@@ -6,6 +6,9 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
@@ -63,6 +66,7 @@ use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FqcnMixinResource;
 use Workbench\App\Http\Resources\HandoverNoticeResource;
 use Workbench\App\Http\Resources\HandoverResource;
+use Workbench\App\Http\Resources\HandoverRosterResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageDimensionsResource;
@@ -3101,6 +3105,50 @@ describe('a union of two models that share a name', function () {
     test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
         expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
             ->toBe('CrmUser | null');
+    });
+});
+
+describe('a member typed by a docblock union whose arms render alike for two models that share a name', function () {
+    test('publishes an array of each model, read as a property, a method and an arm of a ternary', function () {
+        $transformer = new ResourceTransformer(HandoverRosterResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'id' => 'number',
+            'members' => 'WorkbenchUser[] | CrmUser[]',
+            'reviewers' => 'WorkbenchUser[] | CrmUser[]',
+            'involved' => 'WorkbenchUser[] | CrmUser[] | WorkbenchUser | null',
+        ])
+            ->and($transformer->typeImports)->toBe([
+                '../../../crm/models' => ['User as CrmUser'],
+                '../../models' => ['User as WorkbenchUser'],
+            ]);
+    });
+
+    test('an accessor typed by one publishes an array of each model, however a resource reads it', function (string $resource, string $property, string $type) {
+        expect((new ResourceTransformer($resource))->properties[$property]['type'])->toBe($type);
+    })->with([
+        '$this->attr, a mutator' => [HandoverCrewResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->attr, an append' => [HandoverCrewResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->attr, on a column' => [HandoverCrewResource::class, 'updated_at', 'WorkbenchUser[] | CrmUser[] | null'],
+        '$this->only(), a mutator' => [HandoverCrewOnlyResource::class, 'crew', 'WorkbenchUser[] | CrmUser[]'],
+        '$this->only(), an append' => [HandoverCrewOnlyResource::class, 'standby', 'WorkbenchUser[] | CrmUser[]'],
+        'a relation\'s only()' => [HandoverCrewResource::class, 'twin_crew', '{ crew: WorkbenchUser[] | CrmUser[] }'],
+        'a variable bound to the model' => [HandoverCrewResource::class, 'bound_crew', 'WorkbenchUser[] | CrmUser[]'],
+    ]);
+
+    test('publishes an array and a record of each model where each arm spells its model twice', function () {
+        expect((new ResourceTransformer(HandoverKeyedRosterResource::class))->properties['members']['type'])
+            ->toBe('WorkbenchUser[] | Record<string, WorkbenchUser> | CrmUser[] | Record<string, CrmUser>');
+    });
+
+    test('keeps the key after it in an inline array on its own class', function () {
+        $transformer = new ResourceTransformer(HandoverCrewResource::class);
+
+        expect($transformer->properties['keyed_crew']['type'])->toBe('{ crew: WorkbenchUser[] | CrmUser[]; sender: WorkbenchUser | null }')
+            ->and($transformer->typeImports)->toBe([
+                '../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../workbench/crm/models' => ['User as CrmUser'],
+            ]);
     });
 });
 

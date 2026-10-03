@@ -573,12 +573,13 @@ channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`
 `customImports`. It unions `customImports` rather than replacing them. Reading any other channel, such as a resource
 channel, changes behavior and needs its own audit.
 
-`classFqcns` lists each class once, so its order cannot say which of two same-named tokens is which. Where the result
-spells one name for two classes, the bridge also sets `classTokenFqcns`, the queue aliasing walks, unless that queue
-outruns its tokens, as a merge by text leaves it. `InlineArrayHandler::memberFqcns()` queues each member of an inline
-array once per token for a name that has one class, however often its own union queued it. It keeps at least one entry,
-and it keeps the member's queue for a name with two classes behind it, on one channel or one on each. Every consumer
-that queues classes for aliasing calls
+`classFqcns` lists each class once, so its order cannot say which of two same-named tokens is which.
+`LaravelTsPublish::mergeTypeScriptInfos()` sets `classTokenFqcns`, the queue aliasing walks, when two of its classes
+share a name. The bridge replaces the merged type with the result's and drops that queue with it. Where the result
+spells one name for two classes, the bridge sets the result's own queue, unless it outruns its tokens, as a merge by
+text leaves it. `InlineArrayHandler::memberFqcns()` queues each member of an inline array once per token for a name that
+has one class, however often its own union queued it. It keeps at least one entry, and it keeps the member's queue for a
+name with two classes behind it, on one channel or one on each. Every consumer that queues classes for aliasing calls
 [`ClassTokenQueue::fqcnsOf()`](../../src/Support/ClassTokenQueue.php), which falls back to `classFqcns`.
 `Handover::parties` pins it through the model file, a resource that reads the accessor and one that delegates.
 
@@ -641,8 +642,8 @@ swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed
 only when its text and the classes behind its tokens both match, and each kept member queues its own classes. So
 `$this->sender ?? $this->receiver` over two `User` models publishes `User | User`, which aliasing then spells apart,
 where a merge by text published one arm under the other's class. Every other union takes the text-merged path
-unchanged. So does a union with an arm that queues a name for two classes more often than it spells it, as a member
-typed `@return User[]|CrmUser[]` does, and a union that itself stayed the merge by text:
+unchanged. So does a union with an arm that queues a name for two classes more often than it spells it, such as a
+union that itself stayed the merge by text:
 [`ClassTokenQueue::outrunsItsTokens()`](../../src/Support/ClassTokenQueue.php) asks it of each arm, since such an arm
 does not say which token is whose.
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through

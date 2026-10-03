@@ -3360,6 +3360,13 @@ declare global {
             parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
             audience: app.models.User[] | crm.models.User[];
         }
+        /** Reads members typed by a docblock union whose arms render alike for two models that share a name. */
+        export interface HandoverRosterResource {
+            id: number;
+            members: app.models.User[] | crm.models.User[];
+            reviewers: app.models.User[] | crm.models.User[];
+            involved: app.models.User[] | crm.models.User[] | app.models.User | null;
+        }
         /**
          * Declares no toArray(), so it publishes the model's own serialization, appended `parties` accessor included: the
          * union of two same-named models inside it has to survive the delegation with each token naming its own class.
