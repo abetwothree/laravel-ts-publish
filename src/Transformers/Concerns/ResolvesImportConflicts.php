@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 
 /**
  * Shared import conflict resolution helpers for transformers.
@@ -81,6 +82,25 @@ trait ResolvesImportConflicts
      * against its own property shape.
      */
     abstract protected function rewriteTypeReferences(): void;
+
+    /**
+     * Resolve a type registry and its sibling const registry, then apply both, the types first.
+     *
+     * A type import and a const import are both local names in the file, so a const steps aside for every name a type
+     * took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
+     *
+     * @param  array<string, string>  $typeNames  FQCN => unaliased TypeScript type name
+     */
+    protected function applyImportNameRegistries(
+        ImportNameRegistry $types,
+        ImportNameRegistry $consts,
+        array $typeNames,
+    ): void {
+        $resolved = $types->resolve();
+        $consts->reserveMany(...array_values($resolved));
+
+        $this->applyResolvedImportNames($resolved, $typeNames, $consts->resolve());
+    }
 
     /**
      * Apply the registries' resolved names to the alias maps, then rewrite type references when a type was aliased.

@@ -1764,9 +1764,12 @@ describe('ModelTransformer with a published model set', function () {
             ->and(json_encode($data->typeImports))->not->toContain('Order');
     });
 
-    test('nothing is left out while there is no published set to read', function () {
-        expect(array_keys((new ModelTransformer(Depot::class))->data()->relations))->toBe(['supervisor', 'orders']);
-    });
+    test('nothing is left out while there is no published set to read', function (string $model, array $relations) {
+        expect(array_keys((new ModelTransformer($model))->data()->relations))->toBe($relations);
+    })->with([
+        'Depot' => [Depot::class, ['supervisor', 'orders']],
+        'Facility, beside a #[TsExclude]d model' => [Facility::class, ['audit_trails', 'excluded_records', 'inspector']],
+    ]);
 
     test('an accessor naming a model outside the set publishes unknown and imports nothing', function () {
         PublishedModelRegistry::register([AuthoredPost::class]);
@@ -1777,16 +1780,16 @@ describe('ModelTransformer with a published model set', function () {
             ->and(json_encode($data->typeImports))->not->toContain('User');
     });
 
-    test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function () {
-        $data = (new ModelTransformer(AuthoredPost::class))->data();
+    test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function (string $model) {
+        $data = (new ModelTransformer($model))->data();
 
         expect($data->mutators['handle']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
-    });
+    })->with([AuthoredPost::class, Facility::class]);
 });
 
-describe('ModelTransformer with models this run does not publish', function () {
-    test('a relation to one is left out, with its count and exists keys', function () {
+describe('ModelTransformer with a published set that leaves out a #[TsExclude]d model and a morphTo target', function () {
+    test('the relation to the #[TsExclude]d model is left out with its keys, and the morphTo union drops it', function () {
         PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
 
         $data = (new ModelTransformer(Facility::class))->data();
@@ -1797,26 +1800,13 @@ describe('ModelTransformer with models this run does not publish', function () {
             ->and($data->relationExistsKeys)->toBe(['audit_trails_exists', 'inspector_exists']);
     });
 
-    test('nothing is left out while there is no published set to read', function () {
-        $data = (new ModelTransformer(Facility::class))->data();
-
-        expect(array_keys($data->relations))->toBe(['audit_trails', 'excluded_records', 'inspector']);
-    });
-
-    test('an accessor naming one publishes unknown and imports nothing', function () {
+    test('an accessor naming the #[TsExclude]d model publishes unknown and imports nothing', function () {
         PublishedModelRegistry::register([Facility::class, AuditTrail::class, AuditInspector::class, User::class]);
 
         $data = (new ModelTransformer(Facility::class))->data();
 
         expect($data->mutators['last_excluded']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('ExcludedModel');
-    });
-
-    test('an accessor naming a class no file is generated for publishes unknown, whatever the published set', function () {
-        $data = (new ModelTransformer(Facility::class))->data();
-
-        expect($data->mutators['handle']['type'])->toBe('unknown')
-            ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
     });
 });
 

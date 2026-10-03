@@ -1922,7 +1922,9 @@ class LaravelTsPublish
      * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
      *
      * Class-backed and bare-enum entries dedupe by FQCN, not short name, so two classes or enums sharing a name keep
-     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned.
+     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned. A
+     * decorated arm stays unless an earlier one repeats its text and classes, and once two classes share a name the
+     * result's `classTokenFqcns` names the class behind each token.
      *
      * @param  list<TypeScriptTypeInfo>  $infos
      * @return TypeScriptTypeInfo
@@ -1973,17 +1975,9 @@ class LaravelTsPublish
                         }
                     }
 
-                    // A decorated arm repeats an earlier one only when its text and the classes behind its tokens both
-                    // match, each queue read one entry per token: `User[] | Record<string, User>` spells a class twice.
-                    // Classes go by the arm's own names: a resource can publish under a name other than its basename.
-                    $names = array_combine($info['classFqcns'], $info['classes']);
-                    $queue = ClassTokenQueue::perToken(
-                        ClassTokenQueue::fqcnsOf($info),
-                        $info['type'],
-                        fn (string $fqcn): string => $names[$fqcn],
-                    );
+                    $queue = $this->unrepeatedArmQueue($info, $decoratedQueues, $seenTypeTokens);
 
-                    if (! in_array($queue, $decoratedQueues[$info['type']] ?? [], true)) {
+                    if ($queue !== null) {
                         $decoratedQueues[$info['type']][] = $queue;
                         $seenTypeTokens[] = $info['type'];
                         $types[] = $info['type'];
@@ -2025,12 +2019,41 @@ class LaravelTsPublish
         $result['enumFqcns'] = $enumFqcns;
         $result['classFqcns'] = $orderedClassFqcns;
 
-        // `classFqcns` lists each class once, so it cannot say which token is whose when two classes share a name.
-        if (count(array_unique($result['classes'])) < count($result['classes'])) {
+        // `classFqcns` lists each class once, so it cannot say which token is whose when two classes share a name. An
+        // empty queue would keep ClassTokenQueue::fqcnsOf() from falling back to `classFqcns`.
+        if ($classTokenFqcns !== [] && count(array_unique($result['classes'])) < count($result['classes'])) {
             $result['classTokenFqcns'] = $classTokenFqcns;
         }
 
         return $result;
+    }
+
+    /**
+     * The class behind each token of a decorated arm, or null when an arm kept before repeats it.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @param  array<string, list<list<class-string>>>  $decoratedQueues  decorated text => each kept arm's queue
+     * @param  list<string>  $seenTypeTokens  every text kept so far
+     * @return list<class-string>|null
+     */
+    private function unrepeatedArmQueue(array $info, array $decoratedQueues, array $seenTypeTokens): ?array
+    {
+        // `classes[i]` is the name the tokens spell for `classFqcns[i]`.
+        $names = array_combine($info['classFqcns'], $info['classes']);
+        $queue = ClassTokenQueue::perToken(
+            ClassTokenQueue::fqcnsOf($info),
+            $info['type'],
+            fn (string $fqcn): string => $names[$fqcn],
+        );
+
+        // Against a decorated arm kept under its text, an arm repeats only when the classes behind its tokens match
+        // too, each queue read one entry per token: `User[] | Record<string, User>` spells a class twice. A text that
+        // only a class-less arm kept is repeated outright.
+        $repeats = isset($decoratedQueues[$info['type']])
+            ? in_array($queue, $decoratedQueues[$info['type']], true)
+            : in_array($info['type'], $seenTypeTokens, true);
+
+        return $repeats ? null : $queue;
     }
 
     /**

@@ -188,7 +188,7 @@ it('resolves an arrow function\'s body through the engine callback, ignoring any
     expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
 
-it('merges a multi-return closure body into a union via ValueResult::mergeUnion', function () {
+it('merges a multi-return closure body into a union via ValueResult::unionResults()', function () {
     $returnA = new Variable('a');
     $returnB = new Variable('b');
     $expr = new ClosureExpr(['stmts' => [new Return_($returnA), new Return_($returnB)]]);

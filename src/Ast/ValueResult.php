@@ -219,12 +219,13 @@ final class ValueResult
     public static function modelQueueByToken(array $result): ?array
     {
         $models = self::modelChannelFqcns($result);
+        $nameOf = class_basename(...);
 
-        if (! self::sharesAName($models, class_basename(...))) {
+        if (! self::sharesAName($models, $nameOf)) {
             return null;
         }
 
-        $queue = new ClassTokenQueue($models, class_basename(...));
+        $queue = new ClassTokenQueue($models, $nameOf);
         $queue->take($result['type']);
 
         return $queue->outrunsItsTokens() ? null : $models;
@@ -353,7 +354,8 @@ final class ValueResult
 
         $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
-        // Safe to dedupe: a name with one class reads alike at every entry; two classes under one are read by class.
+        // Safe to dedupe, as develop did: one class per name reads alike at every entry, and two under one name are
+        // read by class unless an arm outruns its tokens, where the merge by text stands.
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
         if ($enumResourceFqcns !== []) {

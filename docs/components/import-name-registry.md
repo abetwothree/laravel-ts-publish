@@ -116,9 +116,10 @@ PHP does not enforce the resource and model split, and a class extending both wo
 resolve enum const names through a second, sibling `ImportNameRegistry` with the same skip list, because slicing a const
 name out of a type alias would break at the numeric tiebreak. The two run in lockstep, so `StatusType` aliased to
 `CrmStatusType` pairs with `Status` aliased to `CrmStatus`. TypeScript gives value and type imports one identifier
-namespace, so each consumer resolves its types first and reserves every name they took in the const registry. An enum
-`Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`) keeps the type and aliases the const, and
-so does a model `Grade` imported beside the `Grade` enum's const. The `Badge` fixtures pin both shapes.
+namespace, so `ResolvesImportConflicts::applyImportNameRegistries()` resolves the types first and reserves every name
+they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`)
+keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's const. The `Badge`
+fixtures pin both shapes.
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different

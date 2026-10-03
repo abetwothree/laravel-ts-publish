@@ -96,6 +96,8 @@ The gate runs `npx tsc --noEmit` over each generated tree and counts these diagn
 - **TS6196 and TS6133 (declared but never used, or its value never read)**: an unused type import, or an unused value
   import such as an enum's const, the trace a dropped `extends` clause or an overridden cast leaves. TS6133 also counts
   an unused local or parameter, because `tsconfig.json` sets `noUnusedLocals` and `noUnusedParameters`.
+- **TS6192 (all imports in import declaration are unused)**: an import line of two or more names, none used. Its
+  message names nothing, so the histogram prints it as `(import line with no name used)`.
 
 A leaked `toResource()` convention guess, the failure `PublishedResourceRegistry` prevents, shows up as TS2305 or
 TS2724 in the modular files, or as a relative TS2307 when the run writes nothing to the guessed class's directory. In
@@ -206,7 +208,8 @@ git checkout -- tests/types/stubs/app/geo.d.ts
 
 A `Pick` key the stub does not declare fails the main count with TS2344, once per `Pick<Routable, …>` site. The
 histogram prints these as whole diagnostics, because its `sed` patterns match only the cannot-find-name,
-duplicate-identifier, local-conflict, no-exported-member, never-used, never-read and clashing-extends messages:
+duplicate-identifier, local-conflict, no-exported-member, never-used, never-read, all-imports-unused and
+clashing-extends messages:
 
 ```bash
 printf 'export interface Routable {\n    update: unknown;\n}\n' > tests/types/stubs/app/routing.d.ts
@@ -242,7 +245,8 @@ rm tests/types/dom-global-control.ts
 
 `--selftest` automates the relative-specifier control, for a `.ts` and a `.d.ts` file, and the DOM-global control.
 It also plants an interface that extends two interfaces giving one key different types, and fails unless the main
-count reads exactly one TS2320 and the histogram names that interface. CI runs it on every push that runs the workflow:
+count reads exactly one TS2320 and the histogram names that interface, then an import line whose names all go unused,
+which must read exactly one TS6192 under its own label. CI runs it on every push that runs the workflow:
 
 ```bash
 .github/scripts/unimportable-token-gate.sh --selftest
@@ -312,10 +316,9 @@ The gates miss these cases:
   emitted without its import passes every count. No workbench class has such a name.
 - **Diagnostics outside the counted codes**: the main count reads only the codes listed above. TS2307 and the TS1xxx
   syntax errors fail the gate on their own, but `tsc` can reject a file with any other code and the gate still passes.
-  Examples are TS6192 (an import line of two or more names, none used) and TS2308 (a barrel that re-exports one name
-  from two files). Two enums in one namespace, one named like the other's type name,
-  produce TS2308, as [its known gap](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it)
-  describes.
+  An example is TS2308 (a barrel that re-exports one name from two files). Two enums in one namespace, one named like
+  the other's type name, produce TS2308, as
+  [its known gap](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) describes.
 - **A property that disappears**: the regression gate walks only the keys present at the head, so a removed property
   produces no signal, and a property that moves to another interface is a removal plus an addition. When a change can
   remove a property, such as excluding columns, widening `$hidden` or deleting a fixture, diff the regenerated trees

@@ -309,6 +309,11 @@ it('hands on one entry per token for every name a member gives a single class', 
         [Address::class, Address::class, Address::class],
         [AddressResource::class],
     ],
+    'a name of its own filled beside one the member queues on both channels' => [
+        ['m' => ['Post | Post[] | Address[] | Address', [Post::class, Address::class], [AddressResource::class]]],
+        [Post::class, Address::class, Post::class],
+        [AddressResource::class],
+    ],
     'a resource its union queued once behind two tokens' => [
         ['x' => ['UserResource | UserResource[]', [], [UserResource::class]]],
         [],

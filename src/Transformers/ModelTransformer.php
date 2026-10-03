@@ -802,17 +802,7 @@ class ModelTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName, $preferred);
         }
 
-        $resolved = $registry->resolve();
-
-        // A type import and a const import are both local names in the file, so a const steps aside for every name
-        // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
-        $constRegistry->reserveMany(...array_values($resolved));
-
-        $this->applyResolvedImportNames(
-            $resolved,
-            $this->enumFqcnMap + $this->modelFqcnMap,
-            $constRegistry->resolve(),
-        );
+        $this->applyImportNameRegistries($registry, $constRegistry, $this->enumFqcnMap + $this->modelFqcnMap);
 
         return $this;
     }

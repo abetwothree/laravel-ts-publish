@@ -238,7 +238,7 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
     ]);
 });
 
-describe('ValueResult::unionResults() over arms that carry their classes on different channels', function () {
+describe('ValueResult::unionResults() over model, resource and class-less arms', function () {
     $app = ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class];
     $crm = ['type' => 'User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]];
     $resource = ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class];

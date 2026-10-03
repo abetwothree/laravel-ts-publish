@@ -1605,7 +1605,7 @@ describe('mergeTypeScriptInfos', function () {
             ->and($result['enums'])->toBe(['Status', 'Status', 'Role']);
     });
 
-    test('keeps a token for each class two decorated arms of one text name, listing each class once', function () {
+    test('keeps a token for each class that two decorated arms of one text name, listing each class once', function () {
         $workbenchUsers = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]];
         $crmUsers = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]];
 
@@ -1695,7 +1695,7 @@ describe('mergeTypeScriptInfos', function () {
             [User::class, CrmUser::class, Comment::class],
             [User::class, CrmUser::class, Comment::class, Comment::class],
         ],
-        'a resource published under another name, beside the model of that name' => [
+        'each class under the name its tokens spell for it, classes[i] for classFqcns[i]' => [
             [
                 ['type' => 'Address[] | Record<string, Address>', 'classes' => ['Address'], 'classFqcns' => [AddressResource::class]],
                 ['type' => 'Address[] | Record<string, Address>', 'classes' => ['Address'], 'classFqcns' => [Address::class]],
@@ -1732,6 +1732,30 @@ describe('mergeTypeScriptInfos', function () {
                 ['type' => 'Comment', 'classes' => ['Comment'], 'classFqcns' => [Comment::class]],
             ],
             'User | Comment',
+        ],
+    ]);
+
+    test('drops a decorated arm that repeats the text of a class-less arm before it', function (array $arms, array $classFqcns) {
+        $result = $this->service->mergeTypeScriptInfos(array_map(fn (array $arm): array => [...$this->service->emptyTypeScriptInfo(), ...$arm], $arms));
+
+        expect($result['type'])->toBe('User[]')
+            ->and($result['classFqcns'])->toBe($classFqcns)
+            ->and($result)->not->toHaveKey('classTokenFqcns');
+    })->with([
+        'one class' => [
+            [
+                ['type' => 'User[]'],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            [User::class],
+        ],
+        'two classes of one name, so that no class token is kept' => [
+            [
+                ['type' => 'User[]'],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            [User::class, CrmUser::class],
         ],
     ]);
 

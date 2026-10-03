@@ -151,8 +151,7 @@ final class AnalysisComposer
     /**
      * Assign collision-free local names across every FQCN map, then rewrite the types that use them.
      *
-     * Two sibling registries, exactly as ResourceTransformer runs them: types resolve first, and a const steps aside
-     * for every name a type took.
+     * Two sibling registries, exactly as ResourceTransformer runs them.
      */
     private function resolveImportConflicts(): void
     {
@@ -183,13 +182,10 @@ final class AnalysisComposer
             }
         }
 
-        $resolved = $registry->resolve();
-        $constRegistry->reserveMany(...array_values($resolved));
-
-        $this->applyResolvedImportNames(
-            $resolved,
+        $this->applyImportNameRegistries(
+            $registry,
+            $constRegistry,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
-            $constRegistry->resolve(),
         );
     }
 

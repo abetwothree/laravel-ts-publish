@@ -49,7 +49,8 @@ class MethodAnalysis
      * @param  ClassMapType  $modelFqcns  property name => model FQCN (from bare whenLoaded)
      * @param  InlineEnumFqcnsMap  $inlineEnumFqcns  property name => list of enum FQCNs embedded in inline object type strings
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
-     * @param  InlineResourceFqcnsMap  $inlineResourceFqcns  property name => the resource FQCN behind each resource token, in type order
+     * @param  InlineResourceFqcnsMap  $inlineResourceFqcns  property name => the resource FQCN behind each resource
+     *                                                       token, in type order
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,

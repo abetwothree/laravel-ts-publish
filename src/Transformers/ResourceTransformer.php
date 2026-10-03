@@ -122,7 +122,11 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, list<class-string>> property name => model FQCNs embedded in inline object type strings */
     protected array $propertyInlineModelFqcns = [];
 
-    /** @var array<string, list<class-string>> property name => the resource FQCN behind each resource token, in type order */
+    /**
+     * Property name => the resource FQCN behind each resource token, in type order.
+     *
+     * @var array<string, list<class-string>>
+     */
     protected array $propertyInlineResourceFqcns = [];
 
     /** @var array<string, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
@@ -965,16 +969,10 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        $resolved = $registry->resolve();
-
-        // A type import and a const import are both local names in the file, so a const steps aside for every name
-        // a type took: enum `Role`'s type and enum `RoleType`'s const would otherwise both be `RoleType`.
-        $constRegistry->reserveMany(...array_values($resolved));
-
-        $this->applyResolvedImportNames(
-            $resolved,
+        $this->applyImportNameRegistries(
+            $registry,
+            $constRegistry,
             $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap,
-            $constRegistry->resolve(),
         );
 
         return $this;
