@@ -172,6 +172,7 @@ Key capabilities include:
 - **Docblock-aware**: `@property`, `@phpstan-type`, and `Attribute<>` docblocks sharpen types, and PHPStan reads them too.
 - **Accessor getter bodies**: an accessor with a vague signature is typed from the value its getter returns.
 - **Nullable relations**: singular relations get `| null` from their type and foreign key, configurable per type.
+- **Related models**: a model outside your configured directories publishes when a published model relates to it.
 - **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types every column that uses a custom cast class.
 - **Enum columns**: a parallel `{Model}Resource` interface types each enum column as a resolved `AsEnum<>` instance.
 - **Hidden columns**: `$hidden` attributes publish unless you turn on `models.exclude_hidden`.
