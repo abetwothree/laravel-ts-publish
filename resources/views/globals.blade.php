@@ -25,6 +25,8 @@ $references = $transformer->globalTypeReferenceMap();
 $columns = $transformer->combinedColumns();
 $mutators = $transformer->combinedMutators();
 $appends = $transformer->combinedAppends();
+$countKeys = $transformer->relationCountKeys();
+$existsKeys = $transformer->relationExistsKeys();
 @endphp
 @if($transformer->description)
 {!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
@@ -61,10 +63,10 @@ $appends = $transformer->combinedAppends();
 {!! JsEmitter::formatJsDoc($relation['description'], 12) !!}
 @endif
             {!! JsEmitter::validJsObjectKey($name) !!}: {!! TsTypeString::qualifyGlobalType($relation['type'], $globalTypesByNamespace, $namespace, $references) !!};
-@if(in_array($name.'_count', $transformer->relationCountKeys, true))
+@if(in_array($name.'_count', $countKeys, true))
             {!! JsEmitter::validJsObjectKey($name.'_count') !!}: number;
 @endif
-@if(in_array($name.'_exists', $transformer->relationExistsKeys, true))
+@if(in_array($name.'_exists', $existsKeys, true))
             {!! JsEmitter::validJsObjectKey($name.'_exists') !!}: boolean;
 @endif
 @endforeach

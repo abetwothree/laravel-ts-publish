@@ -105,12 +105,12 @@ class JsonWriter
             $relationCounts = array_map(fn (string $name) => [
                 'name' => $name,
                 'type' => 'number',
-            ], $transformer->relationCountKeys);
+            ], $transformer->relationCountKeys());
 
             $relationExists = array_map(fn (string $name) => [
                 'name' => $name,
                 'type' => 'boolean',
-            ], $transformer->relationExistsKeys);
+            ], $transformer->relationExistsKeys());
 
             $data[$transformer->fqcn()] = [
                 'name' => $transformer->modelName,

@@ -58,7 +58,7 @@ describe('TsModelDto', function () {
             ->and($array['enumAppends'])->toBeEmpty();
     });
 
-    test('toArray carries the combined views beside the full lists', function () {
+    test('toArray carries the combined views beside the full lists, and null for one it was not given', function () {
         $status = ['constName' => 'Status', 'nullable' => false, 'isCollection' => false];
 
         $array = (new TsModelDto(
@@ -86,8 +86,8 @@ describe('TsModelDto', function () {
 
         expect(array_keys($array['columns']))->toBe(['id', 'supervisor'])
             ->and(array_keys($array['combinedColumns']))->toBe(['id'])
-            ->and($array['combinedMutators'])->toBe([])
-            ->and($array['combinedAppends'])->toBe([])
+            ->and($array['combinedMutators'])->toBeNull()
+            ->and($array['combinedAppends'])->toBeNull()
             ->and($array['enumColumns'])->toBe(['supervisor' => $status])
             ->and($array['combinedEnums'])->toBe([])
             ->and($array['typeImports'])->toBe(['../enums' => ['StatusType'], '.' => ['User']])

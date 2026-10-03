@@ -95,15 +95,6 @@ class ModelTransformer extends CoreTransformer
     /** @var RelationsList */
     public protected(set) array $relations = [];
 
-    /** @var list<string> Column, append and mutator keys a relation also publishes; the relation's type wins. */
-    public protected(set) array $shadowedKeys = [];
-
-    /** @var list<string> Each relation's `_count` key that no attribute or relation already publishes. */
-    public protected(set) array $relationCountKeys = [];
-
-    /** @var list<string> Each relation's `_exists` key that no attribute or relation already publishes. */
-    public protected(set) array $relationExistsKeys = [];
-
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
@@ -157,7 +148,6 @@ class ModelTransformer extends CoreTransformer
             ->transformColumns()
             ->transformMutators()
             ->transformRelations()
-            ->resolveKeyCollisions()
             ->resolveImportConflicts();
 
         return $this;
@@ -185,9 +175,9 @@ class ModelTransformer extends CoreTransformer
             mutators: $this->mutators,
             appends: $this->appends,
             relations: $this->relations,
-            shadowedKeys: $this->shadowedKeys,
-            relationCountKeys: $this->relationCountKeys,
-            relationExistsKeys: $this->relationExistsKeys,
+            shadowedKeys: $this->shadowedKeys(),
+            relationCountKeys: $this->relationCountKeys(),
+            relationExistsKeys: $this->relationExistsKeys(),
             typeImports: $imports['typeImports'],
             valueImports: $imports['valueImports'],
             enumColumns: $enumColumns,
@@ -247,6 +237,41 @@ class ModelTransformer extends CoreTransformer
     public function combinedCustomImports(): array
     {
         return $this->customImportsSpelledIn($this->combinedTypes());
+    }
+
+    /**
+     * The column, mutator and append keys a relation also publishes: Model::toArray() merges loaded relations over the
+     * attributes, so a combined interface leaves each such key to the relation.
+     *
+     * Read from the current lists, as the count and exists keys are, so a subclass may adjust them after transform().
+     *
+     * @return list<string>
+     */
+    public function shadowedKeys(): array
+    {
+        $attributes = $this->columns + $this->appends + $this->mutators;
+
+        return array_map(strval(...), array_keys(array_intersect_key($this->relations, $attributes)));
+    }
+
+    /**
+     * Each relation's `_count` key that no attribute or relation already publishes, as a counter-cache column can.
+     *
+     * @return list<string>
+     */
+    public function relationCountKeys(): array
+    {
+        return $this->freeRelationKeys('_count');
+    }
+
+    /**
+     * Each relation's `_exists` key that no attribute or relation already publishes.
+     *
+     * @return list<string>
+     */
+    public function relationExistsKeys(): array
+    {
+        return $this->freeRelationKeys('_exists');
     }
 
     protected function initInstance(): self
@@ -603,31 +628,16 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Find the attribute keys a relation also publishes, and each relation's count and exists key that is still free.
+     * Each relation's key with the given suffix, unless an attribute or a relation already publishes it.
      *
-     * Model::toArray() merges loaded relations over attributes, so the relation owns a shared key; a count or exists
-     * key an attribute already publishes, such as a counter-cache column, stays the attribute's.
+     * @return list<string>
      */
-    protected function resolveKeyCollisions(): self
+    protected function freeRelationKeys(string $suffix): array
     {
-        $attributes = $this->columns + $this->appends + $this->mutators;
-        $taken = $attributes + $this->relations;
+        $taken = $this->columns + $this->appends + $this->mutators + $this->relations;
+        $keys = array_map(fn (int|string $name): string => $name.$suffix, array_keys($this->relations));
 
-        foreach (array_keys($this->relations) as $name) {
-            if (isset($attributes[$name])) {
-                $this->shadowedKeys[] = (string) $name;
-            }
-
-            if (! isset($taken[$name.'_count'])) {
-                $this->relationCountKeys[] = $name.'_count';
-            }
-
-            if (! isset($taken[$name.'_exists'])) {
-                $this->relationExistsKeys[] = $name.'_exists';
-            }
-        }
-
-        return $this;
+        return array_values(array_filter($keys, fn (string $key): bool => ! isset($taken[$key])));
     }
 
     /**
@@ -640,7 +650,7 @@ class ModelTransformer extends CoreTransformer
      */
     protected function withoutShadowed(array $list): array
     {
-        return array_diff_key($list, array_flip($this->shadowedKeys));
+        return array_diff_key($list, array_flip($this->shadowedKeys()));
     }
 
     /**

@@ -1,4 +1,9 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
+@php
+    // A DTO built without the count and exists keys renders one of each per relation.
+    $countKeys = $data->relationCountKeys ?? array_map(fn ($name) => $name . '_count', array_keys($data->relations));
+    $existsKeys = $data->relationExistsKeys ?? array_map(fn ($name) => $name . '_exists', array_keys($data->relations));
+@endphp
 @if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
 import { type AsEnum } from '@tolki/ts';
 
@@ -87,15 +92,15 @@ export interface {{ $data->modelName }}Relations
 @endif
     {!! JsEmitter::validJsObjectKey($name) !!}: {!!  $relation['type'] !!};
 @endforeach
-@if (count($data->relationCountKeys) > 0)
+@if (count($countKeys) > 0)
     // Counts
-@foreach ($data->relationCountKeys as $key)
+@foreach ($countKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: number;
 @endforeach
 @endif
-@if (count($data->relationExistsKeys) > 0)
+@if (count($existsKeys) > 0)
     // Exists
-@foreach ($data->relationExistsKeys as $key)
+@foreach ($existsKeys as $key)
     {!! JsEmitter::validJsObjectKey($key) !!}: boolean;
 @endforeach
 @endif

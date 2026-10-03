@@ -399,9 +399,15 @@ test('the globals template qualifies each name through its own transformer\'s ma
 
         public array $relations = ['owner' => ['type' => 'RelationName', 'description' => '']];
 
-        public array $relationCountKeys = [];
+        public function relationCountKeys(): array
+        {
+            return [];
+        }
 
-        public array $relationExistsKeys = [];
+        public function relationExistsKeys(): array
+        {
+            return [];
+        }
 
         public function combinedColumns(): array
         {

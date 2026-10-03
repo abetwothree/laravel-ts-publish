@@ -31,26 +31,27 @@ use JsonSerializable;
  *    mutators: MutatorsList,
  *    appends: AppendsList,
  *    relations: RelationsList,
- *    shadowedKeys: list<string>,
- *    relationCountKeys: list<string>,
- *    relationExistsKeys: list<string>,
+ *    shadowedKeys: list<string>|null,
+ *    relationCountKeys: list<string>|null,
+ *    relationExistsKeys: list<string>|null,
  *    enumColumns: EnumPropertiesList,
  *    enumMutators: EnumPropertiesList,
  *    enumAppends: EnumPropertiesList,
  *    tsExtends: list<string>,
- *    combinedColumns: ColumnsList,
- *    combinedMutators: MutatorsList,
- *    combinedAppends: AppendsList,
- *    combinedEnums: EnumPropertiesList,
- *    combinedTypeImports: TypesImportMap,
- *    combinedValueImports: ValuesImportMap,
+ *    combinedColumns: ColumnsList|null,
+ *    combinedMutators: MutatorsList|null,
+ *    combinedAppends: AppendsList|null,
+ *    combinedEnums: EnumPropertiesList|null,
+ *    combinedTypeImports: TypesImportMap|null,
+ *    combinedValueImports: ValuesImportMap|null,
  * }
  *
  * A combined interface declares the attributes beside the relations, as the `model-full` template's model interface and
  * the globals file's do. A key a relation shares is the relation's there, so each `combined*` member leaves out the
- * attribute under it, and the imports only that attribute used.
+ * attribute under it, and the imports only that attribute used. A DTO built without these members renders as a model
+ * that shares no key: no shadowed key, each `combined*` list the full one, and a count and exists key per relation.
  *
- * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|AppendsList|TypesImportMap|ValuesImportMap|EnumPropertiesList|list<string>>
+ * @implements Arrayable<string, string|ColumnsList|RelationsList|MutatorsList|AppendsList|TypesImportMap|ValuesImportMap|EnumPropertiesList|list<string>|null>
  */
 final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSerializable
 {
@@ -65,15 +66,15 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
      * @param  EnumPropertiesList  $enumMutators
      * @param  EnumPropertiesList  $enumAppends
      * @param  list<string>  $tsExtends
-     * @param  list<string>  $shadowedKeys  attribute keys a relation also publishes
-     * @param  list<string>  $relationCountKeys  the `_count` keys to publish
-     * @param  list<string>  $relationExistsKeys  the `_exists` keys to publish
-     * @param  ColumnsList  $combinedColumns  the columns a combined interface declares
-     * @param  MutatorsList  $combinedMutators  the mutators a combined interface declares
-     * @param  AppendsList  $combinedAppends  the appends a combined interface declares
-     * @param  EnumPropertiesList  $combinedEnums  the enum keys a combined interface's `Resource` re-declares
-     * @param  TypesImportMap  $combinedTypeImports  the type imports a combined interface uses
-     * @param  ValuesImportMap  $combinedValueImports  the const imports a combined interface's `Resource` uses
+     * @param  list<string>|null  $shadowedKeys  attribute keys a relation also publishes
+     * @param  list<string>|null  $relationCountKeys  the `_count` keys to publish
+     * @param  list<string>|null  $relationExistsKeys  the `_exists` keys to publish
+     * @param  ColumnsList|null  $combinedColumns  the columns a combined interface declares
+     * @param  MutatorsList|null  $combinedMutators  the mutators a combined interface declares
+     * @param  AppendsList|null  $combinedAppends  the appends a combined interface declares
+     * @param  EnumPropertiesList|null  $combinedEnums  the enum keys a combined interface's `Resource` re-declares
+     * @param  TypesImportMap|null  $combinedTypeImports  the type imports a combined interface uses
+     * @param  ValuesImportMap|null  $combinedValueImports  the const imports a combined interface's `Resource` uses
      */
     public function __construct(
         public string $modelName,
@@ -91,15 +92,15 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
         public array $enumMutators = [],
         public array $enumAppends = [],
         public array $tsExtends = [],
-        public array $shadowedKeys = [],
-        public array $relationCountKeys = [],
-        public array $relationExistsKeys = [],
-        public array $combinedColumns = [],
-        public array $combinedMutators = [],
-        public array $combinedAppends = [],
-        public array $combinedEnums = [],
-        public array $combinedTypeImports = [],
-        public array $combinedValueImports = [],
+        public ?array $shadowedKeys = null,
+        public ?array $relationCountKeys = null,
+        public ?array $relationExistsKeys = null,
+        public ?array $combinedColumns = null,
+        public ?array $combinedMutators = null,
+        public ?array $combinedAppends = null,
+        public ?array $combinedEnums = null,
+        public ?array $combinedTypeImports = null,
+        public ?array $combinedValueImports = null,
     ) {}
 
     /**
@@ -110,7 +111,7 @@ final readonly class TsModelDto implements Arrayable, Datable, Jsonable, JsonSer
      */
     public function withoutShadowedKeys(string $interface, array $keys): string
     {
-        $shadowed = array_values(array_intersect($this->shadowedKeys, array_map(strval(...), $keys)));
+        $shadowed = array_values(array_intersect($this->shadowedKeys ?? [], array_map(strval(...), $keys)));
 
         if ($shadowed === []) {
             return $interface;
