@@ -30,6 +30,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UninspectableTrail;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UninspectableTrailFacility;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
@@ -998,6 +1000,56 @@ describe('PublishedModelRegistry run boundary', function () {
             ->and($modelContent($runner, 'database-notification'))->toBeNull()
             ->and($modelContent($runner, 'user'))->not->toContain('DatabaseNotification')
             ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(DatabaseNotification::class);
+    });
+
+    // Collects a model whose relation reaches one that throws when its relations are read on a blank instance.
+    $reachUninspectableTrail = function (): void {
+        config()->set('ts-publish.models.additional_directories', [
+            ...config()->array('ts-publish.models.additional_directories'),
+            UninspectableTrailFacility::class,
+        ]);
+    };
+
+    $uninspectableTrailWarnings = fn (): array => array_values(array_filter(
+        AnalysisWarnings::all(),
+        fn (array $warning): bool => $warning['subject'] === UninspectableTrail::class,
+    ));
+
+    test('a model a relation reaches that cannot be inspected is left out with one warning, and the run completes', function () use ($modelContent, $reachUninspectableTrail, $uninspectableTrailWarnings) {
+        $reachUninspectableTrail();
+
+        $runner = new Runner;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(UninspectableTrailFacility::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(UninspectableTrail::class))->toBeFalse()
+            ->and($modelContent($runner, 'uninspectable-trail'))->toBeNull()
+            ->and($modelContent($runner, 'uninspectable-trail-facility'))
+            ->toContain('export interface UninspectableTrailFacility')
+            ->not->toContain('trails')
+            ->not->toContain('import')
+            ->and($uninspectableTrailWarnings())->toBe([[
+                'subject' => UninspectableTrail::class,
+                'message' => 'Is reached through a relation, but inspecting it threw [Attempt to read property "name" on null], '
+                    .'so it is not published and no generated file names it.',
+            ]]);
+    });
+
+    test('a run that reads no table leaves the same model out, with the same warning', function () use ($reachUninspectableTrail, $uninspectableTrailWarnings) {
+        $reachUninspectableTrail();
+
+        $runner = new Runner;
+        $runner->shouldPublishModels = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->run();
+
+        expect(PublishedModelRegistry::isPublished(UninspectableTrailFacility::class))->toBeTrue()
+            ->and(PublishedModelRegistry::isPublished(UninspectableTrail::class))->toBeFalse()
+            ->and($uninspectableTrailWarnings())->toBe([[
+                'subject' => UninspectableTrail::class,
+                'message' => 'Is reached through a relation, but inspecting it threw [Attempt to read property "name" on null], '
+                    .'so it is not published and no generated file names it.',
+            ]]);
     });
 
     test('a run that skips the model phase still reads the set, so its other phases name the same models', function () {

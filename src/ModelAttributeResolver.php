@@ -73,6 +73,13 @@ class ModelAttributeResolver
     protected array $relationContexts = [];
 
     /**
+     * Per-FQCN message of the exception a context read caught: the reason a related model is left out.
+     *
+     * @var array<class-string, string>
+     */
+    protected array $contextFailures = [];
+
+    /**
      * Reverse morph-target map: parent FQCNs declaring a MorphOne/MorphMany pointing at a child.
      *
      * Keyed twice per relation — `childFqcn|morphName` so two differently-named morphTos on one child
@@ -898,7 +905,8 @@ class ModelAttributeResolver
 
     /**
      * The given models, then every model their relations reach, transitively, that the filter accepts, sorted by name.
-     * With `$withoutTables`, relations are read by reflection alone, so no model's table is read.
+     * With `$withoutTables`, relations are read by reflection alone, so no model's table is read. A reached model whose
+     * context that read cannot resolve stays out, with a warning.
      *
      * @param  list<class-string>  $modelFqcns
      * @param  Closure(class-string): bool  $accepts
@@ -912,9 +920,8 @@ class ModelAttributeResolver
 
         while ($pending !== []) {
             $model = array_shift($pending);
-            $context = $withoutTables ? $this->resolveRelationContext($model) : $this->resolveContext($model);
 
-            foreach ($context['relations'] ?? [] as $relation) {
+            foreach ($this->contextFor($model, $withoutTables)['relations'] ?? [] as $relation) {
                 // A morphTo names its own model as the related one; only a docblock generic names models to add,
                 // because the reverse map's parents are in the set already.
                 $targets = str_ends_with($relation['type'], 'MorphTo')
@@ -928,10 +935,22 @@ class ModelAttributeResolver
 
                     $seen[$target] = true;
 
-                    if ($accepts($target)) {
-                        $related[] = $target;
-                        $pending[] = $target;
+                    if (! $accepts($target)) {
+                        continue;
                     }
+
+                    // Generating a model its reader cannot inspect would stop the run, so it stays out and says why.
+                    if ($this->contextFor($target, $withoutTables) === null) {
+                        AnalysisWarnings::add($target, sprintf(
+                            'Is reached through a relation, but inspecting it threw [%s], so it is not published and no generated file names it.',
+                            $this->contextFailures[$target] ?? '',
+                        ));
+
+                        continue;
+                    }
+
+                    $related[] = $target;
+                    $pending[] = $target;
                 }
             }
         }
@@ -953,7 +972,7 @@ class ModelAttributeResolver
         $map = [];
 
         foreach ($modelFqcns as $parentFqcn) {
-            $ctx = $withoutTables ? $this->resolveRelationContext($parentFqcn) : $this->resolveContext($parentFqcn);
+            $ctx = $this->contextFor($parentFqcn, $withoutTables);
 
             if ($ctx === null) {
                 continue;
@@ -1337,8 +1356,10 @@ class ModelAttributeResolver
             ];
 
             return $this->contexts[$modelFqcn];
-        } catch (Throwable) { // @codeCoverageIgnore
-            return null; // @codeCoverageIgnore
+        } catch (Throwable $exception) {
+            $this->contextFailures[$modelFqcn] = $exception->getMessage();
+
+            return null;
         }
     }
 
@@ -1373,7 +1394,9 @@ class ModelAttributeResolver
                 'instance' => $instance,
                 'relations' => resolve(ModelInspector::class)->relationsOf($instance),
             ];
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->contextFailures[$modelFqcn] = $exception->getMessage();
+
             return null;
         }
     }
@@ -1391,5 +1414,16 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * A model's context through the reader a pass uses: its instance and relations alone without tables, else in full.
+     *
+     * @param  class-string  $modelFqcn
+     * @return RelationContext|null
+     */
+    private function contextFor(string $modelFqcn, bool $withoutTables): ?array
+    {
+        return $withoutTables ? $this->resolveRelationContext($modelFqcn) : $this->resolveContext($modelFqcn);
     }
 }
