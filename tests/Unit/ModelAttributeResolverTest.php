@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -924,6 +925,44 @@ describe('withRelatedModels()', function () {
             AuditNote::class,
         ]);
     });
+
+    test('leaves out, with one warning, a model reached whose context cannot be read at all', function (bool $withoutTables) {
+        $inspector = new class(app()) extends ModelInspector
+        {
+            public function relationsOf(Model $model): Collection
+            {
+                if ($model instanceof AuditTrail) {
+                    throw new RuntimeException('The trail store is offline.');
+                }
+
+                return parent::relationsOf($model);
+            }
+
+            public function inspect($model, $connection = null): Arrayable
+            {
+                if ($model === AuditTrail::class) {
+                    throw new RuntimeException('The trail store is offline.');
+                }
+
+                return parent::inspect($model, $connection);
+            }
+        };
+        app()->instance(ModelInspector::class, $inspector);
+
+        $related = (new ModelAttributeResolver)->withRelatedModels(
+            [Facility::class],
+            fn (string $class): bool => str_starts_with($class, 'Workbench\\App\\Packages\\Audit\\'),
+            $withoutTables,
+        );
+
+        // AuditArchive and AuditNote are reached only through AuditTrail, so neither is reached at all.
+        expect($related)->toBe([Facility::class, AuditInspector::class])
+            ->and(AnalysisWarnings::all())->toBe([[
+                'subject' => AuditTrail::class,
+                'message' => 'Is reached through a relation, but inspecting it threw [The trail store is offline.], '
+                    .'so it is not published and no generated file names it.',
+            ]]);
+    })->with(['reading tables' => [false], 'reading no table' => [true]]);
 
     test('never follows the relations of a model the filter refused', function () {
         $related = resolve(ModelAttributeResolver::class)->withRelatedModels(

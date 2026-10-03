@@ -219,8 +219,9 @@ Every site that names a model asks [`PublishedModelRegistry`](../../src/Cache/Pu
 `BaseRunner::buildModelMorphTargetMap()` fills it with the collected models, then with each model `withRelatedModels()`
 reaches from them through relations and `morphTo` docblock targets, and theirs in turn. A reached model joins only when
 `CoreCollector::accepts()` allows it and its table or view exists, so `Notifiable`'s `DatabaseNotification` stays out of
-an app that never migrated `notifications`. It also needs a context its pass can read: one whose relation needs runtime
-state would stop the run when generated, so it stays out with a warning naming the exception.
+an app that never migrated `notifications`. A relation method that throws on a blank model, such as one that reads
+runtime state, is left out of its model with a warning (`ModelInspector::getRelations()`). A model whose context still
+cannot be read stays out, with a warning naming the exception, since generating it would stop the run.
 
 These sites read the set:
 
