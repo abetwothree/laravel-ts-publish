@@ -68,12 +68,10 @@ The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only o
 wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
-`qualifyGlobalType()` reads each name once: through the `$aliasResolution` entry, else as the current namespace's own
-name, else as the first namespace that owns it. The globals template passes each transformer's
-`globalTypeReferenceMap()`, which `ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's
-file imports, aliased or not, so a name two namespaces publish resolves as that file's import does. The first owning
-namespace decides only for a name no FQCN map carries, such as one a `#[TsCasts]` string spells. `GlobalsWriterTest`
-pins both collection orders.
+The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
+`ResolvesImportConflicts::qualifiedImportNames()` builds from every name the class's file imports, aliased or not, so a
+name two namespaces publish resolves as that file's import does. For a name no FQCN map carries, such as one a
+`#[TsCasts]` string spells, the first namespace that owns it decides. `GlobalsWriterTest` pins both collection orders.
 
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
@@ -81,11 +79,11 @@ one home for their test or spelling, so a new caller uses them rather than a loc
 ### `TsNaming`
 
 `namespaceToPath()` and `globalNamespace()` read one namespace two ways, and neither stands in for the other. A path
-kebab-cases each segment, which an identifier cannot hold. `globalNamespace()` lowers only a segment's leading
-capitals, so `ReportCards` is `reportCards` and `HTTPClient` is `httpClient`. It suffixes `_` to a reserved word in
-the first position, the only place TypeScript rejects one. The globals file reads it through
-`CoreTransformer::globalNamespace()`, and `SummaryCardResource`, under `Http\Resources\ReportCards`, pins it in every
-generated tree.
+kebab-cases each segment, and an identifier cannot hold a hyphen. `globalNamespace()` lowers a segment's leading
+capital, or its leading acronym as one word, so `ReportCards` is `reportCards` and `HTTPClient` is `httpClient`. It
+suffixes `_` to a reserved word in the first position, the only place TypeScript rejects one. The globals file reads it
+through `CoreTransformer::globalNamespace()`, and `SummaryCardResource`, under `Http\Resources\ReportCards`, pins it in
+every generated tree.
 
 ### `StringSerialization`
 

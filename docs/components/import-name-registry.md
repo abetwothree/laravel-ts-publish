@@ -51,8 +51,7 @@ The result holds two invariants:
 
 ## Rewriting aliased type references
 
-`applyResolvedImportNames()` records a type alias where the resolved name differs from the type name, and a const alias
-where the const registry's name differs from the const name, each on its own account: an enum reached only through an
+`applyResolvedImportNames()` aliases a type and a const each on its own account, since an enum reached only through an
 inline `EnumResource::make()` has no type import to alias. It calls the consumer's `rewriteTypeReferences()` once if a
 type was aliased.
 
@@ -75,10 +74,10 @@ to `classFqcns`.
 
 Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
 class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
-classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`).
-`InlineArrayHandler::memberFqcns()` queues each member of an inline array through `ClassTokenQueue::perToken()`, which
-repairs a queue to one entry per token only for a name with one class behind it, so `User[] | Record<string, User>`
-queues its class twice.
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineArrayHandler::memberFqcns()`
+queues each member of an inline array through `ClassTokenQueue::perToken()`, as the merge above does for each decorated
+arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a resource do
+not both queue, so `User[] | Record<string, User>` queues its class twice.
 
 Callers fill their queues in one of two ways:
 
@@ -123,7 +122,7 @@ so does a model `Grade` imported beside the `Grade` enum's const. The `Badge` fi
 
 The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
 name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
-collision, which no alias can settle:
+collision, which no alias can settle.
 [Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records it.
 
 ### `ModelTransformer`

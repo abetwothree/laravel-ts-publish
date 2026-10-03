@@ -422,9 +422,8 @@ union, such as `reviewable?: ArtistResource | VenueResource`, reporting the clas
 union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is wrong
 for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
-`MethodAnalysis::addProperty()` also queues those classes under the property in `inlineResourceFqcns`, one per token,
-and `InlineArrayHandler` builds the same queue for an inline array, spread arms first and then each member.
-`ImageReviewResource` pins both.
+`MethodAnalysis::addProperty()` also queues the union's classes under the property in `inlineResourceFqcns`, one per
+token, and `InlineArrayHandler` builds the same queue for an inline array. `ImageReviewResource` pins both.
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
@@ -595,8 +594,7 @@ Its import clean-up compares values, so it is right for both kinds.
 steps depend on it:
 
 - **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
-  holds none of the enums' type names. It runs first, since `pruneOverriddenEnumImports()` removes the names it reads.
-  An enum whose const the type writes after `typeof`, by name or alias, stays an inline wrap.
+  holds none of the enums' type names, and runs before `pruneOverriddenEnumImports()`, which removes the names it reads.
   `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name and no key
   reads it bare, since `pruneOverriddenEnumImports()` cannot tell the two apart. `pruneOverriddenAnalysisImports()` and
   `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
@@ -632,9 +630,8 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`unionResults()` reads a union by class, not by text, when its arms spell one name for two classes, which
-`ValueResult::spellsTwoClassesAlike()` detects. `withMembersByClass()` does the reading, through
-[`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
+`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`, which
+reads it by class through [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
 [Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
 `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
 `mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary, to-many and inline-array

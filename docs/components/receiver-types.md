@@ -280,8 +280,8 @@ Each class types the property one of two ways:
 an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `string`. `resolve()` on the whole expression
 answers `null`, which reads as no false string, so `A`'s arm would publish as `string`.
 
-The answers of several classes merge through `ValueResult::unionResults()`, which tells same-named models or resources
-apart where it can ([Import name registry][queue-contract]), and one declining arm declines the read. The read gains
+The answers of several classes merge through `ValueResult::unionResults()`, which follows the
+[registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
 `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
 `VariableHandler` claim these node classes earlier. [The inventory][inventory] records where each steps aside, and where
 `VariableHandler` does not.

@@ -320,9 +320,9 @@ branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `ali
 `inlineEnumResourceFqcns`, walks each as a positional queue against the type's tokens, so a property naming the same
 class twice needs two entries.
 
-`forgetChannels()` is the dual of `addProperty()`: it drops every entry keyed by one property, for a key another value
-takes over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset channels by hand
-would miss the next one added.
+`forgetChannels()` drops every channel entry and cast mark keyed by one property, when another value takes the key
+over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset channels by hand would
+miss the next channel added.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
 owns its rules.
@@ -463,9 +463,9 @@ These pages cover the engine's neighbors:
 [gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
 [gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
-[published-models]: model-attribute-resolver.md#models-a-run-publishes
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
+[published-models]: model-attribute-resolver.md#models-a-run-publishes
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
 [spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
 [ternary]: receiver-types.md#a-ternarys-instanceof-condition

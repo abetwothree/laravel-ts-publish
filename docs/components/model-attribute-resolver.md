@@ -228,16 +228,13 @@ These sites read the set:
 - `ModelTransformer::transformRelations()` leaves such a relation out, with its `_count` and `_exists` keys, and
   `exportedTypeInfo()` publishes `unknown` for a column or accessor type naming such a class.
 - `MethodAnalysis::addProperty()` declines a value whose model channels name one, through
-  `ValueResult::namesOnlyExportedClasses()`. It is the net under every analyzer, for a class no earlier site caught.
+  `ValueResult::namesOnlyExportedClasses()`. It is the last check, for a class no earlier site caught.
 
-[`PublishedClasses::exports()`](../../src/Cache/PublishedClasses.php) is the question they share. A model reads the
-model set, a resource reads `PublishedResourceRegistry`, a plain class has no generated file, and an enum or a name
-that is no class stays as spelled.
+[`PublishedClasses::exports()`](../../src/Cache/PublishedClasses.php) is the question they share.
 
 The registry fails open while it is empty. A full run fills it in the model phase. A run that skips that phase fills it
 when a later phase runs and `models.enabled` is on, and `RunnerForSource` fills it for every class but an enum, so a
-partial or watcher run names the same models as a full one. A run with model publishing off in config, or one that
-publishes nothing that can name a model, reads no set.
+partial or watcher run names the same models as a full one.
 
 Two caches follow the set. `BaseRunner::cachedGenerate()` folds `PublishedModelRegistry::signature()` into every
 fingerprint, because a model joining or leaving the set changes what its neighbors may name without touching their
