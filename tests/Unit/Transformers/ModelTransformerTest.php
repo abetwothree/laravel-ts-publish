@@ -1780,12 +1780,13 @@ describe('ModelTransformer with a published model set', function () {
             ->and(json_encode($data->typeImports))->not->toContain('User');
     });
 
+    // Keyed rows: older Pest calls a flat [Model::class, string] list as a static method (a model has __callStatic).
     test('an accessor naming a class no file is generated for publishes unknown, whatever the set', function (string $model) {
         $data = (new ModelTransformer($model))->data();
 
         expect($data->mutators['handle']['type'])->toBe('unknown')
             ->and(json_encode($data->typeImports))->not->toContain('OpaqueHandle');
-    })->with([AuthoredPost::class, Facility::class]);
+    })->with(['AuthoredPost' => [AuthoredPost::class], 'Facility' => [Facility::class]]);
 });
 
 describe('ModelTransformer with a published set that leaves out a #[TsExclude]d model and a morphTo target', function () {
