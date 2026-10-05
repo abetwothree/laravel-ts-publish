@@ -66,6 +66,20 @@ When working on this project, make sure to use the available MCP servers and ski
 
 Use the skills in `.claude/skills` to help follow the best practices and standards.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for abetwothree/laravel-ts-publish, worked through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` at the repo root, with ADRs in `docs/decisions/`. See `docs/agents/domain.md`.
+
 ## To do lists
 
 When it makes sense, create a to-do list when working on a feature or bugfix. Use checkboxes so that it's easy to see what is done and what is left to do.
