@@ -11,8 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
@@ -35,6 +37,7 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
+use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ReviewResource;
@@ -45,6 +48,7 @@ use Workbench\App\Models\Address;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Image;
+use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Review;
@@ -973,4 +977,69 @@ it('does not read two enum resources and a null as a union of enum resources', f
         'optional' => false,
         'embeddedEnumFqcns' => [Status::class, Visibility::class],
     ]);
+});
+
+// when() calls its closure with no argument, so one requiring a parameter throws whenever the condition holds. The
+// parameter stays bound, so the key publishes what the intended `fn () => $this->status` would.
+it('warns that a when() or unless() closure requiring a parameter throws, and keeps its binding', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(ConditionalParamEnumResource::class), Order::class)->analyze();
+    $statusBare = collect($analysis->properties)->firstWhere('name', 'status_bare');
+
+    // The three when() closures warn; the whenLoaded() closure beside them is passed its relation.
+    expect($statusBare['type'])->toBe('OrderStatusType')
+        ->and(AnalysisWarnings::all())->toHaveCount(3)
+        ->and(AnalysisWarnings::all())->toContain([
+            'subject' => ConditionalParamEnumResource::class,
+            'message' => 'when() on line 41 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+        ]);
+});
+
+it('records one warning, naming the call, for a when() or unless() closure that requires a parameter', function (string $php, string $message) {
+    conditionalMethodHandlerResolveOnPost($php);
+
+    expect(AnalysisWarnings::all())->toBe([['subject' => PostResource::class, 'message' => $message]]);
+})->with([
+    'when()' => [
+        '$this->when($this->title, fn ($t) => $t)',
+        'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'unless()' => [
+        '$this->unless($this->title, fn ($t) => $t)',
+        'unless() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'a condition that binds nothing' => [
+        '$this->when($this->id > 0, fn ($t) => $t)',
+        'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+]);
+
+it('records the warning once, however often the call is analyzed', function () {
+    conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t) => $t)');
+    conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t) => $t)');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
+});
+
+// A closure Laravel can call with no argument never throws for it, so nothing is warned of.
+it('records no warning for a when() or unless() value Laravel can call with no arguments', function (string $php) {
+    conditionalMethodHandlerResolveOnPost($php);
+
+    expect(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'an optional parameter' => ['$this->when($this->title, fn ($t = null) => $t)'],
+    'a variadic parameter' => ['$this->when($this->title, fn (...$t) => $t)'],
+    'no parameter' => ['$this->when($this->title, fn () => $this->title)'],
+    'a value that is no closure' => ['$this->when($this->title, $this->title)'],
+    'unless(), an optional parameter' => ['$this->unless($this->title, fn ($t = null) => $t)'],
+]);
+
+// Conditionable::when() passes its callback the object and the value, so a callback that takes them is right. Only an
+// API resource's profile reads `$this->when()` as JsonResource::when(), which passes nothing.
+it('records no warning for a $this->when() whose subject is no API resource', function () {
+    $subject = new ReflectionClass(ConditionableBroadcastEvent::class);
+    $call = new AstParser()->parseSource('<?php $this->when($this->user->exists, fn ($event, $value) => $value);')[0]->expr;
+
+    new ResourceAstAnalyzer($subject, User::class, 'broadcastWith', null, new AnalysisScope($subject, User::class))->resolve($call);
+
+    expect(AnalysisWarnings::all())->toBe([]);
 });

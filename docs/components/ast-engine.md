@@ -197,7 +197,8 @@ These rules settle the cases the table leaves open:
   for one.
 - **`when()` and `unless()` bind a required first parameter anyway**: they bind the condition's `$this->prop`, although
   Laravel passes nothing and the call throws `ArgumentCountError`. The workbench pins it with
-  `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays.
+  `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays, and `ts:publish` warns that the
+  call throws.
 - **`whenAggregated()` publishes `number` for an aggregate it cannot type**: a driver can return a numeric or date
   string instead, such as a MySQL `SUM()`, which that `number` does not describe.
 

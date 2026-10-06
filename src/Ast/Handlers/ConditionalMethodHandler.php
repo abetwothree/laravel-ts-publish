@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -204,6 +205,10 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($condition === null || $valueArg === null) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
+        }
+
+        if ($this->closureRequiresArguments($valueArg->value)) {
+            $this->warnOfUnpassedArgument($method, $valueArg->value, $scope);
         }
 
         $previousNameBindings = $scope->nameBindings();
@@ -717,6 +722,19 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
             $scope->closureParamExprBindings[$firstParam->var->name] = $thisPropExpr;
         }
+    }
+
+    /**
+     * Warn that a when() or unless() closure requires an argument Laravel never passes, so it throws whenever it runs.
+     */
+    private function warnOfUnpassedArgument(string $method, Expr $closure, AnalysisScope $scope): void
+    {
+        AnalysisWarnings::addOnce($scope->subjectReflection->getName(), sprintf(
+            '%s() on line %d calls its closure with no arguments, so the closure throws ArgumentCountError whenever it '
+            .'runs. Read the value inside the closure instead of taking it as a parameter.',
+            $method,
+            $closure->getStartLine(),
+        ));
     }
 
     /**
