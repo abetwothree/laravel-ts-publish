@@ -29,7 +29,7 @@ final class MatchHandler implements ExpressionHandler
     }
 
     /**
-     * Union every arm's result, leaving out an arm the engine cannot type as a ternary does (D1).
+     * Union every arm's result, leaving out an arm the engine cannot type, as a ternary does.
      *
      * @return ValueExpressionResult|null
      */
@@ -56,6 +56,10 @@ final class MatchHandler implements ExpressionHandler
             $results[] = $result;
         }
 
-        return $results === [] ? null : ValueResult::unionResults($results);
+        if ($results === []) {
+            return null;
+        }
+
+        return ValueResult::withEnumArmShapes(ValueResult::unionResults($results), $results);
     }
 }

@@ -227,6 +227,59 @@ final class ValueResult
     }
 
     /**
+     * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
+     *
+     * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union
+     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their shape.
+     * A Closure defers resolving the arms again until the union proves mixed, since only then is it worth the cost.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<ValueExpressionResult>|Closure(): list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    public static function withEnumArmShapes(array $union, array|Closure $arms): array
+    {
+        if (! isset($union['enumFqcn'], $union['directEnumFqcn']) || $union['enumFqcn'] !== $union['directEnumFqcn']) {
+            return $union;
+        }
+
+        /** @var list<bool> $wrapIsList one entry per arm that wraps */
+        $wrapIsList = [];
+        /** @var list<bool> $directIsList one entry per arm that reads directly */
+        $directIsList = [];
+
+        foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
+            $wraps = isset($arm['enumFqcn']);
+            $reads = isset($arm['directEnumFqcn']);
+
+            // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
+            if ($wraps && $reads) {
+                return $union;
+            }
+
+            $isList = str_ends_with(rtrim(str_replace('| null', '', $arm['type'])), '[]');
+
+            if ($wraps) {
+                $wrapIsList[] = $isList;
+            } elseif ($reads) {
+                $directIsList[] = $isList;
+            }
+        }
+
+        $wrapShapes = array_values(array_unique($wrapIsList));
+        $directShapes = array_values(array_unique($directIsList));
+
+        if (count($wrapShapes) !== 1 || count($directShapes) !== 1) {
+            return $union;
+        }
+
+        $union['wrapIsCollection'] = $wrapShapes[0];
+        $union['directIsArray'] = $directShapes[0];
+
+        return $union;
+    }
+
+    /**
      * The result's model queue, when two of its models share a name and the queue does not outrun the type's tokens.
      *
      * Reads the model channels only. ResultTypeInfoBridge hands the queue on as a type info's classTokenFqcns.

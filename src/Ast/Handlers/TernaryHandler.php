@@ -21,9 +21,6 @@ use PhpParser\Node\Expr\Ternary;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type TernaryArms = array{Expr, Expr}
- * @phpstan-type ArmResults = array{ValueExpressionResult, ValueExpressionResult}
- *
  * @internal
  */
 final class TernaryHandler implements ExpressionHandler
@@ -69,7 +66,10 @@ final class TernaryHandler implements ExpressionHandler
         }
 
         if ($proof === null || $narrowed === null) {
-            return $this->recordMixedArmShapes(ValueResult::analyzeClosureUnion($arms, $engine, $scope), $arms, $engine);
+            return ValueResult::withEnumArmShapes(
+                ValueResult::analyzeClosureUnion($arms, $engine, $scope),
+                static fn (): array => array_map($engine->resolve(...), $arms),
+            );
         }
 
         $other = $engine->resolve($arms[1 - $proof[2]]);
@@ -82,65 +82,8 @@ final class TernaryHandler implements ExpressionHandler
             }
         }
 
-        return $this->recordMixedArmShapes(ValueResult::unionResults($results), $arms, $engine, $results);
-    }
-
-    /**
-     * A mixed union (one arm wraps via EnumResource, the other reads directly) collapses to one
-     * deduped bare type name, so the merged result alone can't tell an array-shaped arm from a
-     * scalar one — re-resolving each arm here, while still distinct, is the only place that survives.
-     *
-     * @param  ValueExpressionResult  $result
-     * @param  TernaryArms  $arms
-     * @param  ArmResults|null  $armResults  both arms, under any narrowing
-     * @return ValueExpressionResult
-     */
-    private function recordMixedArmShapes(array $result, array $arms, ExpressionEngine $engine, ?array $armResults = null): array
-    {
-        if (! isset($result['enumFqcn'], $result['directEnumFqcn']) || $result['enumFqcn'] !== $result['directEnumFqcn']) {
-            return $result;
-        }
-
-        // Reuse the narrowed resolution when there was one: resolving again here would drop the narrowing
-        // and let two resolutions of the same arm disagree by construction.
-        [$ifResult, $elseResult] = $armResults ?? [$engine->resolve($arms[0]), $engine->resolve($arms[1])];
-
-        $wrapResult = $this->unambiguousArm($ifResult, $elseResult, 'enumFqcn');
-        $directResult = $this->unambiguousArm($ifResult, $elseResult, 'directEnumFqcn');
-
-        // Either arm being itself mixed (e.g. a nested ternary) makes wrap/direct unattributable —
-        // decline rather than let one arm masquerade as both, and let the caller's own fallback stand.
-        if ($wrapResult === null || $directResult === null) {
-            return $result;
-        }
-
-        $result['wrapIsCollection'] = str_ends_with(rtrim(str_replace('| null', '', $wrapResult['type'])), '[]');
-        $result['directIsArray'] = str_ends_with(rtrim(str_replace('| null', '', $directResult['type'])), '[]');
-
-        return $result;
-    }
-
-    /**
-     * The arm that carries only `$key` and not the other FQCN channel — null when neither arm
-     * qualifies (both/neither carry it alone), which is the ambiguous case the caller declines.
-     *
-     * @param  ValueExpressionResult  $ifResult
-     * @param  ValueExpressionResult  $elseResult
-     * @param  'enumFqcn'|'directEnumFqcn'  $key
-     * @return ValueExpressionResult|null
-     */
-    private function unambiguousArm(array $ifResult, array $elseResult, string $key): ?array
-    {
-        $other = $key === 'enumFqcn' ? 'directEnumFqcn' : 'enumFqcn';
-
-        if (isset($ifResult[$key]) && ! isset($ifResult[$other])) {
-            return $ifResult;
-        }
-
-        if (isset($elseResult[$key]) && ! isset($elseResult[$other])) {
-            return $elseResult;
-        }
-
-        return null;
+        // The narrowed results, not a second resolution of the arms: that would drop the narrowing and let two
+        // resolutions of the same arm disagree by construction.
+        return ValueResult::withEnumArmShapes(ValueResult::unionResults($results), $results);
     }
 }

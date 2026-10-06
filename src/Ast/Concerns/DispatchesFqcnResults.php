@@ -51,8 +51,8 @@ trait DispatchesFqcnResults
             $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
         }
 
-        // Only a mixed ternary/Elvis arm (TernaryHandler) records these; the merged union's own
-        // 'type' string already deduped away which arm was the collection.
+        // Only a mixed enum union records these (ValueResult::withEnumArmShapes(): a ternary, an Elvis or a match);
+        // the merged union's own 'type' string already deduped away which arm was the collection.
         if (isset($result['wrapIsCollection'], $result['directIsArray'])) {
             $enumResourceArmShapes[$keyName] = [
                 'wrapIsCollection' => $result['wrapIsCollection'],

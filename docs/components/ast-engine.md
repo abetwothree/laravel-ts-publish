@@ -370,9 +370,11 @@ answer.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
-proves each recording site still fires. The baseline only shrinks: teach a rule to type the shape, then delete its
-entries. A recorded arm is a candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back
-to a return-type annotation or to `null`. Read the published property before you call an entry a bug.
+proves each recording site still fires. A `DroppedUnionArms::record()` call whose site no baseline row names fails
+`a new recording site cannot go unpinned`, so a new site brings its own `UnionHonestyResource` key and row. Apart from
+those rows, the baseline only shrinks: teach a rule to type the shape, then delete its entries. A recorded arm is a
+candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back to a return-type annotation
+or to `null`. Read the published property before you call an entry a bug.
 
 ## Public API
 

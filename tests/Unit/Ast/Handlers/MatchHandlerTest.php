@@ -7,10 +7,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MatchEnumShapesResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use PhpParser\Node\Expr;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 
 /**
  * Parse one PHP expression.
@@ -28,6 +32,16 @@ function matchHandlerParse(string $php): Expr
 function matchHandlerResolveOnPost(string $php): array
 {
     return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve(matchHandlerParse($php));
+}
+
+/**
+ * Resolve one expression through the full resource profile over a Team, whose accessors hold the enum lists.
+ *
+ * @return array<string, mixed>
+ */
+function matchHandlerResolveOnTeam(string $php): array
+{
+    return new ResourceAstAnalyzer(new ReflectionClass(EnumCollectionResource::class), Team::class)->resolve(matchHandlerParse($php));
 }
 
 // `$this->rating` is nullable by itself, so only 'a null arm' shows a literal `null` arm joining the union.
@@ -73,6 +87,75 @@ it('skips a throw arm without recording a drop', function () {
 it('keeps an EnumResource arm on the enum-resource channel', function () {
     expect(matchHandlerResolveOnPost('match (true) { $this->id > 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->status), default => null }'))
         ->toMatchArray(['type' => 'StatusType | null', 'enumFqcn' => Status::class]);
+});
+
+// The merged type spells both arms of a mixed enum union as one bare name, so each arm's own `[]` is recorded beside it.
+it('records the arm shapes of a mixed enum match as its ternary twin does', function (string $match, string $ternary, bool $wrapIsCollection, bool $directIsArray) {
+    $result = matchHandlerResolveOnTeam($match);
+
+    expect($result)->toBe(matchHandlerResolveOnTeam($ternary))
+        ->and($result)->toMatchArray(['wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+})->with([
+    'a collection wrap and a scalar direct read' => [
+        'match (true) { $this->is_active => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
+        '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status',
+        true,
+        false,
+    ],
+    'a collection wrap and an array direct read' => [
+        'match (true) { $this->is_active => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->status_history }',
+        '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->status_history',
+        true,
+        true,
+    ],
+]);
+
+// A ternary has two arms and a match any number, so these have no twin: every arm counts, and an arm with no enum does not.
+it('reads the shape of every arm of a mixed enum match', function (string $php, bool $wrapIsCollection, bool $directIsArray) {
+    expect(matchHandlerResolveOnTeam($php))->toMatchArray(['wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+})->with([
+    'two wraps that agree' => [
+        'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), 2 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
+        true,
+        false,
+    ],
+    'two direct reads that agree' => [
+        'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => $this->status_history, default => $this->status_history }',
+        false,
+        true,
+    ],
+    'an arm that holds no enum' => [
+        'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), 2 => $this->latest_status, default => null }',
+        true,
+        false,
+    ],
+]);
+
+// Each row is still a mixed union, so the shapes are left out for want of an attribution, not for want of a mix.
+it('leaves a mixed enum match\'s arm shapes unrecorded when it cannot attribute them', function (string $php) {
+    $result = matchHandlerResolveOnTeam($php);
+
+    expect($result)->toHaveKeys(['enumFqcn', 'directEnumFqcn'])
+        ->and(array_intersect(['wrapIsCollection', 'directIsArray'], array_keys($result)))->toBe([]);
+})->with([
+    'an arm that is itself mixed' => [
+        'match ($this->id) { 1 => ($this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status) : $this->latest_status), default => $this->latest_status }',
+    ],
+    'wrap arms that disagree' => [
+        'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
+    ],
+    'direct arms that disagree' => [
+        'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => $this->latest_status, default => $this->status_history }',
+    ],
+]);
+
+it('publishes a mixed enum match with the [] on whichever arm is a list, as its ternary twin does', function () {
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $properties = (new ResourceTransformer(MatchEnumShapesResource::class))->data()->properties;
+
+    expect($properties['history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType')
+        ->and($properties['history_or_array']['type'])->toBe('AsEnum<typeof Status>[] | StatusType[]');
 });
 
 // Through the dispatcher a decline and `unknown` look alike, since no other handler claims a `match`.

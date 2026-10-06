@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-use function Orchestra\Testbench\package_path;
 use function Orchestra\Testbench\workbench_path;
 
 use PhpParser\Node\Arg;
@@ -94,16 +93,26 @@ test('the workbench corpus drops no union arm beyond the pinned baseline', funct
         ->and($dropped)->toBe($baseline);
 });
 
-// A site no baseline entry names has no workbench key whose drop the audit watches fire, so it could go silent unseen.
+// A site no baseline row names has no workbench key whose drop the audit watches fire, so it could go silent unseen.
 test('a new recording site cannot go unpinned', function () {
     /** @var list<array{site: string}> $baseline */
     $baseline = require __DIR__.'/Fixtures/dropped-union-arms-baseline.php';
     $parser = new AstParser;
     $finder = new NodeFinder;
     $sites = [];
+    $unparsed = [];
 
-    foreach (Finder::create()->files()->in(package_path('src'))->name('*.php') as $file) {
-        foreach ($finder->findInstanceOf($parser->parseSource($file->getContents()), StaticCall::class) as $call) {
+    foreach (Finder::create()->files()->in(dirname(__DIR__, 3).'/src')->name('*.php') as $file) {
+        $stmts = $parser->parseSource($file->getContents());
+
+        // parseSource() answers [] for a file that does not parse, which would hide the record() calls in it.
+        if ($stmts === []) {
+            $unparsed[] = $file->getRelativePathname();
+
+            continue;
+        }
+
+        foreach ($finder->findInstanceOf($stmts, StaticCall::class) as $call) {
             if (! $call->class instanceof Name || $call->class->toString() !== DroppedUnionArms::class
                 || ! $call->name instanceof Identifier || $call->name->toString() !== 'record') {
                 continue;
@@ -117,6 +126,10 @@ test('a new recording site cannot go unpinned', function () {
         }
     }
 
-    expect($sites)->toContain('closure-union')
-        ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([]);
+    $remedy = 'A DroppedUnionArms::record() site that no baseline row names. Give it a permanent UnionHonestyResource key '
+        .'that drops an arm there, then pin that key\'s drop in dropped-union-arms-baseline.php: a bare row fails the corpus test.';
+
+    expect($unparsed)->toBe([], 'These src/ files do not parse, so the scan read none of their DroppedUnionArms::record() calls.')
+        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan found no DroppedUnionArms::record() call at all, so it proves nothing.')
+        ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([], $remedy);
 });
