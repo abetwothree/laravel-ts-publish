@@ -12,8 +12,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOnlyVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOptionalResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReadableHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReadableHelperVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedRejectedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReplacedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedRequiredResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadGuardResource;
@@ -114,6 +121,27 @@ test('a base read as nothing never turns a literal\'s keys optional', function (
     'parent::toArray() with no model' => [ReturnedUnmodeledParentResource::class],
     'only() with no model' => [ReturnedUnmodeledOnlyResource::class],
 ]);
+
+test('a base not read completely never turns a literal\'s keys optional', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; name: string');
+})->with([
+    'a helper returning the model\'s toArray()' => [ReturnedOpaqueHelperResource::class],
+    'a helper building on the model\'s toArray()' => [ReturnedPartialHelperResource::class],
+    'a parent whose own toArray() it cannot read' => [ReturnedOpaqueParentChildResource::class],
+    'a helper whose own variable the gate rejects' => [ReturnedRejectedHelperResource::class],
+]);
+
+test('a helper base read completely still makes the variable a branch', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; name: string; extra?: boolean');
+})->with([
+    'a helper returning a literal' => [ReturnedReadableHelperResource::class],
+    'a helper returning a readable variable' => [ReturnedReadableHelperVariableResource::class],
+]);
+
+test('a value read only partly still leaves the variable a branch', function () {
+    expect(returnedVariableMembers(ReturnedPartialValueResource::class))
+        ->toBe('id: number; name: string; meta?: { kind: string }');
+});
 
 test('a returned variable is a branch only when the walk reads every whole write to it', function (string $body, bool $reads) {
     $analyzer = new class(new ReflectionClass(ReturnedHelperVariableResource::class), Tag::class) extends ResourceAstAnalyzer

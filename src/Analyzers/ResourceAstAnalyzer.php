@@ -114,6 +114,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /** Built once per instance by dispatcher(), so the handler-candidate memo survives across dispatches. */
     protected ?ExpressionDispatcher $dispatcher = null;
 
+    /** Reads that publish only part of what they read; variableBranch() skips a variable whose walk raises it. */
+    private int $lenientReads = 0;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -276,7 +279,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returnStmt->expr->name);
         }
 
-        return $this->analyzeArrayExpression($returnStmt->expr) ?? new ResourceAnalysis;
+        $analysis = $this->analyzeArrayExpression($returnStmt->expr);
+
+        if ($analysis === null) {
+            $this->lenientReads++;
+        }
+
+        return $analysis ?? new ResourceAnalysis;
     }
 
     /**
@@ -683,7 +692,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
-        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+        $lenientReads = $this->lenientReads;
+        $result = $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+
+        // A value read partly types its own key and hides none, so it never makes a variable unreadable.
+        $this->lenientReads = $lenientReads;
+
+        return $result;
     }
 
     /**
@@ -788,7 +803,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
             carriesImports: $this->scope->carriesImports,
         );
 
-        return $parentAnalyzer->analyze();
+        $analysis = $parentAnalyzer->analyze();
+        $this->lenientReads += $parentAnalyzer->lenientReads;
+
+        return $analysis;
     }
 
     /**
@@ -875,12 +893,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The first-Return_ selection: the fallback whenever the branch sweep above cannot classify
-     * every return a method makes.
+     * every return a method makes, so it is always a lenient read.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function analyzeFirstReturn(array $stmts, bool $topLevel = true): ResourceAnalysis
     {
+        $this->lenientReads++;
+
         $returnStmt = new NodeFinder()->findFirst($stmts, function (Node $node): bool {
             return $node instanceof Return_;
         });
@@ -968,17 +988,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
+     * It reads a variable the gate rejects too, publishing what the walk sees, and counts that as a lenient read.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): ResourceAnalysis
     {
-        $analysis = new ResourceAnalysis;
-        $live = $this->fromLastReplacement($stmts, $varName);
+        if (! $this->readsVariableArray($stmts, $varName)) {
+            $this->lenientReads++;
+        }
 
-        $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
-
-        return $analysis;
+        return $this->walkVariable($stmts, $varName, $topLevel);
     }
 
     /**
@@ -1021,8 +1041,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Recursively collect array assignments to a variable from method statements.
      *
-     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional. Returns false
-     * when a whole-array write analyzes as nothing, since its keys are then unknown.
+     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional. A whole-array
+     * write that analyzes as nothing counts as a lenient read, since its keys are then unknown.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -1032,13 +1052,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
         bool $isConditional,
         ResourceAnalysis $into,
         bool $topLevel = true,
-    ): bool {
-        $readsAll = true;
-
+    ): void {
         foreach ($stmts as $stmt) {
             if ($stmt instanceof TryCatch || $stmt instanceof Switch_ || $stmt instanceof Block) {
-                $readsAll = $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel)
-                    && $readsAll;
+                $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
 
                 continue;
             }
@@ -1057,7 +1074,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $baseAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($baseAnalysis === null) {
-                    $readsAll = false;
+                    $this->lenientReads++;
 
                     continue;
                 }
@@ -1076,7 +1093,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($addedAnalysis === null) {
-                    $readsAll = false;
+                    $this->lenientReads++;
 
                     continue;
                 }
@@ -1160,35 +1177,28 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             if ($stmt instanceof If_) {
-                $readsAll = $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel)
-                    && $readsAll;
+                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
 
                 foreach ($stmt->elseifs as $elseif) {
-                    $readsAll = $this->collectVariableArrayAssignments($elseif->stmts, $varName, true, $into, $topLevel)
-                        && $readsAll;
+                    $this->collectVariableArrayAssignments($elseif->stmts, $varName, true, $into, $topLevel);
                 }
 
                 if ($stmt->else !== null) {
-                    $elseStmts = $stmt->else->stmts;
-                    $readsAll = $this->collectVariableArrayAssignments($elseStmts, $varName, true, $into, $topLevel)
-                        && $readsAll;
+                    $this->collectVariableArrayAssignments($stmt->else->stmts, $varName, true, $into, $topLevel);
                 }
             }
 
             // Loop bodies are conditional: a loop may execute zero times.
             if ($stmt instanceof Foreach_ || $stmt instanceof For_
                 || $stmt instanceof While_ || $stmt instanceof Do_) {
-                $readsAll = $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel)
-                    && $readsAll;
+                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
             }
         }
-
-        return $readsAll;
     }
 
     /**
-     * A returned variable's branch, or null when the walk cannot read every whole write to it: one the gate rejects,
-     * or one that analyzes as nothing, as a model-less `parent::toArray()` or `only()` does.
+     * A returned variable's branch, or null when the walk does not read it completely: the gate rejects a whole write,
+     * or reading it counts a lenient read, as a model-less `parent::toArray()` or an unreadable helper does.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -1198,10 +1208,25 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
+        $lenientReads = $this->lenientReads;
+        $analysis = $this->walkVariable($stmts, $varName, true);
+
+        return $this->lenientReads === $lenientReads ? $analysis : null;
+    }
+
+    /**
+     * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function walkVariable(array $stmts, string $varName, bool $topLevel): ResourceAnalysis
+    {
         $analysis = new ResourceAnalysis;
         $live = $this->fromLastReplacement($stmts, $varName);
 
-        return $this->collectVariableArrayAssignments($live, $varName, false, $analysis) ? $analysis : null;
+        $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+
+        return $analysis;
     }
 
     /**
@@ -1279,7 +1304,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Collect a variable's writes inside a `try`, `switch` or bare block: a catch or a case may not run, nor a `try`
      * body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's condition.
-     * Returns false when a whole-array write in it analyzes as nothing, as collectVariableArrayAssignments() does.
      */
     private function collectNestedArrayAssignments(
         TryCatch|Switch_|Block $stmt,
@@ -1287,36 +1311,30 @@ class ResourceAstAnalyzer implements ExpressionEngine
         bool $isConditional,
         ResourceAnalysis $into,
         bool $topLevel,
-    ): bool {
+    ): void {
         if ($stmt instanceof Block) {
-            return $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+            $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+
+            return;
         }
 
         if ($stmt instanceof Switch_) {
-            $readsAll = true;
-
             foreach ($stmt->cases as $case) {
-                $readsAll = $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel)
-                    && $readsAll;
+                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel);
             }
 
-            return $readsAll;
+            return;
         }
 
-        $readsAll = $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
 
         foreach ($stmt->catches as $catch) {
-            $readsAll = $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel)
-                && $readsAll;
+            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel);
         }
 
         if ($stmt->finally !== null) {
-            $finally = $stmt->finally->stmts;
-            $readsAll = $this->collectVariableArrayAssignments($finally, $varName, $isConditional, $into, $topLevel)
-                && $readsAll;
+            $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
         }
-
-        return $readsAll;
     }
 
     /**
