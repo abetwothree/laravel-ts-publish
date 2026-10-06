@@ -32,6 +32,7 @@
     "app\/Events\/SameBasenameModelEvent.php",
     "app\/Events\/ServerCreated.php",
     "app\/Events\/TeamMessageSent.php",
+    "app\/Events\/TeamRosterSynced.php",
     "app\/Events\/UserNotification.php",
     "app\/Events\/UserRegisteredEvent.php",
     "app\/Events\/UserSynced.php",

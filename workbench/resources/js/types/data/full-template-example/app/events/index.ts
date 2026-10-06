@@ -15,6 +15,7 @@ export * from './ReportSynced';
 export * from './SameBasenameModelEvent';
 export * from './ServerCreated';
 export * from './TeamMessageSent';
+export * from './TeamRosterSynced';
 export * from './UserNotification';
 export * from './UserRegisteredEvent';
 export * from './UserSynced';

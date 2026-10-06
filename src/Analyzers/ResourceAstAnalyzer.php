@@ -109,7 +109,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  ReflectionClass<T>  $resourceReflection  templated because ReflectionClass is invariant
      * @param  class-string<Model>|null  $modelClass
-     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the resource profile
+     * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
@@ -689,14 +689,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The ordered handler chain: the injected profile when one was supplied, else the resource
-     * profile — see ResourceExpressionHandlers for the list and its ordering contract.
+     * The ordered handler chain: the injected profile when one was supplied, else the subject's own, which
+     * ResourceExpressionHandlers::forSubject() picks — see that class for the lists and their ordering contract.
      *
      * @return list<ExpressionHandler>
      */
     protected function handlers(): array
     {
-        return $this->handlerProfile ?? ResourceExpressionHandlers::make($this);
+        return $this->handlerProfile
+            ?? ResourceExpressionHandlers::forSubject($this->scope->subjectReflection->getName(), $this);
     }
 
     /**

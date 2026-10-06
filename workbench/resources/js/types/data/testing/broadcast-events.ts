@@ -16,6 +16,7 @@ import type { SameBasenameModelEvent } from './workbench/app/events/SameBasename
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
+import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
 import type { UserNotification } from './workbench/app/events/UserNotification';
 import type { UserRegisteredEvent } from './workbench/app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './workbench/app/events/UserSynced';
@@ -40,6 +41,7 @@ export type BroadcastEvent =
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
     | '.Workbench.App.Events.TeamMessageSent'
+    | '.Workbench.App.Events.TeamRosterSynced'
     | '.Workbench.App.Events.UserNotification'
     | '.Workbench.App.Events.UserRegisteredEvent'
     | '.Workbench.App.Events.UserSynced'
@@ -64,6 +66,7 @@ export const BroadcastEvents = Object.freeze({
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
+    TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
     UserNotification: '.Workbench.App.Events.UserNotification',
     UserRegisteredEvent: '.Workbench.App.Events.UserRegisteredEvent',
     AppUserSynced: '.Workbench.App.Events.UserSynced',
@@ -89,6 +92,7 @@ export type {
     ServerCreated,
     StatusSynced,
     TeamMessageSent,
+    TeamRosterSynced,
     UserNotification,
     UserRegisteredEvent,
     AppUserSynced,

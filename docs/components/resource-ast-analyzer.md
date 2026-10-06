@@ -31,8 +31,9 @@ These are the classes a change to resource analysis usually touches:
 | [`ReflectedTypeAcceptor`](../../src/Ast/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
 
-The controller profile drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`, and the
-model-getter profile drops the first two. In every profile, the order handlers run in decides which one answers; see
+The controller profile drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`, the
+model-getter profile drops the first two, and any other non-resource subject drops `ConditionalMethodHandler` alone. In
+every profile, the order handlers run in decides which one answers; see
 [AST engine § Handler ordering](ast-engine.md#handler-ordering).
 
 ## How `analyze()` reads a method

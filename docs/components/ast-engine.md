@@ -44,17 +44,21 @@ When more than one handler claims a node class, registration order decides which
 winner changes published types, so treat it as a behavior change, not a refactor.
 `ResourceExpressionHandlers::handlers()` is the one ordered list, and each profile filters it:
 
-- **`make()`**: the resource profile. It also runs for every subject `AstEngine::analyzeMethod()` reaches, such as a
-  broadcast event, model metadata or a DTO.
+- **`make()`**: the resource profile, a `JsonResource` subject's.
+- **`forNonResourceSubjects()`**: drops `ConditionalMethodHandler` alone, for every other subject
+  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, shared data, model metadata or a DTO.
 - **`withoutResourceHandlers()`**: drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`.
   Its one production caller is `ControllerExpressionHandlers::make()`.
 - **`forModelClosures()`**: drops only the first two, for `AstEngine::analyzeModelClosure()`. `RelationFilterHandler`
   stays as the only handler that types a to-many relation's filter, a map proxy, a multi-model accessor's filter, or a
   filter on a collection-cast column or an `Eloquent\Collection` accessor.
 
-Events and metadata run `make()`, so the three resource-only handlers are live in their bodies. Pointing
-`analyzeMethod()` at `withoutResourceHandlers()` would move published event and metadata types. Measure the diff both
-ways before you change it.
+`ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
+`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. Only
+`JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject `$this->when()`
+is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and `RelationFilterHandler` too was
+measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an event's `toResource()` into
+`unknown`, which the payload contradicts.
 
 `ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` sit last, with only `KnownMethodRuleHandler` after them,
 so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,
@@ -418,7 +422,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
 | `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
-| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
 

@@ -47,7 +47,10 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Events\PayloadDiffersEvent;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
@@ -161,6 +164,35 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes the two other
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
+
+// Only JsonResource::resolve() drops the MissingValue the when*() family returns. toResource() and a relation filter
+// mean the same in any body, and a model's own method needs RelationFilterHandler for a to-many or map-proxy filter.
+it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same relative order', function () {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forNonResourceSubjects(),
+    );
+
+    expect($classes)->toHaveCount(26)
+        ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
+});
+
+it('gives a JsonResource subject make() and any other subject forNonResourceSubjects()', function (string $subject, bool $isResource) {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forSubject($subject, resourceExpressionHandlersTestEngine()),
+    );
+
+    expect($classes)->toBe($isResource
+        ? resourceExpressionHandlerOrder()
+        : array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
+})->with([
+    'a resource' => [CommentResource::class, true],
+    'a resource collection' => [PostCollection::class, true],
+    'a broadcast event' => [PayloadDiffersEvent::class, false],
+    'a shared-data middleware' => [HandleInertiaRequests::class, false],
+    'a model' => [Comment::class, false],
+]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
 // isThisMethodCall() matches on method name alone, ignoring args — so if ConditionalMethodHandler

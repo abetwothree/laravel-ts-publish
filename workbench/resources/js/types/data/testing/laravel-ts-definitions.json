@@ -319,6 +319,18 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\TeamRosterSynced": {
+            "name": "TeamRosterSynced",
+            "eventName": "TeamRosterSynced",
+            "broadcastName": ".Workbench.App.Events.TeamRosterSynced",
+            "properties": [
+                {
+                    "name": "team",
+                    "type": "TeamResource",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\UserNotification": {
             "name": "UserNotification",
             "eventName": "UserNotification",

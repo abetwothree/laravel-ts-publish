@@ -5669,6 +5669,9 @@ declare global {
             teamId: number;
             content: string;
         }
+        export interface TeamRosterSynced {
+            team: app.http.resources.TeamResource;
+        }
         export interface UserNotification extends HasTimestamps {
             userId: number;
             title: string;

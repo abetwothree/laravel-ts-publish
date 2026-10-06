@@ -16,6 +16,7 @@ import type { SameBasenameModelEvent } from './workbench/app/events/SameBasename
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
+import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
 import type { UserNotification } from './workbench/app/events/UserNotification';
 import type { UserRegisteredEvent } from './workbench/app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './workbench/app/events/UserSynced';
@@ -41,6 +42,7 @@ declare module "@laravel/echo" {
         "server.created": ServerCreated;
         ".Workbench.Crm.Events.StatusSynced": StatusSynced;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;
+        ".Workbench.App.Events.TeamRosterSynced": TeamRosterSynced;
         ".Workbench.App.Events.UserNotification": UserNotification;
         ".Workbench.App.Events.UserRegisteredEvent": UserRegisteredEvent;
         ".Workbench.App.Events.UserSynced": AppUserSynced;
