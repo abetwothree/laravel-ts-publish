@@ -23,7 +23,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()` and `toResourceCollection()` |
+| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()` |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps |
 | [`ReturnShapeRefiner`](../../src/Ast/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
@@ -321,7 +321,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.
 
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
-conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
+conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional, and `| null` when its
+payload can be `null`, inside a resource only (`ReadsNullablePayloads::wrapsNullablePayload()`).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -468,10 +469,10 @@ publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`
 ### A method called on a new resource types its payload
 
 `StaticCallHandler` types a method called on `new self($x)`, `self::make($x)` or a chain of them. A method that
-returns the same instance keeps the receiver's type, plus `| null` for a nullable return. It says so with a native
-`static`, `self` or the class name, or with a docblock `@return $this`. Otherwise the method body is the payload.
-`spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()` flattens it. An empty analysis
-declines, since `{}` would claim the payload has no keys.
+returns the same instance keeps the receiver's type, the payload's `| null` included, plus `| null` for a nullable
+return. It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. Otherwise
+the method body is the payload. `spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()`
+flattens it. An empty analysis declines, since `{}` would claim the payload has no keys.
 
 Three answers are possible, and only the last is right. Do not change it to the receiver type:
 
@@ -485,7 +486,7 @@ Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyz
 `$scope->subjectReflection`. A foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown`
 floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
 exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does.
+`SomeResource::make($x)->resolve()` does, never with the payload's `| null`.
 
 ## Interpolated keys
 

@@ -11117,6 +11117,31 @@
                     "optional": true
                 },
                 {
+                    "name": "parent_new_loaded",
+                    "type": "CategoryResource | null",
+                    "optional": true
+                },
+                {
+                    "name": "parent_make_direct",
+                    "type": "CategoryResource | null",
+                    "optional": false
+                },
+                {
+                    "name": "parent_nullsafe_resource",
+                    "type": "CategoryResource | null",
+                    "optional": false
+                },
+                {
+                    "name": "parent_in_array",
+                    "type": "{ parent: CategoryResource | null }",
+                    "optional": false
+                },
+                {
+                    "name": "parent_when",
+                    "type": "CategoryResource | null",
+                    "optional": true
+                },
+                {
                     "name": "children_names",
                     "type": "string[]",
                     "optional": true
@@ -11163,7 +11188,7 @@
                 },
                 {
                     "name": "parent",
-                    "type": "CategoryResource",
+                    "type": "CategoryResource | null",
                     "optional": true
                 },
                 {
@@ -11213,17 +11238,17 @@
                 },
                 {
                     "name": "parent_self",
-                    "type": "CategoryResource",
+                    "type": "CategoryResource | null",
                     "optional": false
                 },
                 {
                     "name": "parent_make_self",
-                    "type": "CategoryResource",
+                    "type": "CategoryResource | null",
                     "optional": false
                 },
                 {
                     "name": "parent_resource_self",
-                    "type": "CategoryResource",
+                    "type": "CategoryResource | null",
                     "optional": false
                 },
                 {
@@ -18120,12 +18145,12 @@
                 },
                 {
                     "name": "category_or_category",
-                    "type": "CategoryResource",
+                    "type": "CategoryResource | null",
                     "optional": false
                 },
                 {
                     "name": "category_or_user",
-                    "type": "CategoryResource | UserResource",
+                    "type": "CategoryResource | UserResource | null",
                     "optional": false
                 },
                 {

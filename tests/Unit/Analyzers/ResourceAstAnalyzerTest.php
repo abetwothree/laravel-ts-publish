@@ -955,7 +955,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $parent = collect($analysis->properties)->firstWhere('name', 'parent');
         $children = collect($analysis->properties)->firstWhere('name', 'children');
 
-        expect($parent['type'])->toBe('CategoryResource')
+        expect($parent['type'])->toBe('CategoryResource | null')
             ->and($parent['optional'])->toBeTrue()
             ->and($children['type'])->toBe('CategoryResource[]')
             ->and($children['optional'])->toBeTrue();
@@ -1060,7 +1060,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1072,7 +1072,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_make_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1084,7 +1084,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_resource_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -4417,7 +4417,7 @@ describe('ResourceAstAnalyzer ternary operator — resource branches', function 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_or_category');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -51,6 +52,7 @@ final class StaticCallHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use InspectsResourceSubject;
+    use ReadsNullablePayloads;
     use ResolvesAuthHelperCalls;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesRelatedModelTypes;
@@ -76,13 +78,16 @@ final class StaticCallHandler implements ExpressionHandler
             return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
         }
 
-        // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and delegate.
+        // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and delegate. resolve() runs the
+        // resource's own toArray(), so a null payload never makes it null.
         if ($expr instanceof MethodCall
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'resolve'
             && $expr->var instanceof StaticCall
         ) {
-            return $this->analyzeStaticCall($expr->var, $scope, $engine);
+            $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
+
+            return isset($resolved['resourceFqcn']) ? [...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])] : $resolved;
         }
 
         // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
@@ -96,7 +101,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver = $engine->resolve($expr->var);
 
             if (isset($receiver['resourceFqcn'])) {
-                return $receiver;
+                return [...$receiver, 'type' => ValueResult::stripNullArm($receiver['type'])];
             }
         }
 
@@ -227,7 +232,7 @@ final class StaticCallHandler implements ExpressionHandler
             /** @var class-string $className */
             return [
                 ...$result,
-                'type' => $resourceName,
+                'type' => $this->wrapsNullablePayload($call, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];
@@ -276,7 +281,7 @@ final class StaticCallHandler implements ExpressionHandler
         // A collection receiver (e.g. ::collection()) resolves to an AnonymousResourceCollection
         // instance, not a $resourceFqcn instance — reflecting the method below would validate
         // against the wrong receiver, so exclude it rather than misfire on e.g. ->additional().
-        if ($resourceFqcn === null || $receiverResult['type'] !== TsNaming::resourceTypeName($resourceFqcn)) {
+        if ($resourceFqcn === null || ValueResult::stripNullArm($receiverResult['type']) !== TsNaming::resourceTypeName($resourceFqcn)) {
             return null;
         }
 

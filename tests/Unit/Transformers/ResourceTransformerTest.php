@@ -1142,7 +1142,7 @@ describe('ResourceTransformer self-referencing resources', function () {
     test('self-referencing resource resolves self-reference property types', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent']['type'])->toBe('CategoryResource | null');
         expect($data->properties['children']['type'])->toBe('CategoryResource[]');
     });
 
@@ -1193,21 +1193,21 @@ describe('ResourceTransformer self-referencing resources', function () {
     test('new self() resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_self']['optional'])->toBeFalse();
     });
 
     test('self::make() resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_make_self']['optional'])->toBeFalse();
     });
 
     test('new self() via $this->resource resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_resource_self']['optional'])->toBeFalse();
     });
 
@@ -2100,7 +2100,7 @@ describe('ResourceTransformer ternary operator support', function () {
     test('Resource::make vs Resource::make (same) resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(TernaryResource::class))->data();
 
-        expect($data->properties['category_or_category']['type'])->toBe('CategoryResource');
+        expect($data->properties['category_or_category']['type'])->toBe('CategoryResource | null');
         expect($data->properties['category_or_category']['optional'])->toBeFalse();
     });
 

@@ -2738,8 +2738,9 @@ declare global {
         }
         /**
          * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
-         * `children`, a HasMany that loads as a collection. Laravel returns null for a relation loaded as null before it reads
-         * the value, so each `parent` key publishes `| null`; a `children` key never does.
+         * `children`, a HasMany that loads as a collection, then every resource built around `parent`. Laravel returns null for
+         * a relation loaded as null before it reads the value, and serializes a resource wrapping null as null, so each
+         * `parent` key publishes `| null`; a `children` key never does.
          */
         export interface CategoryLineageResource {
             id: number;
@@ -2750,6 +2751,11 @@ declare global {
             parent_named_default: workbench.app.models.Category | string | null;
             parent_name_or_absent: string | null;
             parent_callable?: CategoryResource | null;
+            parent_new_loaded?: CategoryResource | null;
+            parent_make_direct: CategoryResource | null;
+            parent_nullsafe_resource: CategoryResource | null;
+            parent_in_array: { parent: CategoryResource | null };
+            parent_when?: CategoryResource | null;
             children_names?: string[];
             children_list?: workbench.app.models.Category[][];
         }
@@ -2764,7 +2770,7 @@ declare global {
             description?: string | null;
             sort_order: number;
             is_active: boolean;
-            parent?: CategoryResource;
+            parent?: CategoryResource | null;
             children?: CategoryResource[];
             posts?: PostResource[];
             posts_count?: number;
@@ -2774,9 +2780,9 @@ declare global {
             children_when_self_collection?: CategoryResource[];
             children_when_self_resource_collection?: CategoryResource[];
             children_when_self_collection_first_callable?: CategoryResource[];
-            parent_self: CategoryResource;
-            parent_make_self: CategoryResource;
-            parent_resource_self: CategoryResource;
+            parent_self: CategoryResource | null;
+            parent_make_self: CategoryResource | null;
+            parent_resource_self: CategoryResource | null;
             parent_when_self?: CategoryResource | null;
             parent_when_resource_self?: CategoryResource | null;
             children_with_default: workbench.app.models.Category[];
@@ -4969,8 +4975,8 @@ declare global {
             status_type_or_resource: workbench.app.enums.StatusType;
             status_or_visibility: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
             category_or_null: CategoryResource | null;
-            category_or_category: CategoryResource;
-            category_or_user: CategoryResource | UserResource;
+            category_or_category: CategoryResource | null;
+            category_or_user: CategoryResource | UserResource | null;
             image_or_null: ImageResource | null;
             comments_or_null: CommentResource[] | null;
             comments_or_comments: CommentResource[];

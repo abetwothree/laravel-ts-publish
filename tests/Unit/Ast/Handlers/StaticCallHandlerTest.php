@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
@@ -11,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -24,6 +26,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
@@ -31,6 +34,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\Venue;
@@ -104,6 +108,11 @@ final class NamedPayloadResource extends JsonResource
         parent::__construct($payload);
     }
 }
+
+/**
+ * A collection that collects no class the run can name, so `new` and `make()` on it reach the plain resource branch.
+ */
+final class StaticCallHandlerOrphanCollection extends ResourceCollection {}
 
 // ToResourceHandler
 
@@ -229,6 +238,38 @@ it('keeps the foreign-receiver boundary: a non-self-returning method on a foreig
     expect($result)->toBeNull();
 });
 
+// A nested resource whose payload is null serializes as null, but resolve() runs the resource's own toArray() on it.
+it('keeps a nullable payload\'s null arm through a fluent self-returning call, never through resolve()', function (string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(FluentSelfResource::class), Category::class);
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(FluentSelfResource::class), Category::class, 'toArray', null, $scope)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'make() over a nullable relation' => ['self::make($this->parent)', 'FluentSelfResource | null'],
+    'new over a nullable relation' => ['new self($this->parent)', 'FluentSelfResource | null'],
+    'a self-returning method' => ['new self($this->parent)->markPreview()', 'FluentSelfResource | null'],
+    'resolve() on make()' => ['self::make($this->parent)->resolve()', 'FluentSelfResource'],
+    'resolve() on new' => ['new self($this->parent)->resolve()', 'FluentSelfResource'],
+    'collection() over a to-many' => ['self::collection($this->children)', 'FluentSelfResource[]'],
+    'a nullsafe toResource()' => ['$this->parent?->toResource()', 'CategoryResource | null'],
+    'a toResource() that throws on null' => ['$this->parent->toResource()', 'CategoryResource'],
+]);
+
+// collectResource() calls a method on its payload, so a resource collection, or the one ::collection() builds, throws
+// on null instead of serializing as null.
+it('adds no null arm to a resource collection built around a nullable payload', function (string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(FluentSelfResource::class), Category::class);
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(FluentSelfResource::class), Category::class, 'toArray', null, $scope)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'new on a collection' => ['new \StaticCallHandlerOrphanCollection($this->parent)', 'StaticCallHandlerOrphanCollection'],
+    'make() on a collection' => ['\StaticCallHandlerOrphanCollection::make($this->parent)', 'StaticCallHandlerOrphanCollection'],
+    'collection() on a resource' => ['self::collection($this->parent)', 'FluentSelfResource[]'],
+]);
+
 it('declines an expression it does not claim', function () {
     $expr = new MethodCall(new Variable('this'), 'somethingElse');
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
@@ -248,12 +289,12 @@ test('new SomeResource(...)->resolve() strips resolve() like the static form', f
 // NewResourceHandler
 
 it('resolves new PostResource(...) to the resource channel', function () {
-    $expr = new New_(new Name(PostResource::class), [
-        new Arg(new PropertyFetch(new Variable('this'), 'post')),
-    ]);
+    $payload = new PropertyFetch(new Variable('this'), 'post');
+    $expr = new New_(new Name(PostResource::class), [new Arg($payload)]);
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $engine = new StaticCallHandlerArmStubEngine([[$payload, ['type' => 'Post', 'optional' => false]]]);
 
-    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+    $result = (new NewResourceHandler)->resolve($expr, $scope, $engine);
 
     expect($result)->toBe([
         'type' => 'PostResource',
@@ -261,6 +302,21 @@ it('resolves new PostResource(...) to the resource channel', function () {
         'resourceFqcn' => PostResource::class,
     ]);
 });
+
+// Inside a resource's toArray(), filter() serializes a nested resource whose payload is null as null.
+it('adds the null arm a nullable payload gives a nested resource, only inside a resource', function (string $subject, string $type) {
+    $payload = new PropertyFetch(new Variable('this'), 'post');
+    $engine = new StaticCallHandlerArmStubEngine([[$payload, ['type' => 'Post | null', 'optional' => false]]]);
+    $scope = new AnalysisScope(new ReflectionClass($subject));
+
+    expect((new NewResourceHandler)->resolve(new New_(new Name(PostResource::class), [new Arg($payload)]), $scope, $engine)['type'] ?? null)
+        ->toBe($type)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name(PostResource::class), 'make', [new Arg($payload)]), $scope, $engine)['type'] ?? null)
+        ->toBe($type);
+})->with([
+    'a resource subject' => [PostResource::class, 'PostResource | null'],
+    'a controller subject, whose payload Inertia never nulls' => [InertiaSingleResourceController::class, 'PostResource'],
+]);
 
 it('declines a node outside its claimed New_ class', function () {
     // NewResourceHandler only claims New_::class, and analyzeNewResource() always resolves to a
@@ -308,12 +364,12 @@ it('resolves EnumResource::make(resource: $this->status) to the enum channel', f
 });
 
 it('resolves new PostResource(resource: $this->when(…)) as optional through the named payload', function () {
-    $expr = new New_(new Name(PostResource::class), [
-        new Arg(new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('flag')), new Arg(new Variable('post'))]), name: new Identifier('resource')),
-    ]);
+    $payload = new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('flag')), new Arg(new Variable('post'))]);
+    $expr = new New_(new Name(PostResource::class), [new Arg($payload, name: new Identifier('resource'))]);
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $engine = new StaticCallHandlerArmStubEngine([[$payload, ['type' => 'Post', 'optional' => true]]]);
 
-    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+    $result = (new NewResourceHandler)->resolve($expr, $scope, $engine);
 
     expect($result)->toBe([
         'type' => 'PostResource',
@@ -323,12 +379,12 @@ it('resolves new PostResource(resource: $this->when(…)) as optional through th
 });
 
 it('resolves new NamedPayloadResource(payload: $this->whenLoaded(…)) through the concrete constructor, not JsonResource\'s', function () {
-    $expr = new New_(new Name(NamedPayloadResource::class), [
-        new Arg(new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('x'))]), name: new Identifier('payload')),
-    ]);
+    $payload = new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('x'))]);
+    $expr = new New_(new Name(NamedPayloadResource::class), [new Arg($payload, name: new Identifier('payload'))]);
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $engine = new StaticCallHandlerArmStubEngine([[$payload, ['type' => 'unknown', 'optional' => true]]]);
 
-    $result = (new NewResourceHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
+    $result = (new NewResourceHandler)->resolve($expr, $scope, $engine);
 
     expect($result)->toBe([
         'type' => 'NamedPayloadResource',
