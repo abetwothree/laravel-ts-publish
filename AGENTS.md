@@ -231,7 +231,7 @@ Do not update the CHANGELOG.md file. That is handled by CI when a new version is
 
 ## AST & Analyzers
 
-Files in `src/Analyzers` contain the entry point for running AST analysis for several subsystems of the package. Analyzers should offload the actual AST analysis to the abstract syntax tree engine in `src/Ast`. The `src/Ast` directory should handle all AST analysis in an abstract manner so that it can be resused by different analyzers for HTTP resources, HTTP request, Inertia, models, etc.
+Files in `src/Analyzers` contain the entry point for running AST analysis for several subsystems of the package. Analyzers should offload the actual AST analysis to the abstract syntax tree engine in `src/Ast`. The `src/Ast` directory should handle all AST analysis in an abstract manner so that it can be reused by different analyzers for HTTP resources, HTTP requests, Inertia, models, etc.
 
 Code in `src/Ast` should not depend on any specific analyzer; it should provide a generic interface and utilities for AST analysis that can be leveraged by multiple analyzers.
 
