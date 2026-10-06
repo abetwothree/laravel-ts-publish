@@ -14,6 +14,7 @@ These are the classes a change to the engine usually touches:
 | --- | --- |
 | [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
+| [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
 | [`ResourceExpressionHandlers`], [`ControllerExpressionHandlers`] | The ordered handler profiles |
@@ -450,6 +451,7 @@ These pages cover the engine's neighbors:
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
 [`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/MethodLocator.php
+[`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php
 [`ReturnLiteralReader`]: ../../src/Ast/ReturnLiteralReader.php

@@ -15,6 +15,7 @@ These are the classes a change to resource analysis usually touches:
 | Class | Owns |
 | --- | --- |
 | [`ResourceAstAnalyzer`](../../src/Analyzers/ResourceAstAnalyzer.php) | The walk over a method body: return branches, spreads, `merge()`, arrays built in a variable, delegation |
+| [`ReadsReturnedVariables`](../../src/Ast/Concerns/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
 | [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources, the published-set gate and `#[Collects]` resolution |
@@ -44,16 +45,16 @@ model-getter profile drops the first two. In every profile, the order handlers r
   `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. That guard is why the walk can run before
   the collection check: Laravel's own `ResourceCollection::toArray()` yields no properties.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
-  (`variableBranch()`): `analyzeAllReturnBranches()` merges them through `mergeReturnBranches()`, so a key one branch
-  lacks publishes optional, and a guard's `return []` is an empty branch. A variable the walk does not read completely
-  is skipped, unless no branch read completely has a key and every `return` is a literal or a variable: then it is read
-  leniently as a branch, as a lone variable is. Otherwise, with no branch read completely holding a key, the sweep
-  declines and the first `return` is read; any other return is skipped.
+  (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
+  `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
+  A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
+  `return` is a literal or a variable: then it is read leniently as a branch, as a lone variable is. Otherwise, with no
+  branch read completely holding a key, the sweep declines and the first `return` is read; any other return is skipped.
 - **Any other body falls back to the first `return`**: `parent::toArray()`, an `array_merge()` of literals and
   `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
-  `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are a variable's
-  base; a `+=` of one adds only new keys, a whole re-assignment drops the writes before it, and a key first written
-  in a branch, loop, `try` or `switch` publishes optional.
+  `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
+  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys, a whole re-assignment drops the writes
+  before it, and a key first written in a branch, loop, `try` or `switch` publishes optional.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It
   finds the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local
@@ -475,8 +476,8 @@ exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publ
 
 ## Interpolated keys
 
-`collectVariableArrayAssignments()` publishes a key built from literal text around a variable, such as
-`$data["{$name}_label"] = …` or `$data[$name.'_label'] = …`, as a template-literal index signature:
+`ReadsReturnedVariables::collectVariableArrayAssignments()` publishes a key built from literal text around a variable,
+such as `$data["{$name}_label"] = …` or `$data[$name.'_label'] = …`, as a template-literal index signature:
 ``[key: `${string}_label`]``. `interpolatedKeyName()` needs both a literal and a dynamic part. It declines a literal
 part holding a backtick, because `JsEmitter::isIndexSignatureKey()` has no escape for one.
 
