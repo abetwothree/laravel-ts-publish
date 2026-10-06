@@ -514,14 +514,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         // Also `whenLoaded('rel', null, …)` and `whenLoaded('rel', default: …)`: Laravel swaps the null $value for the
         // identity closure, so the loaded arm is still the relation itself.
-        if ($relationship instanceof String_) {
-            $info = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
+        $info = $relationship instanceof String_ ? $this->resolveModelRelationTypeInfo($relationship->value, $scope) : null;
 
-            // An untyped relation would widen the key to `unknown`, so a literal null value keeps its own type.
-            if ($info['type'] === 'unknown' && $valueExpr !== null) {
-                return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
-            }
+        // A relation that does not type, or a name the engine cannot read, would widen the key to `unknown`, so a
+        // literal null value keeps its own type.
+        if ($valueExpr !== null && ($info === null || $info['type'] === 'unknown')) {
+            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+        }
 
+        if ($info !== null) {
             $result = ['type' => $info['type'], 'optional' => false];
 
             if ($info['modelFqcn'] !== null) {

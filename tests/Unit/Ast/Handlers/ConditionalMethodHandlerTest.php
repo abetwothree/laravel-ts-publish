@@ -817,6 +817,8 @@ it('reads a literal null whenLoaded() value as the relation only when the relati
 })->with([
     'a relation the model does not declare, with a default' => ['$this->whenLoaded("featured", null, "x")', 'string | null', false],
     'a relation the model does not declare' => ['$this->whenLoaded("featured", null)', 'null', true],
+    'a relation name the engine cannot read, with a default' => ['$this->whenLoaded($rel, null, "x")', 'string | null', false],
+    'a relation name the engine cannot read' => ['$this->whenLoaded($rel, null)', 'null', true],
     'a declared relation' => ['$this->whenLoaded("categoryRel", null)', 'Category | null', true],
 ]);
 

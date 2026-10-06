@@ -658,9 +658,8 @@ class ModelAttributeResolver
         DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
-        $containsMany = str_contains(strtolower($relation['type']), 'many');
 
-        if ($containsMany) {
+        if (self::isToManyRelation($relation)) {
             return ['type' => $relatedModel.'[]', 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
         }
 
@@ -675,7 +674,7 @@ class ModelAttributeResolver
 
     /**
      * Whether a relation can be loaded as null, by the rule its type takes `| null` with; null when the model declares
-     * no such relation.
+     * no such relation or its context cannot be read.
      *
      * @param  class-string  $modelFqcn
      */
@@ -694,7 +693,7 @@ class ModelAttributeResolver
         }
 
         // A loaded to-many relation is a collection, never null, whatever its strategy says.
-        if (! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many')) {
+        if (self::isToManyRelation($relation)) {
             return false;
         }
 
@@ -1487,6 +1486,16 @@ class ModelAttributeResolver
     {
         return $relation['type'] === 'MorphTo'
             || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
+    }
+
+    /**
+     * Whether a relation loads a collection: its type names "many", and it is not a MorphTo, which loads one model.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isToManyRelation(array $relation): bool
+    {
+        return ! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many');
     }
 
     /**
