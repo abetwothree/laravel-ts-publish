@@ -349,8 +349,8 @@ A key the resource's own `only()` or `except()` selects keeps only part of these
 A union arm the engine cannot type is left out, never widened to `unknown`, so `$cond ? <untypable> : null` publishes
 `null`. `unknown` would be more honest but less specific, and no change may make a published type less specific. Close
 the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
-see. Return-branch merges outside a spread helper keep the strict rule, where one `unknown` branch makes the key
-`unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
+makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,

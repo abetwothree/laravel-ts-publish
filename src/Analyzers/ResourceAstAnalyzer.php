@@ -728,7 +728,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Analyze $this->merge(...), mergeWhen(...) or mergeUnless(...) with each array the call can merge as a branch.
      *
      * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
-     * some branches set publishes optional, and a key every branch sets is required with their types unioned.
+     * some branches set publishes optional, and a key every branch sets is required. Their types union as a spread
+     * helper's branches do, leaving out a side the engine cannot type.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
@@ -772,7 +773,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         return match (count($branches)) {
             0 => new ResourceAnalysis,
             1 => $branches[0],
-            default => $this->mergeReturnBranches($branches),
+            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true),
         };
     }
 
@@ -1148,7 +1149,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Merge ResourceAnalysis objects from different return branches: a property missing from any branch becomes
      * optional, channels merge as MethodAnalysis::merge() does, and flatTypeAlias keeps the first non-null value.
-     * Public for the page analyzer's `Inertia::render()` merge; only a spread helper's branches drop an untyped value.
+     * Public for the page analyzer's `Inertia::render()` merge; only a spread helper's branches and a merge call's
+     * sides drop an untyped value.
      *
      * @param  list<ResourceAnalysis>  $analyses
      */

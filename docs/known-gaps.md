@@ -21,10 +21,10 @@ one of the two tests.
 
 `$cond ? $untypable : null` and `$this->opaque() ?: null` publish `null`, because the engine drops the arm it cannot
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
-drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's key or a model
-accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
-`null` still publishes `null`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes
-back.
+drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's or a merge call's
+key, or a model accessor's getter body, left with only that `null` publishes `unknown` instead, while a getter that
+only ever returns `null` still publishes `null`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`,
+and it comes back.
 
 ### `config()` on an absent key with no default types as null
 

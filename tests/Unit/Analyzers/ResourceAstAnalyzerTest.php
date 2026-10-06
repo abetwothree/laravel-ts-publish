@@ -3738,6 +3738,7 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
         'an array default' => ['state', 'string | number'],
         'a closure default' => ['cancelled', 'boolean'],
         'a named default' => ['note_text', 'string | null'],
+        'both sides set it, the default untypable' => ['k', 'number'],
     ]);
 
     it('publishes a key only one side sets as optional', function (string $key, string $type) {
@@ -6761,7 +6762,7 @@ test('a spread helper\'s branches drop the values they cannot type, as a ternary
     'only null left once the untypable branch drops' => ['nothing', 'unknown'],
 ]);
 
-test('only a spread helper\'s branches drop an untypable value; other merges stay unknown', function () {
+test('only a spread helper\'s branches and a merge call\'s sides drop an untypable value; other merges stay unknown', function () {
     $branch = fn (string $type): ResourceAnalysis => new ResourceAnalysis(properties: [['name' => 'label', 'type' => $type, 'optional' => false, 'description' => '']]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(BranchedSpreadPostResource::class), Post::class);
 

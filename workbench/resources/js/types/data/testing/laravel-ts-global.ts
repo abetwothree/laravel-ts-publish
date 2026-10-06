@@ -3723,6 +3723,7 @@ declare global {
             note_text: string | null;
             owner_id?: number;
             subtotal_label?: string;
+            k: number;
         }
         /**
          * Exercises resolveMergedBranches() with a multi-return closure

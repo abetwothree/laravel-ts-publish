@@ -70,7 +70,8 @@ every profile, the order handlers run in decides which one answers; see
 
 ### A spread helper drops an untypable branch
 
-`analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, so `branchUnion()` leaves out a branch that
+`analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, as do a merge call's sides (`merge()`,
+`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `branchUnion()` leaves out a branch that
 resolved to `unknown` and unions the rest, as a ternary drops its untypable arm. A key still publishes `unknown` when
 every branch is `unknown`, or when only `null` is left, since that `null` says nothing about the dropped value.
 `toArray()`'s own branches and `InertiaPageAnalyzer`'s merge keep the strict rule: one `unknown` branch makes the key
@@ -300,8 +301,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   never either arm's type.
 - **`mergeWhen()` and `mergeUnless()` merge their default**: `ResourceAstAnalyzer::analyzeMergeExpression()` reads the
   value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
-  types and a key one sets is optional. A closure's returned arrays, `[]` included, and a returned variable the walk
-  reads completely are branches; a side read as no array is an empty branch.
+  types and a key one sets is optional. An untypable side drops out of the union, as
+  [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
+  included, and a returned variable the walk reads completely are branches; a side read as no array is an empty branch.
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute or flag answers only in three cases: no value is written, the value

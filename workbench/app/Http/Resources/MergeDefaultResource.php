@@ -57,6 +57,17 @@ class MergeDefaultResource extends JsonResource
 
             // Without a default, a failed condition merges nothing, so every key stays optional.
             $this->mergeWhen($this->subtotal > 0, ['subtotal_label' => 'set']),
+
+            // A default the engine cannot type drops out of the union, as a spread helper's untypable branch does.
+            $this->mergeWhen($this->id > 0, ['k' => $this->total], ['k' => $this->opaqueTotal()]),
         ];
+    }
+
+    /**
+     * Deliberately untyped, so the default that reads it is a side the engine cannot type.
+     */
+    public function opaqueTotal()
+    {
+        return $this->resource->getAttribute('total');
     }
 }
