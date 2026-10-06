@@ -365,14 +365,14 @@ describe('ResourceTransformer with PostResource', function () {
     test('relation::staticMethod() in whenLoaded closure resolves return type — category_class_name', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->properties['category_class_name']['type'])->toBe('string');
+        expect($data->properties['category_class_name']['type'])->toBe('string | null');
         expect($data->properties['category_class_name']['optional'])->toBeTrue();
     });
 
     test('resource->relation::staticMethod() in whenLoaded closure resolves return type — category_table_name', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->properties['category_table_name']['type'])->toBe('string');
+        expect($data->properties['category_table_name']['type'])->toBe('string | null');
         expect($data->properties['category_table_name']['optional'])->toBeTrue();
     });
 });
@@ -1214,14 +1214,14 @@ describe('ResourceTransformer self-referencing resources', function () {
     test('whenLoaded with new self() in closure resolves to optional CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_when_self']['optional'])->toBeTrue();
     });
 
     test('whenLoaded with new self() via $this->resource in closure resolves to optional CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_when_resource_self']['optional'])->toBeTrue();
     });
 });
@@ -3077,7 +3077,7 @@ test('an EnumResource const steps aside for a name the resource\'s own cast impo
 test('a morph union over two resources that share a name spells each one by its own alias', function () {
     $transformer = new ResourceTransformer(ImageReviewResource::class);
 
-    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource', 'optional' => true])
+    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource | null', 'optional' => true])
         ->and($transformer->properties['reviewer']['type'])->toBe('CrmUserResource | WorkbenchUserResource')
         // The same union one level down, inside an inline array.
         ->and($transformer->properties['review']['type'])->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')

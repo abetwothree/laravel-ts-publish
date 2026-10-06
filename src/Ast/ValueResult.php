@@ -61,6 +61,24 @@ final class ValueResult
     }
 
     /**
+     * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
+     */
+    public static function hasNullArm(string $type): bool
+    {
+        return in_array('null', TsTypeString::splitTopLevelUnion($type), true);
+    }
+
+    /**
+     * Append a top-level `| null` arm unless the type has one; `unknown` already admits null, so it stays as is.
+     *
+     * Never TsTypeString::hoistNull(): it de-duplicates members, so `User | User`, two classes, would lose one.
+     */
+    public static function withNullArm(string $type): string
+    {
+        return $type === 'unknown' || self::hasNullArm($type) ? $type : $type.' | null';
+    }
+
+    /**
      * Suffix a type with `[]`, parenthesizing a union or intersection first: TypeScript binds `[]`
      * tighter than both, so `A & B[]` parses as `A & (B[])`, not `(A & B)[]`.
      *

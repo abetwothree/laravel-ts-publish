@@ -28,8 +28,8 @@ export interface CategoryResource
     parent_self: CategoryResource;
     parent_make_self: CategoryResource;
     parent_resource_self: CategoryResource;
-    parent_when_self?: CategoryResource;
-    parent_when_resource_self?: CategoryResource;
+    parent_when_self?: CategoryResource | null;
+    parent_when_resource_self?: CategoryResource | null;
     children_with_default: Category[];
     posts_with_default: PostResource[];
 }

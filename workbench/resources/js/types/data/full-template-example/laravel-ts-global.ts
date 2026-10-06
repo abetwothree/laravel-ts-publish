@@ -2503,8 +2503,8 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
         }
         /** The other arm of the reviewable morph union ReviewResource unions over. */
         export interface ArtistResource {
@@ -2737,6 +2737,23 @@ declare global {
             case_title: string;
         }
         /**
+         * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
+         * `children`, a HasMany that loads as a collection. Laravel returns null for a relation loaded as null before it reads
+         * the value, so each `parent` key publishes `| null`; a `children` key never does.
+         */
+        export interface CategoryLineageResource {
+            id: number;
+            parent_name?: string | null;
+            parent_list?: app.models.Category[] | null;
+            parent_label?: string | null;
+            parent_or_absent: app.models.Category | string | null;
+            parent_named_default: app.models.Category | string | null;
+            parent_name_or_absent: string | null;
+            parent_callable?: CategoryResource | null;
+            children_names?: string[];
+            children_list?: app.models.Category[][];
+        }
+        /**
          * Exercises: self-referencing Resource::make and Resource::collection,
          * when conditional, whenCounted, cross-resource PostResource::collection.
          */
@@ -2760,8 +2777,8 @@ declare global {
             parent_self: CategoryResource;
             parent_make_self: CategoryResource;
             parent_resource_self: CategoryResource;
-            parent_when_self?: CategoryResource;
-            parent_when_resource_self?: CategoryResource;
+            parent_when_self?: CategoryResource | null;
+            parent_when_resource_self?: CategoryResource | null;
             children_with_default: app.models.Category[];
             posts_with_default: PostResource[];
         }
@@ -2915,8 +2932,8 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
             name: string;
             email: string;
             email_verified_at: string | null;
@@ -3334,12 +3351,12 @@ declare global {
         export interface FluentSelfResource {
             id: number;
             name: string;
-            parent_fluent?: FluentSelfResource;
-            parent_fluent_make?: FluentSelfResource;
-            parent_fluent_chain?: FluentSelfResource;
-            parent_fluent_docblock?: FluentSelfResource;
-            parent_summary?: { id: number };
-            foreign_summary?: { slug: string };
+            parent_fluent?: FluentSelfResource | null;
+            parent_fluent_make?: FluentSelfResource | null;
+            parent_fluent_chain?: FluentSelfResource | null;
+            parent_fluent_docblock?: FluentSelfResource | null;
+            parent_summary?: { id: number } | null;
+            foreign_summary?: { slug: string } | null;
             parent_fluent_nullable?: FluentSelfResource | null;
         }
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
@@ -3521,9 +3538,18 @@ declare global {
          */
         export interface ImageReviewResource {
             id: number;
-            reviewable?: crm.http.resources.UserResource | UserResource;
+            reviewable?: crm.http.resources.UserResource | UserResource | null;
             reviewer: crm.http.resources.UserResource | UserResource;
             review: { subject: crm.http.resources.UserResource | UserResource; label: string | null };
+        }
+        /**
+         * A whenLoaded() closure whose variadic parameter collects a morphTo. The list holds whichever target loaded, never
+         * null: Laravel calls the closure only for a loaded value. `reviewable` can load as null, so its key also takes the
+         * `null` whenLoaded() returns; `imageable` cannot. The reviewable targets share a basename, so each keeps its alias.
+         */
+        export interface ImageSubjectsResource {
+            subjects?: (crm.models.User | app.models.User)[] | null;
+            owners?: (app.models.Post | app.models.Product | app.models.User | crm.models.User)[];
         }
         /**
          * Base class for ChildInlineFqcnResource. Both regional_hub_* properties carry Warehouse::regionalHub()'s
@@ -3682,16 +3708,16 @@ declare global {
          */
         export interface MerchantResource {
             id: number;
-            owner_via_closure?: UserResource;
-            owner_explicit?: UserResource;
+            owner_via_closure?: UserResource | null;
+            owner_explicit?: UserResource | null;
             owner_variant_constant?: unknown;
             owner_direct: UserResource;
             staff_via_closure?: UserResource[];
             staff_explicit?: UserResource[];
-            history_event?: EventLogResource;
+            history_event?: EventLogResource | null;
             filing?: unknown;
             alert?: unknown;
-            registrar?: RegistrarResource;
+            registrar?: RegistrarResource | null;
             registrars?: unknown;
             suppliers?: SupplierSummaryResource[];
             unpublished_guess?: unknown;
@@ -3880,9 +3906,9 @@ declare global {
             id: number;
             comments_count: number;
             summary?: Pick<app.models.Post, 'id' | 'title'>;
-            category?: Pick<app.models.Category, 'id' | 'name'>;
+            category?: Pick<app.models.Category, 'id' | 'name'> | null;
             dynamic: Record<string, unknown>;
-            dynamic_category?: Record<string, unknown>;
+            dynamic_category?: Record<string, unknown> | null;
         }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
@@ -4116,8 +4142,8 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
         }
         /**
          * Reads a single-model accessor inside an inline member and under a key that differs from the
@@ -4452,7 +4478,7 @@ declare global {
             merged_visibility?: app.enums.VisibilityType | null;
             deferred_status?: app.enums.StatusType;
             deferred_priority?: app.enums.PriorityType | null;
-            category_status?: app.enums.StatusType;
+            category_status?: app.enums.StatusType | null;
             category_visibility?: app.enums.VisibilityType | null;
         }
         /**
@@ -4649,7 +4675,7 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
-            metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string };
+            metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
          * Exercises both bugs simultaneously — the exact pattern from the original
@@ -5078,7 +5104,7 @@ declare global {
          */
         export interface UserFeaturedPostsResource {
             id: number;
-            featured_posts?: ({ id: number; title: string; file: string | null })[];
+            featured_posts?: ({ id: number; title: string; file: string | null })[] | null;
         }
         /**
          * Exercises return $this->only([...]) naming a $hidden column explicitly.

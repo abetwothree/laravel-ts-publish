@@ -7,5 +7,5 @@
 export interface UserFeaturedPostsResource
 {
     id: number;
-    featured_posts?: ({ id: number; title: string; file: string | null })[];
+    featured_posts?: ({ id: number; title: string; file: string | null })[] | null;
 }

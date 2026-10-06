@@ -305,6 +305,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
   included, and a returned variable the walk reads completely are branches; a side read as no array is an empty branch.
+- **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
+  Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
+  relation the model does not declare can, under `nullable_relations`.
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute or flag answers only in three cases: no value is written, the value
@@ -431,10 +434,12 @@ check itself with the `#[TsExclude]`d `AttachmentResource`, `AttachmentCollectio
 ### A morph union binds every target, and `toResource()` unions their resources
 
 `ConditionalMethodHandler::analyzeWhenLoaded()` binds a `morphTo` closure parameter to every target, in
-`AnalysisScope::$varClassBindings`. `ToResourceHandler` then maps each target model to its resource and publishes the
-union, such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`. The
-union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is wrong
-for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
+`AnalysisScope::$varClassBindings`, and a variadic one to the list of them, its element never `null`
+(`ImageSubjectsResource`). `ToResourceHandler` then maps each target model to its resource and publishes the union,
+such as `reviewable?: ArtistResource | VenueResource`, reporting the classes on `embeddedResourceFqcns`. A relation that
+can load as `null` adds the arm every `whenLoaded()` value takes, so `ImageReviewResource.reviewable` ends in `| null`.
+The union is all or nothing. If one target has no resource, the key stays `unknown`, since a union missing an arm is
+wrong for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
 `MethodAnalysis::addProperty()` also queues the union's classes under the property in `inlineResourceFqcns`, one per
 token, and `InlineArrayHandler` builds the same queue for an inline array. `ImageReviewResource` pins both.

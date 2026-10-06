@@ -429,7 +429,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'category_class_name');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('string')
+            ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -441,7 +441,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'category_table_name');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('string')
+            ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -1096,7 +1096,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1108,7 +1108,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_resource_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -1122,7 +1122,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1134,7 +1134,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1146,7 +1146,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_chain');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1158,7 +1158,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_docblock');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1170,7 +1170,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_summary');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ id: number }')
+            ->and($prop['type'])->toBe('{ id: number } | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1184,7 +1184,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         // CategoryResource::summary() returns ['slug' => $this->slug], so this is the real payload —
         // not CategoryResource, which the expression never yields.
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ slug: string }')
+            ->and($prop['type'])->toBe('{ slug: string } | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -2365,7 +2365,7 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
 
         expect($props['comments_count']['type'])->toBe('number')
             ->and($props['summary']['type'])->toBe("Pick<Post, 'id' | 'title'>")
-            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
+            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'> | null");
     });
 
     test('a filter call with no literal key list publishes Record<string, unknown> instead of falling to unknown', function () {
@@ -2374,7 +2374,7 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
         expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
-            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown>');
+            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown> | null');
     });
 });
 
@@ -5199,7 +5199,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('StatusType | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5882,13 +5882,13 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResource() resolves the related model by naming convention', function () {
-        expect($this->props['owner_via_closure']['type'])->toBe('UserResource')
+        expect($this->props['owner_via_closure']['type'])->toBe('UserResource | null')
             ->and($this->props['owner_via_closure']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('owner_via_closure', UserResource::class);
     });
 
     test('whenLoaded closure toResource(SomeResource::class) honours the explicit argument', function () {
-        expect($this->props['owner_explicit']['type'])->toBe('UserResource')
+        expect($this->props['owner_explicit']['type'])->toBe('UserResource | null')
             ->and($this->props['owner_explicit']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('owner_explicit', UserResource::class);
     });
@@ -5922,7 +5922,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // to it instead of EventLogResource, so this assertion can actually discriminate.
         expect(class_exists(AppTrackingEventResource::class))->toBeTrue();
 
-        expect($this->props['history_event']['type'])->toBe('EventLogResource')
+        expect($this->props['history_event']['type'])->toBe('EventLogResource | null')
             ->and($this->props['history_event']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('history_event', EventLogResource::class);
     })->skip(
@@ -5954,7 +5954,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // candidate order would resolve to it instead of RegistrarResource.
         expect(class_exists(BareRegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrar']['type'])->toBe('RegistrarResource')
+        expect($this->props['registrar']['type'])->toBe('RegistrarResource | null')
             ->and($this->props['registrar']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('registrar', RegistrarResource::class);
     });
@@ -6006,7 +6006,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // with an empty registry. Failing closed there would strip every nested resource.
         expect(PublishedResourceRegistry::isEmpty())->toBeTrue();
 
-        expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource')
+        expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource | null')
             ->and($this->nested)->toHaveKey('unpublished_guess', AttachmentResource::class)
             ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentResource[]')
             ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentResource::class);
@@ -6032,7 +6032,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
             // Every convention branch is gated, not just the Attachment fixture's.
             ->and($props['owner_via_closure']['type'])->toBe('unknown')
             // An explicitly named resource is the developer's declaration and stays ungated.
-            ->and($props['owner_explicit']['type'])->toBe('UserResource')
+            ->and($props['owner_explicit']['type'])->toBe('UserResource | null')
             ->and($analysis->nestedResources)->toHaveKey('owner_explicit', UserResource::class);
 
         PublishedResourceRegistry::reset();
@@ -6390,7 +6390,7 @@ describe('ResourceTransformer aliasing an inline array in the order its type spe
         $transformer = new ResourceTransformer(SpreadModelBeforeMemberResource::class);
 
         expect($transformer->properties['manager']['type'])
-            ->toBe("Omit<WorkbenchUser, 'peer'> & { peer: CrmUser | null }");
+            ->toBe("Omit<WorkbenchUser, 'peer'> & { peer: CrmUser | null } | null");
     });
 
     test('a key declared twice queues its resources once, so a later member keeps its own alias', function () {

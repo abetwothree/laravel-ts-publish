@@ -9,11 +9,11 @@ export interface FluentSelfResource
 {
     id: number;
     name: string;
-    parent_fluent?: FluentSelfResource;
-    parent_fluent_make?: FluentSelfResource;
-    parent_fluent_chain?: FluentSelfResource;
-    parent_fluent_docblock?: FluentSelfResource;
-    parent_summary?: { id: number };
-    foreign_summary?: { slug: string };
+    parent_fluent?: FluentSelfResource | null;
+    parent_fluent_make?: FluentSelfResource | null;
+    parent_fluent_chain?: FluentSelfResource | null;
+    parent_fluent_docblock?: FluentSelfResource | null;
+    parent_summary?: { id: number } | null;
+    foreign_summary?: { slug: string } | null;
     parent_fluent_nullable?: FluentSelfResource | null;
 }

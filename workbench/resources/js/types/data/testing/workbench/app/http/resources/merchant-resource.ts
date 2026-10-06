@@ -20,16 +20,16 @@ import type { EventLogResource, RegistrarResource, SupplierSummaryResource, User
 export interface MerchantResource
 {
     id: number;
-    owner_via_closure?: UserResource;
-    owner_explicit?: UserResource;
+    owner_via_closure?: UserResource | null;
+    owner_explicit?: UserResource | null;
     owner_variant_constant?: unknown;
     owner_direct: UserResource;
     staff_via_closure?: UserResource[];
     staff_explicit?: UserResource[];
-    history_event?: EventLogResource;
+    history_event?: EventLogResource | null;
     filing?: unknown;
     alert?: unknown;
-    registrar?: RegistrarResource;
+    registrar?: RegistrarResource | null;
     registrars?: unknown;
     suppliers?: SupplierSummaryResource[];
     unpublished_guess?: unknown;

@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,7 @@ use Workbench\App\Models\ArrayObjectCastFixture;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\DocblockGenericsFixture;
@@ -1103,5 +1105,34 @@ describe('a morphTo docblock that names a class_alias', function () {
 
         expect($result['morphFqcns'])->toBe([Facility::class])
             ->and($result['type'])->toBe('Facility | null');
+    });
+});
+
+// One rule decides whether a relation can load as null: the one resolveRelation() types its `| null` arm with.
+describe('relationLoadsNull()', function () {
+    it('tells whether a relation can be loaded as null', function (string $model, string $relation, ?bool $expected) {
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull($model, $relation))->toBe($expected);
+    })->with([
+        'a BelongsTo whose foreign key is nullable' => [Category::class, 'parent', true],
+        'a BelongsTo whose foreign key is required' => [Comment::class, 'user', false],
+        'a HasOne' => [User::class, 'profile', true],
+        'a nullable MorphTo' => [Image::class, 'reviewable', true],
+        'a required MorphTo' => [Image::class, 'imageable', false],
+        'a HasMany' => [User::class, 'posts', false],
+        'a relation the model does not declare' => [User::class, 'featuredPosts', null],
+    ]);
+
+    it('answers false for every relation while nullable_relations is off', function () {
+        config()->set('ts-publish.models.nullable_relations', false);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(Category::class, 'parent'))->toBeFalse()
+            ->and(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'featuredPosts'))->toBeFalse();
+    });
+
+    // A loaded to-many relation is a collection, so a nullability map that calls it nullable cannot make it load null.
+    it('answers false for a to-many relation its strategy calls nullable', function () {
+        config()->set('ts-publish.models.relation_nullability_map', [HasMany::class => 'nullable']);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'posts'))->toBeFalse();
     });
 });

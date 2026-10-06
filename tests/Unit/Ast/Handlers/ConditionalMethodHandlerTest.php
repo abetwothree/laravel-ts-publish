@@ -288,7 +288,7 @@ it('binds whenLoaded()\'s closure param to the related model only for the closur
         ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
-        ->and($result)->toBe(['type' => 'string', 'optional' => true]);
+        ->and($result)->toBe(['type' => 'string | null', 'optional' => true]);
 });
 
 it('binds a to-many whenLoaded()\'s closure param to the collection type, never varModelBindings, then restores scope', function () {
@@ -790,18 +790,60 @@ it('binds a Carbon new default as string under timestamps_as_date', function (st
     'Carbon\\CarbonImmutable' => ['\\Carbon\\CarbonImmutable'],
 ]);
 
-// whenLoaded() returns null for a relation loaded as null before it calls the closure, and a list type would omit it.
-it('leaves a morphTo whenLoaded() variadic parameter unbound', function (string $resource, string $model) {
+// whenLoaded() returns null, before it reads the value, for a relation loaded as null; a to-many loads a collection.
+it('adds the null a relation loaded as null returns to every whenLoaded() value arm', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a closure over a nullable to-one' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name)', 'string | null'],
+    'a closure whose nullsafe chain already yields null' => ['$this->whenLoaded("categoryRel", fn () => $this->categoryRel?->name)', 'string | null'],
+    'a value that is not a closure' => ['$this->whenLoaded("categoryRel", "loaded")', 'string | null'],
+    'a first-class callable' => ['$this->whenLoaded("categoryRel", \\Workbench\\App\\Http\\Resources\\CategoryResource::make(...))', 'CategoryResource | null'],
+    'a closure and a default' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name, "absent")', 'string | null'],
+    'a literal null value, which Laravel swaps for the identity closure' => ['$this->whenLoaded("categoryRel", null, "absent")', 'Category | string | null'],
+    'a variadic list, which never holds null' => ['$this->whenLoaded("categoryRel", fn (...$c) => $c)', 'Category[] | null'],
+    'a closure over a relation the model does not declare' => ['$this->whenLoaded("featured", fn ($f) => "x")', 'string | null'],
+    'a closure over a non-nullable to-one' => ['$this->whenLoaded("author", fn ($a) => $a->name)', 'string'],
+    'a closure over a to-many' => ['$this->whenLoaded("comments", fn ($c) => $c->pluck("id"))', 'number[]'],
+    'a closure the engine cannot type' => ['$this->whenLoaded("categoryRel", fn ($c) => json_decode($c->name))', 'unknown'],
+]);
+
+it('adds no whenLoaded() null arm while nullable_relations is off', function (string $php, string $type) {
+    config()->set('ts-publish.models.nullable_relations', false);
+
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a declared to-one' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name)', 'string'],
+    'an undeclared relation' => ['$this->whenLoaded("featured", fn ($f) => "x")', 'string'],
+]);
+
+// With no backing model every relation reads as undeclared, so nullable_relations alone decides the arm.
+it('adds the whenLoaded() null arm on a subject with no backing model only while nullable_relations is on', function (bool $nullableRelations, string $type) {
+    config()->set('ts-publish.models.nullable_relations', $nullableRelations);
+    $valueExpr = new String_('loaded');
+    $expr = new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('author')), new Arg($valueExpr)]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([[$valueExpr, ['type' => 'string', 'optional' => false]]]);
+
+    expect((new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => true]);
+})->with([
+    'nullable_relations on' => [true, 'string | null'],
+    'nullable_relations off' => [false, 'string'],
+]);
+
+// whenLoaded() calls the closure only for a loaded value that is not null, so the list never holds null; the key takes
+// the null it returns instead, for a relation that can load as null.
+it('binds a morphTo whenLoaded() variadic parameter to the list of its targets', function (string $resource, string $model, string $type, array $targets) {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
     $scope = new AnalysisScope(new ReflectionClass($resource), $model);
     $expr = new AstParser()->parseSource('<?php $this->whenLoaded("reviewable", fn (...$r) => $r);')[0]->expr;
 
     $result = new ResourceAstAnalyzer(new ReflectionClass($resource), $model, 'toArray', null, $scope)->resolve($expr);
 
-    expect($result['type'])->toBe('unknown');
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedModelFqcns'] ?? null)->toBe($targets);
 })->with([
-    'targets from the morph map' => [ReviewResource::class, Review::class],
-    'a nullable relation' => [ImageResource::class, Image::class],
+    'targets from the morph map' => [ReviewResource::class, Review::class, '(Artist | Venue)[]', [Artist::class, Venue::class]],
+    'a nullable relation, its null arm on the key' => [ImageResource::class, Image::class, '(User | User)[] | null', [CrmUser::class, User::class]],
 ]);
 
 // The value is typed before the claim frees the name it shares, or `$local->profile` would read an unbound `$local`.

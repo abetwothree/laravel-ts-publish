@@ -192,9 +192,9 @@ These rules settle the cases the table leaves open:
   so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
   `never[]`, and leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
   `whenNotNull()` or `whenNull()` value closure's, stay unbound.
-- **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`. The
-  map writers skip one, since `map()` passes two values of different types, and a `morphTo` `whenLoaded()` binds nothing
-  for one.
+- **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and a
+  `morphTo` `whenLoaded()` binds the list of its targets, its element never `null`. The map writers skip one, since
+  `map()` passes two values of different types.
 - **`when()` and `unless()` bind a required first parameter anyway**: they bind the condition's `$this->prop`, although
   Laravel passes nothing and the call throws `ArgumentCountError`. The workbench pins it with
   `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays, and `ts:publish` warns that the

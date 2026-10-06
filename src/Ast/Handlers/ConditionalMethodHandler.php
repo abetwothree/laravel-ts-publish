@@ -426,8 +426,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Analyze $this->whenLoaded('relation', value, default): a closure param binds to the relation's model, its whole
-     * collection or its morphTo targets, and a variadic one to the list the relation collects into, except a
-     * morphTo's, which binds nothing, so its key stays `unknown` and admits the null a relation loaded as null returns.
+     * collection or its morphTo targets, and a variadic one to the list the relation collects into. A value arm also
+     * takes the `null` Laravel returns, before it reads the value, for a relation that can be loaded as null.
      *
      * @return ValueExpressionResult
      */
@@ -438,7 +438,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $relationship = $args->named('relationship')?->value;
         $valueExpr = $args->named('value')?->value;
 
-        if ($valueExpr !== null) {
+        if ($valueExpr !== null && ! $this->isNullConstFetch($valueExpr)) {
             // Resolve the related model so accesses on local variables inside the closure can be typed.
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousNameBindings = $scope->nameBindings();
@@ -455,12 +455,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
                     }
                 }
 
-                // A variadic parameter collects the relation into a list, so it never holds the relation itself.
-                if ($relationInfo !== null && $relationInfo['modelFqcn'] !== null) {
+                // A variadic parameter collects the relation into a list, which never holds null: the closure runs
+                // only for a loaded value that is not null.
+                if ($relationInfo !== null && ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== [])) {
                     $this->bindVariadicList($valueExpr, [
-                        'type' => $relationInfo['type'],
+                        'type' => ValueResult::stripNullArm($relationInfo['type']),
                         'optional' => false,
-                        'modelFqcn' => $relationInfo['modelFqcn'],
+                        ...($relationInfo['modelFqcn'] !== null
+                            ? ['modelFqcn' => $relationInfo['modelFqcn']]
+                            : ['embeddedModelFqcns' => $relationInfo['morphFqcns']]),
                     ], $scope, $engine);
                 }
 
@@ -506,11 +509,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 $scope->restoreNameBindings($previousNameBindings);
             }
 
-            return $this->applyConditionalDefault($inner, $args, $scope, $engine);
+            return $this->applyConditionalDefault($this->withLoadedNullArm($inner, $relationship, $scope), $args, $scope, $engine);
         }
 
-        // Also `whenLoaded('rel', default: …)`: Laravel then calls value() with a null $value, which it
-        // swaps for the identity closure, so the loaded arm is still the relation itself.
+        // Also `whenLoaded('rel', null, …)` and `whenLoaded('rel', default: …)`: Laravel swaps the null $value for the
+        // identity closure, so the loaded arm is still the relation itself.
         if ($relationship instanceof String_) {
             $info = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
             $result = ['type' => $info['type'], 'optional' => false];
@@ -566,6 +569,23 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $previousNameBindings];
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
+    }
+
+    /**
+     * The value arm with the `null` whenLoaded() returns, without reading the value, for a relation loaded as null. A
+     * relation the model does not declare holds whatever setRelation() stored, so only relationLoadsNull()'s `false`
+     * rules the arm out.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    private function withLoadedNullArm(array $value, ?Expr $relationship, AnalysisScope $scope): array
+    {
+        if (! $relationship instanceof String_ || $this->relationLoadsNull($relationship->value, $scope) === false) {
+            return $value;
+        }
+
+        return [...$value, 'type' => ValueResult::withNullArm($value['type'])];
     }
 
     /**

@@ -381,7 +381,7 @@ it('resolves a nullsafe chain from a typed map-closure parameter', function () {
 it('keeps a typed map over a relation the model does not declare through a trailing values()->all()', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UserFeaturedPostsResource::class), User::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[]')
+    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[] | null')
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 
@@ -466,7 +466,7 @@ it('lets a map-closure parameter own its name over an outer binding of the same 
     'typed variable-receiver map under a morphTo whenLoaded parameter' => [
         '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->all())',
         Image::class,
-        '(string | null)[]',
+        '(string | null)[] | null',
     ],
 ]);
 

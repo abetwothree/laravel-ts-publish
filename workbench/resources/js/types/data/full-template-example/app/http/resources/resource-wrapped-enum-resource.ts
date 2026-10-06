@@ -37,6 +37,6 @@ export interface ResourceWrappedEnumResource
     merged_visibility?: AsEnum<typeof Visibility> | null;
     deferred_status?: AsEnum<typeof Status>;
     deferred_priority?: AsEnum<typeof Priority> | null;
-    category_status?: AsEnum<typeof Status>;
+    category_status?: AsEnum<typeof Status> | null;
     category_visibility?: AsEnum<typeof Visibility> | null;
 }

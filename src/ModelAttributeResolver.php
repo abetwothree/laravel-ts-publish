@@ -644,10 +644,7 @@ class ModelAttributeResolver
             return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
         }
 
-        $isMorphTo = $relation['type'] === 'MorphTo'
-            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
-
-        if ($isMorphTo) {
+        if (self::isMorphToRelation($relation)) {
             $targets = $this->resolveMorphToTargets($modelFqcn, $relationName);
 
             return $this->buildMorphUnionInfo($targets, $relation, $ctx);
@@ -668,13 +665,40 @@ class ModelAttributeResolver
         }
 
         $type = $relatedModel;
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
-        if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
+    }
+
+    /**
+     * Whether a relation can be loaded as null, by the rule its type takes `| null` with; null when the model declares
+     * no such relation.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function relationLoadsNull(string $modelFqcn, string $relationName): ?bool
+    {
+        // With `nullable_relations` off no relation publishes `| null`, declared or not.
+        if (! Config::boolean('ts-publish.models.nullable_relations')) {
+            return false;
+        }
+
+        $ctx = $this->resolveContext($modelFqcn);
+        $relation = $ctx === null ? null : $ctx['relations']->firstWhere('name', $relationName);
+
+        if ($ctx === null || $relation === null) {
+            return null;
+        }
+
+        // A loaded to-many relation is a collection, never null, whatever its strategy says.
+        if (! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many')) {
+            return false;
+        }
+
+        return $this->typesRelationNullable($relation, $ctx['relationNullable']);
     }
 
     /**
@@ -1292,14 +1316,22 @@ class ModelAttributeResolver
             ? implode(' | ', array_map(class_basename(...), $targets))
             : 'unknown';
 
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
-
         // 'unknown' already admits null, so appending the suffix would only add noise.
-        if ($type !== 'unknown' && $nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($type !== 'unknown' && $this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => null, 'morphFqcns' => $targets];
+    }
+
+    /**
+     * Whether a relation's type takes a `| null` arm: `nullable_relations` is on and its strategy calls it nullable.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function typesRelationNullable(array $relation, RelationNullable $nullable): bool
+    {
+        return Config::boolean('ts-publish.models.nullable_relations') && $nullable->isNullable($relation);
     }
 
     /**
@@ -1444,6 +1476,17 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * Whether a relation is a MorphTo, which resolves to one of several target models.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isMorphToRelation(array $relation): bool
+    {
+        return $relation['type'] === 'MorphTo'
+            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
     }
 
     /**
