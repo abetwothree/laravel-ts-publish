@@ -160,10 +160,10 @@ final class MethodReturnTypeResolver
     /**
      * Whether the analysis of this body reads every value it returns, or a declared non-array arm covers what it skips.
      *
-     * When a literal only `if` and loop blocks enclose has an item, or such a variable is returned, the analysis reads
-     * each such literal and variable (beside a literal with an item, only one it reads completely); else the first
-     * return. Here a variable counts only as the first return beside no non-empty literal, a sound subset. A generator
-     * returns a Generator, so nothing it returns is read.
+     * The analysis reads each literal, and each variable it reads completely, that only `if` and loop blocks enclose
+     * when one of them has a key; with none, it reads every variable leniently when each return is such a literal or a
+     * variable, else the first return. Here a variable counts only as the first return beside no non-empty literal, a
+     * sound subset. A generator returns a Generator, so nothing it returns is read.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  list<string>  $otherArms

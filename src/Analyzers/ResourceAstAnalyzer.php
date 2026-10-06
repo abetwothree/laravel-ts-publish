@@ -1494,54 +1494,73 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->collectDirectReturns($stmts, $candidates);
 
-        // Beside a literal with an item, a variable the walk does not read completely is skipped like any other
-        // non-literal return, so its unread keys never turn a sibling's optional. With no such literal, every
-        // returned variable is read leniently.
+        // A variable the walk does not read completely is skipped like any other non-literal return, so its unread keys
+        // never turn a sibling's optional.
+        /** @var array<string, ResourceAnalysis|null> $variables */
+        $variables = [];
+
+        foreach ($candidates as $return) {
+            if ($return->expr instanceof Variable && is_string($return->expr->name)
+                && ! array_key_exists($return->expr->name, $variables)) {
+                $variables[$return->expr->name] = $this->variableBranch($stmts, $return->expr->name);
+            }
+        }
+
+        $returns = count($this->collectReturnExpressions($stmts));
         $literalHasItems = array_any(
             $candidates,
             fn (Return_ $return): bool => $return->expr instanceof Array_ && $return->expr->items !== [],
         );
-        /** @var array<string, ResourceAnalysis|null> $variables */
-        $variables = [];
-        /** @var list<Array_|ResourceAnalysis|null> $branches */
+        $variableHasItems = array_any(
+            $variables,
+            fn (?ResourceAnalysis $branch): bool => $branch !== null && $branch->properties !== [],
+        );
+
+        // With no key read completely and every return a literal or a variable, a skipped variable is read leniently
+        // instead, so a lone one still gets analyze()'s refiner and casts. A return of any other kind is read by the
+        // first-return fallback, as before.
+        $lenient = ! $literalHasItems && ! $variableHasItems && count($candidates) === $returns;
+
+        if ($lenient) {
+            foreach ($variables as $name => $branch) {
+                $variables[$name] = $branch ?? $this->resolveVariableReturnAnalysis($stmts, $name);
+            }
+        }
+
+        /** @var list<Array_|ResourceAnalysis> $branches */
         $branches = [];
         $taken = 0;
 
         foreach ($candidates as $return) {
             $expr = $return->expr;
+            $branch = match (true) {
+                $expr instanceof Array_ => $expr,
+                $expr instanceof Variable && is_string($expr->name) => $variables[$expr->name],
+                default => null,
+            };
 
-            if ($expr instanceof Array_) {
-                $branches[] = $expr;
-                $taken++;
-            } elseif ($expr instanceof Variable && is_string($expr->name)) {
-                if (! array_key_exists($expr->name, $variables)) {
-                    $variables[$expr->name] = $literalHasItems
-                        ? $this->variableBranch($stmts, $expr->name)
-                        : $this->resolveVariableReturnAnalysis($stmts, $expr->name);
-                    $branches[] = $variables[$expr->name];
-                }
+            if ($branch === null) {
+                continue;
+            }
 
-                $taken += $variables[$expr->name] === null ? 0 : 1;
+            $taken++;
+
+            if (! in_array($branch, $branches, true)) {
+                $branches[] = $branch;
             }
         }
 
-        $branches = array_values(array_filter($branches));
-        $returns = count($this->collectReturnExpressions($stmts));
-
         // A `return []` guard is a branch like any other: the keys its siblings set are absent on that path, so they
-        // publish optional. Only a body with no non-empty return and no variable declines here.
-        $hasItems = array_any(
-            $branches,
-            fn (Array_|ResourceAnalysis $branch): bool => $branch instanceof ResourceAnalysis || $branch->items !== [],
-        );
+        // publish optional. Without a key read completely, only a lenient read of a variable keeps the sweep going.
+        $proceeds = $literalHasItems || $variableHasItems || ($lenient && $variables !== []);
 
         // A return no branch stands for, or one the first-return fallback leaves beside the one it reads, is unread.
         // The published shape stays, but a child that builds on it cannot trust its key set.
-        if ($hasItems ? $taken < $returns : $returns > 1) {
+        if ($proceeds ? $taken < $returns : $returns > 1) {
             $this->lenientReads++;
         }
 
-        if (! $hasItems) {
+        if (! $proceeds) {
             return null;
         }
 

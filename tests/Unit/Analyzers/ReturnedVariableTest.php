@@ -16,12 +16,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyAloneResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumKeyResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumSpreadResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedFilterThenAppendedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedFilterThenOpaqueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedNestedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOnlyVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueBesideReadableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
@@ -39,6 +42,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedShapedLoneVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSkippingParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSkippingParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedTryLiteralThenOpaqueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnionAssignResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledParentResource;
@@ -185,6 +189,18 @@ test('a lone variable read leniently keeps the method\'s casts and @return shape
 
 test('a variable beside only a return [] guard is read leniently as a branch', function () {
     expect(returnedVariableMembers(ReturnedGuardOnlyVariableResource::class))->toBe('id?: number');
+});
+
+test('a skipped variable beside a return the sweep does not take leaves the first return read', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; name: string');
+})->with([
+    'a filter, then a variable on an unreadable base' => [ReturnedFilterThenOpaqueResource::class],
+    'a filter, then a variable with an appended key' => [ReturnedFilterThenAppendedResource::class],
+    'a literal inside try, then a variable on an unreadable base' => [ReturnedTryLiteralThenOpaqueResource::class],
+]);
+
+test('a skipped variable beside one read completely leaves that one its required keys', function () {
+    expect(returnedVariableMembers(ReturnedOpaqueBesideReadableResource::class))->toBe('id: number; name: string; y: number');
 });
 
 test('a return a parent\'s sweep skips makes a child variable built on it skip, and leaves the parent\'s own shape', function (string $parent, string $parentShape, string $child) {
