@@ -61,8 +61,8 @@ and binds `provide()` itself:
 - **Declared-type binding**: `AstEngine::bindingsFor()` binds the `Model $model` parameter to `Model`. Method calls on
   it reflect Laravel's own docblocks, so `getTable()`, `getKeyName()`, `getRouteKeyName()` and `getMorphClass()` infer
   `string`.
-- **Located context**: it hands the located context to `ResourceAstAnalyzer`, whose `analyze()` would otherwise run
-  `locateOwn()` again and decline the trait file. The run has no model class and uses the default resource profile, so
+- **Located context**: it hands the located context to `ResourceAstAnalyzer` beside the scope `bindingsFor()` seeded
+  from it, so `analyze()` runs no second lookup. The run has no model class and uses the default resource profile, so
   anything not involving `$model` infers as `analyzeMethod()` would. An engine failure infers nothing.
 
 An attribute read such as `$model->status` infers nothing. `ModelAttributeResolver` cannot instantiate the abstract

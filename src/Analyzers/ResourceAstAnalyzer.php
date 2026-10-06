@@ -185,6 +185,29 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Locate the subject's own declaration of the analyzed method, a trait's included.
+     *
+     * A body in a trait's file reads its `@var` tags against that file's imports, as a spread helper's does.
+     */
+    private function locateSubjectMethod(): ?MethodContext
+    {
+        $subject = $this->scope->subjectReflection;
+        $context = resolve(MethodLocator::class)->locateDeclared($subject->getName(), $this->methodName);
+
+        if ($context === null) {
+            return null;
+        }
+
+        $method = $subject->getMethod($this->methodName);
+
+        if ($method->getFileName() !== $subject->getFileName()) {
+            $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        }
+
+        return $context;
+    }
+
+    /**
      * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
      * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
      *
@@ -205,8 +228,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             DependencyRecorder::recordClass($this->scope->modelClass);
         }
 
-        $context = $this->context
-            ?? resolve(MethodLocator::class)->locateOwn($this->scope->subjectReflection->getName(), $this->methodName);
+        $context = $this->context ?? $this->locateSubjectMethod();
         $toArrayMethod = $context?->method;
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {

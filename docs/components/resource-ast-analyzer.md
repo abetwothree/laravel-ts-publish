@@ -39,8 +39,8 @@ model-getter profile drops the first two. In every profile, the order handlers r
 
 `analyze()` builds the analysis in a fixed order, and each step carries a rule:
 
-- **Only the class's own file counts**: [`MethodLocator::locateOwn()`](../../src/Ast/MethodLocator.php) misses a
-  `toArray()` declared in another file, so a subclass without one walks its ancestors through
+- **The class's own declaration counts, a trait it uses included**:
+  [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
   `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. That guard is why the walk can run before
   the collection check: Laravel's own `ResourceCollection::toArray()` yields no properties.

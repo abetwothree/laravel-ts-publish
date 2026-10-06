@@ -14,7 +14,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesClassBeforeTraitLab
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesInsteadofTraits;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesLabelledTrait;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\TraitShapedChildResource;
+use Workbench\App\Http\Resources\TraitShapedResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
 
@@ -81,6 +84,20 @@ it('locateOwn still misses an inherited method under any casing', function (stri
 
     expect($locator->locateOwn(PostResource::class, $spelling))->toBeNull();
 })->with(['resolve', 'RESOLVE', 'Resolve']);
+
+it('locateDeclared finds a method a trait gives the class, and misses one only an ancestor declares', function () {
+    $locator = new MethodLocator(new AstParser);
+    $context = $locator->locateDeclared(TraitShapedResource::class, 'toArray');
+    $declaration = new ReflectionMethod(TraitShapedResource::class, 'toArray');
+
+    expect($context)->not->toBeNull()
+        ->and($context->reflection->getName())->toBe(TraitShapedResource::class)
+        ->and($context->method->getStartLine())->toBe($declaration->getStartLine())
+        ->and($locator->locateOwn(TraitShapedResource::class, 'toArray'))->toBeNull()
+        ->and($locator->locateDeclared(TraitShapedChildResource::class, 'toArray'))->toBeNull()
+        ->and($locator->locateDeclared(BodylessTeamResource::class, 'toArray'))->toBeNull()
+        ->and($locator->locateDeclared(UserResource::class, 'toArray'))->not->toBeNull();
+});
 
 it('memoizes locateOwn per declared method, not per spelling', function (string $first, string $second) {
     // One shared entry is only correct because every spelling resolves to the same declaration; assert the

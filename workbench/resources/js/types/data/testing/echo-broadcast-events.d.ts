@@ -1,5 +1,6 @@
 import type { ComputedNameEvent } from './workbench/app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './workbench/app/events/DeclaredPropsEvent';
+import type { DispatchRelayed } from './workbench/app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './workbench/app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './workbench/app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './workbench/app/events/FacilityAudited';
@@ -24,6 +25,7 @@ declare module "@laravel/echo" {
     interface Events {
         ".Workbench.App.Events.ComputedNameEvent": ComputedNameEvent;
         ".Workbench.App.Events.DeclaredPropsEvent": DeclaredPropsEvent;
+        ".Workbench.App.Events.DispatchRelayed": DispatchRelayed;
         ".Workbench.App.Events.DocblockShapedEvent": DocblockShapedEvent;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
         ".Workbench.App.Events.FacilityAudited": FacilityAudited;

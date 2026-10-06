@@ -1,5 +1,6 @@
 export * from './ComputedNameEvent';
 export * from './DeclaredPropsEvent';
+export * from './DispatchRelayed';
 export * from './DocblockShapedEvent';
 export * from './EnumBroadcastEvent';
 export * from './FacilityAudited';

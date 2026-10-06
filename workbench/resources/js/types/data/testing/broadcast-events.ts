@@ -1,5 +1,6 @@
 import type { ComputedNameEvent } from './workbench/app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './workbench/app/events/DeclaredPropsEvent';
+import type { DispatchRelayed } from './workbench/app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './workbench/app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './workbench/app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './workbench/app/events/FacilityAudited';
@@ -23,6 +24,7 @@ import type { UserSynced as CrmUserSynced } from './workbench/crm/events/UserSyn
 export type BroadcastEvent =
     | '.Workbench.App.Events.ComputedNameEvent'
     | '.Workbench.App.Events.DeclaredPropsEvent'
+    | '.Workbench.App.Events.DispatchRelayed'
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.FacilityAudited'
@@ -46,6 +48,7 @@ export type BroadcastEvent =
 export const BroadcastEvents = Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
+    DispatchRelayed: '.Workbench.App.Events.DispatchRelayed',
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
@@ -70,6 +73,7 @@ export const BroadcastEvents = Object.freeze({
 export type {
     ComputedNameEvent,
     DeclaredPropsEvent,
+    DispatchRelayed,
     DocblockShapedEvent,
     EnumBroadcastEvent,
     FacilityAudited,

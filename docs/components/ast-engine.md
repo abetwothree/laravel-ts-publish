@@ -281,7 +281,8 @@ read that bypasses it leaves the generation cache serving stale output when that
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
 method inherited from another file is a deliberate miss, the signal callers use to detect delegation, while a parent
-declared in the same file is a hit. Both memoize misses.
+declared in the same file is a hit. Both memoize misses. `locateDeclared()` searches the class's own file, then a trait
+the class itself uses, composed of those two memoized lookups.
 
 The body fallback records its dependencies the same way, because `MethodReturnTypeResolver` re-enters `analyzeMethod()`,
 which reads the helper's file through `MethodLocator`. So a resource typed from a helper's body is invalidated when that
@@ -420,6 +421,9 @@ Each consumer enters the engine at the point that fits its subject:
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
+
+Every consumer that reaches `ResourceAstAnalyzer::analyze()` without a context locates through
+`MethodLocator::locateDeclared()`, as both Inertia analyzers do for an action.
 
 ## Related
 

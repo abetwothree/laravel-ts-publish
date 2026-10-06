@@ -39,6 +39,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\DispatchRelayed": {
+            "name": "DispatchRelayed",
+            "eventName": "DispatchRelayed",
+            "broadcastName": ".Workbench.App.Events.DispatchRelayed",
+            "properties": [
+                {
+                    "name": "dispatchId",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\DocblockShapedEvent": {
             "name": "DocblockShapedEvent",
             "eventName": "DocblockShapedEvent",
@@ -18062,6 +18079,71 @@
                 {
                     "name": "id",
                     "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TraitHelperReadResource": {
+            "name": "TraitHelperReadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "own_quote",
+                    "type": "{ band: string; ceiling: number }",
+                    "optional": false
+                },
+                {
+                    "name": "service_quote",
+                    "type": "{ band: string; ceiling: number }",
+                    "optional": false
+                },
+                {
+                    "name": "static_quote",
+                    "type": "{ band: string; ceiling: number }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TraitShapedChildResource": {
+            "name": "TraitShapedChildResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "shaped_by",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TraitShapedResource": {
+            "name": "TraitShapedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "shaped_by",
+                    "type": "string",
                     "optional": false
                 }
             ]

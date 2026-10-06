@@ -4958,6 +4958,25 @@ declare global {
         export interface TrackingEventResource {
             id: number;
         }
+        /** Reads a trait-declared `: array` helper through three receivers: itself, a container instance and a static call. */
+        export interface TraitHelperReadResource {
+            id: number;
+            own_quote: { band: string; ceiling: number };
+            service_quote: { band: string; ceiling: number };
+            static_quote: { band: string; ceiling: number };
+        }
+        /** Inherits a toArray() its parent takes from a trait, so the analysis walks to the parent and reads the trait there. */
+        export interface TraitShapedChildResource {
+            id: number;
+            name: string;
+            shaped_by: string;
+        }
+        /** Takes its toArray() from a trait declared in another file, which is still the resource's own method. */
+        export interface TraitShapedResource {
+            id: number;
+            name: string;
+            shaped_by: string;
+        }
         export interface TraitSpreadCoverageResource {
             id: number;
             computed: string;
@@ -5584,6 +5603,10 @@ declare global {
             tags: string[];
             id: number;
             note: string | null;
+        }
+        export interface DispatchRelayed {
+            dispatchId: number;
+            channel: string;
         }
         export interface DocblockShapedEvent {
             published_at: string | null;
