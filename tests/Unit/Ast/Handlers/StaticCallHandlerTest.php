@@ -65,6 +65,16 @@ function staticCallHandlerThrowingEngine(): ExpressionEngine
 }
 
 /**
+ * The type one expression resolves to through the full resource profile of FluentSelfResource over a Category.
+ */
+function staticCallHandlerResolveOnCategory(string $php): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(FluentSelfResource::class), Category::class)->resolve($expr)['type'];
+}
+
+/**
  * A stub engine resolving each distinct expression instance to its own canned result, keyed by
  * object identity — mirrors ClosureHandlerArmStubEngine's convention for the same reason.
  */
@@ -240,11 +250,7 @@ it('keeps the foreign-receiver boundary: a non-self-returning method on a foreig
 
 // A nested resource whose payload is null serializes as null, but resolve() runs the resource's own toArray() on it.
 it('keeps a nullable payload\'s null arm through a fluent self-returning call, never through resolve()', function (string $php, string $type) {
-    $scope = new AnalysisScope(new ReflectionClass(FluentSelfResource::class), Category::class);
-    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
-
-    expect(new ResourceAstAnalyzer(new ReflectionClass(FluentSelfResource::class), Category::class, 'toArray', null, $scope)->resolve($expr)['type'])
-        ->toBe($type);
+    expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
 })->with([
     'make() over a nullable relation' => ['self::make($this->parent)', 'FluentSelfResource | null'],
     'new over a nullable relation' => ['new self($this->parent)', 'FluentSelfResource | null'],
@@ -259,11 +265,7 @@ it('keeps a nullable payload\'s null arm through a fluent self-returning call, n
 // collectResource() calls a method on its payload, so a resource collection, or the one ::collection() builds, throws
 // on null instead of serializing as null.
 it('adds no null arm to a resource collection built around a nullable payload', function (string $php, string $type) {
-    $scope = new AnalysisScope(new ReflectionClass(FluentSelfResource::class), Category::class);
-    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
-
-    expect(new ResourceAstAnalyzer(new ReflectionClass(FluentSelfResource::class), Category::class, 'toArray', null, $scope)->resolve($expr)['type'])
-        ->toBe($type);
+    expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
 })->with([
     'new on a collection' => ['new \StaticCallHandlerOrphanCollection($this->parent)', 'StaticCallHandlerOrphanCollection'],
     'make() on a collection' => ['\StaticCallHandlerOrphanCollection::make($this->parent)', 'StaticCallHandlerOrphanCollection'],

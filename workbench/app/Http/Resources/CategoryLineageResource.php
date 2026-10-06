@@ -11,8 +11,8 @@ use Workbench\App\Models\Category;
 /**
  * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
  * `children`, a HasMany that loads as a collection, then every resource built around `parent`. Laravel returns null for
- * a relation loaded as null before it reads the value, and serializes a resource wrapping null as null, so each
- * `parent` key publishes `| null`; a `children` key never does.
+ * a relation loaded as null before it reads the value and serializes a resource wrapping null as null, and a `?->`
+ * call on null is null, so each `parent` key publishes `| null`; a `children` key never does.
  *
  * @mixin Category
  */

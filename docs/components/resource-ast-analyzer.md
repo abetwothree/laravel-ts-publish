@@ -321,8 +321,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.
 
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
-conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional, and `| null` when its
-payload can be `null`, inside a resource only (`ReadsNullablePayloads::wrapsNullablePayload()`).
+conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
+`ReadsNullablePayloads::wrapsNullablePayload()` adds `| null` to a resource built around a payload that can be `null`,
+such as `Resource::make($this->parent)`, inside a resource only; a collection never takes it.
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -469,7 +470,7 @@ publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`
 ### A method called on a new resource types its payload
 
 `StaticCallHandler` types a method called on `new self($x)`, `self::make($x)` or a chain of them. A method that
-returns the same instance keeps the receiver's type, the payload's `| null` included, plus `| null` for a nullable
+returns the same instance keeps the receiver's type, the wrapped value's `| null` included, plus `| null` for a nullable
 return. It says so with a native `static`, `self` or the class name, or with a docblock `@return $this`. Otherwise
 the method body is the payload. `spreadAnalysis()` analyzes it, and `BuildsInlineObjectTypes::buildInlineObjectType()`
 flattens it. An empty analysis declines, since `{}` would claim the payload has no keys.
@@ -486,7 +487,7 @@ Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyz
 `$scope->subjectReflection`. A foreign receiver such as `new CategoryResource($x)->summary()` keeps the `unknown`
 floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
 exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does, never with the payload's `| null`.
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
 
 ## Interpolated keys
 
