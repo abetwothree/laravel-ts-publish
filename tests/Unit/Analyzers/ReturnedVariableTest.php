@@ -12,8 +12,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReplacedVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnionAssignResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVariableLinesService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithReturnedVariable;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -62,9 +65,20 @@ test('a returned variable is a branch beside a literal and a return [] guard', f
     expect(returnedVariableMembers(ReturnedVariableBranchesResource::class))->toBe('id?: number; name?: string');
 });
 
+test('a self-spread variable beside a return [] guard publishes its keys optional', function () {
+    expect(returnedVariableMembers(ReturnedSelfSpreadGuardResource::class))->toBe('id?: string');
+});
+
 test('a variable the walk cannot read is skipped, so the literal branch keeps its keys required', function () {
     expect(returnedVariableMembers(ReturnedOpaqueVariableResource::class))->toBe('id: number; name: string');
 });
+
+test('a base read as nothing never turns a literal\'s keys optional', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number');
+})->with([
+    'parent::toArray() with no model' => [ReturnedUnmodeledParentResource::class],
+    'only() with no model' => [ReturnedUnmodeledOnlyResource::class],
+]);
 
 test('a returned variable is a branch only when the walk reads every whole write to it', function (string $body, bool $reads) {
     $analyzer = new class(new ReflectionClass(ReturnedHelperVariableResource::class), Tag::class) extends ResourceAstAnalyzer

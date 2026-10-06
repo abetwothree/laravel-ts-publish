@@ -44,7 +44,7 @@ model-getter profile drops the first two. In every profile, the order handlers r
   `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. That guard is why the walk can run before
   the collection check: Laravel's own `ResourceCollection::toArray()` yields no properties.
 - **Every array-literal `return` is a branch**, and so is a returned variable whose writes the walk reads
-  (`readsVariableArray()`): `analyzeAllReturnBranches()` merges them through `mergeReturnBranches()`, so a key one
+  (`variableBranch()`): `analyzeAllReturnBranches()` merges them through `mergeReturnBranches()`, so a key one
   branch lacks publishes optional, and a guard's `return []` is an empty branch. It declines only when no `return` has
   items and no such variable is returned; any other return is skipped.
 - **Any other body falls back to the first `return`**: `parent::toArray()`, an `array_merge()` of literals and
