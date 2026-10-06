@@ -292,6 +292,14 @@ as `unknown` in `{Model}All`, and in `{Model}AllResource`, whose `Omit<{Model}Re
 Read the attributes from `{Model}` and the relations from `{Model}Relations`, which keep their types, or give the
 relation a name no attribute takes.
 
+### An API resource wrapping a relation the engine cannot type publishes it without `| null`
+
+With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes `CategoryResource` where `parent` types
+`unknown` (an undeclared relation, a related model the run does not publish, or a `morphTo` with no resolvable target),
+though Laravel sends `null` for a relation loaded as `null`.
+`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. Declare the relation's return
+type, or publish the related model, and the `| null` comes back.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

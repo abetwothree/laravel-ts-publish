@@ -210,8 +210,10 @@ The reverse map follows four rules:
 - **Stale analyses**: `buildMorphTargetMap()` clears `AnalysisMemo`, so no analysis typed under an older map is reused.
 
 An unresolved `morphTo` publishes bare `unknown`, never `unknown | null`, since `unknown` already admits `null`.
-`buildMorphUnionInfo()` and `transformRelations()` each apply that guard to their own nullable suffix, and they must
-agree.
+`typesRelationNullable()` (with `isToManyRelation()` and `isMorphToRelation()`) decides a relation's `| null` for
+`resolveRelation()`, `buildMorphUnionInfo()` and `relationLoadsNull()`, which is tri-state: `null` means undeclared or
+unreadable. `ModelTransformer::transformRelations()` keeps its own copy without the to-many exemption, so a model
+interface can publish `Post[] | null` where a resource publishes `Post[]`.
 
 ## Models a run publishes
 
