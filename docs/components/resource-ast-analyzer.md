@@ -73,7 +73,8 @@ every profile, the order handlers run in decides which one answers; see
 `analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, as do a merge call's sides (`merge()`,
 `mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `branchUnion()` leaves out a branch that
 resolved to `unknown` and unions the rest, as a ternary drops its untypable arm. A key still publishes `unknown` when
-every branch is `unknown`, or when only `null` is left, since that `null` says nothing about the dropped value.
+every branch is `unknown`, or, for a spread helper alone, when only `null` is left, since that `null` says nothing
+about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a ternary does.
 `toArray()`'s own branches and `InertiaPageAnalyzer`'s merge keep the strict rule: one `unknown` branch makes the key
 `unknown`, because `unknown` absorbs whatever it joins.
 

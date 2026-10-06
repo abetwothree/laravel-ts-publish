@@ -3739,6 +3739,7 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
         'a closure default' => ['cancelled', 'boolean'],
         'a named default' => ['note_text', 'string | null'],
         'both sides set it, the default untypable' => ['k', 'number'],
+        'both sides set it, the value null and the default untypable' => ['null_total', 'null'],
     ]);
 
     it('publishes a key only one side sets as optional', function (string $key, string $type) {
@@ -6767,5 +6768,7 @@ test('only a spread helper\'s branches and a merge call\'s sides drop an untypab
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(BranchedSpreadPostResource::class), Post::class);
 
     expect($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')])->properties[0]['type'])->toBe('unknown')
-        ->and($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('string');
+        ->and($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('string')
+        ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('unknown')
+        ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true, keepsLoneNull: true)->properties[0]['type'])->toBe('null');
 });

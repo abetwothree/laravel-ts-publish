@@ -728,8 +728,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Analyze $this->merge(...), mergeWhen(...) or mergeUnless(...) with each array the call can merge as a branch.
      *
      * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
-     * some branches set publishes optional, and a key every branch sets is required. Their types union as a spread
-     * helper's branches do, leaving out a side the engine cannot type.
+     * some branches set publishes optional, and a key every branch sets is required. Their types union as a ternary's
+     * arms do, leaving out a side the engine cannot type.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
@@ -773,7 +773,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         return match (count($branches)) {
             0 => new ResourceAnalysis,
             1 => $branches[0],
-            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true),
+            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
         };
     }
 
@@ -1147,15 +1147,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Merge ResourceAnalysis objects from different return branches: a property missing from any branch becomes
-     * optional, channels merge as MethodAnalysis::merge() does, and flatTypeAlias keeps the first non-null value.
-     * Public for the page analyzer's `Inertia::render()` merge; only a spread helper's branches and a merge call's
-     * sides drop an untyped value.
+     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, and
+     * flatTypeAlias keeps the first non-null value. Public for `Inertia::render()`. A spread helper and a merge call
+     * drop an untyped branch ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
      *
      * @param  list<ResourceAnalysis>  $analyses
      */
-    public function mergeReturnBranches(array $analyses, bool $dropsUntypedBranches = false): ResourceAnalysis
-    {
+    public function mergeReturnBranches(
+        array $analyses,
+        bool $dropsUntypedBranches = false,
+        bool $keepsLoneNull = false,
+    ): ResourceAnalysis {
         $branchCount = count($analyses);
 
         /** @var array<string, list<AnalyzedProperty>> */
@@ -1183,9 +1185,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $properties = [];
 
         foreach ($propertyMap as $name => $entries) {
-            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches);
+            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches);
+            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
@@ -1237,15 +1239,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  list<string>  $types
      */
-    private function branchUnion(array $types, bool $dropsUntypedBranches): string
+    private function branchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull): string
     {
         $unique = array_values(array_unique($types));
 
         if ($dropsUntypedBranches && count($unique) > 1) {
             $typed = array_values(array_diff($unique, ['unknown']));
 
-            // A bare `null` left once the untypable branches are gone says nothing about the value.
-            $unique = $typed === [] || $typed === ['null'] ? ['unknown'] : $typed;
+            // A lone `null` left once the untypable branches are gone says nothing about a spread helper's value, but
+            // a merge call keeps it, as a ternary keeps its one typed arm.
+            $unique = $typed === [] || ($typed === ['null'] && ! $keepsLoneNull) ? ['unknown'] : $typed;
         }
 
         return count($unique) === 1 ? $unique[0] : $this->unionBranchTypes($unique);

@@ -60,6 +60,9 @@ class MergeDefaultResource extends JsonResource
 
             // A default the engine cannot type drops out of the union, as a spread helper's untypable branch does.
             $this->mergeWhen($this->id > 0, ['k' => $this->total], ['k' => $this->opaqueTotal()]),
+
+            // A `null` value beside an untypable default keeps its `null`, as a ternary keeps its one typed arm.
+            $this->mergeWhen($this->total === null, ['null_total' => null], ['null_total' => $this->opaqueTotal()]),
         ];
     }
 

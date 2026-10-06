@@ -3724,6 +3724,7 @@ declare global {
             owner_id?: number;
             subtotal_label?: string;
             k: number;
+            null_total: null;
         }
         /**
          * Exercises resolveMergedBranches() with a multi-return closure

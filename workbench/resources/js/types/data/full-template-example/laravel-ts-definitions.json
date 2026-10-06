@@ -14147,6 +14147,11 @@
                     "name": "k",
                     "type": "number",
                     "optional": false
+                },
+                {
+                    "name": "null_total",
+                    "type": "null",
+                    "optional": false
                 }
             ]
         },
