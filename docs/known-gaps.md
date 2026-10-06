@@ -61,6 +61,19 @@ guard publishes its keys required, as `MergeClosureResource` shows. Aligning the
 guarded `merge()` closure at once, so it needs its own decision. Declare the key `'optional' => true` in `#[TsCasts]`,
 or move the closure body into a method the resource spreads.
 
+### A returned variable is read flat: an early return sees later writes, and some writes are not followed
+
+A method that builds an array in a variable and returns it publishes the keys its writes set
+(`ResourceAstAnalyzer::resolveVariableReturnAnalysis()`), in one pass over the whole body:
+
+- An early `return $data;` publishes the keys written after it too, required when that write always runs.
+- A variable with a whole-array write the walk cannot read, such as `$data = $this->resource->toArray();`, is skipped
+  beside a literal return, as any other non-literal return is. Returned alone, it publishes only the writes the walk
+  reads, such as its key writes.
+- `$data[] = …`, a dynamic or nested key, and `unset($data['key'])` are not followed.
+
+Return a literal on each path, or state the keys in `#[TsCasts]`.
+
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes

@@ -90,6 +90,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\ManifestAssembled": {
+            "name": "ManifestAssembled",
+            "eventName": "ManifestAssembled",
+            "broadcastName": ".Workbench.App.Events.ManifestAssembled",
+            "properties": [
+                {
+                    "name": "parcelId",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "carrier",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Events\\MixedTypesEvent": {
             "name": "MixedTypesEvent",
             "eventName": "MixedTypesEvent",
@@ -16367,6 +16389,81 @@
                     "name": "category_visibility",
                     "type": "AsEnum<typeof Visibility> | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReturnedParentVariableResource": {
+            "name": "ReturnedParentVariableResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "display_name",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReturnedVariableBranchesResource": {
+            "name": "ReturnedVariableBranchesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ReturnedVariableResource": {
+            "name": "ReturnedVariableResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "posts_count",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "quote",
+                    "type": "{ unit: string; tax: number }",
+                    "optional": false
                 }
             ]
         },

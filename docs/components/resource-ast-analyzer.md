@@ -43,12 +43,15 @@ model-getter profile drops the first two. In every profile, the order handlers r
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
   `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. That guard is why the walk can run before
   the collection check: Laravel's own `ResourceCollection::toArray()` yields no properties.
-- **Every array-literal `return` is a branch**: `analyzeAllReturnBranches()` merges them through
-  `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
-  It declines only when no `return` has items.
+- **Every array-literal `return` is a branch**, and so is a returned variable whose writes the walk reads
+  (`readsVariableArray()`): `analyzeAllReturnBranches()` merges them through `mergeReturnBranches()`, so a key one
+  branch lacks publishes optional, and a guard's `return []` is an empty branch. It declines only when no `return` has
+  items and no such variable is returned; any other return is skipped.
 - **Any other body falls back to the first `return`**: `parent::toArray()`, an `array_merge()` of literals and
-  `parent::` calls, `$this->only()` or `$this->except()`, or a bare `$this->method()`, which resolves like a
-  `...$this->method()` spread.
+  `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
+  `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are a variable's
+  base; a `+=` of one adds only new keys, a whole re-assignment drops the writes before it, and a write in a branch,
+  loop, `try` or `switch` publishes optional.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It
   finds the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local

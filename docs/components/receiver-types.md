@@ -214,8 +214,9 @@ step can decline:
 ### The body fallback carries no FQCN channel
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
-body once. The shape its literal return spells replaces the declaration's array arms, so `PriceQuoteService::quote()`,
-which declares only `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`.
+body once. The shape spelled by its literal return, or by a returned variable the walk reads, replaces the
+declaration's array arms, so `PriceQuoteService::quote()`, which declares only `: array`, publishes
+`{ unit: string; minimum: number; discounted: { unit: string } }`.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis

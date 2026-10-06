@@ -4439,6 +4439,31 @@ declare global {
             category_visibility?: app.enums.VisibilityType | null;
         }
         /**
+         * Starts its variable from `parent::toArray()`, the model's own serialization, and adds one key.
+         *
+         * `Label` has no relation and no accessor, so the delegated base publishes only keys the response carries.
+         */
+        export interface ReturnedParentVariableResource {
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            display_name: string;
+        }
+        /** A returned variable is one branch beside a literal and a `return []` guard, so every key publishes optional. */
+        export interface ReturnedVariableBranchesResource {
+            id?: number;
+            name?: string;
+        }
+        /** Builds its payload in a local variable and returns it: a key written on one path only publishes optional. */
+        export interface ReturnedVariableResource {
+            id: number;
+            name: string;
+            slug?: string;
+            posts_count?: number;
+            quote: { unit: string; tax: number };
+        }
+        /**
          * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
          * unions their resources and a plain attribute read unions the targets' own column types.
          */
@@ -5571,6 +5596,11 @@ declare global {
             facility: Partial<app.models.Facility>;
             trail: Partial<app.packages.audit.models.AuditTrail>;
             record: unknown;
+        }
+        export interface ManifestAssembled {
+            parcelId: number;
+            carrier: string;
+            priority?: string;
         }
         export interface MixedTypesEvent {
             post: PostSnapshot;

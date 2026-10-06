@@ -43,15 +43,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -59,6 +66,7 @@ use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
@@ -66,6 +74,8 @@ use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Switch_;
+use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -262,32 +272,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        if ($this->isParentCallTo($returnStmt->expr, $this->methodName)) {
-            return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
+        if ($returnStmt->expr instanceof Variable && is_string($returnStmt->expr->name)) {
+            return $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returnStmt->expr->name);
         }
 
-        // return array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
-        if ($returnStmt->expr instanceof FuncCall) {
-            return $this->analyzeReturnArrayMerge($returnStmt->expr) ?? new ResourceAnalysis;
-        }
-
-        // return $this->only([...]) or return $this->except([...])
-        if ($returnStmt->expr instanceof MethodCall) {
-            $filtered = $this->analyzeThisAttributeFilter($returnStmt->expr);
-
-            if ($filtered !== null) {
-                return $filtered;
-            }
-
-            // return $this->someMethod() — resolve it the same way an array-literal spread would.
-            if ($this->hasThisReceiver($returnStmt->expr) && $returnStmt->expr->name instanceof Identifier) {
-                return $this->analyzeThisMethodSpread($returnStmt->expr->name->toString()) ?? new ResourceAnalysis;
-            }
-
-            return new ResourceAnalysis;
-        }
-
-        return new ResourceAnalysis;
+        return $this->analyzeArrayExpression($returnStmt->expr) ?? new ResourceAnalysis;
     }
 
     /**
@@ -317,6 +306,63 @@ class ResourceAstAnalyzer implements ExpressionEngine
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): ResourceAnalysis
     {
         return $this->analyzeReturnArray($array, $topLevel);
+    }
+
+    /**
+     * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call to the
+     * method itself, an `array_merge()` of those, an own-model `only()`/`except()` or a `$this->method()` call; null
+     * for any other expression.
+     */
+    protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
+    {
+        if ($expr instanceof Array_) {
+            return $this->analyzeReturnArray($expr, $topLevel);
+        }
+
+        if ($this->isParentCallTo($expr, $this->methodName)) {
+            return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis();
+        }
+
+        // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
+        if ($expr instanceof FuncCall) {
+            return $this->analyzeReturnArrayMerge($expr, $topLevel);
+        }
+
+        if (! $expr instanceof MethodCall || ! $expr->name instanceof Identifier) {
+            return null;
+        }
+
+        $filtered = $this->analyzeThisAttributeFilter($expr);
+
+        // A bare $this->someMethod() resolves the same way an array-literal spread of it would.
+        return $filtered ?? ($this->hasThisReceiver($expr)
+            ? $this->analyzeThisMethodSpread($expr->name->toString(), $topLevel)
+            : null);
+    }
+
+    /**
+     * Whether analyzeArrayExpression() reads an expression, decided without analyzing it: a gate that analyzed a write
+     * the walk then analyzes again would count its dropped union arms twice.
+     */
+    protected function readsAsArray(Expr $expr): bool
+    {
+        if (! $expr instanceof MethodCall) {
+            return $expr instanceof Array_
+                || $this->isParentCallTo($expr, $this->methodName)
+                || ($expr instanceof FuncCall && $this->mergedArrayLiteral($expr, $this->methodName) !== null);
+        }
+
+        if (! $expr->name instanceof Identifier) {
+            return false;
+        }
+
+        $name = $expr->name->toString();
+        $filterKeys = $this->filtersOwnModel($expr)
+            ? $this->extractFilterKeys($expr, new ReflectionMethod(Model::class, $name))
+            : null;
+
+        return $filterKeys !== null
+            || ($this->hasThisReceiver($expr) && $this->scope->subjectReflection->hasMethod($name));
     }
 
     /**
@@ -600,15 +646,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze a returned `array_merge(...)` through the array-literal it is equivalent to.
+     * Analyze an `array_merge(...)` returned directly or through a variable, as the array-literal it is equivalent to.
      *
      * Declines the whole call when an argument is neither a literal nor `parent::{$this->methodName}()`.
      */
-    protected function analyzeReturnArrayMerge(FuncCall $call): ?ResourceAnalysis
+    protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
     {
         $merged = $this->mergedArrayLiteral($call, $this->methodName);
 
-        return $merged === null ? null : $this->analyzeReturnArray($merged);
+        return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
     }
 
     /**
@@ -928,16 +974,54 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
+        $live = $this->fromLastReplacement($stmts, $varName);
 
-        $this->collectVariableArrayAssignments($stmts, $varName, false, $analysis, $topLevel);
+        $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
 
         return $analysis;
     }
 
     /**
+     * Whether the walk reads every whole write to a variable: each assignment of the variable is an array
+     * analyzeArrayExpression() reads, or a `+=` of one, and at least one assigns it. A key write never counts against.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function readsVariableArray(array $stmts, string $varName): bool
+    {
+        $assigned = false;
+
+        foreach ($this->collectVariableWrites($stmts) as [$written, $node]) {
+            if ($written !== $varName) {
+                continue;
+            }
+
+            $target = match (true) {
+                $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc,
+                $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node->var,
+                default => null,
+            };
+
+            if ($target instanceof ArrayDimFetch) {
+                continue;
+            }
+
+            if (! ($node instanceof Assign || $node instanceof Plus)
+                || ! $target instanceof Variable
+                || ! $this->readsAsArray($node->expr)) {
+                return false;
+            }
+
+            $assigned = $assigned || $node instanceof Assign;
+        }
+
+        return $assigned;
+    }
+
+    /**
      * Recursively collect array assignments to a variable from method statements.
      *
-     * Assignments inside if/elseif/else blocks are marked as optional.
+     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -949,20 +1033,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
         bool $topLevel = true,
     ): void {
         foreach ($stmts as $stmt) {
+            if ($stmt instanceof TryCatch || $stmt instanceof Switch_ || $stmt instanceof Block) {
+                $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
+
+                continue;
+            }
+
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
                 && ! $stmt instanceof Foreach_ && ! $stmt instanceof For_
                 && ! $stmt instanceof While_ && ! $stmt instanceof Do_) {
                 continue;
             }
 
-            // $var = [...] — base array assignment
+            // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
             if ($stmt instanceof ExpressionStmt
                 && $stmt->expr instanceof Assign
                 && $stmt->expr->var instanceof Variable
                 && $stmt->expr->var->name === $varName
-                && $stmt->expr->expr instanceof Array_) {
-                $baseAnalysis = $this->analyzeReturnArray($stmt->expr->expr, $topLevel);
-
+                && ($baseAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel)) !== null) {
                 if ($isConditional) {
                     foreach ($baseAnalysis->properties as &$prop) {
                         $prop['optional'] = true;
@@ -972,6 +1060,30 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 }
 
                 $into->merge($baseAnalysis);
+
+                continue;
+            }
+
+            // $var += [...] — PHP's union keeps every key already set, so only the new keys join, and a key the left
+            // side keeps drops the right side's channels along with its value.
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof Plus
+                && $stmt->expr->var instanceof Variable
+                && $stmt->expr->var->name === $varName
+                && ($addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel)) !== null) {
+                $present = array_column($into->properties, 'name');
+                $added = [];
+
+                foreach ($addedAnalysis->properties as $prop) {
+                    if (in_array($prop['name'], $present, true)) {
+                        $addedAnalysis->forgetChannels($prop['name']);
+                    } else {
+                        $added[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
+                    }
+                }
+
+                $addedAnalysis->properties = $added;
+                $into->merge($addedAnalysis);
 
                 continue;
             }
@@ -1051,6 +1163,80 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 || $stmt instanceof While_ || $stmt instanceof Do_) {
                 $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
             }
+        }
+    }
+
+    /**
+     * The statements from the last top-level assignment that replaces the whole variable, which overwrites every
+     * write before it; an assignment that spreads the variable into itself keeps the earlier keys, so replaces nothing.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return array<Node\Stmt>
+     */
+    private function fromLastReplacement(array $stmts, string $varName): array
+    {
+        $stmts = array_values($stmts);
+        $start = 0;
+
+        foreach ($stmts as $index => $stmt) {
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof Assign
+                && $stmt->expr->var instanceof Variable
+                && $stmt->expr->var->name === $varName
+                && $this->readsAsArray($stmt->expr->expr)
+                && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+                $start = $index;
+            }
+        }
+
+        return array_slice($stmts, $start);
+    }
+
+    /**
+     * Whether an array literal spreads the named variable into itself, as `[...$data, 'k' => $v]` does.
+     */
+    private function spreadsVariable(Expr $expr, string $varName): bool
+    {
+        return $expr instanceof Array_ && array_any(
+            $expr->items,
+            fn (ArrayItem $item): bool => $item->unpack
+                && $item->value instanceof Variable && $item->value->name === $varName,
+        );
+    }
+
+    /**
+     * Collect a variable's writes inside a `try`, `switch` or bare block: a catch or a case may not run, nor a `try`
+     * body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's condition.
+     */
+    private function collectNestedArrayAssignments(
+        TryCatch|Switch_|Block $stmt,
+        string $varName,
+        bool $isConditional,
+        ResourceAnalysis $into,
+        bool $topLevel,
+    ): void {
+        if ($stmt instanceof Block) {
+            $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+
+            return;
+        }
+
+        if ($stmt instanceof Switch_) {
+            foreach ($stmt->cases as $case) {
+                $this->collectVariableArrayAssignments($case->stmts, $varName, true, $into, $topLevel);
+            }
+
+            return;
+        }
+
+        $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+
+        foreach ($stmt->catches as $catch) {
+            $this->collectVariableArrayAssignments($catch->stmts, $varName, true, $into, $topLevel);
+        }
+
+        if ($stmt->finally !== null) {
+            $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
         }
     }
 
@@ -1135,8 +1321,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze all direct Return_ statements yielding non-empty Array_ literals, merging multiple
-     * branches with union semantics: properties present in only some branches become optional.
+     * Analyze all direct Return_ statements yielding an Array_ literal, or a variable whose every whole write the
+     * walk reads, merging multiple branches with union semantics: properties present in only some become optional.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -1147,22 +1333,33 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->collectDirectReturns($stmts, $candidates);
 
-        // A `return []` guard is a branch like any other: the keys its siblings set are absent on
-        // that path, so they publish optional. Only a body with no non-empty return declines here.
-        $hasItems = array_filter($candidates, function (Return_ $r): bool {
-            return $r->expr instanceof Array_ && count($r->expr->items) > 0;
-        }) !== [];
+        // An unreadable variable is skipped like any other non-literal return: its unread base may hold any key, so it
+        // must not turn a sibling's keys optional. A readable variable is one branch, however often it is returned.
+        /** @var list<Array_|string> $branches */
+        $branches = [];
 
-        if (! $hasItems) {
+        foreach ($candidates as $return) {
+            $expr = $return->expr;
+
+            if ($expr instanceof Array_) {
+                $branches[] = $expr;
+            } elseif ($expr instanceof Variable && is_string($expr->name) && ! in_array($expr->name, $branches, true)
+                && $this->readsVariableArray($stmts, $expr->name)) {
+                $branches[] = $expr->name;
+            }
+        }
+
+        // A `return []` guard is a branch like any other: the keys its siblings set are absent on that path, so they
+        // publish optional. Only a body with no non-empty return and no readable variable declines here.
+        if (! array_any($branches, fn (Array_|string $branch): bool => is_string($branch) || $branch->items !== [])) {
             return null;
         }
 
-        $analyses = array_map(function (Return_ $r): ResourceAnalysis {
-            /** @var Array_ $expr */
-            $expr = $r->expr;
-
-            return $expr->items === [] ? new ResourceAnalysis : $this->analyzeReturnArray($expr);
-        }, $candidates);
+        $analyses = array_map(fn (Array_|string $branch): ResourceAnalysis => match (true) {
+            is_string($branch) => $this->resolveVariableReturnAnalysis($stmts, $branch),
+            $branch->items === [] => new ResourceAnalysis,
+            default => $this->analyzeReturnArray($branch),
+        }, $branches);
 
         return count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
     }
@@ -1289,7 +1486,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Recursively collect Return_ statements with Array_ expressions from
+     * Recursively collect Return_ statements with Array_ or Variable expressions from
      * the given statements, descending into control-flow structures (if, foreach, etc.)
      * but NOT into closures, arrow functions, or anonymous classes.
      *
@@ -1299,7 +1496,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function collectDirectReturns(array $stmts, array &$candidates): void
     {
         foreach ($stmts as $stmt) {
-            if ($stmt instanceof Return_ && $stmt->expr instanceof Array_) {
+            if ($stmt instanceof Return_ && ($stmt->expr instanceof Array_ || $stmt->expr instanceof Variable)) {
                 $candidates[] = $stmt;
 
                 continue;

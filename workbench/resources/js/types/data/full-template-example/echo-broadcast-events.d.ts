@@ -3,6 +3,7 @@ import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
 import type { OrderShipped } from './app/events/OrderShipped';
@@ -26,6 +27,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.DocblockShapedEvent": DocblockShapedEvent;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
         ".Workbench.App.Events.FacilityAudited": FacilityAudited;
+        ".Workbench.App.Events.ManifestAssembled": ManifestAssembled;
         ".Workbench.App.Events.MixedTypesEvent": MixedTypesEvent;
         ".Workbench.App.Events.MultiModelEvent": MultiModelEvent;
         ".Workbench.App.Events.OrderShipped": OrderShipped;

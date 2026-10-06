@@ -3,6 +3,7 @@ import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
 import type { OrderShipped } from './app/events/OrderShipped';
@@ -25,6 +26,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.FacilityAudited'
+    | '.Workbench.App.Events.ManifestAssembled'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
     | '.Workbench.App.Events.OrderShipped'
@@ -47,6 +49,7 @@ export const BroadcastEvents = Object.freeze({
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
+    ManifestAssembled: '.Workbench.App.Events.ManifestAssembled',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
     OrderShipped: '.Workbench.App.Events.OrderShipped',
@@ -70,6 +73,7 @@ export type {
     DocblockShapedEvent,
     EnumBroadcastEvent,
     FacilityAudited,
+    ManifestAssembled,
     MixedTypesEvent,
     MultiModelEvent,
     OrderShipped,
