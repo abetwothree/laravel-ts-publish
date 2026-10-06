@@ -516,6 +516,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // identity closure, so the loaded arm is still the relation itself.
         if ($relationship instanceof String_) {
             $info = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
+
+            // An untyped relation would widen the key to `unknown`, so a literal null value keeps its own type.
+            if ($info['type'] === 'unknown' && $valueExpr !== null) {
+                return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+            }
+
             $result = ['type' => $info['type'], 'optional' => false];
 
             if ($info['modelFqcn'] !== null) {

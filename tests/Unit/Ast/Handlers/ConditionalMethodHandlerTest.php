@@ -807,6 +807,19 @@ it('adds the null a relation loaded as null returns to every whenLoaded() value 
     'a closure the engine cannot type' => ['$this->whenLoaded("categoryRel", fn ($c) => json_decode($c->name))', 'unknown'],
 ]);
 
+// Laravel swaps a literal null value for the identity closure, so the key reads the relation; one that does not type
+// would widen it to `unknown`, so the null value keeps its own type there, as it did before the relation was read.
+it('reads a literal null whenLoaded() value as the relation only when the relation types', function (string $php, string $type, bool $optional) {
+    $result = conditionalMethodHandlerResolveOnPost($php);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['optional'])->toBe($optional);
+})->with([
+    'a relation the model does not declare, with a default' => ['$this->whenLoaded("featured", null, "x")', 'string | null', false],
+    'a relation the model does not declare' => ['$this->whenLoaded("featured", null)', 'null', true],
+    'a declared relation' => ['$this->whenLoaded("categoryRel", null)', 'Category | null', true],
+]);
+
 it('adds no whenLoaded() null arm while nullable_relations is off', function (string $php, string $type) {
     config()->set('ts-publish.models.nullable_relations', false);
 
