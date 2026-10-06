@@ -243,7 +243,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 return $this->buildCollectionDelegatedAnalysis();
             }
 
-            return $this->buildModelDelegatedAnalysis() ?? new ResourceAnalysis;
+            $delegated = $this->buildModelDelegatedAnalysis();
+
+            // With no model behind it, the delegation publishes none of the keys the response carries.
+            if ($delegated === null) {
+                $this->lenientReads++;
+            }
+
+            return $delegated ?? new ResourceAnalysis;
         }
 
         $finder = new NodeFinder;
@@ -1057,7 +1064,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            if ($this->writesUnnamedKey($stmt, $varName)) {
+            if ($this->writesUnreadKey($stmt, $varName, $into)) {
                 $this->lenientReads++;
 
                 continue;
@@ -1126,9 +1133,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $stmt->expr->var->var instanceof Variable
                 && $stmt->expr->var->var->name === $varName
                 && $stmt->expr->var->dim !== null
-                && ($keyName = $stmt->expr->var->dim instanceof String_
-                    ? $stmt->expr->var->dim->value
-                    : $this->interpolatedKeyName($stmt->expr->var->dim)) !== null) {
+                && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
                 $isIndexSignature = JsEmitter::isIndexSignatureKey($keyName);
                 $optional = $isConditional || $result['optional'];
@@ -1341,24 +1346,35 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether a statement writes the variable through a key the walk cannot name, a dynamic, appended or nested one,
-     * or unsets the variable or a key of it: either can add or remove a key the walk would publish.
+     * Whether a statement writes the variable through a key the walk does not read: a dynamic, appended or nested key,
+     * an unset() of the variable or a key of it, or a compound write or an increment of a key the walk does not hold.
      */
-    private function writesUnnamedKey(Node\Stmt $stmt, string $varName): bool
+    private function writesUnreadKey(Node\Stmt $stmt, string $varName, ResourceAnalysis $into): bool
     {
         if ($stmt instanceof Unset_) {
             return array_any($stmt->vars, fn (Expr $unset): bool => $this->keyRoot($unset) === $varName);
         }
 
-        $target = $stmt instanceof ExpressionStmt ? $this->writeTarget($stmt->expr) : null;
+        $write = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
+        $target = $write === null ? null : $this->writeTarget($write);
 
         if (! $target instanceof ArrayDimFetch || $this->keyRoot($target) !== $varName) {
             return false;
         }
 
-        return ! $target->var instanceof Variable
-            || $target->dim === null
-            || ! ($target->dim instanceof String_ || $this->interpolatedKeyName($target->dim) !== null);
+        $key = $target->var instanceof Variable && $target->dim !== null ? $this->namedKey($target->dim) : null;
+
+        // The key-write arm reads an assignment to a named key; anything else keeps only a key the walk already holds.
+        return $key === null
+            || (! $write instanceof Assign && ! in_array($key, array_column($into->properties, 'name'), true));
+    }
+
+    /**
+     * The key a write's dim names, a literal string or a pattern interpolatedKeyName() accepts; null for any other.
+     */
+    private function namedKey(Expr $dim): ?string
+    {
+        return $dim instanceof String_ ? $dim->value : $this->interpolatedKeyName($dim);
     }
 
     /**
@@ -1466,8 +1482,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze all direct Return_ statements yielding an Array_ literal, or a variable whose every whole write the
-     * walk reads, merging multiple branches with union semantics: properties present in only some become optional.
+     * Analyze all direct Return_ statements yielding an Array_ literal or a variable, merging multiple branches with
+     * union semantics: properties present in only some become optional.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -1478,31 +1494,52 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->collectDirectReturns($stmts, $candidates);
 
-        // An unreadable variable is skipped like any other non-literal return: its unread base may hold any key, so it
-        // must not turn a sibling's keys optional. A readable variable is one branch, however often it is returned.
+        // Beside a literal with an item, a variable the walk does not read completely is skipped like any other
+        // non-literal return, so its unread keys never turn a sibling's optional. With no such literal, every
+        // returned variable is read leniently.
+        $literalHasItems = array_any(
+            $candidates,
+            fn (Return_ $return): bool => $return->expr instanceof Array_ && $return->expr->items !== [],
+        );
+        /** @var array<string, ResourceAnalysis|null> $variables */
+        $variables = [];
         /** @var list<Array_|ResourceAnalysis|null> $branches */
         $branches = [];
-        $walked = [];
+        $taken = 0;
 
         foreach ($candidates as $return) {
             $expr = $return->expr;
 
             if ($expr instanceof Array_) {
                 $branches[] = $expr;
-            } elseif ($expr instanceof Variable && is_string($expr->name) && ! isset($walked[$expr->name])) {
-                $walked[$expr->name] = true;
-                $branches[] = $this->variableBranch($stmts, $expr->name);
+                $taken++;
+            } elseif ($expr instanceof Variable && is_string($expr->name)) {
+                if (! array_key_exists($expr->name, $variables)) {
+                    $variables[$expr->name] = $literalHasItems
+                        ? $this->variableBranch($stmts, $expr->name)
+                        : $this->resolveVariableReturnAnalysis($stmts, $expr->name);
+                    $branches[] = $variables[$expr->name];
+                }
+
+                $taken += $variables[$expr->name] === null ? 0 : 1;
             }
         }
 
         $branches = array_values(array_filter($branches));
+        $returns = count($this->collectReturnExpressions($stmts));
 
         // A `return []` guard is a branch like any other: the keys its siblings set are absent on that path, so they
-        // publish optional. Only a body with no non-empty return and no readable variable declines here.
+        // publish optional. Only a body with no non-empty return and no variable declines here.
         $hasItems = array_any(
             $branches,
             fn (Array_|ResourceAnalysis $branch): bool => $branch instanceof ResourceAnalysis || $branch->items !== [],
         );
+
+        // A return no branch stands for, or one the first-return fallback leaves beside the one it reads, is unread.
+        // The published shape stays, but a child that builds on it cannot trust its key set.
+        if ($hasItems ? $taken < $returns : $returns > 1) {
+            $this->lenientReads++;
+        }
 
         if (! $hasItems) {
             return null;

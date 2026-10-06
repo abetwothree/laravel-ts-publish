@@ -6,11 +6,18 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedBodylessParentChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedCastLoneVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedCastPartialHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedCoalesceKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDecliningParentChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDecliningParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyAloneResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumKeyResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardedVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedNestedKeyResource;
@@ -29,6 +36,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReplacedVariableResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedRequiredResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedShapedLoneVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSkippingParentChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSkippingParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnionAssignResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledParentResource;
@@ -148,17 +158,49 @@ test('a value read only partly still leaves the variable a branch', function () 
         ->toBe('id: number; name: string; meta?: { kind: string }');
 });
 
-test('a variable with a write the walk cannot name never turns a literal\'s keys optional', function (string $class) {
+test('a variable with a write the walk does not read never turns a literal\'s keys optional', function (string $class) {
     expect(returnedVariableMembers($class))->toBe('id: number; name: string');
 })->with([
     'a dynamic key' => [ReturnedDynamicKeyResource::class],
     'an appended key' => [ReturnedPushedKeyResource::class],
     'a nested key' => [ReturnedNestedKeyResource::class],
     'an unset() key' => [ReturnedUnsetKeyResource::class],
+    'a ??= of a key it does not hold' => [ReturnedCoalesceKeyResource::class],
 ]);
 
 test('a variable with a write the walk cannot name still publishes what the walk reads when returned alone', function () {
     expect(returnedVariableMembers(ReturnedDynamicKeyAloneResource::class))->toBe('id: number');
+});
+
+test('a lone variable read leniently keeps the method\'s casts and @return shape', function (string $class, string $expected) {
+    expect(returnedVariableMembers($class))->toBe($expected);
+})->with([
+    'method-level #[TsCasts]' => [
+        ReturnedCastLoneVariableResource::class,
+        'id: number; meta: Record<string, string>; injected: number',
+    ],
+    'the method\'s @return shape' => [ReturnedShapedLoneVariableResource::class, 'id: number; meta: string'],
+    'a cast over a helper base not read completely' => [ReturnedCastPartialHelperResource::class, 'meta: Record<string, string>'],
+]);
+
+test('a variable beside only a return [] guard is read leniently as a branch', function () {
+    expect(returnedVariableMembers(ReturnedGuardOnlyVariableResource::class))->toBe('id?: number');
+});
+
+test('a return a parent\'s sweep skips makes a child variable built on it skip, and leaves the parent\'s own shape', function (string $parent, string $parentShape, string $child) {
+    expect(returnedVariableMembers($parent))->toBe($parentShape)
+        ->and(returnedVariableMembers($child))->toBe('id: number; name: string');
+})->with([
+    'a return beside its literal' => [
+        ReturnedSkippingParentResource::class, 'id: number', ReturnedSkippingParentChildResource::class,
+    ],
+    'a return the first-return fallback leaves unread' => [
+        ReturnedDecliningParentResource::class, '', ReturnedDecliningParentChildResource::class,
+    ],
+]);
+
+test('a parent delegating to no model makes a child variable built on it skip', function () {
+    expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string');
 });
 
 test('a returned variable is a branch only when the walk reads every whole write to it', function (string $body, bool $reads) {
