@@ -12,6 +12,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
 
 /**
  * Whether a resource built around a payload serializes as null. Only JsonResource::filter() turns a nested resource
@@ -28,7 +29,8 @@ trait ReadsNullablePayloads
 
     /**
      * Whether `new X(…)` or `X::make(…)` in a JsonResource subject wraps a payload that can be null. A
-     * ResourceCollection never does: it throws on a null payload.
+     * ResourceCollection never does: it throws on a null payload. A payload that is itself `new` or a resource's
+     * `make()` never does either: PHP builds an object, and only that inner resource serializes as null.
      */
     protected function wrapsNullablePayload(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): bool
     {
@@ -38,6 +40,22 @@ trait ReadsNullablePayloads
 
         $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        return $payload !== null && ValueResult::hasNullArm($engine->resolve($payload)['type']);
+        if ($payload === null) {
+            return false;
+        }
+
+        // Resolved even for `new`: resolving a payload also records the warnings of the expressions it nests.
+        $resolved = $engine->resolve($payload);
+
+        if ($payload instanceof New_
+            || ($payload instanceof StaticCall
+                && $payload->name instanceof Identifier
+                && $payload->name->toString() === 'make'
+                && isset($resolved['resourceFqcn']))
+        ) {
+            return false;
+        }
+
+        return ValueResult::hasNullArm($resolved['type']);
     }
 }

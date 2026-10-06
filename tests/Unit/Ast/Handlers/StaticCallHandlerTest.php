@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
@@ -249,18 +250,30 @@ it('keeps the foreign-receiver boundary: a non-self-returning method on a foreig
 });
 
 // A nested resource whose payload is null serializes as null, but resolve() runs the resource's own toArray() on it.
+// PHP builds `new` and make() as an object, so a payload spelled that way never makes its wrapper null.
 it('keeps a nullable payload\'s null arm through a fluent self-returning call, never through resolve()', function (string $php, string $type) {
     expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
 })->with([
     'make() over a nullable relation' => ['self::make($this->parent)', 'FluentSelfResource | null'],
     'new over a nullable relation' => ['new self($this->parent)', 'FluentSelfResource | null'],
     'a self-returning method' => ['new self($this->parent)->markPreview()', 'FluentSelfResource | null'],
+    'new around a make() that serializes as null' => ['new self(self::make($this->parent))', 'FluentSelfResource'],
+    'new around a new that serializes as null' => ['new self(new self($this->parent))', 'FluentSelfResource'],
+    'make() around a new that serializes as null' => ['self::make(new self($this->parent))', 'FluentSelfResource'],
+    'make() around a whenLoaded() that returns null' => ['self::make($this->whenLoaded("parent", fn ($p) => new self($p)))', 'FluentSelfResource | null'],
     'resolve() on make()' => ['self::make($this->parent)->resolve()', 'FluentSelfResource'],
     'resolve() on new' => ['new self($this->parent)->resolve()', 'FluentSelfResource'],
     'collection() over a to-many' => ['self::collection($this->children)', 'FluentSelfResource[]'],
     'a nullsafe toResource()' => ['$this->parent?->toResource()', 'CategoryResource | null'],
     'a toResource() that throws on null' => ['$this->parent->toResource()', 'CategoryResource'],
 ]);
+
+// The payload is resolved even when `new` decides the answer, so a warning from what it nests still reaches the run.
+it('analyzes the expressions a new payload nests', function () {
+    staticCallHandlerResolveOnCategory('new self(new self($this->when(true, fn ($x) => 1)))');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
+});
 
 // collectResource() calls a method on its payload, so a resource collection, or the one ::collection() builds, throws
 // on null instead of serializing as null.
@@ -318,6 +331,22 @@ it('adds the null arm a nullable payload gives a nested resource, only inside a 
 })->with([
     'a resource subject' => [PostResource::class, 'PostResource | null'],
     'a controller subject, whose payload Inertia never nulls' => [InertiaSingleResourceController::class, 'PostResource'],
+]);
+
+// A resource's static make() builds an object like `new`; a call to any other class or method can return null.
+it('drops the null arm of a make() payload only when a resource built it', function (Expr $payload, array $made, string $type) {
+    $engine = new StaticCallHandlerArmStubEngine([[$payload, $made]]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+
+    expect((new NewResourceHandler)->resolve(new New_(new Name(PostResource::class), [new Arg($payload)]), $scope, $engine)['type'] ?? null)
+        ->toBe($type)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name(PostResource::class), 'make', [new Arg($payload)]), $scope, $engine)['type'] ?? null)
+        ->toBe($type);
+})->with([
+    'a resource built it' => [new StaticCall(new Name(PostResource::class), 'make'), ['type' => 'PostResource | null', 'optional' => false, 'resourceFqcn' => PostResource::class], 'PostResource'],
+    'another class returned it' => [new StaticCall(new Name(Post::class), 'make'), ['type' => 'Post | null', 'optional' => false], 'PostResource | null'],
+    'an expression names the method' => [new StaticCall(new Name(PostResource::class), new Variable('method')), ['type' => 'PostResource | null', 'optional' => false, 'resourceFqcn' => PostResource::class], 'PostResource | null'],
+    'an instance method is no static make()' => [new MethodCall(new Variable('factory'), 'make'), ['type' => 'PostResource | null', 'optional' => false, 'resourceFqcn' => PostResource::class], 'PostResource | null'],
 ]);
 
 it('declines a node outside its claimed New_ class', function () {
