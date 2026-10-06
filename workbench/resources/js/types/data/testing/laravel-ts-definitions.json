@@ -18412,6 +18412,11 @@
                     "name": "conditional_default",
                     "type": "string",
                     "optional": false
+                },
+                {
+                    "name": "match_arm",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },

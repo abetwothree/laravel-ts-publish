@@ -355,8 +355,8 @@ makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an unt
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
-`KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler` and
-`ConditionalMethodHandler::applyConditionalDefault()`. `analyzeClosureUnion()` records because
+`KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler`,
+`ConditionalMethodHandler::applyConditionalDefault()` and `MatchHandler`'s arms. `analyzeClosureUnion()` records because
 `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
 left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
 union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.

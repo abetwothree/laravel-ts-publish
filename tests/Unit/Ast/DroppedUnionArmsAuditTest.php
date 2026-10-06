@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+use function Orchestra\Testbench\package_path;
 use function Orchestra\Testbench\workbench_path;
 
+use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
+use PhpParser\NodeFinder;
+use Symfony\Component\Finder\Finder;
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Http\Resources\StaticCallResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
@@ -25,18 +34,19 @@ test('a union records the arm it leaves out, and its published type is unchanged
     }
 
     // One line per recording site: 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed instanceof path,
-    // 32 is KnownFunctionCallHandler's data_get default and 33 is ConditionalMethodHandler's when() default. The last
-    // three resolve their arms themselves, so an audit that only instrumented analyzeClosureUnion() would miss them.
+    // 32 is KnownFunctionCallHandler's data_get default, 33 is ConditionalMethodHandler's when() default, 35 is
+    // MatchHandler's arm. The last four resolve their arms themselves, so analyzeClosureUnion() alone would miss them.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33])
-        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default'])
+        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35])
+        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm'])
         ->and($props['elvis']['type'])->toBe('null')
         ->and($props['ternary']['type'])->toBe('null')
         ->and($props['narrowed']['type'])->toBe('null')
         ->and($props['data_get_default']['type'])->toBe('string | null')
         ->and($props['conditional_default']['type'])->toBe('string')
         ->and($props['conditional_default']['optional'])->toBeFalse()
+        ->and($props['match_arm']['type'])->toBe('string')
         ->and($props['still_typed']['type'])->toBe('string | null');
 });
 
@@ -82,4 +92,31 @@ test('the workbench corpus drops no union arm beyond the pinned baseline', funct
 
     expect($new)->toBe([])
         ->and($dropped)->toBe($baseline);
+});
+
+// A site no baseline entry names has no workbench key whose drop the audit watches fire, so it could go silent unseen.
+test('a new recording site cannot go unpinned', function () {
+    /** @var list<array{site: string}> $baseline */
+    $baseline = require __DIR__.'/Fixtures/dropped-union-arms-baseline.php';
+    $parser = new AstParser;
+    $finder = new NodeFinder;
+    $sites = [];
+
+    foreach (Finder::create()->files()->in(package_path('src'))->name('*.php') as $file) {
+        foreach ($finder->findInstanceOf($parser->parseSource($file->getContents()), StaticCall::class) as $call) {
+            if (! $call->class instanceof Name || $call->class->toString() !== DroppedUnionArms::class
+                || ! $call->name instanceof Identifier || $call->name->toString() !== 'record') {
+                continue;
+            }
+
+            // A site that is not a string literal cannot be pinned, so its location stands in and fails below.
+            $arg = $call->args[2] ?? null;
+            $sites[] = $arg instanceof Arg && $arg->value instanceof String_
+                ? $arg->value->value
+                : $file->getRelativePathname().':'.$call->getStartLine();
+        }
+    }
+
+    expect($sites)->toContain('closure-union')
+        ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([]);
 });
