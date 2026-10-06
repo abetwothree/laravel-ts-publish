@@ -6,11 +6,14 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyAloneResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedDynamicKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumKeyResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedNestedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueParentChildResource;
@@ -18,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOptionalResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPushedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReadableHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReadableHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedRejectedHelperResource;
@@ -28,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnionAssignResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVanishingKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVanishingSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVariableLinesService;
@@ -141,6 +146,19 @@ test('a helper base read completely still makes the variable a branch', function
 test('a value read only partly still leaves the variable a branch', function () {
     expect(returnedVariableMembers(ReturnedPartialValueResource::class))
         ->toBe('id: number; name: string; meta?: { kind: string }');
+});
+
+test('a variable with a write the walk cannot name never turns a literal\'s keys optional', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; name: string');
+})->with([
+    'a dynamic key' => [ReturnedDynamicKeyResource::class],
+    'an appended key' => [ReturnedPushedKeyResource::class],
+    'a nested key' => [ReturnedNestedKeyResource::class],
+    'an unset() key' => [ReturnedUnsetKeyResource::class],
+]);
+
+test('a variable with a write the walk cannot name still publishes what the walk reads when returned alone', function () {
+    expect(returnedVariableMembers(ReturnedDynamicKeyAloneResource::class))->toBe('id: number');
 });
 
 test('a returned variable is a branch only when the walk reads every whole write to it', function (string $body, bool $reads) {

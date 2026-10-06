@@ -67,10 +67,10 @@ A method that builds an array in a variable and returns it publishes the keys it
 (`ResourceAstAnalyzer::resolveVariableReturnAnalysis()`), in one pass over the whole body:
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
-- A variable whose base the walk does not read completely, such as `$data = $this->resource->toArray();`, or a helper
-  or a parent `toArray()` that returns something the walk cannot read, is skipped beside a literal return, as any other
-  non-literal return is. Returned alone, it publishes only the writes the walk reads, such as its key writes.
-- `$data[] = …`, a dynamic or nested key, and `unset($data['key'])` are not followed.
+- A variable the walk does not read completely is skipped beside a literal return, as any other non-literal return is:
+  one whose base is `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk
+  cannot read, and one with a write the walk cannot name, such as `$data[] = …`, a dynamic or nested key, or
+  `unset($data['key'])`. Returned alone, it publishes only the writes the walk reads.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 

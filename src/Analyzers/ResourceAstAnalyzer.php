@@ -76,6 +76,7 @@ use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
+use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -1016,11 +1017,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            $target = match (true) {
-                $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc,
-                $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node->var,
-                default => null,
-            };
+            $target = $this->writeTarget($node);
 
             if ($target instanceof ArrayDimFetch) {
                 continue;
@@ -1056,6 +1053,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
         foreach ($stmts as $stmt) {
             if ($stmt instanceof TryCatch || $stmt instanceof Switch_ || $stmt instanceof Block) {
                 $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
+
+                continue;
+            }
+
+            if ($this->writesUnnamedKey($stmt, $varName)) {
+                $this->lenientReads++;
 
                 continue;
             }
@@ -1335,6 +1338,51 @@ class ResourceAstAnalyzer implements ExpressionEngine
         if ($stmt->finally !== null) {
             $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
         }
+    }
+
+    /**
+     * Whether a statement writes the variable through a key the walk cannot name, a dynamic, appended or nested one,
+     * or unsets the variable or a key of it: either can add or remove a key the walk would publish.
+     */
+    private function writesUnnamedKey(Node\Stmt $stmt, string $varName): bool
+    {
+        if ($stmt instanceof Unset_) {
+            return array_any($stmt->vars, fn (Expr $unset): bool => $this->keyRoot($unset) === $varName);
+        }
+
+        $target = $stmt instanceof ExpressionStmt ? $this->writeTarget($stmt->expr) : null;
+
+        if (! $target instanceof ArrayDimFetch || $this->keyRoot($target) !== $varName) {
+            return false;
+        }
+
+        return ! $target->var instanceof Variable
+            || $target->dim === null
+            || ! ($target->dim instanceof String_ || $this->interpolatedKeyName($target->dim) !== null);
+    }
+
+    /**
+     * The name of the variable an expression is, or holds a key of at any depth; null for anything else.
+     */
+    private function keyRoot(Expr $expr): ?string
+    {
+        while ($expr instanceof ArrayDimFetch) {
+            $expr = $expr->var;
+        }
+
+        return $expr instanceof Variable && is_string($expr->name) ? $expr->name : null;
+    }
+
+    /**
+     * The expression a write node assigns to, or null for a node that is not an assignment, compound or not.
+     */
+    private function writeTarget(Node $node): ?Expr
+    {
+        return match (true) {
+            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc,
+            $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node->var,
+            default => null,
+        };
     }
 
     /**
