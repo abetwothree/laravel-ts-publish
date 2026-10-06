@@ -50,8 +50,8 @@ model-getter profile drops the first two. In every profile, the order handlers r
 - **Any other body falls back to the first `return`**: `parent::toArray()`, an `array_merge()` of literals and
   `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are a variable's
-  base; a `+=` of one adds only new keys, a whole re-assignment drops the writes before it, and a write in a branch,
-  loop, `try` or `switch` publishes optional.
+  base; a `+=` of one adds only new keys, a whole re-assignment drops the writes before it, and a key first written
+  in a branch, loop, `try` or `switch` publishes optional.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It
   finds the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local

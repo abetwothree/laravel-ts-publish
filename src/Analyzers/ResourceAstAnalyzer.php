@@ -1062,15 +1062,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     continue;
                 }
 
-                if ($isConditional) {
-                    foreach ($baseAnalysis->properties as &$prop) {
-                        $prop['optional'] = true;
-                    }
-
-                    unset($prop);
-                }
-
-                $this->mergeWholeArrayWrite($into, $baseAnalysis);
+                $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
             }
@@ -1096,12 +1088,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     if (in_array($prop['name'], $present, true)) {
                         $addedAnalysis->forgetChannels($prop['name']);
                     } else {
-                        $added[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
+                        $added[] = $prop;
                     }
                 }
 
                 $addedAnalysis->properties = $added;
-                $this->mergeWholeArrayWrite($into, $addedAnalysis);
+                $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
 
                 continue;
             }
@@ -1153,9 +1145,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
                 $into->addProperty($keyName, $result, $optional);
 
+                // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one
+                // was absent; an index signature is never optional.
                 if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
                     $appended = $into->properties[$appendedIndex];
-                    $appended['optional'] = $into->properties[$existingIndex]['optional'] && $appended['optional'];
+                    $appended['optional'] = ! $isIndexSignature && ($result['optional']
+                        || ($isConditional && $into->properties[$existingIndex]['optional']));
 
                     $into->properties[$existingIndex] = $appended;
                     array_splice($into->properties, $appendedIndex, 1);
@@ -1248,10 +1243,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Merge a whole-array write into the keys a variable already holds: a key it sets again keeps its first position,
-     * takes the last value and stays optional only when both writes are, as a re-assigned key does.
+     * Merge a whole-array write into the keys a variable already holds. A new key is optional when the write is
+     * conditional or its value can vanish; a key set again keeps its first position and takes the last value, optional
+     * when that value can vanish or a conditional write leaves an optional old one.
      */
-    private function mergeWholeArrayWrite(ResourceAnalysis $into, ResourceAnalysis $write): void
+    private function mergeWholeArrayWrite(ResourceAnalysis $into, ResourceAnalysis $write, bool $isConditional): void
     {
         $properties = $into->properties;
         $names = array_column($properties, 'name');
@@ -1266,13 +1262,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $index = array_search($prop['name'], $names, true);
 
             if ($index === false) {
-                $properties[] = $prop;
+                $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
 
                 continue;
             }
 
             $into->forgetChannels($prop['name']);
-            $properties[$index] = [...$prop, 'optional' => $properties[$index]['optional'] && $prop['optional']];
+            $optional = $prop['optional'] || ($isConditional && $properties[$index]['optional']);
+            $properties[$index] = [...$prop, 'optional' => $optional];
         }
 
         $into->merge($write);

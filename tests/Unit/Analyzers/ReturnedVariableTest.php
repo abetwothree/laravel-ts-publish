@@ -6,17 +6,23 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumKeyResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOptionalResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedReplacedVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedRequiredResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnionAssignResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedUnmodeledParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVanishingKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVanishingSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedVariableLinesService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithReturnedVariable;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -26,6 +32,7 @@ use Workbench\App\Events\ManifestAssembled;
 use Workbench\App\Http\Resources\ReturnedParentVariableResource;
 use Workbench\App\Http\Resources\ReturnedVariableBranchesResource;
 use Workbench\App\Http\Resources\ReturnedVariableResource;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
 use Workbench\App\Services\QuoteLinesService;
 
@@ -68,6 +75,34 @@ test('a returned variable is a branch beside a literal and a return [] guard', f
 test('a self-spread variable beside a return [] guard publishes its keys optional', function () {
     expect(returnedVariableMembers(ReturnedSelfSpreadGuardResource::class))->toBe('id?: string');
 });
+
+test('a key re-set to a value that can vanish publishes optional', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; a?: Post[]');
+})->with([
+    'a merged whole-array write' => [ReturnedVanishingSpreadResource::class],
+    'a key write' => [ReturnedVanishingKeyResource::class],
+]);
+
+test('a key re-set unconditionally to a value that cannot vanish stays required', function () {
+    expect(returnedVariableMembers(ReturnedRequiredResetResource::class))->toBe('a: string');
+});
+
+test('a key re-set conditionally keeps an optional old value optional', function () {
+    expect(returnedVariableMembers(ReturnedOptionalResetResource::class))->toBe('a?: number');
+});
+
+test('a re-set key keeps only the last write\'s channel', function (string $class) {
+    // The transformer imports only the tokens a type spells, so the enum channel itself is what a stale entry shows in.
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass($class), Post::class))->analyze();
+    $transformer = new ResourceTransformer($class);
+
+    expect($analysis->hasFqcnChannel('status'))->toBeFalse()
+        ->and(returnedVariableMembers($class))->toBe('id: number; status: string')
+        ->and([...$transformer->typeImports, ...$transformer->valueImports])->toBe([]);
+})->with([
+    'a merged whole-array write' => [ReturnedEnumSpreadResetResource::class],
+    'a key write' => [ReturnedEnumKeyResetResource::class],
+]);
 
 test('a variable the walk cannot read is skipped, so the literal branch keeps its keys required', function () {
     expect(returnedVariableMembers(ReturnedOpaqueVariableResource::class))->toBe('id: number; name: string');
