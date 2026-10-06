@@ -228,3 +228,11 @@ delegations must not be deleted for having no callers or swept onto the new faca
 ### Change log
 
 Do not update the CHANGELOG.md file. That is handled by CI when a new version is released. The CHANGELOG.md file is meant to be a record of changes for users, not for developers to update manually. It is automatically updated based on the commits and PRs that are merged into the main branch and updated when a new version is released.
+
+## AST & Analyzers
+
+Files in `src/Analyzers` contain the entry point for running AST analysis for several subsystems of the package. Analyzers should offload the actual AST analysis to the abstract syntax tree engine in `src/Ast`. The `src/Ast` directory should handle all AST analysis in an abstract manner so that it can be resused by different analyzers for HTTP resources, HTTP request, Inertia, models, etc.
+
+Code in `src/Ast` should not depend on any specific analyzer; it should provide a generic interface and utilities for AST analysis that can be leveraged by multiple analyzers.
+
+Code in `src/Analyzers` must offload all AST analysis to the engine in `src/Ast` and should not attempt to analyze the AST directly.
