@@ -286,7 +286,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   its import channels. Joining the type strings by hand would emit a token with no import.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s, keeps the key `unknown`, since `T | unknown` is `unknown`. The key stays required
-  either way. This drop is not recorded in `DroppedUnionArms`; see
+  either way. A default left out is recorded in `DroppedUnionArms` as `conditional-default`; see
   [AST engine § Dropped union arms](ast-engine.md#dropped-union-arms) for the policy.
 - **A default closure that needs more arguments than Laravel passes is skipped**: Laravel calls a default as
   `value($default)` with no arguments, except `transform()`, whose helper calls `$default($value)`. A closure requiring

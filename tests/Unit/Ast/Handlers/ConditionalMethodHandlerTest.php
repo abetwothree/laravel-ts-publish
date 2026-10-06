@@ -7,10 +7,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
@@ -900,7 +902,35 @@ describe('whenNull()', function () {
 
         expect(array_values(preg_grep('/^\s*label\b/', explode("\n", $content)) ?: []))->toBe(['    label?: string | null;']);
     });
+
+    // A default the engine cannot type is counted as a dropped arm, so the local's `@var` type answers for its null.
+    it('counts a default it leaves out, so an annotated local publishes its declared type', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(WhenNullDroppedDefaultResource::class));
+
+        expect(array_values(preg_grep('/^\s*label\b/', explode("\n", $content)) ?: []))->toBe(['    label: string | null;']);
+    });
 });
+
+// A default the engine cannot type is left out of the union, and recorded only beside a value arm with a type.
+it('records a default it leaves out beside a typed value arm, and nothing beside an unknown one', function (string $php, array $sites) {
+    DroppedUnionArms::start();
+
+    try {
+        conditionalMethodHandlerResolveOnPost($php);
+    } finally {
+        $dropped = DroppedUnionArms::stop();
+    }
+
+    expect(array_map(fn (array $arm): string => $arm['expression'].' at '.$arm['site'], $dropped))->toBe($sites);
+})->with([
+    'when()' => ['$this->when($this->id > 0, $this->title, $this->undefined_column)', ['$this->undefined_column at conditional-default']],
+    'whenNull()' => ['$this->whenNull($this->title, $this->undefined_column)', ['$this->undefined_column at conditional-default']],
+    'a typed default' => ['$this->when($this->id > 0, $this->title, 0)', []],
+    'an unknown value arm' => ['$this->whenPivotLoaded("team_user", null, $this->undefined_column)', []],
+    'a default that needs an argument' => ['$this->when($this->id > 0, $this->title, fn ($x) => $this->undefined_column)', []],
+]);
 
 // `[]` is assignable to an array type and to nothing else, so it leaves the union only beside an array, in either arm.
 it('drops an empty-array arm only where the other arm holds an array', function (string $value, string $default, string $type) {

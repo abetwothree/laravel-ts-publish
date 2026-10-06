@@ -24,17 +24,19 @@ test('a union records the arm it leaves out, and its published type is unchanged
         $dropped = DroppedUnionArms::stop();
     }
 
-    // One line per recording site: 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed
-    // instanceof path and 32 is KnownFunctionCallHandler's data_get default. Both of the latter call
-    // unionResults() directly, so an audit that only instrumented analyzeClosureUnion() would miss them.
+    // One line per recording site: 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed instanceof path,
+    // 32 is KnownFunctionCallHandler's data_get default and 33 is ConditionalMethodHandler's when() default. The last
+    // three resolve their arms themselves, so an audit that only instrumented analyzeClosureUnion() would miss them.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32])
-        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default'])
+        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33])
+        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default'])
         ->and($props['elvis']['type'])->toBe('null')
         ->and($props['ternary']['type'])->toBe('null')
         ->and($props['narrowed']['type'])->toBe('null')
         ->and($props['data_get_default']['type'])->toBe('string | null')
+        ->and($props['conditional_default']['type'])->toBe('string')
+        ->and($props['conditional_default']['optional'])->toBeFalse()
         ->and($props['still_typed']['type'])->toBe('string | null');
 });
 

@@ -18312,6 +18312,11 @@
                     "name": "data_get_default",
                     "type": "string | null",
                     "optional": false
+                },
+                {
+                    "name": "conditional_default",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },

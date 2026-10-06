@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
@@ -166,6 +167,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // An `unknown` on either arm carries no type to union: an unresolved default leaves the value arm
         // standing, and an unresolved value arm already admits whatever the default could produce.
         if ($default['type'] === 'unknown' || $value['type'] === 'unknown') {
+            // Only a value arm with a type publishes without the default, so only then is an arm left out.
+            if ($value['type'] !== 'unknown') {
+                DroppedUnionArms::record($defaultExpr, $scope, 'conditional-default');
+            }
+
             return [...$value, 'optional' => false];
         }
 

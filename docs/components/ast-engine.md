@@ -354,12 +354,14 @@ makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an unt
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
-`KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
+`KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler` and
+`ConditionalMethodHandler::applyConditionalDefault()`. `analyzeClosureUnion()` records because
 `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
 left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
 union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
-`ConditionalMethodHandler::applyConditionalDefault()` also leaves an `unknown` default arm out, but records nothing, so
-neither the drop count nor `DroppedUnionArmsAuditTest` sees that drop.
+`applyConditionalDefault()` records a default only beside a value arm with a type.
+`ResourceAstAnalyzer::branchUnion()` records nothing for a spread helper's branches or a merge call's sides, since it
+unions type strings and cannot name the expression it drops.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
