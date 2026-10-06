@@ -53,13 +53,12 @@ as `DeclaredPropsEvent::$label`. `AstEngine::analyzePublicProperties()` and
 `readonly` property cannot have a default. Promote the property or give it a default. A fix that reads constructor
 bodies moves `DeferredAssignmentDto::$assignedLater`, which `NestedOptionalKeyDto` uses for a nested `?:`.
 
-### A `return []` guard makes keys optional in a method body, but not inside a `merge()` closure
+### A merge whose two sides name same-basename classes publishes only one of them
 
-In a method body, a `return []` guard makes the keys the other branch sets optional. A closure passed to `merge()` or
-`mergeWhen()` drops its empty returns instead (`ResourceAstAnalyzer::resolveClosureArraysToProperties()`), so the same
-guard publishes its keys required, as `MergeClosureResource` shows. Aligning the two changes the output of every
-guarded `merge()` closure at once, so it needs its own decision. Declare the key `'optional' => true` in `#[TsCasts]`,
-or move the closure body into a method the resource spreads.
+`$this->mergeWhen($cond, ['party' => $this->sender], ['party' => $this->receiver])`, over an app `User` and a CRM
+`User`, types `party` with the CRM `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
+unions the two sides by type text, as it unions a method's return branches, so the later side's class takes the shared
+name. A ternary or `when()` keeps both classes, so spell the key that way.
 
 ### A returned variable is read flat: an early return sees later writes, and some writes are not followed
 

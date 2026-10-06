@@ -725,9 +725,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze $this->merge([...]), mergeWhen(condition, [...]), or mergeUnless(condition, [...]).
+     * Analyze $this->merge(...), mergeWhen(...) or mergeUnless(...) with each array the call can merge as a branch.
      *
-     * merge() properties are required; mergeWhen()/mergeUnless() properties are optional.
+     * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
+     * some branches set publishes optional, and a key every branch sets is required with their types unioned.
      */
     protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
     {
@@ -744,23 +745,46 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         $method = $isMerge ? 'merge' : ($isMergeWhen ? 'mergeWhen' : 'mergeUnless');
-        $value = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method))->named('value');
+        $args = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method));
+        $value = $args->named('value');
 
         if ($value === null) {
             return new ResourceAnalysis;
         }
 
-        return $this->resolveArrayOrClosureToProperties($value->value, optional: ! $isMerge);
+        $branches = $this->resolveMergedBranches($value->value);
+
+        if (! $isMerge) {
+            $default = $args->named('default')?->value;
+
+            // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
+            $defaultBranches = $default === null || $this->closureRequiresArguments($default)
+                ? []
+                : $this->resolveMergedBranches($default);
+
+            // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
+            $branches = [
+                ...($branches === [] ? [new ResourceAnalysis] : $branches),
+                ...($defaultBranches === [] ? [new ResourceAnalysis] : $defaultBranches),
+            ];
+        }
+
+        return match (count($branches)) {
+            0 => new ResourceAnalysis,
+            1 => $branches[0],
+            default => $this->mergeReturnBranches($branches),
+        };
     }
 
     /**
-     * Resolve an expression that's either an Array_ literal or a closure returning an Array_ into properties.
-     * Handles multi-return closures (e.g. guard clause + data branch) by merging all branches.
+     * The arrays a merge argument can merge, one analysis each: an array literal, or each array a closure returns.
+     *
+     * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
      */
-    protected function resolveArrayOrClosureToProperties(Expr $expr, bool $optional): ResourceAnalysis
+    protected function resolveMergedBranches(Expr $expr): array
     {
         if ($expr instanceof Array_) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($expr, $this, $this->scope->subjectReflection, $optional);
+            return [$this->mergedArrayAnalysis($expr)];
         }
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
@@ -770,37 +794,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->claimParameters($expr);
             $this->scope->bindUnpassedParameters($expr, 0, $this);
 
-            return $this->resolveClosureArraysToProperties($expr, $optional);
+            return $this->closureReturnBranches($expr);
         } finally {
             $this->scope->restoreNameBindings($previousNameBindings);
         }
     }
 
     /**
-     * Merge the properties of every non-empty array a merge closure returns, skipping a guard clause's `return []`.
+     * The keys one merged array literal sets, each required within its own branch.
      */
-    private function resolveClosureArraysToProperties(Expr $expr, bool $optional): ResourceAnalysis
+    private function mergedArrayAnalysis(Array_ $array): ResourceAnalysis
     {
-        $returnExprs = $this->resolveClosureReturnExpressions($expr);
-
-        // Filter to non-empty Array_ expressions (skip guard clause `return []`)
-        /** @var list<Array_> $arrays */
-        $arrays = array_values(array_filter($returnExprs, fn (Expr $e) => $e instanceof Array_ && count($e->items) > 0));
-
-        if ($arrays === []) {
-            return new ResourceAnalysis;
-        }
-
-        if (count($arrays) === 1) {
-            return (new ThisPropertyHandler)->extractPropertiesFromArray($arrays[0], $this, $this->scope->subjectReflection, $optional);
-        }
-
-        $analyses = array_map(
-            fn (Array_ $a) => (new ThisPropertyHandler)->extractPropertiesFromArray($a, $this, $this->scope->subjectReflection, $optional),
-            $arrays,
-        );
-
-        return $this->mergeReturnBranches($analyses);
+        return (new ThisPropertyHandler)
+            ->extractPropertiesFromArray($array, $this, $this->scope->subjectReflection, optional: false);
     }
 
     /**

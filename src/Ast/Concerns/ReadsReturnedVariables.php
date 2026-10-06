@@ -17,6 +17,7 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
@@ -38,7 +39,8 @@ use PhpParser\Node\Stmt\While_;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
- * assignment that replaces it. The host analyzer supplies what only it knows through the abstract methods.
+ * assignment that replaces it, and the arrays a closure returns as branches. The host analyzer supplies what only it
+ * knows through the abstract methods.
  *
  * @template TAnalysis of MethodAnalysis
  *
@@ -49,6 +51,7 @@ use PhpParser\Node\Stmt\While_;
 trait ReadsReturnedVariables
 {
     use CollectsLocalVarBindings;
+    use InspectsAstNodes;
 
     /** Reads that publish only part of what they read; variableBranch() skips a variable whose walk raises it. */
     private int $lenientReads = 0;
@@ -291,20 +294,62 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * The branches a closure's returns can merge: one per returned array, `[]` included, and one per returned variable
+     * the walk reads completely, however often it is returned. None when no branch sets a key.
+     *
+     * @return list<TAnalysis>
+     */
+    protected function closureReturnBranches(Expr $closure): array
+    {
+        $stmts = $closure instanceof ClosureExpr ? $closure->stmts : [];
+        $branches = [];
+        $read = [];
+
+        foreach ($this->resolveClosureReturnExpressions($closure) as $returned) {
+            if ($returned instanceof Array_) {
+                $branches[] = $this->mergedArrayAnalysis($returned);
+
+                continue;
+            }
+
+            if (! $returned instanceof Variable || ! is_string($returned->name) || isset($read[$returned->name])) {
+                continue;
+            }
+
+            $read[$returned->name] = true;
+            $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
+
+            if ($branch !== null) {
+                $branches[] = $branch;
+            }
+        }
+
+        // A guard's `return []` merges nothing, so beside a branch that sets a key it is a branch like any other.
+        return array_any($branches, fn (MethodAnalysis $branch): bool => $branch->properties !== []) ? $branches : [];
+    }
+
+    /**
+     * The analysis of one array literal a closure returns, each key it sets required within that branch.
+     *
+     * @return TAnalysis
+     */
+    abstract private function mergedArrayAnalysis(Array_ $array): MethodAnalysis;
+
+    /**
      * A returned variable's branch, or null when the walk does not read it completely: the gate rejects a whole write,
      * or reading it counts a lenient read, as a model-less `parent::toArray()` or an unreadable helper does.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis|null
      */
-    private function variableBranch(array $stmts, string $varName): ?MethodAnalysis
+    private function variableBranch(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
         if (! $this->readsVariableArray($stmts, $varName)) {
             return null;
         }
 
         $lenientReads = $this->lenientReads;
-        $analysis = $this->walkVariable($stmts, $varName, true);
+        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
 
         return $this->lenientReads === $lenientReads ? $analysis : null;
     }

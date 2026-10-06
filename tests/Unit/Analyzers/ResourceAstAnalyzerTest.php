@@ -37,6 +37,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralSpreadPostResour
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeUnreadableDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeVariableClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
@@ -125,6 +127,7 @@ use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MerchantResource;
 use Workbench\App\Http\Resources\MergeClosureResource;
+use Workbench\App\Http\Resources\MergeDefaultResource;
 use Workbench\App\Http\Resources\MergeMultiBranchClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
@@ -3705,6 +3708,81 @@ describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExp
 
         expect($names)->toContain('id');
     });
+
+    // Laravel merges nothing for the guard's `[]`, so the keys the other branch sets can be missing from the response.
+    test('a return [] guard leaves the keys the other branch sets optional', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
+
+        expect($props['user_name']['type'])->toBe('string')
+            ->and($props['user_name']['optional'])->toBeTrue()
+            ->and($props['user_email']['type'])->toBe('string')
+            ->and($props['user_email']['optional'])->toBeTrue()
+            ->and($props['id']['optional'])->toBeFalse();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mergeWhen()/mergeUnless() merge their default when the condition fails — MergeDefaultResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a branch of its own', function () {
+    beforeEach(function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeDefaultResource::class), Order::class);
+        $this->props = collect($analyzer->analyze()->properties)->keyBy('name');
+    });
+
+    it('publishes a key both sides set as required, typed with both sides\' types', function (string $key, string $type) {
+        expect($this->props[$key]['type'])->toBe($type)
+            ->and($this->props[$key]['optional'])->toBeFalse();
+    })->with([
+        'an array default' => ['state', 'string | number'],
+        'a closure default' => ['cancelled', 'boolean'],
+        'a named default' => ['note_text', 'string | null'],
+    ]);
+
+    it('publishes a key only one side sets as optional', function (string $key, string $type) {
+        expect($this->props[$key]['type'])->toBe($type)
+            ->and($this->props[$key]['optional'])->toBeTrue();
+    })->with([
+        'the value only' => ['paid_by', 'number'],
+        'an array default only' => ['awaiting_payment', 'boolean'],
+        'a closure default only' => ['open_since', 'string | null'],
+        'a default closure that can return []' => ['owner_id', 'number'],
+        'no default' => ['subtotal_label', 'string'],
+    ]);
+});
+
+// A side the analysis cannot read as an array merges no key it knows, as the MissingValue an omitted default leaves.
+it('reads a merge side it cannot read as an array as an empty branch', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeUnreadableDefaultResource::class), Post::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toBe([
+        'id' => 'number',
+        'null_default' => '?string',
+        'call_default' => '?string',
+        'default_only' => '?number',
+        'spread_default' => '?string',
+        'needs_arg_default' => '?string',
+    ]);
+});
+
+test('a merge closure that returns a variable it builds merges the variable\'s keys', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeVariableClosureResource::class), Order::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props['merged_a'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($props['merged_b'])->toMatchArray(['type' => 'string', 'optional' => false]);
+});
+
+// The returned variable is a branch like a literal, and one the walk cannot read completely proves no key absent.
+test('a merge closure\'s variable branch sits beside a return [] guard, and an unreadable one is skipped', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeVariableClosureResource::class), Order::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props['guarded'])->toMatchArray(['type' => 'boolean', 'optional' => true])
+        ->and($props['literal'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($props)->not->toHaveKey('appended');
 });
 
 describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple return branches)', function () {

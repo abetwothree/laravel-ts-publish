@@ -3701,16 +3701,31 @@ declare global {
             history_event_map_only?: unknown;
         }
         /**
-         * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+         * Exercises closureReturnBranches() with a Closure passed to merge().
          * The closure has a guard clause followed by the real array return.
          */
         export interface MergeClosureResource {
             id: number;
-            user_name: string;
-            user_email: string;
+            user_name?: string;
+            user_email?: string;
         }
         /**
-         * Exercises resolveArrayOrClosureToProperties with a multi-return closure
+         * Exercises mergeWhen() and mergeUnless() with a default, which Laravel merges when the condition fails. A key only
+         * one side sets is optional, and a key both sides set is required, typed with both sides' types.
+         */
+        export interface MergeDefaultResource {
+            id: number;
+            state: string | number;
+            paid_by?: number;
+            awaiting_payment?: boolean;
+            cancelled: boolean;
+            open_since?: string | null;
+            note_text: string | null;
+            owner_id?: number;
+            subtotal_label?: string;
+        }
+        /**
+         * Exercises resolveMergedBranches() with a multi-return closure
          * passed to merge(). The closure has multiple branches returning different
          * array shapes, which should be merged with union semantics.
          */

@@ -88,6 +88,7 @@ export * from './media-type-resource';
 export * from './media-type-unknown-resource';
 export * from './merchant-resource';
 export * from './merge-closure-resource';
+export * from './merge-default-resource';
 export * from './merge-multi-branch-closure-resource';
 export * from './misc-collection';
 export * from './mixed-enum-merged-resource';

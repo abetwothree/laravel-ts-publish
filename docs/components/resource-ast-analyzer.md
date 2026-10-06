@@ -298,6 +298,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   nested one. `whenNull()`'s value arm is `null`.
 - **`unless()` and `mergeUnless()` reuse `when()` and `mergeWhen()`**: negating the condition changes which arm runs,
   never either arm's type.
+- **`mergeWhen()` and `mergeUnless()` merge their default**: `ResourceAstAnalyzer::analyzeMergeExpression()` reads the
+  value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
+  types and a key one sets is optional. A closure's returned arrays, `[]` included, and a returned variable the walk
+  reads completely are branches; a side read as no array is an empty branch.
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute or flag answers only in three cases: no value is written, the value
@@ -641,8 +645,9 @@ swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed
 reads it by class through [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
 [Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
 `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
-`mergeReturnBranches()` still merges by text. `HandoverResource` pins the `??`, ternary, to-many and inline-array
-shapes, and `HandoverNoticeResource` the `when()` and `whenNull()` ones.
+`mergeReturnBranches()` still merges by text, for return branches and a merge call's value and default alike.
+`HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
+and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
@@ -727,7 +732,7 @@ These pages own the rules this page links to:
 These [known gaps](../known-gaps.md) come from the rules on this page:
 
 - [A union arm the engine cannot type is left out](../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)
-- [A `return []` guard makes keys optional in a method body, but not inside a `merge()` closure](../known-gaps.md#a-return--guard-makes-keys-optional-in-a-method-body-but-not-inside-a-merge-closure)
+- [A merge whose two sides name same-basename classes publishes only one of them](../known-gaps.md#a-merge-whose-two-sides-name-same-basename-classes-publishes-only-one-of-them)
 - [A helper that returns an empty `[]` on one path publishes an object shape](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
 - [`#[TsCasts]` and the top-level spread flatten disagree by scope](../known-gaps.md#tscasts-and-the-top-level-spread-flatten-disagree-by-scope-in-three-separate-ways)
 - [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)

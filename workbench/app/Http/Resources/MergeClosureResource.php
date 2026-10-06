@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Order;
 
 /**
- * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+ * Exercises closureReturnBranches() with a Closure passed to merge().
  * The closure has a guard clause followed by the real array return.
  *
  * @mixin Order
@@ -34,8 +34,7 @@ class MergeClosureResource extends JsonResource
                 ];
             }),
             $this->mergeWhen(true, function () {
-                // Closure that returns a non-array expression
-                // exercises resolveClosureReturnExpression lines 176-179
+                // A closure that returns a non-array expression: closureReturnBranches() reads no branch from it
                 return $this->resource;
             }),
         ];

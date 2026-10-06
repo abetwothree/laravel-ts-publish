@@ -14086,12 +14086,62 @@
                 {
                     "name": "user_name",
                     "type": "string",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "user_email",
                     "type": "string",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MergeDefaultResource": {
+            "name": "MergeDefaultResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
                     "optional": false
+                },
+                {
+                    "name": "state",
+                    "type": "string | number",
+                    "optional": false
+                },
+                {
+                    "name": "paid_by",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "awaiting_payment",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "cancelled",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "open_since",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "note_text",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "owner_id",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "subtotal_label",
+                    "type": "string",
+                    "optional": true
                 }
             ]
         },
