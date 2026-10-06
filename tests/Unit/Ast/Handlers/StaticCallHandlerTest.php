@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AnnulledResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
@@ -274,6 +275,15 @@ it('analyzes the expressions a new payload nests', function () {
 
     expect(AnalysisWarnings::all())->toHaveCount(1);
 });
+
+// The arm is read from the type's top-level members, so a class name that spells "null" does not stand in for it.
+it('adds the null arm of a ?static method once, and none for a static one', function (string $php, string $type) {
+    expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
+})->with([
+    'a class name that spells null' => ['\\'.AnnulledResource::class.'::make($this->resource)->maybe()', 'AnnulledResource | null'],
+    'a receiver that already has the arm' => ['new self($this->parent)->whenAuthorized()', 'FluentSelfResource | null'],
+    'a static return type' => ['new self($this->resource)->markPreview()', 'FluentSelfResource'],
+]);
 
 // collectResource() calls a method on its payload, so a resource collection, or the one ::collection() builds, throws
 // on null instead of serializing as null.

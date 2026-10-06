@@ -310,8 +310,8 @@ final class StaticCallHandler implements ExpressionHandler
             return ['type' => $this->buildInlineObjectType($analysis), 'optional' => false];
         }
 
-        if ($this->methodReturnAllowsNull($method) && ! str_contains($receiverResult['type'], 'null')) {
-            $receiverResult['type'] .= ' | null';
+        if ($this->methodReturnAllowsNull($method)) {
+            $receiverResult['type'] = ValueResult::withNullArm($receiverResult['type']);
         }
 
         return $receiverResult;
