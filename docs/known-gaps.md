@@ -309,6 +309,16 @@ such as `fn ($t): ?string => json_decode($t)`, and the key types from it. `whenE
 `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a key can claim a type
 the closure does not return.
 
+### On a class that is not an API resource, `$this->when()` publishes `unknown`
+
+Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php), as
+[ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
+On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
+every other `when*()` call as that class's own method, so Laravel's `Conditionable::when()` publishes `unknown`,
+required, as `ConditionableBroadcastEvent` pins. The resource rule would be wrong there: `Conditionable::when()`
+returns the callback's result, or the object itself, and the key is always sent. Until the package types
+`Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
+
 ### An aggregate's type follows the database of the machine that publishes
 
 [`AggregateValueType`](../src/Ast/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
