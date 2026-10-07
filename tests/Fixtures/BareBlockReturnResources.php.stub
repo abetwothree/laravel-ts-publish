@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Models\Post;
+
+/*
+ * Resources that return from inside a bare `{ }` block. A `.php.stub` file because Pint's no_unneeded_braces fixer
+ * removes every bare block, and its finder only matches `*.php`.
+ */
+
+/**
+ * A spread helper and a `when()` closure that each return from inside a bare block.
+ *
+ * @mixin Post
+ */
+class BareBlockReturnResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            ...$this->summary(),
+            'label' => $this->when(true, function () {
+                {
+                    return $this->title;
+                }
+            }),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function summary(): array
+    {
+        {
+            return ['title' => $this->title];
+        }
+    }
+}
+
+/**
+ * A toArray() that returns from inside a bare block.
+ *
+ * @mixin Post
+ */
+class BareBlockToArrayResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        {
+            return ['id' => $this->id];
+        }
+    }
+}

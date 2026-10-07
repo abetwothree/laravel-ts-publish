@@ -70,8 +70,8 @@ A method that builds an array in a variable and returns it publishes the keys it
   `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk cannot read, and
   one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `unset($data['key'])`, or a
   `??=` to a key it does not hold. When no branch read completely has a key and every `return` is a literal or a
-  variable, none inside a `try` or `switch`, it publishes the writes the walk reads instead; with a `return` of another
-  kind, the first `return` is read.
+  variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk reads instead; with a
+  `return` of another kind, the first `return` is read.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 

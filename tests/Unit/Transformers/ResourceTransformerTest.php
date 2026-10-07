@@ -3157,6 +3157,23 @@ describe('a closure that returns an array before the method\'s own return', func
     });
 });
 
+// A bare `{ }` block runs its statements in place, so a `return` inside it is the method's or the closure's own.
+describe('a return inside a bare block', function () {
+    beforeEach(function () {
+        require_once __DIR__.'/../../Fixtures/BareBlockReturnResources.php.stub';
+    });
+
+    test('publishes the keys a spread helper and a closure return from one', function () {
+        expect(array_map(fn (array $property): string => ($property['optional'] ? '?' : '').$property['type'], (new ResourceTransformer(BareBlockReturnResource::class))->properties))
+            ->toBe(['id' => 'number', 'title' => 'string', 'label' => '?string']);
+    });
+
+    test('publishes the keys toArray() returns from one', function () {
+        expect(array_map(fn (array $property): string => $property['type'], (new ResourceTransformer(BareBlockToArrayResource::class))->properties))
+            ->toBe(['id' => 'number']);
+    });
+});
+
 describe('a member typed by a docblock union whose arms render alike for two models that share a name', function () {
     test('publishes an array of each model, read as a property, a method and an arm of a ternary', function () {
         $transformer = new ResourceTransformer(HandoverRosterResource::class);

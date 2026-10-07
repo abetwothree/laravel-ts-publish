@@ -52,9 +52,9 @@ every profile, the order handlers run in decides which one answers; see
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
-  `return` is a literal or a variable, none inside a `try` or `switch`: then it is read leniently as a branch, as a lone
-  variable is. Otherwise, with no branch read completely holding a key, the sweep declines and the first `return` is
-  read; any other return is skipped.
+  `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
+  branch, as a lone variable is. Otherwise, with no branch read completely holding a key, the sweep declines and the
+  first `return` is read; any other return is skipped.
 - **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a

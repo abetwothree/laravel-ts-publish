@@ -21,6 +21,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
@@ -296,7 +297,8 @@ trait InspectsAstNodes
 
             if ($stmt instanceof Foreach_
                 || $stmt instanceof For_
-                || $stmt instanceof While_) {
+                || $stmt instanceof While_
+                || $stmt instanceof Block) {
                 $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
 
                 continue;
