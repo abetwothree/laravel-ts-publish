@@ -18,6 +18,19 @@ it('changes the config fingerprint when an output-affecting key changes', functi
     expect(ConfigFingerprint::compute())->not->toBe($before);
 });
 
+// A relation aggregate publishes as its connection's driver returns it, and a model may name any configured connection.
+it('changes the config fingerprint when a database driver changes', function () {
+    $sqlite = ConfigFingerprint::compute();
+
+    config()->set('database.connections.testing.driver', 'mysql');
+    $mysql = ConfigFingerprint::compute();
+
+    config()->set('database.default', 'laravel13_secondary');
+
+    expect($mysql)->not->toBe($sqlite)
+        ->and(ConfigFingerprint::compute())->not->toBe($mysql)->not->toBe($sqlite);
+});
+
 it('ignores the cache config slice when fingerprinting', function () {
     $before = ConfigFingerprint::compute();
 

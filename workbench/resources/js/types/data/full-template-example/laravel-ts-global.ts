@@ -2561,7 +2561,7 @@ declare global {
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number;
+            total_avg?: number | null;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -3023,8 +3023,8 @@ declare global {
             has_with_null: number | null;
             loaded_with_default: app.models.User | null;
             counted_with_default: number | string;
-            aggregated_no_default?: number;
-            aggregated_with_default: number | string;
+            aggregated_no_default?: number | null;
+            aggregated_with_default: number | string | null;
             pivot_loaded_no_default?: unknown;
             pivot_loaded_with_default: unknown;
             pivot_loaded_as_no_default?: unknown;
@@ -4039,7 +4039,7 @@ declare global {
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number;
+            total_avg?: number | null;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -4254,12 +4254,26 @@ declare global {
             tags?: TagResource[];
             images?: ImageResource[];
             orders_count?: number;
-            total_sold?: number;
-            min_unit_price?: number;
-            max_unit_price?: number;
+            total_sold?: number | null;
+            min_unit_price?: number | null;
+            max_unit_price?: number | null;
             weight?: number | null;
             dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
             metadata?: ProductMetadata | ProductJsonMetaData | null;
+        }
+        /**
+         * Exercises: whenAggregated() typed from the aggregated column and the connection's driver (SQLite here), its null arm
+         * over no rows, a value closure passed the aggregate, and whenCounted(), whose count is never null.
+         */
+        export interface ProductSalesResource {
+            id: string;
+            last_sold_at?: string | null;
+            first_item_name?: string | null;
+            average_quantity?: number | null;
+            top_quantity?: { max: number } | null;
+            has_bulk_line?: boolean | null;
+            revenue: number | null;
+            has_items?: boolean;
         }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {

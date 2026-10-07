@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphModelResource;
@@ -508,14 +509,14 @@ describe('ResourceAstAnalyzer with OrderResource', function () {
             ->and($deliveredAt['optional'])->toBeTrue();
     });
 
-    test('marks whenAggregated as optional number', function () {
+    test('marks whenAggregated as an optional nullable number', function () {
         $reflection = new ReflectionClass(OrderResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Order::class);
         $analysis = $analyzer->analyze();
 
         $totalAvg = collect($analysis->properties)->firstWhere('name', 'total_avg');
 
-        expect($totalAvg['type'])->toBe('number')
+        expect($totalAvg['type'])->toBe('number | null')
             ->and($totalAvg['optional'])->toBeTrue();
     });
 
@@ -940,10 +941,28 @@ describe('ResourceAstAnalyzer with ProductResource', function () {
         $minPrice = collect($analysis->properties)->firstWhere('name', 'min_unit_price');
         $maxPrice = collect($analysis->properties)->firstWhere('name', 'max_unit_price');
 
-        expect($totalSold['type'])->toBe('number')
-            ->and($minPrice['type'])->toBe('number')
-            ->and($maxPrice['type'])->toBe('number');
+        expect($totalSold['type'])->toBe('number | null')
+            ->and($minPrice['type'])->toBe('number | null')
+            ->and($maxPrice['type'])->toBe('number | null');
     });
+
+    // The driver is read from the resource's model, and the SQLite schema stands in for each driver's column types, so
+    // `quantity` reads as `integer` and `unit_price` as `numeric` under every driver.
+    test('narrows each column aggregate by the model connection\'s driver', function (string $driver, array $types) {
+        app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class)->analyze()->properties)
+            ->keyBy('name');
+
+        expect([$props['total_sold']['type'], $props['min_unit_price']['type'], $props['max_unit_price']['type']])
+            ->toBe($types)
+            ->and($props['orders_count']['type'])->toBe('number');
+    })->with([
+        'sqlite' => ['sqlite', ['number | null', 'number | null', 'number | null']],
+        'mysql' => ['mysql', ['string | null', 'string | null', 'string | null']],
+        'mariadb' => ['mariadb', ['string | null', 'string | null', 'string | null']],
+        'pgsql' => ['pgsql', ['number | null', 'string | null', 'string | null']],
+        'sqlsrv' => ['sqlsrv', ['number | null', 'number | null', 'number | null']],
+    ]);
 });
 
 describe('ResourceAstAnalyzer with CategoryResource', function () {
@@ -4812,7 +4831,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — explicit defa
         expect($props['has_with_default']['type'])->toBe('string | number');
         expect($props['has_with_null']['type'])->toBe('number | null');
         expect($props['counted_with_default']['type'])->toBe('number | string');
-        expect($props['aggregated_with_default']['type'])->toBe('number | string');
+        expect($props['aggregated_with_default']['type'])->toBe('number | string | null');
         expect($props['appended_with_default']['type'])->toBe('string | number');
         expect($props['appended_with_null']['type'])->toBe('number | null');
         expect($props['exists_with_default']['type'])->toBe('string | null');

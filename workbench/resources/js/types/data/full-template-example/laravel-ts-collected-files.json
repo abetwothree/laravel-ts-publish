@@ -229,6 +229,7 @@
     "app\/Http\/Resources\/PreserveKeysPropertyCollection.php",
     "app\/Http\/Resources\/PreserveKeysTeamResource.php",
     "app\/Http\/Resources\/ProductResource.php",
+    "app\/Http\/Resources\/ProductSalesResource.php",
     "app\/Http\/Resources\/ProfileResource.php",
     "app\/Http\/Resources\/PropertyDocblockEdgeResource.php",
     "app\/Http\/Resources\/ProxyFilterDirectResource.php",

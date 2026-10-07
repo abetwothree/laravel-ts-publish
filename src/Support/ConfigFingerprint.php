@@ -10,7 +10,8 @@ use Throwable;
 class ConfigFingerprint
 {
     /**
-     * Hash the output-affecting `ts-publish` config so the cache busts when it changes.
+     * Hash the output-affecting `ts-publish` config, and each database connection's driver, so the cache busts when
+     * either changes: a relation aggregate publishes as its connection's driver returns it.
      *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
@@ -20,6 +21,15 @@ class ConfigFingerprint
         $config = Config::array('ts-publish');
 
         unset($config['cache']);
+
+        $config = [
+            'ts-publish' => $config,
+            'database.default' => Config::get('database.default'),
+            'database.drivers' => array_map(
+                fn (mixed $connection): mixed => is_array($connection) ? $connection['driver'] ?? null : null,
+                Config::array('database.connections', []),
+            ),
+        ];
 
         self::ksortRecursive($config);
 

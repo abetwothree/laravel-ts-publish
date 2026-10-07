@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AggregateAliasPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
@@ -40,6 +41,7 @@ use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VenueResource;
@@ -50,6 +52,7 @@ use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
@@ -445,7 +448,7 @@ it('reads whenAggregated(…, default: …) at the family\'s deepest default pos
 
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
 
-    expect($result)->toBe(['type' => 'number | string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'number | string | null', 'optional' => false]);
 });
 
 // whenHas('attr', default: …) skips $value: Laravel counts three arguments and evaluates value(null, …),
@@ -664,7 +667,7 @@ it('never answers an untypable whenHas() or whenAppended() value with the attrib
 ]);
 
 // Only whenHas() and whenAppended() publish `unknown` for a closure the engine cannot type: the other three keep the
-// flag or the aggregate's `number`, which the package publishes for their keys.
+// flag or the aggregate's type, which the package publishes for their keys.
 it('keeps the flag or the aggregate type for an untypable whenExistsLoaded(), whenCounted() or whenAggregated() closure', function (string $php, array $expected) {
     expect(conditionalMethodHandlerResolveOnPost($php))->toMatchArray($expected);
 })->with([
@@ -674,7 +677,7 @@ it('keeps the flag or the aggregate type for an untypable whenExistsLoaded(), wh
         ['type' => 'boolean | string', 'optional' => false],
     ],
     'whenCounted()' => ['$this->whenCounted("comments", fn ($n) => json_decode($n))', ['type' => 'number', 'optional' => true]],
-    'whenAggregated()' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => json_decode($m))', ['type' => 'number', 'optional' => true]],
+    'whenAggregated()' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => json_decode($m))', ['type' => 'number | null', 'optional' => true]],
 ]);
 
 // Without the claim, ClosureHandler releases the name the value argument just bound, and the key loses its type.
@@ -710,9 +713,10 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenCounted() closure, passed the count' => ['$this->whenCounted("comments", fn ($n) => ["n" => $n])', '{ n: number }'],
     'whenCounted() closure, comparing the count' => ['$this->whenCounted("comments", fn ($n) => $n > 3)', 'boolean'],
     'whenCounted() closure, ignoring the count' => ['$this->whenCounted("comments", fn ($n) => "x")', 'string'],
-    'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string'],
-    'whenAggregated() closure, returning the untyped aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number'],
-    'whenAggregated() closure, binding nothing' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: unknown }'],
+    'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string | null'],
+    'whenAggregated() closure, returning the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number | null'],
+    'whenAggregated() closure, passed the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: number } | null'],
+    'whenAggregated() closure, variadic' => ['$this->whenAggregated("comments", "id", "max", fn (...$m) => $m)', 'number[] | null'],
     'whenAggregated() count closure, passed the count' => ['$this->whenAggregated("comments", "id", "count", fn ($c) => ["c" => $c])', '{ c: number }'],
     'whenLoaded() second parameter, optional int' => ['$this->whenLoaded("author", fn ($a, $b = 5) => $b)', 'number'],
     'transform() callback second parameter, optional int' => ['$this->transform($this->title, fn ($t, $u = 5) => $u)', 'number'],
@@ -723,13 +727,45 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     ],
 ]);
 
-// The package publishes an aggregate as number by convention, whatever its column, function and driver.
-it('publishes whenAggregated()\'s aggregate as number', function (string $php) {
-    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('number');
+// The workbench runs SQLite, which returns an integer or decimal aggregate as a number and a date or text MIN()/MAX() as
+// a string. Any aggregate but a count is SQL NULL over no rows.
+it('publishes whenAggregated()\'s aggregate as the driver returns it', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
-    'max()' => ['$this->whenAggregated("comments", "created_at", "max")'],
-    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)'],
-    'count()' => ['$this->whenAggregated("comments", "id", "count")'],
+    'max() of a date column' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null'],
+    'max() of a text column' => ['$this->whenAggregated("comments", "content", "max")', 'string | null'],
+    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)', 'number | null'],
+    'sum() of a date column, which proves nothing' => ['$this->whenAggregated("comments", "created_at", "sum")', 'number | null'],
+    'max() of a column the related table lacks' => ['$this->whenAggregated("comments", "nope", "max")', 'number | null'],
+    'max() over a relation the model lacks' => ['$this->whenAggregated("nope", "id", "max")', 'number | null'],
+    'a function the call computes' => ['$this->whenAggregated("comments", "id", $local)', 'number'],
+    'count()' => ['$this->whenAggregated("comments", "id", "count")', 'number'],
+]);
+
+// whenAggregated() names its attribute after the snake-cased relation, so either spelling reaches Product::orderItems().
+it('reads the relation an aggregate names, spelled either way', function (string $relation) {
+    $expr = new AstParser()->parseSource('<?php $this->whenAggregated("'.$relation.'", "created_at", "max");')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe('string | null');
+})->with(['the method name' => 'orderItems', 'snake-cased' => 'order_items']);
+
+// Laravel reads the aggregate through the model's own accessor or cast, so the model's declaration wins over the driver:
+// an accessor can turn the SQL NULL into a value, while a built-in cast passes it through.
+it('reads a column aggregate through the model\'s own accessor, cast or @property', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), AggregateAliasPost::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), AggregateAliasPost::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'a string cast' => ['$this->whenAggregated("comments", "post_id", "sum")', 'string | null'],
+    'an @property tag' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null'],
+    'an accessor that coalesces the null' => ['$this->whenAggregated("comments", "post_id", "max")', 'number'],
+    'an accessor, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "max", fn ($m) => ["m" => $m])', '{ m: number }'],
+    'a string cast, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "sum", fn ($s) => ["s" => $s])', '{ s: string } | null'],
+    'no declaration, the driver\'s number' => ['$this->whenAggregated("comments", "post_id", "min")', 'number | null'],
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal

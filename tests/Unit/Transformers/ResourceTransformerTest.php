@@ -91,6 +91,7 @@ use Workbench\App\Http\Resources\PostStateCastResource;
 use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Http\Resources\ProductResource;
+use Workbench\App\Http\Resources\ProductSalesResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
@@ -730,10 +731,10 @@ describe('ResourceTransformer with OrderResource', function () {
         expect($data->properties['items_count']['optional'])->toBeTrue();
     });
 
-    test('transforms whenAggregated as optional number', function () {
+    test('transforms whenAggregated as an optional nullable number', function () {
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
-        expect($data->properties['total_avg']['type'])->toBe('number');
+        expect($data->properties['total_avg']['type'])->toBe('number | null');
         expect($data->properties['total_avg']['optional'])->toBeTrue();
     });
 
@@ -3235,5 +3236,24 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             'status_from_method' => 'StatusType',
         ])
             ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
+    });
+});
+
+// The workbench runs SQLite: a date or text MIN()/MAX() is a string and any other column aggregate a number. Each but a
+// count is SQL NULL over no rows, which Laravel returns before it calls a value closure.
+describe('ResourceTransformer with ProductSalesResource', function () {
+    test('publishes each aggregate as the driver returns it, with its null', function () {
+        $transformer = new ResourceTransformer(ProductSalesResource::class);
+
+        expect(array_map(fn (array $property): array => [$property['type'], $property['optional']], $transformer->properties))->toBe([
+            'id' => ['string', false],
+            'last_sold_at' => ['string | null', true],
+            'first_item_name' => ['string | null', true],
+            'average_quantity' => ['number | null', true],
+            'top_quantity' => ['{ max: number } | null', true],
+            'has_bulk_line' => ['boolean | null', true],
+            'revenue' => ['number | null', false],
+            'has_items' => ['boolean', true],
+        ]);
     });
 });

@@ -10473,7 +10473,7 @@
                 },
                 {
                     "name": "total_avg",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
@@ -12087,12 +12087,12 @@
                 },
                 {
                     "name": "aggregated_no_default",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
                     "name": "aggregated_with_default",
-                    "type": "number | string",
+                    "type": "number | string | null",
                     "optional": false
                 },
                 {
@@ -15089,7 +15089,7 @@
                 },
                 {
                     "name": "total_avg",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
@@ -15736,17 +15736,17 @@
                 },
                 {
                     "name": "total_sold",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
                     "name": "min_unit_price",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
                     "name": "max_unit_price",
-                    "type": "number",
+                    "type": "number | null",
                     "optional": true
                 },
                 {
@@ -15762,6 +15762,51 @@
                 {
                     "name": "metadata",
                     "type": "ProductMetadata | ProductJsonMetaData | null",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ProductSalesResource": {
+            "name": "ProductSalesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "last_sold_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "first_item_name",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "average_quantity",
+                    "type": "number | null",
+                    "optional": true
+                },
+                {
+                    "name": "top_quantity",
+                    "type": "{ max: number } | null",
+                    "optional": true
+                },
+                {
+                    "name": "has_bulk_line",
+                    "type": "boolean | null",
+                    "optional": true
+                },
+                {
+                    "name": "revenue",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "has_items",
+                    "type": "boolean",
                     "optional": true
                 }
             ]

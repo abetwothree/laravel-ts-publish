@@ -23,8 +23,8 @@ export interface ConditionalDefaultsResource
     has_with_null: number | null;
     loaded_with_default: User | null;
     counted_with_default: number | string;
-    aggregated_no_default?: number;
-    aggregated_with_default: number | string;
+    aggregated_no_default?: number | null;
+    aggregated_with_default: number | string | null;
     pivot_loaded_no_default?: unknown;
     pivot_loaded_with_default: unknown;
     pivot_loaded_as_no_default?: unknown;

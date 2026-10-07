@@ -921,6 +921,21 @@ class ModelAttributeResolver
     }
 
     /**
+     * The driver of the connection a model queries through, such as `mysql`, read from its config without connecting;
+     * null when the model cannot be instantiated or its connection is not configured.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function connectionDriver(string $modelFqcn): ?string
+    {
+        try {
+            return $this->getInstance($modelFqcn)?->getConnection()->getDriverName();
+        } catch (Throwable) { // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
+        }
+    }
+
+    /**
      * @param  class-string  $modelFqcn
      * @return ReflectionClass<Model>|null
      */

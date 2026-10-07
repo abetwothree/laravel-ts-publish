@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -15,7 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -357,23 +360,34 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenCounted()/whenAggregated() — a missing or null value publishes the aggregate as `number` by
-     * convention, though a driver can return a non-count one as a numeric or date string. A value closure's param
-     * binds to `number` for a count, always an integer, and to nothing otherwise; the closure's result types the key.
+     * Analyze $this->whenCounted()/whenAggregated(): a missing or null value publishes the aggregate, and a value
+     * closure's result types the key, its first parameter bound to the aggregate without its null. An untypable closure
+     * or an aggregate nothing types publishes `number` by convention.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeWhenAggregate(MethodCall $call, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $args = $this->arguments($call, $method);
-        $function = $args->named('aggregate')?->value;
-        $aggregate = $method === 'whenCounted' || ($function instanceof String_ && $function->value === 'count')
-            ? ['type' => 'number', 'optional' => false]
-            : ValueResult::unknown();
-        $fromValue = $this->resolveValueArgument($args, $aggregate, $scope, $engine);
+        $functionArg = $args->named('aggregate')?->value;
+        $function = $method === 'whenCounted' ? 'count' : ($functionArg instanceof String_ ? $functionArg->value : null);
+        $aggregate = $this->typedAggregate($function, $args, $scope);
+        $passed = $aggregate === null
+            ? ValueResult::unknown()
+            : [...$aggregate, 'type' => ValueResult::stripNullArm($aggregate['type'])];
+        $fromValue = $this->resolveValueArgument($args, $passed, $scope, $engine);
         $typed = $fromValue !== null && $fromValue['type'] !== 'unknown' ? $fromValue : null;
+        $value = $typed ?? $aggregate ?? ['type' => 'number', 'optional' => false];
 
-        return $this->applyConditionalDefault($typed ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
+        // Any aggregate but a count is SQL NULL over no rows, which Laravel returns before it calls the closure. Only
+        // the model's own declaration can turn that NULL into a value.
+        if ($function !== null && $function !== 'count'
+            && ($aggregate === null || ValueResult::hasNullArm($aggregate['type']))
+        ) {
+            $value['type'] = ValueResult::withNullArm($value['type']);
+        }
+
+        return $this->applyConditionalDefault($value, $args, $scope, $engine);
     }
 
     /**
@@ -594,6 +608,55 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         return [...$value, 'type' => ValueResult::withNullArm($value['type'])];
+    }
+
+    /**
+     * The aggregate's type with its null arm, read as getAttribute() reads `{relation}_{function}_{column}`: the
+     * model's own accessor or `@property` as declared, then its built-in cast, then what the connection's driver
+     * returns for the related column. A count is `number`; null when nothing types the aggregate.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function typedAggregate(?string $function, CallArguments $args, AnalysisScope $scope): ?array
+    {
+        if ($function === 'count') {
+            return ['type' => 'number', 'optional' => false];
+        }
+
+        $relationship = $args->named('relationship')?->value;
+        $column = $args->named('column')?->value;
+
+        if ($function === null || $scope->modelClass === null || ! $relationship instanceof String_ || ! $column instanceof String_) {
+            return null;
+        }
+
+        $relationKey = Str::snake($relationship->value);
+        $attribute = Str::finish($relationKey.'_'.$function.'_', $column->value);
+        $declared = $this->resolveModelAttributeTypeInfo($attribute, $scope);
+
+        if ($declared['type'] !== 'unknown') {
+            return ValueResult::withAttributeChannels(['type' => $declared['type'], 'optional' => false], $declared);
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $cast = $resolver->getInstance($scope->modelClass)?->getCasts()[$attribute] ?? null;
+
+        // Every cast Laravel builds in names no class, and each hands the SQL NULL back untouched.
+        $castType = is_string($cast) && ! class_exists(Str::before($cast, ':')) ? LaravelTsPublish::toTsType($cast)['type'] : 'unknown';
+
+        if ($castType !== 'unknown') {
+            return ['type' => ValueResult::withNullArm($castType), 'optional' => false];
+        }
+
+        // The attribute names the relation snake-cased, so the relation is the method whose snake case matches.
+        $relation = $resolver->getRelations($scope->modelClass)
+            ?->first(fn (array $relation): bool => Str::snake($relation['name']) === $relationKey);
+        $columns = $relation === null ? null : $resolver->getAttributes($relation['related']);
+        $columnType = $columns?->firstWhere('name', $column->value)['type'] ?? null;
+        $driver = $resolver->connectionDriver($scope->modelClass);
+        $type = $columnType === null || $driver === null ? null : AggregateValueType::of($function, $columnType, $driver);
+
+        return $type === null ? null : ['type' => $type.' | null', 'optional' => false];
     }
 
     /**
