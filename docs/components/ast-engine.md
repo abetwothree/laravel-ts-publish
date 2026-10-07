@@ -228,7 +228,7 @@ A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()
 rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads. A closure or a
 spread method that writes a name drops the proofs of that name it came in with. A call between a guard and its read,
 such as a method that assigns the read or `setRelation()`, is not seen as a write, so the proof survives it
-(follow-up F53).
+(#115).
 
 A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
 the body, where `$x` is what the test excluded.
