@@ -7,6 +7,9 @@ PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../
 `toTsType()` and `methodOrDocblockReturnTypes()`, and its rules are on this page too. Usage is on the tolki
 [Models](https://tolki.abe.dev/ts/models.html) page.
 
+`connectionDriver()` reads the driver of a model's connection from its config, for the aggregate types
+`whenAggregated()` publishes. A model the run has not resolved yet is inspected first, which queries its schema.
+
 ## Where things live
 
 The attribute waterfall spans these classes:

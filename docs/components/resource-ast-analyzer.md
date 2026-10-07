@@ -319,6 +319,12 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `whenLoaded()` does, so `whenExistsLoaded('user', null, 'absent')` is `string | null`.
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`
   attribute, so a resource and its model agree on the flag.
+- **A `whenAggregated()` aggregate follows the driver, and takes `| null` unless the model's declaration rules it
+  out**: the model's own declaration of `{relation}_{function}_{column}` types it, else
+  [`AggregateValueType`](../../src/Ast/AggregateValueType.php) reads the related column's type and the connection's
+  driver, so a decimal `SUM()` is `number` on SQLite and `string` on MySQL, else it is `number`. Any aggregate but a
+  count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call
+  computes takes no arm.
 - **`transform()` types from the callback**: the helper returns `$callback($value)` for a filled value, with the
   callback's first parameter bound to the value. Its default receives the value too, `null` arm included:
   `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.

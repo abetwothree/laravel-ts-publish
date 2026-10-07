@@ -309,6 +309,28 @@ such as `fn ($t): ?string => json_decode($t)`, and the key types from it. `whenE
 `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a key can claim a type
 the closure does not return.
 
+### An aggregate's type follows the database of the machine that publishes
+
+[`AggregateValueType`](../src/Ast/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
+model's connection on the machine that publishes, as column types follow that machine's schema. A `SUM()` of a decimal
+column publishes `number | null` from SQLite and `string | null` from MySQL, so publishing against SQLite for an app
+that runs MySQL keeps a `number` the response does not hold. Publish against the driver production runs; the
+generation cache rebuilds when `database.default` or a connection's driver changes, even through its `url`. Or give
+the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the parent model,
+or declare it with an accessor or `@property`, and that type publishes on every driver. A query-time `withCasts()`
+cannot be seen by a publish.
+
+### On SQL Server a numeric aggregate and every count publish `number`, though pdo_sqlsrv returns numbers as strings by default
+
+Laravel's `sqlsrv` driver runs on pdo_sqlsrv, which returns a number as a string, or on pdo_dblib, which returns a
+number, and `getDriverName()` is `sqlsrv` for both. So a numeric `whenAggregated()` aggregate publishes
+`number | null` there, and `whenCounted()` and a `'count'` aggregate publish `number`; a date or text `MIN()` or
+`MAX()` publishes `string | null`. `PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE` makes pdo_sqlsrv return an integer or float
+as a number, but never a `decimal`, `numeric` or `money` value, so a decimal `SUM()` is a string either way. Give the
+alias `{relation}_{function}_{column}` a built-in cast on the parent model, or declare it with an accessor or
+`@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration, so an
+`integer` cast on its alias makes the response hold one.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

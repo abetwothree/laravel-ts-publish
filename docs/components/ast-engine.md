@@ -178,7 +178,7 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
-| `whenAggregated()`, other aggregates | The aggregate | Nothing: its type depends on column, function and driver |
+| `whenAggregated()`, other aggregates | The aggregate | The aggregate without its `null`, as the model's declaration or [`AggregateValueType`] types it; nothing when neither does |
 | `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
 | `transform()`'s default | The blank value | The value's full type, `null` included |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
@@ -199,8 +199,10 @@ These rules settle the cases the table leaves open:
   Laravel passes nothing and the call throws `ArgumentCountError`. The workbench pins it with
   `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays, and `ts:publish` warns that the
   call throws.
-- **`whenAggregated()` publishes `number` for an aggregate it cannot type**: a driver can return a numeric or date
-  string instead, such as a MySQL `SUM()`, which that `number` does not describe.
+- **`whenAggregated()` types its aggregate as the model declares it**: the model's own accessor or `@property` on
+  `{relation}_{function}_{column}`, as declared, then its built-in cast, then what the connection's driver returns for
+  the related column ([`AggregateValueType`]), else `number`. Every aggregate but a count or one whose function the
+  call computes keeps `| null`, the SQL `NULL` over no rows, unless the model's declaration rules it out.
 
 `ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
 green with either mechanism alone, so it pins neither.
@@ -449,6 +451,7 @@ These pages cover the engine's neighbors:
 - [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
   inference feature moved onto this engine.
 
+[`AggregateValueType`]: ../../src/Ast/AggregateValueType.php
 [`AnalysisComposer`]: ../../src/Ast/AnalysisComposer.php
 [`AnalysisImports`]: ../../src/Ast/AnalysisImports.php
 [`AnalysisMemo`]: ../../src/Ast/AnalysisMemo.php
