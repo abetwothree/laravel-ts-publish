@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AggregateAliasPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
@@ -727,8 +728,8 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     ],
 ]);
 
-// The workbench runs SQLite, which returns an integer or decimal aggregate as a number and a date or text MIN()/MAX() as
-// a string. Any aggregate but a count is SQL NULL over no rows.
+// The workbench runs SQLite, which returns an integer or decimal aggregate as a number and a date or text MIN()/MAX()
+// as a string. Any aggregate but a count is SQL NULL over no rows.
 it('publishes whenAggregated()\'s aggregate as the driver returns it', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
@@ -742,7 +743,8 @@ it('publishes whenAggregated()\'s aggregate as the driver returns it', function 
     'count()' => ['$this->whenAggregated("comments", "id", "count")', 'number'],
 ]);
 
-// whenAggregated() names its attribute after the snake-cased relation, so either spelling reaches Product::orderItems().
+// whenAggregated() names its attribute after the snake-cased relation, so either spelling reaches
+// Product::orderItems().
 it('reads the relation an aggregate names, spelled either way', function (string $relation) {
     $expr = new AstParser()->parseSource('<?php $this->whenAggregated("'.$relation.'", "created_at", "max");')[0]->expr;
     $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
@@ -751,9 +753,10 @@ it('reads the relation an aggregate names, spelled either way', function (string
         ->resolve($expr)['type'])->toBe('string | null');
 })->with(['the method name' => 'orderItems', 'snake-cased' => 'order_items']);
 
-// Laravel reads the aggregate through the model's own accessor or cast, so the model's declaration wins over the driver:
-// an accessor can turn the SQL NULL into a value, while a built-in cast passes it through.
-it('reads a column aggregate through the model\'s own accessor, cast or @property', function (string $php, string $type) {
+// Laravel reads the aggregate through the model's own accessor or cast, so the model's declaration wins over the
+// driver: an accessor can turn the SQL NULL into a value, while a built-in cast passes it through.
+it('reads a column aggregate through the model\'s own accessor, cast or @property', function (string $php, string $type, string $driver = 'sqlite') {
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), AggregateAliasPost::class);
 
@@ -761,7 +764,8 @@ it('reads a column aggregate through the model\'s own accessor, cast or @propert
         ->resolve($expr)['type'])->toBe($type);
 })->with([
     'a string cast' => ['$this->whenAggregated("comments", "post_id", "sum")', 'string | null'],
-    'an @property tag' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null'],
+    'a datetime cast, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null', 'oracle'],
+    'an @property tag, where MySQL\'s own AVG() is a string' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null', 'mysql'],
     'an accessor that coalesces the null' => ['$this->whenAggregated("comments", "post_id", "max")', 'number'],
     'an accessor, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "max", fn ($m) => ["m" => $m])', '{ m: number }'],
     'a string cast, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "sum", fn ($s) => ["s" => $s])', '{ s: string } | null'],

@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 
-// Each column type is spelled as Schema::getColumns() reports it on that driver. A DECIMAL or NUMERIC result is a string
-// on MySQL, MariaDB and PostgreSQL, which never convert one, and SQLite stores no decimal, so it returns a number.
+// Each column type is spelled as Schema::getColumns() reports it on that driver.
+// A DECIMAL or NUMERIC result is a string on MySQL, MariaDB and PostgreSQL, which never convert one, and SQLite stores
+// no decimal, so it returns a number.
 it('types an aggregate as the driver returns it', function (string $function, string $columnType, string $driver, ?string $type) {
     expect(AggregateValueType::of($function, $columnType, $driver))->toBe($type);
 })->with([
@@ -38,6 +39,7 @@ it('types an aggregate as the driver returns it', function (string $function, st
     'pgsql sum(real)' => ['sum', 'real', 'pgsql', 'number'],
     'pgsql max(timestamp(0) without time zone)' => ['max', 'timestamp(0) without time zone', 'pgsql', 'string'],
     'pgsql min(character varying(255))' => ['min', 'character varying(255)', 'pgsql', 'string'],
+    'pgsql max(integer[]), an array pdo_pgsql returns as its text literal' => ['max', 'integer[]', 'pgsql', 'string'],
     'sqlsrv max(datetime2(7))' => ['max', 'datetime2(7)', 'sqlsrv', 'string'],
     'sqlsrv sum(int), a string on pdo_sqlsrv and a number on pdo_dblib' => ['sum', 'int', 'sqlsrv', null],
     'sqlsrv min(decimal(10,2))' => ['min', 'decimal(10,2)', 'sqlsrv', null],

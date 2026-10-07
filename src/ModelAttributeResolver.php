@@ -921,8 +921,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * The driver of the connection a model queries through, such as `mysql`, read from its config without connecting;
-     * null when the model cannot be instantiated or its connection is not configured.
+     * The driver of the connection a model queries through, such as `mysql`, read from its config once the run has the
+     * model's context, which a cold call builds by inspecting its schema; null when the model cannot be instantiated or
+     * its connection is not configured.
      *
      * @param  class-string  $modelFqcn
      */

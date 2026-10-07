@@ -963,6 +963,16 @@ describe('ResourceAstAnalyzer with ProductResource', function () {
         'pgsql' => ['pgsql', ['number | null', 'string | null', 'string | null']],
         'sqlsrv' => ['sqlsrv', ['number | null', 'number | null', 'number | null']],
     ]);
+
+    // The aggregate is a subquery of the model's own query, so the model's connection returns it.
+    test('narrows each column aggregate by the model\'s driver, not the related model\'s', function () {
+        app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('sqlite', [Product::class => 'mysql']));
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class)->analyze()->properties)
+            ->keyBy('name');
+
+        expect([$props['total_sold']['type'], $props['min_unit_price']['type'], $props['max_unit_price']['type']])
+            ->toBe(['string | null', 'string | null', 'string | null']);
+    });
 });
 
 describe('ResourceAstAnalyzer with CategoryResource', function () {

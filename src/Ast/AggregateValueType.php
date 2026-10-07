@@ -36,7 +36,8 @@ final class AggregateValueType
 
     /**
      * The SQL result an aggregate of a column kind gives: `number` (an integer or a float), `decimal` (DECIMAL or
-     * NUMERIC) or `text` (a date, a time or a string), or null for a function or column kind no rule covers.
+     * NUMERIC) or `text` (a date, a time, a string or an array literal), or null for a function or column kind no rule
+     * covers.
      */
     private static function resultKind(string $function, ?string $kind, string $driver): ?string
     {
@@ -46,7 +47,7 @@ final class AggregateValueType
             'min', 'max' => match ($kind) {
                 'integer', 'bigint', 'float' => 'number',
                 'decimal' => 'decimal',
-                'temporal', 'text' => 'text',
+                'temporal', 'text', 'array' => 'text',
                 default => null,
             },
             'sum', 'avg' => match ($kind) {
@@ -60,11 +61,17 @@ final class AggregateValueType
     }
 
     /**
-     * The kind of column the head word of a schema type names, spelled as `Schema::getColumns()` reports it on each
-     * driver, such as `int unsigned`, `numeric(12,2)`, `double precision` or `timestamp(0) without time zone`.
+     * The kind of column a schema type names, `array` for an array, else by its head word, spelled as
+     * `Schema::getColumns()` reports it on each driver, such as `int unsigned`, `numeric(12,2)`, `double precision` or
+     * `timestamp(0) without time zone`.
      */
     private static function columnKind(string $type): ?string
     {
+        // PostgreSQL spells an array `integer[]`, and pdo_pgsql returns one as its text literal, such as `{1,2}`.
+        if (str_contains($type, '[')) {
+            return 'array';
+        }
+
         return match (preg_match('/^[a-z][a-z0-9]*/', $type, $head) === 1 ? $head[0] : '') {
             'tinyint', 'smallint', 'mediumint', 'int', 'integer', 'int2', 'int4', 'serial', 'smallserial',
             'year' => 'integer',

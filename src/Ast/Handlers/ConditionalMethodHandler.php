@@ -362,7 +362,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
     /**
      * Analyze $this->whenCounted()/whenAggregated(): a missing or null value publishes the aggregate, and a value
      * closure's result types the key, its first parameter bound to the aggregate without its null. An untypable closure
-     * or an aggregate nothing types publishes `number` by convention.
+     * publishes the aggregate; an aggregate nothing types publishes `number`.
      *
      * @return ValueExpressionResult
      */
@@ -641,8 +641,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $resolver = resolve(ModelAttributeResolver::class);
         $cast = $resolver->getInstance($scope->modelClass)?->getCasts()[$attribute] ?? null;
 
-        // Every cast Laravel builds in names no class, and each hands the SQL NULL back untouched.
-        $castType = is_string($cast) && ! class_exists(Str::before($cast, ':')) ? LaravelTsPublish::toTsType($cast)['type'] : 'unknown';
+        // A built-in cast hands the SQL NULL back untouched. Laravel reads its own cast names before any class, which
+        // matters for `datetime`: PHP's class lookup ignores case and finds `DateTime`.
+        $castType = is_string($cast) && ($resolver->isDateFamilyCast($cast) || ! class_exists(Str::before($cast, ':')))
+            ? LaravelTsPublish::toTsType($cast)['type']
+            : 'unknown';
 
         if ($castType !== 'unknown') {
             return ['type' => ValueResult::withNullArm($castType), 'optional' => false];
@@ -656,7 +659,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $driver = $resolver->connectionDriver($scope->modelClass);
         $type = $columnType === null || $driver === null ? null : AggregateValueType::of($function, $columnType, $driver);
 
-        return $type === null ? null : ['type' => $type.' | null', 'optional' => false];
+        return $type === null ? null : ['type' => ValueResult::withNullArm($type), 'optional' => false];
     }
 
     /**
