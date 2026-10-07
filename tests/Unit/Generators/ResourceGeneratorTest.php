@@ -174,8 +174,8 @@ test('generates SpreadWithGuardClauseClosureResource with guard clause and paren
         ->toContain('id: number')
         ->toContain('status: OrderStatusType')
         ->toContain('currency: CurrencyType')
-        ->toContain('user: User')
-        ->toContain('items: OrderItem[]')
+        ->toContain('user?: User')
+        ->toContain('items?: OrderItem[]')
         // guard clause closure produces object shape | null
         ->toContain('customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null');
 });
@@ -196,8 +196,8 @@ test('generates SpreadWithGuardDoubleClosureReturnResource with union of two sha
         ->toContain('status: OrderStatusType')
         ->toContain('payment_method: PaymentMethodType | null')
         ->toContain('currency: CurrencyType')
-        ->toContain('user: User')
-        ->toContain('items: OrderItem[]')
+        ->toContain('user?: User')
+        ->toContain('items?: OrderItem[]')
         // Union: two distinct object shapes + null from guard clause
         ->toContain('customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null');
 });

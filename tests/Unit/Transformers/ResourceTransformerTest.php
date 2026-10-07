@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
@@ -95,6 +96,7 @@ use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProductSalesResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProfileSummaryResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
@@ -2597,14 +2599,14 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
             ->and($allTypeImports)->toContain('Post', 'Product', 'User as WorkbenchUser', 'User as CrmUser');
     });
 
-    test('a get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
-        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no
-        // annotation to read, so its body types it: `fn () => null`. ModelTransformer::transformMutators()
-        // keeps such a mutator rather than omitting it, and buildModelDelegatedAnalysis() must agree.
-        $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
+    test('an appended get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
+        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no annotation to read, so
+        // its body types it: `fn () => null`. Delegation keeps it once the model appends it, as toArray() does.
+        $data = (new ResourceTransformer(AppendingImageResource::class))->data();
 
         expect($data->properties)->toHaveKey('no_docblock_accessor')
-            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null');
+            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null')
+            ->and((new ResourceTransformer(ImageDelegatedResource::class))->data()->properties)->not->toHaveKey('no_docblock_accessor');
     });
 
     // A widened container names its element in both arms; aliasing only the first left the second bare.
@@ -2625,9 +2627,9 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
     // #[TsType(['type' => ..., 'import' => ...])] on a cast: no analysis path carried the author's
     // import into a resource, so the token was emitted alone.
     test('a #[TsType(import:)] cast reaching a resource brings its import', function () {
-        $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
+        $data = (new ResourceTransformer(ProfileSummaryResource::class))->data();
 
-        expect($data->properties['config_from_docblock']['type'])->toBe('MenuSettingsType')
+        expect($data->properties['menu_settings']['type'])->toBe('MenuSettingsType | null')
             ->and($data->typeImports['@js/types/settings'] ?? [])->toContain('MenuSettingsType');
     });
 })->group('transformer');

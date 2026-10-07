@@ -44,7 +44,7 @@ every profile, the order handlers run in decides which one answers; see
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. A collection running Laravel's own
+  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection running Laravel's own
   `toArray()` resolves its own delegation first, so no parent's answer outranks what the collection names itself.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
@@ -231,9 +231,12 @@ dropped, even when its type is `unknown`.
 
 ### Top-level `only()` and `except()` start from the whole model
 
-`return $this->only([...])`, `return $this->except([...])` and their spreads filter `buildModelDelegatedAnalysis()`.
-That is the property set whole-model delegation publishes: every attribute, accessors included, and every relation.
-The two filters use it differently:
+`return $this->only([...])`, `return $this->except([...])` and their spreads filter `buildModelDelegatedAnalysis()`:
+every attribute, accessors included, and every relation under its method name. Whole-model delegation does not start
+from this pool. `buildModelSerializedAnalysis()` publishes `Model::toArray()`'s set: the columns and the appended
+accessors, each relation optional under the key `toArray()` writes (snake_case while `$snakeAttributes` is on), and
+visibility under `exclude_hidden`. A relation keyed like an attribute makes one required key typed with both. The two
+filters use the pool differently:
 
 - **`only()`**: keeps each requested key the set has, in the model's own order. It then appends, in request order, a
   key the set lacks when `ModelAttributeResolver::resolveAttribute()` can type it, such as a `withCount()` virtual or
@@ -246,8 +249,9 @@ The two filters use it differently:
 `exclude_hidden` follows Eloquent's split between keys the caller named and keys derived for it. `Model::only()`
 returns a `$hidden` attribute, while `toArray()` and `except()` strip it:
 
-- **Dropped when hidden**: whole-model delegation (no `toArray()`, or `parent::toArray($request)` returned or spread),
-  `return $this->except([...])` and `$this->relation->except([...])`.
+- **Dropped when hidden**: `return $this->except([...])`, `$this->relation->except([...])` and whole-model delegation
+  (no `toArray()`, or `parent::toArray($request)` returned or spread), which then also keeps only what `$visible`
+  lists, a relation by its method name.
 - **Kept**: `return $this->only([...])`, `$this->relation->only([...])` (as an inline shape, not a `Pick<>`),
   `$this->whenHas('column')` and a plain `$this->column` read.
 

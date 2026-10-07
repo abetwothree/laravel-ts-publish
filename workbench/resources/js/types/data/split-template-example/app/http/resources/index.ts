@@ -142,6 +142,7 @@ export * from './preserve-keys-team-resource';
 export * from './product-resource';
 export * from './product-sales-resource';
 export * from './profile-resource';
+export * from './profile-summary-resource';
 export * from './property-docblock-edge-resource';
 export * from './proxy-filter-direct-resource';
 export * from './proxy-filter-wrapped-resource';

@@ -33,17 +33,15 @@ export interface SpreadWithClosureResource
     settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
     last_login_at: string | null;
     last_login_ip: string | null;
-    initials: string;
-    is_premium: boolean;
-    profile: Profile | null;
-    posts: Post[];
-    comments: Comment[];
-    orders: Order[];
-    addresses: Address[];
-    primaryAddress: Address | null;
-    teams: Team[];
-    ownedTeams: Team[];
-    images: Image[];
-    notifications: DatabaseNotification[];
+    profile?: Profile | null;
+    posts?: Post[];
+    comments?: Comment[];
+    orders?: Order[];
+    addresses?: Address[];
+    primary_address?: Address | null;
+    teams?: Team[];
+    owned_teams?: Team[];
+    images?: Image[];
+    notifications?: DatabaseNotification[];
     metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
 }

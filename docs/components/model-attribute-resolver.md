@@ -262,8 +262,14 @@ complement from it; see
 
 A call site that asks whether a name is a real column uses `databaseColumnNames()` and applies the hidden rule itself.
 The `except()` branch of `resolveFilteredRelationType()` does, so an inlined `except()` expands to columns only, as
-`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` does too, so `isOmittedMutator()` never drops a real
-column.
+`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` and `buildModelSerializedAnalysis()` do too, so
+`isOmittedMutator()` never drops a real column.
+
+`serializedAttributeNames()` lists what `toArray()` writes: the published columns, then the appends, within `$visible`
+and less `$hidden`, whatever `exclude_hidden` says. Whole-model delegation reads `delegatedAttributeNames()` and
+`delegatedRelationKeys()` instead, which apply `$visible` and `$hidden`, a relation's by its method name, only while
+`exclude_hidden` is on. A relation's key is snake-cased while the model's `$snakeAttributes` is on, as
+`relationsToArray()` writes it.
 
 The two lists differ only when `ts-publish.models.exclude_hidden` is on, and it defaults to `false`.
 `excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with the per-model

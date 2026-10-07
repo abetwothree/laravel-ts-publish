@@ -39,8 +39,7 @@ function analysisProbeCases(): array
     return [
         // An EnumResource::make() prop: the README's own example shape.
         'UserResource' => [UserResource::class, 'toArray', null],
-        // Two same-basename models from different namespaces, reached through model delegation,
-        // plus a cast class whose #[TsType(import:)] is the only source of its token.
+        // Two same-basename models from different namespaces, reached through model delegation.
         'ImageDelegatedResource' => [ImageDelegatedResource::class, 'toArray', null],
         // Same-basename enums AND models at once, several of them inside inline object types.
         'WarehouseResource' => [WarehouseResource::class, 'toArray', null],

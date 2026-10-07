@@ -268,7 +268,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 return $ownCollection ?? $this->buildCollectionDelegatedAnalysis();
             }
 
-            $delegated = $this->buildModelDelegatedAnalysis();
+            $delegated = $this->buildModelSerializedAnalysis();
 
             // With no model behind it, the delegation publishes none of the keys the response carries.
             if ($delegated === null) {
@@ -362,7 +362,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if ($this->isParentCallTo($expr, $this->methodName)) {
-            return $this->analyzeParentToArray() ?? $this->buildModelDelegatedAnalysis();
+            return $this->analyzeParentToArray() ?? $this->buildModelSerializedAnalysis();
         }
 
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
@@ -841,7 +841,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if ($parentClass->getName() === JsonResource::class) {
-            return $this->methodName === 'toArray' ? $this->buildModelDelegatedAnalysis() : null;
+            return $this->methodName === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
         }
 
         $parentAnalyzer = new self(

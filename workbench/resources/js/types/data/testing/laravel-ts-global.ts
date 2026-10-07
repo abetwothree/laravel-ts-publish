@@ -3239,18 +3239,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: workbench.app.models.Profile | null;
-            posts: workbench.app.models.Post[];
-            comments: workbench.app.models.Comment[];
-            orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
-            primaryAddress: workbench.app.models.Address | null;
-            teams: workbench.app.models.Team[];
-            ownedTeams: workbench.app.models.Team[];
-            images: workbench.app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: workbench.app.models.Profile | null;
+            posts?: workbench.app.models.Post[];
+            comments?: workbench.app.models.Comment[];
+            orders?: workbench.app.models.Order[];
+            addresses?: workbench.app.models.Address[];
+            primary_address?: workbench.app.models.Address | null;
+            teams?: workbench.app.models.Team[];
+            owned_teams?: workbench.app.models.Team[];
+            images?: workbench.app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /** Resource with no toArray override — tests guard clause. */
         export interface EmptyResource {
@@ -3274,18 +3272,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: workbench.app.models.Profile | null;
-            posts: workbench.app.models.Post[];
-            comments: workbench.app.models.Comment[];
-            orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
-            primaryAddress: workbench.app.models.Address | null;
-            teams: workbench.app.models.Team[];
-            ownedTeams: workbench.app.models.Team[];
-            images: workbench.app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: workbench.app.models.Profile | null;
+            posts?: workbench.app.models.Post[];
+            comments?: workbench.app.models.Comment[];
+            orders?: workbench.app.models.Order[];
+            addresses?: workbench.app.models.Address[];
+            primary_address?: workbench.app.models.Address | null;
+            teams?: workbench.app.models.Team[];
+            owned_teams?: workbench.app.models.Team[];
+            images?: workbench.app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -3443,13 +3439,11 @@ declare global {
             receiver_id: number | null;
             created_at: string | null;
             updated_at: string | null;
-            party: workbench.app.models.User | workbench.crm.models.User | null;
             parties: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
-            audience: workbench.app.models.User[] | workbench.crm.models.User[];
-            sender: workbench.app.models.User | null;
-            receiver: workbench.crm.models.User | null;
-            watchers: workbench.app.models.User[];
-            crmWatchers: workbench.crm.models.User[];
+            sender?: workbench.app.models.User | null;
+            receiver?: workbench.crm.models.User | null;
+            watchers?: workbench.app.models.User[];
+            crm_watchers?: workbench.crm.models.User[];
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
@@ -3499,31 +3493,8 @@ declare global {
             metadata: unknown[] | null;
             created_at: string | null;
             updated_at: string | null;
-            size_for_humans: string;
-            is_landscape: boolean;
-            aspect_ratio: string | null;
-            extension: string | null;
-            size: number;
-            flexible_id: string | number | null;
-            optional_label: string | null;
-            status_from_docblock: workbench.app.enums.StatusType | null;
-            shirt_size: workbench.app.enums.SizeType;
-            uploader_from_docblock: workbench.app.models.User | null;
-            config_from_docblock: MenuSettingsType;
-            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
-            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
-            uploaders_from_docblock: workbench.app.models.User[] | Record<string, workbench.app.models.User>;
-            uploaders_from_docblock_int: workbench.app.models.User[];
-            uploaders_from_docblock_string: Record<string, workbench.app.models.User>;
-            tree_from_docblock: { label: string; child: unknown[] };
-            price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
-            no_docblock_accessor: null;
-            wrong_format_docblock: string | null;
-            positive_int_accessor: number;
-            numeric_string_accessor: string;
-            imageable: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
-            reviewable: workbench.crm.models.User | workbench.app.models.User | null;
+            imageable?: workbench.app.models.Post | workbench.app.models.Product | workbench.app.models.User | workbench.crm.models.User;
+            reviewable?: workbench.crm.models.User | workbench.app.models.User | null;
         }
         /**
          * Both when() arms are inline objects whose members are nullable, so the union must be split at the
@@ -4305,6 +4276,28 @@ declare global {
             timezone?: string;
             locale?: string;
         }
+        /**
+         * Declares no toArray(), so it publishes what Profile's toArray() writes: every column, `menu_settings` through its
+         * cast class's #[TsType] import, no accessor Profile does not append, and its `user` relation only when loaded.
+         */
+        export interface ProfileSummaryResource {
+            id: number;
+            user_id: number;
+            bio: string | null;
+            avatar_url: string | null;
+            date_of_birth: string | null;
+            website: string | null;
+            phone_number: string | null;
+            normalized_phone: string | null;
+            social_links: { twitter?: string; github?: string; linkedin?: string; website?: string };
+            settings: { notifications_enabled: boolean; theme: "light" | "dark"; language: string };
+            menu_settings: MenuSettingsType | null;
+            timezone: string;
+            locale: string;
+            created_at: string | null;
+            updated_at: string | null;
+            user?: workbench.app.models.User;
+        }
         /** Exercises a class-typed `@property` tag reaching a resource, where the token still needs its import. */
         export interface PropertyDocblockEdgeResource {
             id: number;
@@ -4671,18 +4664,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: workbench.app.models.Profile | null;
-            posts: workbench.app.models.Post[];
-            comments: workbench.app.models.Comment[];
-            orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
-            primaryAddress: workbench.app.models.Address | null;
-            teams: workbench.app.models.Team[];
-            ownedTeams: workbench.app.models.Team[];
-            images: workbench.app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: workbench.app.models.Profile | null;
+            posts?: workbench.app.models.Post[];
+            comments?: workbench.app.models.Comment[];
+            orders?: workbench.app.models.Order[];
+            addresses?: workbench.app.models.Address[];
+            primary_address?: workbench.app.models.Address | null;
+            teams?: workbench.app.models.Team[];
+            owned_teams?: workbench.app.models.Team[];
+            images?: workbench.app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -4713,18 +4704,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: workbench.app.models.Profile | null;
-            posts: workbench.app.models.Post[];
-            comments: workbench.app.models.Comment[];
-            orders: workbench.app.models.Order[];
-            addresses: workbench.app.models.Address[];
-            primaryAddress: workbench.app.models.Address | null;
-            teams: workbench.app.models.Team[];
-            ownedTeams: workbench.app.models.Team[];
-            images: workbench.app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: workbench.app.models.Profile | null;
+            posts?: workbench.app.models.Post[];
+            comments?: workbench.app.models.Comment[];
+            orders?: workbench.app.models.Order[];
+            addresses?: workbench.app.models.Address[];
+            primary_address?: workbench.app.models.Address | null;
+            teams?: workbench.app.models.Team[];
+            owned_teams?: workbench.app.models.Team[];
+            images?: workbench.app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
@@ -4763,21 +4752,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: workbench.app.models.OrderItem[];
-            keyed_items: Record<string, workbench.app.models.OrderItem>;
-            listed_items: workbench.app.models.OrderItem[];
-            unsorted_items: workbench.app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: workbench.app.models.admin.Store[];
-            user: workbench.app.models.User;
-            items: workbench.app.models.OrderItem[];
+            user?: workbench.app.models.User;
+            items?: workbench.app.models.OrderItem[];
             customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: workbench.app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
@@ -4804,21 +4780,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: workbench.app.models.OrderItem[];
-            keyed_items: Record<string, workbench.app.models.OrderItem>;
-            listed_items: workbench.app.models.OrderItem[];
-            unsorted_items: workbench.app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: workbench.app.models.admin.Store[];
-            user: workbench.app.models.User;
-            items: workbench.app.models.OrderItem[];
+            user?: workbench.app.models.User;
+            items?: workbench.app.models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: workbench.app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: workbench.app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         /** Exercises static-call return type reflection and enum static args (Task 10). */

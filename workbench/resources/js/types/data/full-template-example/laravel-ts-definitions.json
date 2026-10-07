@@ -12745,64 +12745,54 @@
                     "optional": false
                 },
                 {
-                    "name": "initials",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "is_premium",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "profile",
                     "type": "Profile | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "posts",
                     "type": "Post[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "comments",
                     "type": "Comment[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "orders",
                     "type": "Order[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "addresses",
                     "type": "Address[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "primaryAddress",
+                    "name": "primary_address",
                     "type": "Address | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "ownedTeams",
+                    "name": "owned_teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "images",
                     "type": "Image[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -12899,64 +12889,54 @@
                     "optional": false
                 },
                 {
-                    "name": "initials",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "is_premium",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "profile",
                     "type": "Profile | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "posts",
                     "type": "Post[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "comments",
                     "type": "Comment[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "orders",
                     "type": "Order[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "addresses",
                     "type": "Address[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "primaryAddress",
+                    "name": "primary_address",
                     "type": "Address | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "ownedTeams",
+                    "name": "owned_teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "images",
                     "type": "Image[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -13409,39 +13389,29 @@
                     "optional": false
                 },
                 {
-                    "name": "party",
-                    "type": "ModelsUser | CrmUser | null",
-                    "optional": false
-                },
-                {
                     "name": "parties",
                     "type": "{ first: ModelsUser | null; either: ModelsUser | CrmUser | null }",
                     "optional": false
                 },
                 {
-                    "name": "audience",
-                    "type": "ModelsUser[] | CrmUser[]",
-                    "optional": false
-                },
-                {
                     "name": "sender",
                     "type": "ModelsUser | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "receiver",
                     "type": "CrmUser | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "watchers",
                     "type": "ModelsUser[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "crmWatchers",
+                    "name": "crm_watchers",
                     "type": "CrmUser[]",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -13574,129 +13544,14 @@
                     "optional": false
                 },
                 {
-                    "name": "size_for_humans",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "is_landscape",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "aspect_ratio",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "extension",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "size",
-                    "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "flexible_id",
-                    "type": "string | number | null",
-                    "optional": false
-                },
-                {
-                    "name": "optional_label",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "status_from_docblock",
-                    "type": "StatusType | null",
-                    "optional": false
-                },
-                {
-                    "name": "shirt_size",
-                    "type": "SizeType",
-                    "optional": false
-                },
-                {
-                    "name": "uploader_from_docblock",
-                    "type": "ModelsUser | null",
-                    "optional": false
-                },
-                {
-                    "name": "config_from_docblock",
-                    "type": "MenuSettingsType",
-                    "optional": false
-                },
-                {
-                    "name": "data_from_docblock",
-                    "type": "{ recordedAt?: string; title: string; weight: number | null }",
-                    "optional": false
-                },
-                {
-                    "name": "nested_optional_key_from_docblock",
-                    "type": "{ inner: { assignedLater?: string; promoted: string }; label: string }",
-                    "optional": false
-                },
-                {
-                    "name": "uploaders_from_docblock",
-                    "type": "ModelsUser[] | Record<string, ModelsUser>",
-                    "optional": false
-                },
-                {
-                    "name": "uploaders_from_docblock_int",
-                    "type": "ModelsUser[]",
-                    "optional": false
-                },
-                {
-                    "name": "uploaders_from_docblock_string",
-                    "type": "Record<string, ModelsUser>",
-                    "optional": false
-                },
-                {
-                    "name": "tree_from_docblock",
-                    "type": "{ label: string; child: unknown[] }",
-                    "optional": false
-                },
-                {
-                    "name": "price_from_docblock",
-                    "type": "{ amount: number; currency: string }",
-                    "optional": false
-                },
-                {
-                    "name": "label_from_docblock",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "no_docblock_accessor",
-                    "type": "null",
-                    "optional": false
-                },
-                {
-                    "name": "wrong_format_docblock",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "positive_int_accessor",
-                    "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "numeric_string_accessor",
-                    "type": "string",
-                    "optional": false
-                },
-                {
                     "name": "imageable",
                     "type": "Post | Product | ModelsUser | CrmUser",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "reviewable",
                     "type": "CrmUser | ModelsUser | null",
-                    "optional": false
+                    "optional": true
                 }
             ]
         },
@@ -15891,6 +15746,91 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ProfileSummaryResource": {
+            "name": "ProfileSummaryResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "user_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "bio",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "avatar_url",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "date_of_birth",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "website",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "phone_number",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "normalized_phone",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "social_links",
+                    "type": "{ twitter?: string; github?: string; linkedin?: string; website?: string }",
+                    "optional": false
+                },
+                {
+                    "name": "settings",
+                    "type": "{ notifications_enabled: boolean; theme: \"light\" | \"dark\"; language: string }",
+                    "optional": false
+                },
+                {
+                    "name": "menu_settings",
+                    "type": "MenuSettingsType | null",
+                    "optional": false
+                },
+                {
+                    "name": "timezone",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "locale",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "user",
+                    "type": "User",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PropertyDocblockEdgeResource": {
             "name": "PropertyDocblockEdgeResource",
             "properties": [
@@ -17034,64 +16974,54 @@
                     "optional": false
                 },
                 {
-                    "name": "initials",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "is_premium",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "profile",
                     "type": "Profile | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "posts",
                     "type": "Post[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "comments",
                     "type": "Comment[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "orders",
                     "type": "Order[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "addresses",
                     "type": "Address[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "primaryAddress",
+                    "name": "primary_address",
                     "type": "Address | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "ownedTeams",
+                    "name": "owned_teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "images",
                     "type": "Image[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "full_name",
@@ -17189,64 +17119,54 @@
                     "optional": false
                 },
                 {
-                    "name": "initials",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "is_premium",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "profile",
                     "type": "Profile | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "posts",
                     "type": "Post[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "comments",
                     "type": "Comment[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "orders",
                     "type": "Order[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "addresses",
                     "type": "Address[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "primaryAddress",
+                    "name": "primary_address",
                     "type": "Address | null",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
-                    "name": "ownedTeams",
+                    "name": "owned_teams",
                     "type": "Team[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "images",
                     "type": "Image[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "metadata",
@@ -17374,79 +17294,14 @@
                     "optional": false
                 },
                 {
-                    "name": "item_count",
-                    "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "is_paid",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "formatted_total",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "flagged_notes",
-                    "type": "(string | null)[] | null",
-                    "optional": false
-                },
-                {
-                    "name": "tracking_code",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "score_map",
-                    "type": "Record<string, number>",
-                    "optional": false
-                },
-                {
-                    "name": "sorted_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "keyed_items",
-                    "type": "Record<string, OrderItem>",
-                    "optional": false
-                },
-                {
-                    "name": "listed_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "unsorted_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "state_ids",
-                    "type": "number[] | null",
-                    "optional": false
-                },
-                {
-                    "name": "capabilities",
-                    "type": "{ typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null",
-                    "optional": false
-                },
-                {
-                    "name": "summary_items",
-                    "type": "Store[]",
-                    "optional": false
-                },
-                {
                     "name": "user",
                     "type": "User",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "items",
                     "type": "OrderItem[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "customer",
@@ -17574,79 +17429,14 @@
                     "optional": false
                 },
                 {
-                    "name": "item_count",
-                    "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "is_paid",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "formatted_total",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "flagged_notes",
-                    "type": "(string | null)[] | null",
-                    "optional": false
-                },
-                {
-                    "name": "tracking_code",
-                    "type": "string | null",
-                    "optional": false
-                },
-                {
-                    "name": "score_map",
-                    "type": "Record<string, number>",
-                    "optional": false
-                },
-                {
-                    "name": "sorted_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "keyed_items",
-                    "type": "Record<string, OrderItem>",
-                    "optional": false
-                },
-                {
-                    "name": "listed_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "unsorted_items",
-                    "type": "OrderItem[]",
-                    "optional": false
-                },
-                {
-                    "name": "state_ids",
-                    "type": "number[] | null",
-                    "optional": false
-                },
-                {
-                    "name": "capabilities",
-                    "type": "{ typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null",
-                    "optional": false
-                },
-                {
-                    "name": "summary_items",
-                    "type": "Store[]",
-                    "optional": false
-                },
-                {
                     "name": "user",
                     "type": "User",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "items",
                     "type": "OrderItem[]",
-                    "optional": false
+                    "optional": true
                 },
                 {
                     "name": "customer",

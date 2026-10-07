@@ -21,6 +21,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Models\Activity;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
 use Workbench\App\Models\Artist;
@@ -293,6 +298,67 @@ test('publishedColumnNames tracks the exclude_hidden setting', function () {
 
     config()->set('ts-publish.models.exclude_hidden', true);
     expect($resolver->publishedColumnNames(User::class))->not->toContain('password');
+});
+
+describe('delegatedAttributeNames()', function () {
+    it('lists $hidden columns while exclude_hidden is off, and not while it is on', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        config()->set('ts-publish.models.exclude_hidden', false);
+        expect($resolver->delegatedAttributeNames(User::class))->toContain('password');
+
+        config()->set('ts-publish.models.exclude_hidden', true);
+        expect($resolver->delegatedAttributeNames(User::class))->not->toContain('password');
+    });
+
+    it('lists an appended accessor, and not one the model does not append', function () {
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(Address::class))
+            ->toContain('full_address')
+            ->not->toContain('has_coordinates');
+    });
+
+    // VisibleFilterOverrideModel appends `name`, a column, and hides `color`, which `$visible` lists.
+    it('lists the columns, then the appends, each name once, past $visible and $hidden only while exclude_hidden is off', function (bool $excludeHidden, array $names) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(VisibleFilterOverrideModel::class))
+            ->toBe($names);
+    })->with([
+        'exclude_hidden off' => [false, ['id', 'name', 'slug', 'color', 'created_at', 'updated_at', 'label', 'shade']],
+        'exclude_hidden on' => [true, ['id', 'name', 'label']],
+    ]);
+});
+
+// relationsToArray() writes a loaded relation under its name, snake-cased while $snakeAttributes is on, and
+// getArrayableRelations() matches `$visible` and `$hidden` against the method name; exclude_hidden gates both lists.
+describe('delegatedRelationKeys()', function () {
+    $userKeys = [
+        'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+        'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams',
+        'ownedTeams' => 'owned_teams', 'images' => 'images', 'notifications' => 'notifications',
+    ];
+
+    it('keys each relation as toArray() writes it', function (string $model, bool $excludeHidden, array $keys) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedRelationKeys($model))->toBe($keys);
+    })->with([
+        'snake-cased' => [User::class, false, $userKeys],
+        'snake-cased, no relation hidden, exclude_hidden on' => [User::class, true, $userKeys],
+        '$snakeAttributes off' => [RelationKeyCaseUser::class, false, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primaryAddress', 'teams' => 'teams',
+            'ownedTeams' => 'ownedTeams', 'images' => 'images', 'notifications' => 'notifications',
+        ]],
+        '$visible, exclude_hidden off' => [RelationVisibilityUser::class, false, $userKeys],
+        '$visible names the method, exclude_hidden on' => [RelationVisibilityUser::class, true, ['ownedTeams' => 'owned_teams']],
+        '$hidden, exclude_hidden off' => [RelationHiddenUser::class, false, $userKeys],
+        '$hidden names the method, exclude_hidden on' => [RelationHiddenUser::class, true, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams', 'images' => 'images',
+            'notifications' => 'notifications',
+        ]],
+    ]);
 });
 
 test('buildMorphTargetMap builds map from MorphMany inverse relations', function () {

@@ -39,6 +39,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadR
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\Laravel13AttributesSummaryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
@@ -49,9 +50,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnedParentTagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SamePatternDeclinedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ShippingAddressOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
@@ -119,7 +125,6 @@ use Workbench\App\Http\Resources\HandoverRosterCollection;
 use Workbench\App\Http\Resources\HandoverRosterResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\HelperCallResource;
-use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
 use Workbench\App\Http\Resources\LedgerCollection;
@@ -166,6 +171,7 @@ use Workbench\App\Http\Resources\PreserveKeysCollection;
 use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProfileSummaryResource;
 use Workbench\App\Http\Resources\ProxyFilterDirectResource;
 use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
@@ -6584,17 +6590,137 @@ describe('ResourceAstAnalyzer with NestedMethodModelSpreadResource — $topLevel
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A model-delegated resource carries its cast classes' own #[TsType(import:)] paths —
-// ImageDelegatedResource
+// ProfileSummaryResource
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegated custom-import channel', function () {
+describe('ResourceAstAnalyzer with ProfileSummaryResource — the model-delegated custom-import channel', function () {
     it("carries a cast class's #[TsType(import:)] path out on the analysis", function () {
-        $analysis = resolve(AstEngine::class)->analyzeMethod(ImageDelegatedResource::class);
-        $config = collect($analysis->properties)->firstWhere('name', 'config_from_docblock');
+        $analysis = resolve(AstEngine::class)->analyzeMethod(ProfileSummaryResource::class);
+        $settings = collect($analysis->properties)->firstWhere('name', 'menu_settings');
 
-        expect($config['type'])->toBe('MenuSettingsType')
+        expect($settings['type'])->toBe('MenuSettingsType | null')
             ->and($analysis->customImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
+});
+
+// JsonResource::toArray() returns Model::toArray(): attributesToArray() writes the columns and the appended accessors,
+// and relationsToArray() a loaded relation only, under its snake-cased name; exclude_hidden governs the visibility.
+describe('whole-model delegation publishes what Model::toArray() writes', function () {
+    $userColumns = [
+        'id', 'name', 'email', 'email_verified_at', 'password', 'options', 'remember_token', 'created_at', 'updated_at',
+        'role', 'membership_level', 'phone', 'avatar', 'bio', 'settings', 'last_login_at', 'last_login_ip',
+    ];
+    $userRelationKeys = [
+        'profile', 'posts', 'comments', 'orders', 'addresses', 'primary_address', 'teams', 'owned_teams', 'images',
+        'notifications',
+    ];
+
+    it('keeps $hidden columns while exclude_hidden is off, and leaves out accessors the model does not append', function () {
+        config()->set('ts-publish.models.exclude_hidden', false);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toContain('password', 'remember_token')
+            ->not->toContain('initials')
+            ->not->toContain('is_premium')
+            ->and($props['email'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    it('leaves out $hidden columns while exclude_hidden is on', function () {
+        config()->set('ts-publish.models.exclude_hidden', true);
+        $names = array_column(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties, 'name');
+
+        expect($names)->not->toContain('password')
+            ->not->toContain('remember_token');
+    });
+
+    it('publishes every column and relation past $visible while exclude_hidden is off', function () use ($userColumns, $userRelationKeys) {
+        config()->set('ts-publish.models.exclude_hidden', false);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationVisibilityResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toBe([...$userColumns, ...$userRelationKeys])
+            ->and($props->where('optional', true)->keys()->all())->toBe($userRelationKeys);
+    });
+
+    it('keeps only what $visible names, a relation by its method name, while exclude_hidden is on', function () {
+        config()->set('ts-publish.models.exclude_hidden', true);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationVisibilityResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toBe(['id', 'owned_teams'])
+            ->and($props['id'])->toMatchArray(['type' => 'number', 'optional' => false])
+            ->and($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true]);
+    });
+
+    it('publishes every relation optional, under the key relationsToArray() writes', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties)->keyBy('name');
+
+        expect($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true])
+            ->and($props['primary_address'])->toMatchArray(['type' => 'Address | null', 'optional' => true])
+            ->and($props['posts'])->toMatchArray(['type' => 'Post[]', 'optional' => true])
+            ->and($props->has('ownedTeams'))->toBeFalse();
+    });
+
+    it('keeps an appended accessor and drops one the model does not append', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(HandoverSummaryResource::class)->properties)->keyBy('name');
+
+        expect($props->has('parties'))->toBeTrue()
+            ->and($props->has('party'))->toBeFalse()
+            ->and($props->has('audience'))->toBeFalse()
+            ->and($props['crm_watchers']['optional'])->toBeTrue();
+    });
+
+    it('keeps the method name as the key while the model turns $snakeAttributes off', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationKeyCaseResource::class)->properties)->keyBy('name');
+
+        expect($props['ownedTeams'])->toMatchArray(['type' => 'Team[]', 'optional' => true])
+            ->and($props->has('owned_teams'))->toBeFalse();
+    });
+
+    it('still publishes a relation and an accessor only() names, under the name it was given', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(UserOnlyRelationResource::class)->properties)->keyBy('name');
+
+        expect($props['ownedTeams'])->toMatchArray(['type' => 'Team[]', 'optional' => false])
+            ->and($props['initials'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    // array_merge() lets a loaded relation overwrite the column under the same key, which is always written.
+    it('publishes a relation keyed like a column once, required and typed with both', function () {
+        $properties = collect(resolve(AstEngine::class)->analyzeMethod(ShippingAddressOrderResource::class)->properties);
+
+        expect($properties->where('name', 'shipping_address')->values()->all())->toHaveCount(1)
+            ->and($properties->firstWhere('name', 'shipping_address'))
+            ->toMatchArray(['type' => 'string | Address | null', 'optional' => false])
+            ->and($properties->contains('name', 'shippingAddress'))->toBeFalse();
+    });
+
+    it("reads a model whose toArray() is Eloquent's own as what it serializes", function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(User::class, 'toArray', User::class)->properties)->keyBy('name');
+
+        expect($props->has('initials'))->toBeFalse()
+            ->and($props->has('ownedTeams'))->toBeFalse()
+            ->and($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true]);
+    });
+
+    it('reads a variable built on parent::toArray() with the relations optional', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(ReturnedParentTagResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())
+            ->toBe(['id', 'name', 'slug', 'color', 'created_at', 'updated_at', 'posts', 'products', 'extra'])
+            ->and($props['posts'])->toMatchArray(['type' => 'Post[]', 'optional' => true])
+            ->and($props['products'])->toMatchArray(['type' => 'Product[]', 'optional' => true])
+            ->and($props['extra'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    it('keeps a #[Hidden] column under the default exclude_hidden, and an #[Appends] accessor', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(Laravel13AttributesSummaryResource::class)->properties)
+            ->mapWithKeys(fn (array $property): array => [$property['name'] => [$property['type'], $property['optional']]]);
+
+        expect($props->all())->toBe([
+            'id' => ['number', false],
+            'name' => ['string', false],
+            'secret_token' => ['string', false],
+            'label' => ['string', false],
+        ]);
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

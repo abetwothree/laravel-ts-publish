@@ -3239,18 +3239,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /** Resource with no toArray override — tests guard clause. */
         export interface EmptyResource {
@@ -3274,18 +3272,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -3443,13 +3439,11 @@ declare global {
             receiver_id: number | null;
             created_at: string | null;
             updated_at: string | null;
-            party: app.models.User | crm.models.User | null;
             parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
-            audience: app.models.User[] | crm.models.User[];
-            sender: app.models.User | null;
-            receiver: crm.models.User | null;
-            watchers: app.models.User[];
-            crmWatchers: crm.models.User[];
+            sender?: app.models.User | null;
+            receiver?: crm.models.User | null;
+            watchers?: app.models.User[];
+            crm_watchers?: crm.models.User[];
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
@@ -3499,31 +3493,8 @@ declare global {
             metadata: unknown[] | null;
             created_at: string | null;
             updated_at: string | null;
-            size_for_humans: string;
-            is_landscape: boolean;
-            aspect_ratio: string | null;
-            extension: string | null;
-            size: number;
-            flexible_id: string | number | null;
-            optional_label: string | null;
-            status_from_docblock: app.enums.StatusType | null;
-            shirt_size: app.enums.SizeType;
-            uploader_from_docblock: app.models.User | null;
-            config_from_docblock: MenuSettingsType;
-            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
-            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
-            uploaders_from_docblock: app.models.User[] | Record<string, app.models.User>;
-            uploaders_from_docblock_int: app.models.User[];
-            uploaders_from_docblock_string: Record<string, app.models.User>;
-            tree_from_docblock: { label: string; child: unknown[] };
-            price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
-            no_docblock_accessor: null;
-            wrong_format_docblock: string | null;
-            positive_int_accessor: number;
-            numeric_string_accessor: string;
-            imageable: app.models.Post | app.models.Product | app.models.User | crm.models.User;
-            reviewable: crm.models.User | app.models.User | null;
+            imageable?: app.models.Post | app.models.Product | app.models.User | crm.models.User;
+            reviewable?: crm.models.User | app.models.User | null;
         }
         /**
          * Both when() arms are inline objects whose members are nullable, so the union must be split at the
@@ -4305,6 +4276,28 @@ declare global {
             timezone?: string;
             locale?: string;
         }
+        /**
+         * Declares no toArray(), so it publishes what Profile's toArray() writes: every column, `menu_settings` through its
+         * cast class's #[TsType] import, no accessor Profile does not append, and its `user` relation only when loaded.
+         */
+        export interface ProfileSummaryResource {
+            id: number;
+            user_id: number;
+            bio: string | null;
+            avatar_url: string | null;
+            date_of_birth: string | null;
+            website: string | null;
+            phone_number: string | null;
+            normalized_phone: string | null;
+            social_links: { twitter?: string; github?: string; linkedin?: string; website?: string };
+            settings: { notifications_enabled: boolean; theme: "light" | "dark"; language: string };
+            menu_settings: MenuSettingsType | null;
+            timezone: string;
+            locale: string;
+            created_at: string | null;
+            updated_at: string | null;
+            user?: app.models.User;
+        }
         /** Exercises a class-typed `@property` tag reaching a resource, where the token still needs its import. */
         export interface PropertyDocblockEdgeResource {
             id: number;
@@ -4671,18 +4664,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -4713,18 +4704,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
@@ -4763,21 +4752,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: app.models.OrderItem[];
-            keyed_items: Record<string, app.models.OrderItem>;
-            listed_items: app.models.OrderItem[];
-            unsorted_items: app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: app.models.admin.Store[];
-            user: app.models.User;
-            items: app.models.OrderItem[];
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
             customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
@@ -4804,21 +4780,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: app.models.OrderItem[];
-            keyed_items: Record<string, app.models.OrderItem>;
-            listed_items: app.models.OrderItem[];
-            unsorted_items: app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: app.models.admin.Store[];
-            user: app.models.User;
-            items: app.models.OrderItem[];
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         /** Exercises static-call return type reflection and enum static args (Task 10). */
