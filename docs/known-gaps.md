@@ -333,12 +333,31 @@ alias `{relation}_{function}_{column}` a built-in cast on the parent model, or d
 
 ### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
 
-A collection stacked on another collects what its own class names: its own `#[Collects]`, the `$collects` it inherits,
-then the naming convention on its own name. When none names a resource, as with `StackedUnnamedCollection` over
-`SupplierSummaryCollection`, Laravel collects the raw models, but the package publishes the parent's
-`SupplierSummaryResource[]` rather than an empty interface, which would drop the `data` key the response carries. Name
-the resource on the stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both
-Laravel versions, and the published type and the response agree.
+A collection that declares no `toArray()` and is stacked on another collects what its own class names: its own
+`#[Collects]`, the `$collects` it inherits, then the naming convention on its own name. When none names a resource, as
+with `StackedUnnamedCollection` over `SupplierSummaryCollection`, Laravel collects the raw models, but the package
+publishes the parent's `SupplierSummaryResource[]` rather than an empty interface, which would drop the `data` key the
+response carries. That holds only for a parent that wraps: over a `$wrap = null` parent that names its API resource by
+attribute or by name, the stacked class still publishes an empty interface. Name the resource on the stacked class with
+`public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the published type and
+the response agree.
+
+### A collection that keeps the `make:resource` stub `toArray()` publishes an empty interface, or its parent's API resource
+
+`make:resource` writes `return parent::toArray($request);` into a new collection. A collection that keeps it and extends
+`ResourceCollection` publishes an empty interface, though Laravel sends `{ data: R[] }` of the API resource it collects.
+Stacked on another collection it publishes that parent's collected type, not the API resource its own `$collects` names,
+because `ResourceAstAnalyzer::analyzeParentToArray()` analyzes the parent as its own subject. Delete the stub
+`toArray()`: it only repeats the inherited one, and the collection then resolves from its own class, as a body-less one
+does.
+
+### A runtime `withoutWrapping()` is invisible, so a collection publishes `{ data: R[] }` for a bare list
+
+The package reads each collection's declared `$wrap` default, never a value the app sets at runtime. After
+`JsonResource::withoutWrapping()`, often called in a service provider, every body-less collection that does not
+redeclare `$wrap` sends a bare list, while its published interface still has the `data` key. A runtime `wrap('items')`
+is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
+extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
 
 ## Deliberate non-goals
 

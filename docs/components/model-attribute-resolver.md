@@ -268,12 +268,14 @@ The `except()` branch of `resolveFilteredRelationType()` does, so an inlined `ex
 `serializedAttributeNames()` lists what `toArray()` writes: the published columns, then the appends, within `$visible`
 and less `$hidden`, whatever `exclude_hidden` says. Whole-model delegation reads `delegatedAttributeNames()` and
 `delegatedRelationKeys()` instead, which apply `$visible` and `$hidden`, a relation's by its method name, only while
-`exclude_hidden` is on. A relation's key is snake-cased while the model's `$snakeAttributes` is on, as
-`relationsToArray()` writes it.
+`exclude_hidden` is on. So `delegatedAttributeNames()` equals `serializedAttributeNames()` while the option is on, and
+differs only while it is off, the default. A relation's key is snake-cased while the model's `$snakeAttributes` is on,
+as `relationsToArray()` writes it.
 
-The two lists differ only when `ts-publish.models.exclude_hidden` is on, and it defaults to `false`.
-`excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with the per-model
-context, because the context is fixed for the model while the config can change between calls, as it does in tests.
+`databaseColumnNames()` and `publishedColumnNames()` differ only when `ts-publish.models.exclude_hidden` is on, and it
+defaults to `false`. `excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with
+the per-model context, because the context is fixed for the model while the config can change between calls, as it does
+in tests.
 
 ## Laravel 13 model attributes need instance reads
 

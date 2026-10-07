@@ -44,8 +44,10 @@ every profile, the order handlers run in decides which one answers; see
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection running Laravel's own
-  `toArray()` resolves its own delegation first, so no parent's answer outranks what the collection names itself.
+  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection that declares no `toArray()`
+  resolves its own delegation first, so no parent's answer outranks what the collection names itself. The
+  `make:resource` stub is a declared `toArray()`, so it gets no such guard
+  ([known gap](../known-gaps.md#a-collection-that-keeps-the-makeresource-stub-toarray-publishes-an-empty-interface-or-its-parents-api-resource)).
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
@@ -234,9 +236,9 @@ dropped, even when its type is `unknown`.
 `return $this->only([...])`, `return $this->except([...])` and their spreads filter `buildModelDelegatedAnalysis()`:
 every attribute, accessors included, and every relation under its method name. Whole-model delegation does not start
 from this pool. `buildModelSerializedAnalysis()` publishes `Model::toArray()`'s set: the columns and the appended
-accessors, each relation optional under the key `toArray()` writes (snake_case while `$snakeAttributes` is on), and
-visibility under `exclude_hidden`. A relation keyed like an attribute makes one required key typed with both. The two
-filters use the pool differently:
+accessors, each relation optional under the key `toArray()` writes (snake_case while `$snakeAttributes` is on).
+`$visible` and `$hidden` filter that set only while `exclude_hidden` is on. A relation keyed like an attribute makes one
+required key typed with both. The two filters use the pool differently:
 
 - **`only()`**: keeps each requested key the set has, in the model's own order. It then appends, in request order, a
   key the set lacks when `ModelAttributeResolver::resolveAttribute()` can type it, such as a `withCount()` virtual or
