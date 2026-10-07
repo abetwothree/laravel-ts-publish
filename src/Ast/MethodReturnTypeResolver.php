@@ -161,8 +161,8 @@ final class MethodReturnTypeResolver
      * Whether the analysis of this body reads every value it returns, or a declared non-array arm covers what it skips.
      *
      * The analysis reads each literal, and each variable it reads completely, that only `if` and loop blocks enclose
-     * when one has a key; with none, each variable leniently if every return is a literal or a variable, else the first
-     * return. This counts a variable only as a first return beside no non-empty literal: a sound subset.
+     * when one has a key; with none, each variable leniently if every return is such a literal or variable, else the
+     * first return. This counts a variable only as a first return beside no non-empty literal: a sound subset.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  list<string>  $otherArms
