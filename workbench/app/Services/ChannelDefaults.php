@@ -14,7 +14,7 @@ use Workbench\App\Enums\OrderStatus;
 class ChannelDefaults
 {
     /**
-     * The eaglesys OWNER_MINIMUM_CHANNELS shape: a nested array constant.
+     * A nested array constant, two levels deep.
      *
      * @var array<string, array<string, bool>>
      */

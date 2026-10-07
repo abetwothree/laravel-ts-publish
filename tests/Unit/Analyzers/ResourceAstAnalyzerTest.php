@@ -5938,8 +5938,7 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // A constant whose own initializer is another class's enum case.
         ->and($props['default_status']['type'])->toBe('StatusType')
         ->and($analysis->directEnumFqcns)->toContain(Status::class)
-        // The left arm ($this->totally_unmapped_field) is unresolvable, so the constant on the
-        // right — the same kind eaglesys's default_subscription_channels falls back to — wins.
+        // The left arm ($this->totally_unmapped_field) is unresolvable, so the nested array constant on the right wins.
         ->and($props['fallback_channels']['type'])->toBe($nestedChannelsShape)
         // A plain list where every element agrees resolves to an element array.
         ->and($props['channel_tags']['type'])->toBe('string[]')

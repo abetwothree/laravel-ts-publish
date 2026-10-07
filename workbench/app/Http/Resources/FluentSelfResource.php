@@ -18,7 +18,7 @@ use Workbench\App\Models\Category;
 class FluentSelfResource extends JsonResource
 {
     /**
-     * The eaglesys shape: a native `: static` return type.
+     * A native `: static` return type.
      */
     public function markPreview(): static
     {
