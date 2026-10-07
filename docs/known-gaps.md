@@ -63,15 +63,15 @@ name. A ternary or `when()` keeps both classes, so spell the key that way.
 ### A returned variable is read flat: an early return sees later writes, and some writes are not followed
 
 A method that builds an array in a variable and returns it publishes the keys its writes set
-(`ResourceAstAnalyzer::resolveVariableReturnAnalysis()`), in one pass over the whole body:
+(`ReadsReturnedVariables::resolveVariableReturnAnalysis()`), in one pass over the whole body:
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk cannot read, and
   one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `unset($data['key'])`, or a
   `??=` to a key it does not hold. When no branch read completely has a key and every `return` is a literal or a
-  variable, it publishes the writes the walk reads instead; with a `return` of another kind, the first `return` is
-  read.
+  variable, none inside a `try` or `switch`, it publishes the writes the walk reads instead; with a `return` of another
+  kind, the first `return` is read.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -297,17 +297,21 @@ relation a name no attribute takes.
 With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes `CategoryResource` where `parent` types
 `unknown` (an undeclared relation, a related model the run does not publish, or a `morphTo` with no resolvable target),
 though Laravel sends `null` for a relation loaded as `null`.
-`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. Declare the relation's return
-type, or publish the related model, and the `| null` comes back.
+`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`.
+Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
+model, and the `| null` comes back.
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
 [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php) publishes `unknown` for
 `$this->whenHas('title', fn ($t) => json_decode($t))`, not the `title` column's `string`, because Laravel returns what
 the value returns and a plain title decodes to `null`, as `WhenHasValueResource` pins. Give the closure a return type,
-such as `fn ($t): ?string => json_decode($t)`, and the key types from it. `whenExistsLoaded()`, `whenCounted()` and
-`whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a key can claim a type
-the closure does not return.
+such as `fn ($t): ?string => json_decode($t)`, and the key types from it; a `@return` docblock on the closure does not
+type it. Inside a ternary or another union the `unknown` arm is left out instead
+([above](#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)), so
+`$c ? $this->whenHas('title', fn ($t) => json_decode($t)) : null` publishes `null`. `whenExistsLoaded()`,
+`whenCounted()` and `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a
+key can claim a type the closure does not return.
 
 ### On a class that is not an API resource, `$this->when()` publishes `unknown`
 
@@ -319,7 +323,8 @@ required, as `ConditionableBroadcastEvent` pins. A resource built around the cal
 `UserResource::make($this->when(…))`, or its `unless()` form, still publishes optional on any subject, because
 `InspectsResourceCalls::isConditionalMethodCall()` does not check the subject. The resource rule is wrong off a
 resource, because `Conditionable::when()` returns the callback's result, or the object itself, and the key is always
-sent. Until the package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
+sent. Until the package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`, adding
+`'optional' => false` for an API resource built around the call.
 
 ### An aggregate's type follows the database of the machine that publishes
 
@@ -328,9 +333,10 @@ model's connection on the machine that publishes, as column types follow that ma
 column publishes `number | null` from SQLite and `string | null` from MySQL, so publishing against SQLite for an app
 that runs MySQL keeps a `number` the response does not hold. Publish against the driver production runs; the
 generation cache rebuilds when `database.default` or a connection's driver changes, even through its `url`. Or give
-the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the parent model,
-or declare it with an accessor or `@property`, and that type publishes on every driver. A query-time `withCasts()`
-cannot be seen by a publish.
+the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the parent model
+whose published type is the value Laravel returns, such as `integer` or `float` (a `decimal:2` cast publishes `number`
+for a string), or declare it with an accessor or `@property`, and that type publishes on every driver. A query-time
+`withCasts()` cannot be seen by a publish.
 
 ### On SQL Server a numeric aggregate and every count publish `number`, though pdo_sqlsrv returns numbers as strings by default
 
@@ -339,20 +345,21 @@ number, and `getDriverName()` is `sqlsrv` for both. So a numeric `whenAggregated
 `number | null` there, and `whenCounted()` and a `'count'` aggregate publish `number`; a date or text `MIN()` or
 `MAX()` publishes `string | null`. `PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE` makes pdo_sqlsrv return an integer or float
 as a number, but never a `decimal`, `numeric` or `money` value, so a decimal `SUM()` is a string either way. Give the
-alias `{relation}_{function}_{column}` a built-in cast on the parent model, or declare it with an accessor or
-`@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration, so an
-`integer` cast on its alias makes the response hold one.
+alias `{relation}_{function}_{column}` a built-in cast on the parent model whose published type is the value Laravel
+returns, such as `integer` or `float` (a `decimal:2` cast publishes `number` for a string), or declare it with an
+accessor or `@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration,
+so an `integer` cast on its alias makes the response hold one.
 
 ### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
 
-A collection that declares no `toArray()` and is stacked on another collects what its own class names: its own
-`#[Collects]`, the `$collects` it inherits, then the naming convention on its own name. When none names a resource, as
-with `StackedUnnamedCollection` over `SupplierSummaryCollection`, Laravel collects the raw models, but the package
-publishes the parent's `SupplierSummaryResource[]` rather than an empty interface, which would drop the `data` key the
-response carries. That holds only for a parent that wraps: over a `$wrap = null` parent that names its API resource by
-attribute or by name, the stacked class still publishes an empty interface. Name the resource on the stacked class with
-`public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the published type and
-the response agree.
+A collection that neither declares nor inherits a custom `toArray()` and is stacked on another collects what its own
+class names: its own `#[Collects]`, the `$collects` it inherits, then the naming convention on its own name. When none
+names a resource, as with `StackedUnnamedCollection` over `SupplierSummaryCollection`, Laravel collects the raw models,
+but the package publishes the parent's `SupplierSummaryResource[]` rather than an empty interface, which would drop the
+`data` key the response carries. That holds only for a parent that wraps: over a `$wrap = null` parent that names its
+API resource by attribute or by name, the stacked class still publishes an empty interface. Name the resource on the
+stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the
+published type and the response agree.
 
 ### A collection that keeps the `make:resource` stub `toArray()` publishes an empty interface, or its parent's API resource
 
@@ -373,7 +380,7 @@ extend, as `UnwrappedCollection` does, and the package publishes the bare list. 
 
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 
-Laravel 13's `JsonApiResource` declares no `toArray()`, so a subclass without one walks
+Laravel's `JsonApiResource` (13, and 12 from 12.45) declares no `toArray()`, so a subclass without one walks
 `ResourceAstAnalyzer::analyzeParentToArray()` up to `JsonResource` and publishes whole-model delegation: the model's
 columns, appended accessors and relations. Laravel sends a JSON:API document instead,
 `{ data: { id, type, attributes?, relationships?, links?, meta? }, included?, jsonapi? }`, with `attributes` from

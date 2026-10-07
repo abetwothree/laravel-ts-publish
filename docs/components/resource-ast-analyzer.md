@@ -44,29 +44,31 @@ every profile, the order handlers run in decides which one answers; see
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection that declares no `toArray()`
-  resolves its own delegation first, so no parent's answer outranks what the collection names itself. The
-  `make:resource` stub is a declared `toArray()`, so it gets no such guard
+  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection that neither declares nor
+  inherits a custom `toArray()` resolves its own delegation first, so no parent's answer outranks what the collection
+  names itself. The `make:resource` stub is a declared `toArray()`, so its own delegation never runs first
   ([known gap](../known-gaps.md#a-collection-that-keeps-the-makeresource-stub-toarray-publishes-an-empty-interface-or-its-parents-api-resource)).
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
-  `return` is a literal or a variable: then it is read leniently as a branch, as a lone variable is. Otherwise, with no
-  branch read completely holding a key, the sweep declines and the first `return` is read; any other return is skipped.
-- **Any other body falls back to the first `return`**: `parent::toArray()`, an `array_merge()` of literals and
-  `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
+  `return` is a literal or a variable, none inside a `try` or `switch`: then it is read leniently as a branch, as a lone
+  variable is. Otherwise, with no branch read completely holding a key, the sweep declines and the first `return` is
+  read; any other return is skipped.
+- **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
+  literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
   variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys, a whole re-assignment drops the writes
   before it, and a key first written in a branch, loop, `try` or `switch` publishes optional.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
-  variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It
-  finds the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local
-  tables (`localVarBindings`, `varModelBindings`, `varClassBindings`, `varGuardBindings` and `varDocBindings`) and the
-  `resolvingLocalVars` guard. It re-derives `requestVarNames` and `declaringFileClass` for the spread method, and
-  restores all of them in a `finally`. `closureParamExprBindings`, `varCollectionBindings` and `varValueBindings` stay
-  as the caller left them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis
-  instead of recursing until memory runs out.
+  variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
+  the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
+  (`localVarBindings`, `varModelBindings`, `varClassBindings`, `varGuardBindings` and `varDocBindings`) and the
+  `resolvingLocalVars` guard, and keeps only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names in
+  `nonNullReads`. It re-derives `requestVarNames` and `declaringFileClass` for the spread method, and restores all of
+  them in a `finally`. `closureParamExprBindings`, `varCollectionBindings` and `varValueBindings` stay as the caller
+  left them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis instead of
+  recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts. Both can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
@@ -99,7 +101,8 @@ Take `LeafCollection extends MidCollection extends ResourceCollection`, neither 
 `collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
 own name, and `runsFrameworkCollectionToArray()` lets `LeafCollection` resolve that before its walk reaches
 `MidCollection`. It inherits `$wrap`, `null` included, because `buildCollectionDelegatedAnalysis()` reads the default
-through reflection. It keeps `MidCollection`'s type only when it names nothing
+through reflection. It reads `#[PreserveKeys]` off its own class only, as Laravel does; an inherited `$preserveKeys`
+property still applies. It keeps `MidCollection`'s type only when it names nothing
 ([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
 A `toArray()` an ancestor or a trait declares still wins. The `Handover*Collection` fixtures pin it.
 
@@ -339,7 +342,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
 conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
 `ReadsNullablePayloads::wrapsNullablePayload()` adds `| null` to a resource built around a payload that can be `null`,
-such as `Resource::make($this->parent)`, inside a resource only; a collection never takes it.
+such as `Resource::make($this->parent)`, inside a resource only; a collection never takes it, and neither does a payload
+a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
