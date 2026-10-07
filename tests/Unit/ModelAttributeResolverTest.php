@@ -491,9 +491,8 @@ test('a bare @return MorphTo<Model, $this> generic is not narrowing and falls th
 
 describe('morphTo docblock generics', function () {
     test('a concrete generic types the relation without any reverse relation', function () {
-        // causer() is declared on the HasRelatableLinkedRecord trait (mirroring eagle's own
-        // shape) with no reverse morphMany anywhere pointing at Activity — only the docblock
-        // generic can type it.
+        // causer() is a morphTo declared in the HasRelatableLinkedRecord trait, not on the model, with no reverse
+        // morphMany anywhere pointing at Activity — only the docblock generic can type it.
         $info = resolve(ModelAttributeResolver::class)->resolveRelation(Activity::class, 'causer');
 
         expect($info['type'])->toContain('User')

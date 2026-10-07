@@ -2641,7 +2641,7 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
 describe('ResourceTransformer import alias resolution for same basename and same parent segment', function () {
     test('same basename and same parent segment produce distinct aliases', function () {
         // Kpi::reportable() morphs to both Report models; their nearest namespace segment is
-        // identically 'Report', reproducing the eagle MailPrice collision at depth 1.
+        // identically 'Report', reproducing a same-basename alias collision one namespace level deep.
         resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
             Kpi::class,
             SalesReport::class,

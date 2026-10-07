@@ -8,7 +8,7 @@ use Illuminate\Contracts\Support\Arrayable;
 
 /**
  * Fixture: readonly DTO with promoted typed props and a generic toArray()
- * docblock — the shape must come from the properties (eagle OrderTypeCapabilities).
+ * docblock — the shape must come from the properties.
  *
  * @implements Arrayable<string, bool|string|null>
  */

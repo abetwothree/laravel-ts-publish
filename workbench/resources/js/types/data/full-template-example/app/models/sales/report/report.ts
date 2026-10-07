@@ -2,7 +2,7 @@ import type { Kpi } from '../..';
 
 /**
  * Fixture: same basename AND same parent namespace segment as
- * Marketing\Report\Report — reproduces the eagle MailPrice alias collision.
+ * Marketing\Report\Report — reproduces a same-basename alias collision one namespace level deep.
  *
  * @see Workbench\App\Models\Sales\Report\Report
  */

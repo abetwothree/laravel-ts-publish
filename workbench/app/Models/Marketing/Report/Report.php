@@ -10,7 +10,7 @@ use Workbench\App\Models\Kpi;
 
 /**
  * Fixture: same basename AND same parent namespace segment as
- * Sales\Report\Report — reproduces the eagle MailPrice alias collision.
+ * Sales\Report\Report — reproduces a same-basename alias collision one namespace level deep.
  */
 class Report extends Model
 {

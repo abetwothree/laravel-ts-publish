@@ -1883,7 +1883,7 @@ declare global {
     export namespace app.models.marketing.report {
         /**
          * Fixture: same basename AND same parent namespace segment as
-         * Sales\Report\Report — reproduces the eagle MailPrice alias collision.
+         * Sales\Report\Report — reproduces a same-basename alias collision one namespace level deep.
          */
         export interface Report {
             // Columns
@@ -1900,7 +1900,7 @@ declare global {
     export namespace app.models.sales.report {
         /**
          * Fixture: same basename AND same parent namespace segment as
-         * Marketing\Report\Report — reproduces the eagle MailPrice alias collision.
+         * Marketing\Report\Report — reproduces a same-basename alias collision one namespace level deep.
          */
         export interface Report {
             // Columns
@@ -3569,7 +3569,7 @@ declare global {
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
-         * reproducing the eagle MailPrice alias collision through a resource instead of a model.
+         * reproducing a same-basename alias collision through a resource instead of a model.
          */
         export interface KpiResource {
             reportable?: app.models.marketing.report.Report | app.models.sales.report.Report;

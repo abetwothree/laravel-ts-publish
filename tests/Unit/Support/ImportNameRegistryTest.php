@@ -28,23 +28,22 @@ describe('ImportNameRegistry', function () {
         ]);
     });
 
-    test('colliding one-segment prefixes extend until unique (the MailPrice bug)', function () {
+    test('colliding one-segment prefixes extend until unique (same basename, same parent segment)', function () {
         $registry = new ImportNameRegistry;
-        $registry->register('Eagle\Customer\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
-        $registry->register('Eagle\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
+        $registry->register('Acme\Customer\Billing\Rate\Models\Rate', 'Rate');
+        $registry->register('Acme\Billing\Rate\Models\Rate', 'Rate');
 
         $resolved = $registry->resolve();
 
-        // Depth 1 ('MailPriceMailPrice') and depth 2 ('EngineeringMailPriceMailPrice')
+        // Depth 1 ('RateRate') and depth 2 ('BillingRateRate')
         // collide for BOTH; the whole group advances to depth 3 together, so neither
         // keeps an ambiguous shallow alias.
-        expect($resolved['Eagle\Customer\Engineering\MailPrice\Models\MailPrice'])
-            ->toBe('CustomerEngineeringMailPriceMailPrice')
-            ->and($resolved['Eagle\Engineering\MailPrice\Models\MailPrice'])
-            ->toBe('EagleEngineeringMailPriceMailPrice')
+        expect($resolved['Acme\Customer\Billing\Rate\Models\Rate'])
+            ->toBe('CustomerBillingRateRate')
+            ->and($resolved['Acme\Billing\Rate\Models\Rate'])
+            ->toBe('AcmeBillingRateRate')
             ->and(array_unique(array_values($resolved)))->toHaveCount(2);
-        // In eagle itself, namespace_strip_prefix ('Eagle') removes the Eagle segment,
-        // yielding EngineeringMailPriceMailPrice for the second model.
+        // A namespace_strip_prefix of 'Acme' drops that segment, which yields BillingRateRate for the second model.
     });
 
     test('identical namespaces fall back to numeric suffixes', function () {
@@ -118,12 +117,12 @@ describe('ImportNameRegistry', function () {
 
     test('a given FQCN gets the same alias regardless of registration order', function () {
         $a = new ImportNameRegistry;
-        $a->register('Eagle\Customer\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
-        $a->register('Eagle\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
+        $a->register('Acme\Customer\Billing\Rate\Models\Rate', 'Rate');
+        $a->register('Acme\Billing\Rate\Models\Rate', 'Rate');
 
         $b = new ImportNameRegistry;
-        $b->register('Eagle\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
-        $b->register('Eagle\Customer\Engineering\MailPrice\Models\MailPrice', 'MailPrice');
+        $b->register('Acme\Billing\Rate\Models\Rate', 'Rate');
+        $b->register('Acme\Customer\Billing\Rate\Models\Rate', 'Rate');
 
         foreach ($a->resolve() as $fqcn => $alias) {
             expect($b->resolve()[$fqcn])->toBe($alias);
