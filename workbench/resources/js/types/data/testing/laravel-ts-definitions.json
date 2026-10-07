@@ -18975,7 +18975,17 @@
                 },
                 {
                     "name": "title_unresolvable",
+                    "type": "unknown",
+                    "optional": true
+                },
+                {
+                    "name": "status_label",
                     "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "appended_status_label",
+                    "type": "string | number",
                     "optional": true
                 }
             ]

@@ -285,8 +285,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
   its import channels. Joining the type strings by hand would emit a token with no import.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
-  arm, such as `whenPivotLoaded()`'s, keeps the key `unknown`, since `T | unknown` is `unknown`. The key stays required
-  either way. A default left out is recorded in `DroppedUnionArms` as `conditional-default`; see
+  arm, such as `whenPivotLoaded()`'s or an untypable `whenHas()` or `whenAppended()` value, keeps the key `unknown`,
+  since `T | unknown` is `unknown`. The key stays required either way. A default left out is recorded in
+  `DroppedUnionArms` as `conditional-default`; see
   [AST engine § Dropped union arms](ast-engine.md#dropped-union-arms) for the policy.
 - **A default closure that needs more arguments than Laravel passes is skipped**: Laravel calls a default as
   `value($default)` with no arguments, except `transform()`, whose helper calls `$default($value)`. A closure requiring
@@ -310,8 +311,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   relation the model does not declare can, under `nullable_relations`.
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
-  for `whenAppended()`, to nothing. The attribute or flag answers only in three cases: no value is written, the value
-  resolves to `unknown`, or the value is an `EnumResource` wrap. A wrap only moves the enum onto `enumFqcn`.
+  for `whenAppended()`, to nothing. The attribute answers `whenHas()` and `whenAppended()` only for a value-less call or
+  an `EnumResource` wrap, which only moves the enum onto `enumFqcn`. A value the engine cannot type publishes `unknown`:
+  the attribute's type is wrong for a value that transforms it. `whenExistsLoaded()` keeps its flag for such a value.
 - **A skipped or literal `null` value publishes `null`**: none of those three swaps in an identity closure as
   `whenLoaded()` does, so `whenExistsLoaded('user', null, 'absent')` is `string | null`.
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`

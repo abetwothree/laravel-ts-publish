@@ -5222,7 +5222,9 @@ declare global {
             appended_label?: string;
             comments_flag?: string;
             comments_exists_flag?: boolean;
-            title_unresolvable?: string;
+            title_unresolvable?: unknown;
+            status_label?: string;
+            appended_status_label?: string | number;
         }
     }
     export namespace workbench.app.http.resources.admin {

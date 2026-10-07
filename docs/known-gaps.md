@@ -300,6 +300,15 @@ though Laravel sends `null` for a relation loaded as `null`.
 `whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. Declare the relation's return
 type, or publish the related model, and the `| null` comes back.
 
+### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
+
+[`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php) publishes `unknown` for
+`$this->whenHas('title', fn ($t) => json_decode($t))`, not the `title` column's `string`, because Laravel returns what
+the value returns and a plain title decodes to `null`, as `WhenHasValueResource` pins. Give the closure a return type,
+such as `fn ($t): ?string => json_decode($t)`, and the key types from it. `whenExistsLoaded()`, `whenCounted()` and
+`whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a key can claim a type
+the closure does not return.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

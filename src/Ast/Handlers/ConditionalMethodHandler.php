@@ -227,9 +227,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenHas('attribute'): Laravel returns `value($value, $this->resource->{$attribute})`, so a
-     * resolvable value is what the property carries, with a closure's first parameter bound to the attribute. The
-     * attribute answers only for a skipped value, an EnumResource::make()/::collection() wrap, or an untypable value.
+     * Analyze $this->whenHas('attribute'): Laravel returns `value($value, $this->resource->{$attribute})`, so
+     * the value, `unknown` included, is what the property carries, with a closure's first parameter bound to the
+     * attribute. The attribute answers only for a value-less call or an EnumResource::make()/::collection() wrap.
      *
      * @return ValueExpressionResult
      */
@@ -258,9 +258,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenAppended('attribute', $value, $default): Laravel returns `value($value)`, so a resolvable
-     * value types the arm and a closure parameter holds its default. The appended accessor answers for a skipped value,
-     * an EnumResource::make()/::collection() wrap, and any value the engine cannot type.
+     * Analyze $this->whenAppended('attribute', $value, $default): Laravel returns `value($value)`, so the value types
+     * the arm, `unknown` included, and a closure parameter holds its default. The appended accessor answers only for a
+     * value-less call or an EnumResource::make()/::collection() wrap.
      *
      * @return ValueExpressionResult
      */
@@ -349,7 +349,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $flag = new PropertyFetch(new Variable('this'), Str::finish(Str::snake($relationship->value), '_exists'));
         $fromValue = $this->resolveValueArgument($args, $flag, $scope, $engine);
 
-        if ($fromValue !== null) {
+        if ($fromValue !== null && $fromValue['type'] !== 'unknown') {
             return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
         }
 
@@ -371,8 +371,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
             ? ['type' => 'number', 'optional' => false]
             : ValueResult::unknown();
         $fromValue = $this->resolveValueArgument($args, $aggregate, $scope, $engine);
+        $typed = $fromValue !== null && $fromValue['type'] !== 'unknown' ? $fromValue : null;
 
-        return $this->applyConditionalDefault($fromValue ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
+        return $this->applyConditionalDefault($typed ?? ['type' => 'number', 'optional' => false], $args, $scope, $engine);
     }
 
     /**
@@ -661,9 +662,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * The type `value($value, ...$args)` produces, binding a closure's first parameter to $argument (an expression, a
-     * typed value, or null for none) and the rest to their defaults; null when there is no usable value, such as none
-     * written, a literal null, an EnumResource wrap or an untyped result, so the caller keeps its attribute answer.
+     * The type `value($value, ...$args)` produces, `unknown` included, binding a closure's first parameter to $argument
+     * (an expression, a typed value, or null for none) and the rest to their defaults; null when no value is written,
+     * it is a literal null or an EnumResource wrap, so the caller keeps its attribute answer.
      *
      * @param  Expr|ValueExpressionResult|null  $argument
      * @return ValueExpressionResult|null
@@ -709,7 +710,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $scope->restoreNameBindings($previousNameBindings);
         }
 
-        return $inner['type'] === 'unknown' ? null : $inner;
+        return $inner;
     }
 
     /**

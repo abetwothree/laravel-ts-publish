@@ -585,6 +585,8 @@ describe('value argument types the arm', function () {
             'title_passthrough' => 'string',
             'appended_label' => 'string',
             'comments_flag' => 'string',
+            'status_label' => 'string',
+            'appended_status_label' => 'string | number',
         ])->and($props->every(fn (array $p): bool => $p['optional']))->toBeTrue();
     });
 
@@ -598,13 +600,12 @@ describe('value argument types the arm', function () {
             ->and($props['comments_exists_flag']['optional'])->toBeTrue();
     });
 
-    // The fallback the value rule must never break: an unresolvable value leaves the attribute's own
-    // type standing rather than publishing a fresh `unknown`. json_decode() returns mixed, so the
-    // closure body resolves to unknown and `title`'s own `string` has to survive.
-    test('an unresolvable value keeps the named attribute type instead of becoming unknown', function () {
+    // json_decode() returns mixed: a plain title decodes to null, so `title`'s own `string` would be a type the key
+    // never holds. The value stays `unknown` rather than borrowing the attribute's.
+    test('an untypable value publishes unknown, not the type of the attribute it names', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-        expect($props['title_unresolvable']['type'])->toBe('string')
+        expect($props['title_unresolvable']['type'])->toBe('unknown')
             ->and($props['title_unresolvable']['optional'])->toBeTrue();
     });
 });
@@ -645,6 +646,35 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
     'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
     'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
+]);
+
+// Laravel returns the value whatever it is, so the attribute answers only a value-less call or an EnumResource wrap.
+it('never answers an untypable whenHas() or whenAppended() value with the attribute', function (string $php, array $expected) {
+    expect(conditionalMethodHandlerResolveOnPost($php))->toMatchArray($expected);
+})->with([
+    'whenHas(), a closure' => ['$this->whenHas("title", fn ($t) => json_decode($t))', ['type' => 'unknown', 'optional' => true]],
+    'whenHas(), a closure and a default' => ['$this->whenHas("title", fn ($t) => json_decode($t), "none")', ['type' => 'unknown', 'optional' => false]],
+    'whenHas(), not a closure' => ['$this->whenHas("title", json_decode($this->title))', ['type' => 'unknown', 'optional' => true]],
+    'whenAppended(), a closure' => ['$this->whenAppended("title_display", fn () => json_decode($this->title))', ['type' => 'unknown', 'optional' => true]],
+    'whenAppended(), a closure Laravel cannot call' => ['$this->whenAppended("title_display", fn ($x) => $x)', ['type' => 'unknown', 'optional' => true]],
+    'whenHas(), a match' => [
+        '$this->whenHas("status", fn ($s) => match ($s) { \\Workbench\\App\\Enums\\Status::Published => "live", default => "draft" })',
+        ['type' => 'string', 'optional' => true],
+    ],
+]);
+
+// Only whenHas() and whenAppended() publish `unknown` for a closure the engine cannot type: the other three keep the
+// flag or the aggregate's `number`, which the package publishes for their keys.
+it('keeps the flag or the aggregate type for an untypable whenExistsLoaded(), whenCounted() or whenAggregated() closure', function (string $php, array $expected) {
+    expect(conditionalMethodHandlerResolveOnPost($php))->toMatchArray($expected);
+})->with([
+    'whenExistsLoaded()' => ['$this->whenExistsLoaded("comments", fn ($e) => json_decode($e))', ['type' => 'boolean', 'optional' => true]],
+    'whenExistsLoaded() and a default' => [
+        '$this->whenExistsLoaded("comments", fn ($e) => json_decode($e), "none")',
+        ['type' => 'boolean | string', 'optional' => false],
+    ],
+    'whenCounted()' => ['$this->whenCounted("comments", fn ($n) => json_decode($n))', ['type' => 'number', 'optional' => true]],
+    'whenAggregated()' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => json_decode($m))', ['type' => 'number', 'optional' => true]],
 ]);
 
 // Without the claim, ClosureHandler releases the name the value argument just bound, and the key loses its type.
