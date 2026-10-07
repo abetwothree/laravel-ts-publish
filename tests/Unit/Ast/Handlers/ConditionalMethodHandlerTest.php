@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AggregateAliasPost;
@@ -50,6 +51,7 @@ use Workbench\App\Http\Resources\WhenHasValueResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
@@ -742,6 +744,20 @@ it('publishes whenAggregated()\'s aggregate as the driver returns it', function 
     'a function the call computes' => ['$this->whenAggregated("comments", "id", $local)', 'number'],
     'count()' => ['$this->whenAggregated("comments", "id", "count")', 'number'],
 ]);
+
+// The related model's column types the aggregate, so an edit to that model alone must publish the resource again.
+it('records the related model an aggregate reads as a dependency', function () {
+    DependencyRecorder::start();
+
+    try {
+        conditionalMethodHandlerResolveOnPost('$this->whenAggregated("comments", "created_at", "max")');
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toContain((new ReflectionClass(Comment::class))->getFileName());
+});
 
 // whenAggregated() names its attribute after the snake-cased relation, so either spelling reaches
 // Product::orderItems().

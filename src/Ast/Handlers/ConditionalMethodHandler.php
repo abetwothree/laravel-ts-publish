@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -661,6 +662,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // The attribute names the relation snake-cased, so the relation is the method whose snake case matches.
         $relation = $resolver->getRelations($scope->modelClass)
             ?->first(fn (array $relation): bool => Str::snake($relation['name']) === $relationKey);
+
+        if ($relation !== null) {
+            DependencyRecorder::recordClass($relation['related']);
+        }
+
         $columns = $relation === null ? null : $resolver->getAttributes($relation['related']);
         $columnType = $columns?->firstWhere('name', $column->value)['type'] ?? null;
         $driver = $resolver->connectionDriver($scope->modelClass);
