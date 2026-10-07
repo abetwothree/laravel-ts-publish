@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -52,6 +53,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 {
     use InspectsAstNodes;
     use InspectsResourceCalls;
+    use ReadsNonNullGuards;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
@@ -217,6 +219,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $previousNameBindings = $scope->nameBindings();
 
         try {
+            // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
+            // closure parameter named like a proven read drops its proof.
+            $this->proveNonNull($this->nonNullReads($condition->value, $method === 'when'), $scope);
             $scope->claimParameters($valueArg->value);
             $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
             $scope->bindUnpassedParameters($valueArg->value, 0, $engine);
@@ -580,6 +585,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $scope->claimParameters($callbackArg->value);
             $this->bindPassedValue($callbackArg->value, $value, $resolvedValue, $previousNameBindings, $scope, $engine);
             $scope->bindUnpassedParameters($callbackArg->value, 1, $engine);
+            // transform() calls back only for a filled value, so the read it passes is not null in the callback.
+            $this->proveNonNull([$value], $scope);
 
             $inner = $engine->resolve($callbackArg->value);
         } finally {
@@ -898,6 +905,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $name = $firstParam->var->name;
+
+        // The callback runs only for a filled value, so the parameter holding it is not null; a default's may be.
+        if (! $keepNull) {
+            $this->proveNonNull([$firstParam->var], $scope);
+        }
 
         if ($this->isThisPropertyFetch($value)) {
             $scope->closureParamExprBindings[$name] = $value;

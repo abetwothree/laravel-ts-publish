@@ -15,8 +15,9 @@ use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
 
 /**
- * The early-exit `instanceof` guard pass. Hosts must also use CollectsLocalVarBindings: its write
- * collection is what decides a binding is safe, and both passes read the same statement list.
+ * The early-exit guard pass: an `instanceof` guard narrows a variable, and a failed condition proves reads non-null.
+ * Hosts must also use CollectsLocalVarBindings: its write collection is what decides a binding is safe, and both passes
+ * read the same statement list.
  *
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
@@ -25,9 +26,11 @@ use PhpParser\Node\Stmt\Return_;
 trait CollectsInstanceofGuards
 {
     use ReadsInstanceofChains;
+    use ReadsNonNullGuards;
 
     /**
-     * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C, for the statements after it.
+     * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C, and prove the reads an early exit's
+     * failed condition shows non-null, both for the statements after it.
      *
      * The binding carries the offset the guard ends at, so a return placed before the guard, or the guard's own body,
      * still reads the variable unnarrowed. A variable written after the guard tests it is not bound at all.
@@ -46,6 +49,14 @@ trait CollectsInstanceofGuards
             foreach ($this->negatedInstanceofs($stmt->cond) as [$name, $class, $test]) {
                 if (! $this->writtenAfterTest($name, $test, $stmt, $writes)) {
                     $scope->varGuardBindings[$name] = ['classes' => [$class], 'after' => $stmt->getEndFilePos()];
+                }
+            }
+
+            foreach ($this->nonNullReads($stmt->cond, false) as $read) {
+                $root = $this->readRoot($read);
+
+                if ($root !== null && ! $this->writtenAfterTest($root, $stmt->cond, $stmt, $writes)) {
+                    $this->proveNonNull([$read], $scope, $stmt->getEndFilePos());
                 }
             }
         }

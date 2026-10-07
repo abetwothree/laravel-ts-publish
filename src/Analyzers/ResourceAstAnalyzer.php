@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsReturnedVariables;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -87,6 +88,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ParsesTsCasts;
+    use ReadsNonNullGuards;
 
     /** @use ReadsReturnedVariables<ResourceAnalysis> */
     use ReadsReturnedVariables;
@@ -772,7 +774,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis;
         }
 
-        $branches = $this->resolveMergedBranches($value->value);
+        // mergeWhen() merges its value only where the condition holds, and mergeUnless() only where it fails.
+        $condition = $args->named('condition')?->value;
+        $branches = $this->resolveProvenNonNull(
+            $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
+            $this->scope,
+            fn (): array => $this->resolveMergedBranches($value->value),
+        );
 
         if (! $isMerge) {
             $default = $args->named('default')?->value;
@@ -888,6 +896,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousVarClassBindings = $this->scope->varClassBindings;
         $previousVarGuardBindings = $this->scope->varGuardBindings;
         $previousVarDocBindings = $this->scope->varDocBindings;
+        $previousNonNullReads = $this->scope->nonNullReads;
         $previousDeclaringFileClass = $this->scope->declaringFileClass;
         $previousRequestVarNames = $this->scope->requestVarNames;
         try {
@@ -897,6 +906,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->varClassBindings = [];
             $this->scope->varGuardBindings = [];
             $this->scope->varDocBindings = [];
+            $this->scope->nonNullReads = $this->proofsAcrossCall($this->scope);
             $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
@@ -926,6 +936,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->varClassBindings = $previousVarClassBindings;
             $this->scope->varGuardBindings = $previousVarGuardBindings;
             $this->scope->varDocBindings = $previousVarDocBindings;
+            $this->scope->nonNullReads = $previousNonNullReads;
             $this->scope->declaringFileClass = $previousDeclaringFileClass;
             $this->scope->requestVarNames = $previousRequestVarNames;
             unset($this->scope->visitedSpreadMethods[$methodName]);

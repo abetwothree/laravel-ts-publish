@@ -280,6 +280,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $outer;
         $scope->requestVarNames[$name] = Request::class;
+        $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null]];
     }
 
     $before = $scope->nameBindings();

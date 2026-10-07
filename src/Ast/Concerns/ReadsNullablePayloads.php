@@ -22,6 +22,8 @@ use PhpParser\Node\Identifier;
  */
 trait ReadsNullablePayloads
 {
+    use ReadsNonNullGuards;
+
     /**
      * A resource construction call's arguments mapped against the signature its payload lands in.
      */
@@ -29,8 +31,8 @@ trait ReadsNullablePayloads
 
     /**
      * Whether `new X(…)` or `X::make(…)` in a JsonResource subject wraps a payload that can be null. A
-     * ResourceCollection never does: it throws on a null payload. A payload that is itself `new` or a resource's
-     * `make()` never does either: PHP builds an object, and only that inner resource serializes as null.
+     * ResourceCollection never does: it throws on a null payload. Neither does a payload that is `new` or a resource's
+     * `make()`, since PHP builds an object and only that inner resource serializes as null, nor a read a guard proves.
      */
     protected function wrapsNullablePayload(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): bool
     {
@@ -56,6 +58,6 @@ trait ReadsNullablePayloads
             return false;
         }
 
-        return ValueResult::hasNullArm($resolved['type']);
+        return ValueResult::hasNullArm($resolved['type']) && ! $this->isProvenNonNull($payload, $scope);
     }
 }

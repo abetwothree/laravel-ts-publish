@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AnnulledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceShadowedParameterResource;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
@@ -131,6 +132,34 @@ final class NamedPayloadResource extends JsonResource
  * A collection that collects no class the run can name, so `new` and `make()` on it reach the plain resource branch.
  */
 final class StaticCallHandlerOrphanCollection extends ResourceCollection {}
+
+/**
+ * A resource that returns early when its parent is null, so only the return after the guard wraps a parent it proves.
+ * The spread helper runs inside the exit, where the early exit's proof does not reach, and under a when() guard.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerEarlyExitResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent === null) {
+            return ['inside' => CategoryResource::make($this->parent), ...$this->spreadParent()];
+        }
+
+        return [
+            'after' => CategoryResource::make($this->parent),
+            'guarded' => $this->when($this->parent, fn () => [...$this->spreadParent()]),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function spreadParent(): array
+    {
+        return ['spread' => CategoryResource::make($this->parent)];
+    }
+}
 
 // ToResourceHandler
 
@@ -359,6 +388,81 @@ it('adds no null arm to a resource collection built around a nullable payload', 
     'make() on a collection' => ['\StaticCallHandlerOrphanCollection::make($this->parent)', 'StaticCallHandlerOrphanCollection'],
     'collection() on a resource' => ['self::collection($this->parent)', 'FluentSelfResource[]'],
 ]);
+
+// Where a guard proves the payload's own read non-null, Laravel never serializes the wrap as null: a condition for the
+// value or arm it runs, a filled transform() value for its callback, an early exit for the statements after it.
+it('drops a wrap\'s null arm where a guard proves its payload non-null', function (string $php, string $type) {
+    expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
+})->with([
+    'when(), a truthy read' => ['$this->when($this->parent, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), a value with no closure' => ['$this->when($this->parent, self::make($this->parent))', 'FluentSelfResource'],
+    'when(), !== null' => ['$this->when($this->parent !== null, fn () => new self($this->parent))', 'FluentSelfResource'],
+    'when(), null on the left' => ['$this->when(null !== $this->parent, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), != null' => ['$this->when($this->parent != null, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), ! is_null()' => ['$this->when(! is_null($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), isset()' => ['$this->when(isset($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), ! empty()' => ['$this->when(! empty($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), instanceof' => ['$this->when($this->parent instanceof \Workbench\App\Models\Category, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), an && chain' => ['$this->when($this->relationLoaded("parent") && $this->parent, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'when(), a negated || chain' => ['$this->when(! ($this->parent === null || $this->name === ""), fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'unless(), === null' => ['$this->unless($this->parent === null, fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'unless(), is_null()' => ['$this->unless(is_null($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource'],
+    'a ternary, a truthy read' => ['$this->parent ? self::make($this->parent) : "none"', 'FluentSelfResource | string'],
+    'a ternary, !== null' => ['$this->parent !== null ? new self($this->parent) : "none"', 'FluentSelfResource | string'],
+    'a ternary, isset()' => ['isset($this->parent) ? self::make($this->parent) : "none"', 'FluentSelfResource | string'],
+    'a ternary, instanceof' => ['$this->parent instanceof \Workbench\App\Models\Category ? self::make($this->parent) : "none"', 'FluentSelfResource | string'],
+    'a ternary, the else arm of === null' => ['$this->parent === null ? "none" : self::make($this->parent)', 'string | FluentSelfResource'],
+    'a ternary, the else arm of a negated read' => ['! $this->parent ? "none" : self::make($this->parent)', 'string | FluentSelfResource'],
+    'a ternary, the else arm of is_null()' => ['is_null($this->parent) ? "none" : self::make($this->parent)', 'string | FluentSelfResource'],
+    'a ternary, the else arm of == null' => ['$this->parent == null ? "none" : self::make($this->parent)', 'string | FluentSelfResource'],
+    'a ternary, the else arm of empty()' => ['empty($this->parent) ? "none" : self::make($this->parent)', 'string | FluentSelfResource'],
+    'a ternary, a wrap its arm nests' => ['$this->parent ? ["p" => self::make($this->parent)] : "none"', '{ p: FluentSelfResource } | string'],
+    'a ternary on a closure parameter' => ['$this->whenHas("parent", fn ($p) => $p ? self::make($p) : 1)', 'FluentSelfResource | number'],
+    'mergeWhen(), a truthy read' => ['[$this->mergeWhen($this->parent, ["p" => self::make($this->parent)])]', '{ p?: FluentSelfResource }'],
+    'mergeUnless(), === null' => ['[$this->mergeUnless($this->parent === null, fn () => ["p" => self::make($this->parent)])]', '{ p?: FluentSelfResource }'],
+    'transform(), its parameter' => ['$this->transform($this->parent, fn ($p) => self::make($p))', 'FluentSelfResource'],
+    'transform(), the read it passes' => ['$this->transform($this->parent, fn ($p) => self::make($this->parent))', 'FluentSelfResource'],
+    'an early exit in a closure' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } return self::make($this->parent); })', 'string | FluentSelfResource'],
+]);
+
+// A guard proves only the read it tests, only where it holds, and only until a closure parameter takes the read's name.
+it('keeps a wrap\'s null arm where no guard proves its payload non-null', function (string $php, string $type) {
+    expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
+})->with([
+    'when(), a foreign key, since a soft-deleted parent loads as null' => ['$this->when($this->parent_id !== null, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), another read' => ['$this->when($this->name, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), === null' => ['$this->when($this->parent === null, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), an || chain' => ['$this->when($this->parent || $this->name, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), a negated && chain' => ['$this->when(! ($this->parent && $this->name), fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), is_null()' => ['$this->when(is_null($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), another function' => ['$this->when(! is_array($this->parent), fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), !== another value' => ['$this->when($this->parent !== false, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'when(), its default' => ['$this->when($this->parent, 1, fn () => self::make($this->parent))', 'number | FluentSelfResource | null'],
+    'unless(), a truthy read' => ['$this->unless($this->parent, fn () => self::make($this->parent))', 'FluentSelfResource | null'],
+    'a ternary, the else arm of a truthy read' => ['$this->parent ? "none" : self::make($this->parent)', 'string | FluentSelfResource | null'],
+    'a ternary, the else arm of !== null' => ['$this->parent !== null ? "none" : self::make($this->parent)', 'string | FluentSelfResource | null'],
+    'a ternary, the else arm of isset()' => ['isset($this->parent) ? "none" : self::make($this->parent)', 'string | FluentSelfResource | null'],
+    'a ternary, the else arm of instanceof' => ['$this->parent instanceof \Workbench\App\Models\Category ? "none" : self::make($this->parent)', 'string | FluentSelfResource | null'],
+    'a ternary, the if arm of empty()' => ['empty($this->parent) ? self::make($this->parent) : "none"', 'FluentSelfResource | string | null'],
+    'a ternary, a comparison' => ['$this->id > 0 ? self::make($this->parent) : "none"', 'FluentSelfResource | string | null'],
+    'a key beside a ternary' => ['["a" => $this->parent ? 1 : 2, "b" => self::make($this->parent)]', '{ a: number; b: FluentSelfResource | null }'],
+    'a key beside a when()' => ['["a" => $this->when($this->parent, 1), "b" => self::make($this->parent)]', '{ a?: number; b: FluentSelfResource | null }'],
+    'mergeUnless(), a truthy read' => ['[$this->mergeUnless($this->parent, ["p" => self::make($this->parent)])]', '{ p?: FluentSelfResource | null }'],
+    'transform(), its default' => ['$this->transform($this->parent, fn ($p) => 1, fn ($p) => self::make($p))', 'number | FluentSelfResource | null'],
+    'a closure body that writes the guarded read' => ['$this->when($this->parent, function () { $this->parent = null; return self::make($this->parent); })', 'FluentSelfResource | null'],
+    'a closure parameter named like the guarded read' => ['$this->whenHas("parent", fn ($p) => $this->when($p, fn ($p = null) => self::make($p)))', 'FluentSelfResource | null'],
+    'a return inside an early exit' => ['$this->when(true, function () { if ($this->parent === null) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],
+    'an early exit the body writes past' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } $this->parent = null; return self::make($this->parent); })', 'string | FluentSelfResource | null'],
+]);
+
+it('drops a wrap\'s null arm after a method\'s early exit proves its payload non-null', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(StaticCallHandlerEarlyExitResource::class), Category::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['inside']['type'])->toBe('CategoryResource | null')
+        ->and($props['spread']['type'])->toBe('CategoryResource | null')
+        ->and($props['after']['type'])->toBe('CategoryResource')
+        ->and($props['guarded']['type'])->toBe('{ spread: CategoryResource }');
+});
 
 it('declines an expression it does not claim', function () {
     $expr = new MethodCall(new Variable('this'), 'somethingElse');

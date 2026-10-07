@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
@@ -29,6 +30,7 @@ final class TernaryHandler implements ExpressionHandler
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
+    use ReadsNonNullGuards;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -50,30 +52,36 @@ final class TernaryHandler implements ExpressionHandler
      * Analyze a ternary or Elvis expression, unioning both branches.
      *
      * In Elvis (`$cond ?: $else`) the parser leaves `if` null, so the truthy value is `$cond` itself.
-     * An `instanceof` condition narrows its subject for the arm it proves only.
+     * Each arm resolves under the reads the condition proves non-null where that arm runs, and an `instanceof`
+     * condition narrows its subject for the arm it proves.
      *
      * @return ValueExpressionResult
      */
     private function analyzeTernary(Ternary $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $arms = [$expr->if ?? $expr->cond, $expr->else];
+        $nonNull = [$this->nonNullReads($expr->cond, true), $this->nonNullReads($expr->cond, false)];
         $proof = $expr->if === null ? null : $this->instanceofProof($expr->cond);
-        $narrowed = null;
+        $resolveArm = fn (int $arm): array => $this->resolveProvenNonNull($nonNull[$arm], $scope, fn (): array => $engine->resolve($arms[$arm]));
+        /** @var array<0|1, ValueExpressionResult> $narrowed */
+        $narrowed = [];
 
         if ($proof !== null) {
-            $proven = $arms[$proof[2]];
-            $narrowed = $this->resolveNarrowed($proof[0], $proof[1], $proven, $scope, fn (): array => $engine->resolve($proven));
+            $result = $this->resolveNarrowed($proof[0], $proof[1], $arms[$proof[2]], $scope, fn (): array => $resolveArm($proof[2]));
+
+            if ($result !== null) {
+                $narrowed[$proof[2]] = $result;
+            }
         }
 
-        if ($proof === null || $narrowed === null) {
+        if ($narrowed === [] && $nonNull === [[], []]) {
             return ValueResult::withEnumArmShapes(
                 ValueResult::analyzeClosureUnion($arms, $engine, $scope),
                 static fn (): array => array_map($engine->resolve(...), $arms),
             );
         }
 
-        $other = $engine->resolve($arms[1 - $proof[2]]);
-        $results = $proof[2] === 0 ? [$narrowed, $other] : [$other, $narrowed];
+        $results = [$narrowed[0] ?? $resolveArm(0), $narrowed[1] ?? $resolveArm(1)];
 
         // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
         foreach ($results as $index => $armResult) {

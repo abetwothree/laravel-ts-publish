@@ -74,6 +74,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
         $scope->requestVarNames[$name] = Request::class;
+        $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null]];
     }
 
     return $scope;
@@ -122,13 +123,15 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });
 
-it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table', function () {
+// A proof spells the read it proves, `$item` here, so it never holds for a read of another name.
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     $scope->copyBindings('item', 'param', $captured);
 
-    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true])))->each->toBe(['param'])
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true])))->each->toBe(['param'])
+        ->and($scope->nonNullReads)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
         ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])

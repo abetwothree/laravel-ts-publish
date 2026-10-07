@@ -48,6 +48,7 @@ final class SubjectHelperReturnResolver
         'closureParamExprBindings' => [],
         'varClassBindings' => [],
         'varGuardBindings' => [],
+        'nonNullReads' => [],
         'varDocBindings' => [],
         'varModelBindings' => [],
         'varCollectionBindings' => [],
