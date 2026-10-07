@@ -15548,6 +15548,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostStatusSourcesResource": {
+            "name": "PostStatusSourcesResource",
+            "properties": [
+                {
+                    "name": "status_from_local",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "visibility_from_local",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "status_from_helper",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "visibility_from_helper",
+                    "type": "AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "status_from_method",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostUnwrappedCollection": {
             "name": "PostUnwrappedCollection",
             "typeAlias": "PostResource[]"

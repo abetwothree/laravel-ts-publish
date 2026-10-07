@@ -75,7 +75,13 @@ final class NewResourceHandler implements ExpressionHandler
         if ($this->isEnumResourceClass($className)) {
             $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-            return $payload === null ? $result : ($this->resolveEnumFromPropertyArg($payload, $scope) ?? $result);
+            if ($payload === null) {
+                return $result;
+            }
+
+            return $this->resolveEnumFromPropertyArg($payload, $scope)
+                ?? $this->resolveEnumFromResolvedPayload($payload, $engine)
+                ?? $result;
         }
 
         // new SomeCollection($this->items) — resolve the collected element type. Must precede the

@@ -25,6 +25,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
 | [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()` |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
+| [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps |
 | [`ReturnShapeRefiner`](../../src/Ast/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
 | [`IndexSignatureReconciler`](../../src/Ast/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
@@ -728,6 +729,20 @@ away, so `InlineArrayHandler` drops any enum import whose name no longer occurs 
 In `laravel-ts-global.ts`, `TsTypeString::rewriteAsEnumToType()` folds an exact `AsEnum<typeof Status> | StatusType`
 pair into one qualified reference, since both arms qualify to the same name there. A pair with `[]` on either side
 stands for two different things, so it stays two references.
+
+### An enum reached through a local or a helper
+
+`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
+parameter, so `$case = Status::Draft` wraps a case the engine alone reads as `unknown`. Any other payload, such as a
+coalesce or a method's return, goes to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that
+holds one enum and nothing else, or a list of it for `::collection()`. Two enums, even two one name spells, stay
+`unknown`. The payload's own `| null` stays in every subject: an enum branch returns before `wrapsNullablePayload()`.
+
+[`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
+declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
+ternary of those, and one wraps, so no other helper's body is read. The body is its own scope: the caller's name tables
+and relation model are set aside, and a union that types no wrap declines. `PostStatusSourcesResource` pins a local, a
+helper and a method's return.
 
 ## Related
 

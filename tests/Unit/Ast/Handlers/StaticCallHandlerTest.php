@@ -28,18 +28,23 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Resources\CategoryResource;
+use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\TrackingEvent;
 use Workbench\App\Models\Venue;
+use Workbench\App\Models\Warehouse;
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -208,6 +213,56 @@ it('resolves EnumResource::make($this->status) to the enum channel', function ()
         'enumFqcn' => Status::class,
     ]);
 });
+
+// A local assigned once is followed to what it holds; any other payload is resolved, and kept when it holds one enum.
+it('wraps the one enum a resolved payload holds', function (string $php, array $expected) {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->localVarBindings = [
+        'status' => $parse('$this->status'),
+        'visibility' => $parse('$this->visibility'),
+        'draft' => $parse('\\'.Status::class.'::Draft'),
+        'rating' => $parse('$this->rating'),
+        'loop' => $parse('$loop'),
+    ];
+
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)->resolve($parse($php));
+
+    expect($result)->toBe($expected);
+})->with([
+    'make(), a local' => ['\\'.EnumResource::class.'::make($status)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'new, a nullable local' => ['new \\'.EnumResource::class.'($visibility)', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
+    'make(), a local holding a case' => ['\\'.EnumResource::class.'::make($draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'make(), a coalesce' => ['\\'.EnumResource::class.'::make($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'make(), a local holding no enum' => ['\\'.EnumResource::class.'::make($rating)', ['type' => 'unknown', 'optional' => false]],
+    'make(), a local bound to itself' => ['\\'.EnumResource::class.'::make($loop)', ['type' => 'unknown', 'optional' => false]],
+    'new, a coalesce' => ['new \\'.EnumResource::class.'($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'make(), a coalesce that can be null' => ['\\'.EnumResource::class.'::make($this->visibility ?? null)', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
+    'make(), an enum beside a string' => ['\\'.EnumResource::class.'::make($this->status ?? "draft")', ['type' => 'unknown', 'optional' => false]],
+]);
+
+// The guard against a cyclic local is keyed by name, so it must not hide a parameter named like the local resolving,
+// as in `$status = $this->whenHas('status', fn ($status) => EnumResource::make($status))`.
+it('follows a closure parameter while an outer local of its name resolves', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'status');
+    $scope->resolvingLocalVars['status'] = true;
+    $expr = new StaticCall(new Name(EnumResource::class), 'make', [new Arg(new Variable('status'))]);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)->resolve($expr))
+        ->toBe(['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]);
+});
+
+// Only a collection wraps a list, and two enums that one name spells are not one enum.
+it('wraps a resolved payload only when it holds one enum and nothing else', function (string $subject, string $model, string $php, array $expected) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), $model)->resolve($expr))->toBe($expected);
+})->with([
+    'collection(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::collection(collect($this->status_history)->all())', ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class]],
+    'make(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::make(collect($this->status_history)->all())', ['type' => 'unknown', 'optional' => false]],
+    'make(), two enums one name spells' => [WarehouseResource::class, Warehouse::class, '\\'.EnumResource::class.'::make($this->status ?? $this->current_crm_status)', ['type' => 'unknown', 'optional' => false]],
+]);
 
 it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound — guard 5 must precede guard 6', function () {
     // $this->resource::tableName() — guard 5 (`$this->resource::staticMethod()`) and guard 6

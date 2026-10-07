@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -100,13 +101,15 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return $info['type'] === 'unknown' ? null : $info;
         }
 
-        // Generic `$this->method()` — reflect the declared return type; the helper guards above ran first.
+        // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
+        // helper guards above ran first.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString())
+                ?? resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn($expr, $scope, $engine);
         }
 
         return null;

@@ -4186,6 +4186,17 @@ declare global {
             views: number | null;
             share_count: number | null;
         }
+        /**
+         * Wraps the post's enums in an EnumResource reached through a local, a helper on the resource and a method that returns
+         * the enum, which each publish the AsEnum type `EnumResource::make($this->status)` does.
+         */
+        export interface PostStatusSourcesResource {
+            status_from_local: workbench.app.enums.StatusType;
+            visibility_from_local: workbench.app.enums.VisibilityType | null;
+            status_from_helper: workbench.app.enums.StatusType;
+            visibility_from_helper: workbench.app.enums.VisibilityType | null;
+            status_from_method: workbench.app.enums.StatusType;
+        }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];
         /**

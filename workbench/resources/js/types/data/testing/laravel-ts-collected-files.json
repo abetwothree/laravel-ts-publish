@@ -222,6 +222,7 @@
     "app\/Http\/Resources\/PostStateCastResource.php",
     "app\/Http\/Resources\/PostStateResource.php",
     "app\/Http\/Resources\/PostStatsResource.php",
+    "app\/Http\/Resources\/PostStatusSourcesResource.php",
     "app\/Http\/Resources\/PostUnwrappedCollection.php",
     "app\/Http\/Resources\/PreserveKeysCollection.php",
     "app\/Http\/Resources\/PreserveKeysFlatCollection.php",

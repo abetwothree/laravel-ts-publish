@@ -130,6 +130,7 @@ export * from './post-spotlight-resource';
 export * from './post-state-cast-resource';
 export * from './post-state-resource';
 export * from './post-stats-resource';
+export * from './post-status-sources-resource';
 export * from './post-unwrapped-collection';
 export * from './preserve-keys-collection';
 export * from './preserve-keys-flat-collection';

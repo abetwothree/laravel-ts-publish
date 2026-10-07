@@ -89,6 +89,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\PostStateCastResource;
 use Workbench\App\Http\Resources\PostStateResource;
+use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\RelationChainResource;
@@ -3201,4 +3202,38 @@ test('publishes each cast over an enum resource as written, importing only the e
         ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
         ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
         ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
+});
+
+// A local, a helper and a method returning the enum each reach the channel `EnumResource::make($this->status)` does.
+describe('an EnumResource wrapping an enum reached through a local or a helper', function () {
+    test('publishes the AsEnum type, imports the enum const and keeps the nullable arm', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(PostStatusSourcesResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'status_from_local' => 'AsEnum<typeof Status>',
+            'visibility_from_local' => 'AsEnum<typeof Visibility> | null',
+            'status_from_helper' => 'AsEnum<typeof Status>',
+            'visibility_from_helper' => 'AsEnum<typeof Visibility> | null',
+            'status_from_method' => 'AsEnum<typeof Status>',
+        ])
+            ->and($transformer->typeImports)->toBe([])
+            ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']]);
+    });
+
+    test('publishes the enum type with tolki disabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        $transformer = new ResourceTransformer(PostStatusSourcesResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'status_from_local' => 'StatusType',
+            'visibility_from_local' => 'VisibilityType | null',
+            'status_from_helper' => 'StatusType',
+            'visibility_from_helper' => 'VisibilityType | null',
+            'status_from_method' => 'StatusType',
+        ])
+            ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
+    });
 });

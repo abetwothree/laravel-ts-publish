@@ -250,9 +250,10 @@ and every resource still publish the getter's own analysis, and `CommentRelation
 `ReleaseColumnsResource` pin both kinds of body. See
 [AccessorBodyAnalyzer § A reader that carries no import][reader-no-import].
 
-One read keeps imports on purpose: `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` types
+Two reads keep imports on purpose: `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` types
 `EnumResource::make($author->role)` on a bound closure parameter from the attribute's first enum FQCN, a channel a
-spelling without imports can lose. The enum it names is one the body fallback drops anyway.
+spelling without imports can lose, and `SubjectHelperReturnResolver` types a `$this->helper()` returning such a wrap on
+that channel. The enums they name are ones the body fallback drops anyway.
 
 An accessor still costs the method its whole shape when its type names a class any other way:
 
