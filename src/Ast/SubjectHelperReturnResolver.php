@@ -10,15 +10,25 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Expression as ExpressionStmt;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
+use ReflectionMethod;
 
 /**
  * The value a subject's own `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
@@ -79,11 +89,6 @@ final class SubjectHelperReturnResolver
             return null;
         }
 
-        // An untyped helper that runs off its end returns a null no return shows; a declared return type throws there.
-        if (! $method->hasReturnType() && ! end($stmts) instanceof Return_) {
-            return null;
-        }
-
         $bindings = $scope->nameBindings();
         $resolvingLocalVars = $scope->resolvingLocalVars;
         $declaringFileClass = $scope->declaringFileClass;
@@ -108,7 +113,15 @@ final class SubjectHelperReturnResolver
         }
 
         // Without an enum channel no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.
-        return isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']) ? $result : null;
+        if (! isset($result['enumFqcn']) && ! isset($result['multiEnumResourceFqcns'])) {
+            return null;
+        }
+
+        if ($this->canEndWithoutValue($method, $stmts)) {
+            $result['type'] = ValueResult::withNullArm($result['type']);
+        }
+
+        return $result;
     }
 
     /**
@@ -141,5 +154,47 @@ final class SubjectHelperReturnResolver
     private function isNullLiteral(Expr $expr): bool
     {
         return $expr instanceof ConstFetch && $expr->name->toLowerString() === 'null';
+    }
+
+    /**
+     * Whether a helper's body can end without a value, returning a `null` that none of its returns shows.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    private function canEndWithoutValue(ReflectionMethod $method, array $stmts): bool
+    {
+        // A declared return type throws where the body would end without a value.
+        if ($method->hasReturnType()) {
+            return false;
+        }
+
+        // A trailing comment parses as a statement of its own.
+        $statements = array_filter($stmts, fn (Stmt $stmt): bool => ! $stmt instanceof Nop);
+        $last = end($statements);
+
+        if (! $last instanceof Return_ && ! ($last instanceof ExpressionStmt && $last->expr instanceof Throw_)) {
+            return true;
+        }
+
+        $visitor = new class extends NodeVisitorAbstract
+        {
+            public bool $returnsNothing = false;
+
+            /** Note a bare `return;` of the body's own, leaving a nested closure or function unread. */
+            public function enterNode(Node $node): ?int
+            {
+                if ($node instanceof FunctionLike) {
+                    return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+                }
+
+                $this->returnsNothing = $this->returnsNothing || ($node instanceof Return_ && $node->expr === null);
+
+                return null;
+            }
+        };
+
+        new NodeTraverser($visitor)->traverse($stmts);
+
+        return $visitor->returnsNothing;
     }
 }

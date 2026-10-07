@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
@@ -3243,6 +3244,16 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
     test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
         expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
             ->toBe('{ s: unknown; title: string }');
+    });
+
+    test('publishes an untyped helper that can run off its end with its null', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(EnumResourceUntypedHelperResource::class));
+
+        expect($content)->toContain('pinned_status: AsEnum<typeof Status> | null;')
+            ->toMatch("/^import \\{ Status \\} from '[^']+';$/m");
     });
 });
 

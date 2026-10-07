@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceUntypedHelperResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -100,26 +101,6 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     public function teamResource(): JsonResource
     {
         return new JsonResource($this->resource);
-    }
-
-    /**
-     * The team's latest status as an enum resource with a team; without one it runs off its end and returns null.
-     */
-    public function presentStatusResource()
-    {
-        if ($this->resource !== null) {
-            return EnumResource::make($this->latest_status);
-        }
-    }
-
-    /**
-     * The team's latest status as an enum resource with a team; without one PHP throws on the declared return type.
-     */
-    public function declaredPresentStatusResource(): EnumResource
-    {
-        if ($this->resource !== null) {
-            return EnumResource::make($this->latest_status);
-        }
     }
 }
 
@@ -233,13 +214,24 @@ it('declines a helper whose every wrap the engine leaves untyped', function (str
     'around its own call' => ['selfWrappedResource'],
 ]);
 
-// No return shows the null an untyped helper returns when it runs off its end; a declared return type throws there.
-it('reads a helper that can run off its end only when it declares a return type', function (string $method, ?array $expected) {
-    expect(subjectHelperReturn($method, SubjectHelperReturnProbeResource::class, Team::class)[0])->toBe($expected);
+// No value return shows the null an untyped helper returns when its body ends without a value; a declared return type
+// throws there instead.
+it('gives an untyped helper its null when its body can end without a value', function (string $method, array $expected) {
+    expect(subjectHelperReturn($method, EnumResourceUntypedHelperResource::class)[0])->toBe($expected);
 })->with([
-    'untyped' => ['presentStatusResource', null],
-    'declared' => ['declaredPresentStatusResource', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'running off its end' => ['pinnedStatus', ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]],
+    'a bare return' => ['pinnedStatusOrNothing', ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]],
+    'a trailing throw' => ['pinnedStatusOrFail', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'a comment after the last return' => ['notedStatus', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'a bare return in a nested closure' => ['statusBesideCallback', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'a declared return type' => ['declaredPinnedStatus', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
 ]);
+
+// Only the last statement is read, not whether each branch returns, so the arm is a sound superset here.
+it('gives an untyped helper ending in an if/else that returns on both arms a null it never returns', function () {
+    expect(subjectHelperReturn('statusOrDraft', EnumResourceUntypedHelperResource::class)[0])
+        ->toBe(['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]);
+});
 
 // The helper wraps `$this->visibility`, a read that keeps imports, so only the resolver's own check leaves it unknown.
 it('declines in a scope that carries no import', function () {
