@@ -243,17 +243,10 @@ trait ReadsReturnedVariables
                     }
                 }
 
-                // A re-assigned key is the last write winning, in the first write's position: the stale
-                // single-value channels go before addProperty() routes this result's own, and the entry
-                // it appends is folded back over the earlier one.
-                unset(
-                    $into->enumResources[$keyName],
-                    $into->nestedResources[$keyName],
-                    $into->directEnumFqcns[$keyName],
-                    $into->modelFqcns[$keyName],
-                    $into->multiEnumResourceFqcns[$keyName],
-                    $into->enumResourceArmShapes[$keyName],
-                );
+                // A re-assigned key is the last write winning, in the first write's position: every stale channel
+                // goes before addProperty() routes this result's own, and the entry it appends is folded back over
+                // the earlier one.
+                $into->forgetChannels($keyName);
 
                 $appendedIndex = count($into->properties);
 

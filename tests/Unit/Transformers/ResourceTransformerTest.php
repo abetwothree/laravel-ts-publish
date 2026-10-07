@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -3124,6 +3125,11 @@ describe('a union of two models that share a name', function () {
     test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
         expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
             ->toBe('CrmUser | null');
+    });
+
+    test('names a key written twice by its last write\'s class', function () {
+        expect((new ResourceTransformer(HandoverRewrittenKeyResource::class))->properties['who']['type'])
+            ->toBe('{ p: WorkbenchUser | null }');
     });
 });
 
