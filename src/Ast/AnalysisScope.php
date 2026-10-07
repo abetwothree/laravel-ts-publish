@@ -35,7 +35,7 @@ use ReflectionClass;
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
- * @phpstan-type NonNullRead array{read: Expr, after: int|null}
+ * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
  *      type: string,
@@ -125,9 +125,11 @@ final class AnalysisScope
     public array $varGuardBindings = [];
 
     /**
-     * Read paths a guard proves non-null, keyed by the variable each starts at: a condition's for the value or arm it
-     * runs, an early exit's for the reads past `after`. A resource built around one never serializes as null. Scoped
-     * like varClassBindings, and a closure parameter, or a write in a closure's body, drops the proofs of its name.
+     * Read paths a guard proves non-null, keyed by the variable each starts at: a condition's for the value, arm or
+     * block it runs, an exit's for the rest of its block, each between the offsets it sets.
+     *
+     * A resource built around one never serializes as null. Scoped like varClassBindings, and a closure parameter, or a
+     * write in a closure's body, drops the proofs of its name.
      *
      * @var NonNullReadsMap
      */

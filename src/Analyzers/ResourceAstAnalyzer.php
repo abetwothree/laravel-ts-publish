@@ -379,7 +379,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // A bare $this->someMethod() resolves the same way an array-literal spread of it would.
         return $filtered ?? ($this->hasThisReceiver($expr)
-            ? $this->analyzeThisMethodSpread($expr->name->toString(), $topLevel)
+            ? $this->analyzeThisMethodSpread($expr->name->toString(), $topLevel, $expr)
             : null);
     }
 
@@ -498,7 +498,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel);
+                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
 
                 if ($spreadAnalysis !== null) {
                     $analysis->merge($spreadAnalysis);
@@ -516,7 +516,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $funcName = $funcCallName->getLast();
 
                     if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName, $topLevel);
+                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName, $topLevel, $item->value);
 
                         if ($spreadAnalysis !== null) {
                             $analysis->merge($spreadAnalysis);
@@ -820,6 +820,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         try {
             $this->scope->claimParameters($expr);
             $this->scope->bindUnpassedParameters($expr, 0, $this);
+            $this->proveClosureGuards($expr, $this->scope);
 
             return $this->closureReturnBranches($expr);
         } finally {
@@ -867,9 +868,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
-     * the target's own return (see analyzeReturnArray()). Each binding table it clears is restored in a `finally`.
+     * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. Each
+     * binding table it clears is restored in a `finally`.
      */
-    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true): ?ResourceAnalysis
+    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
     {
         if (! $this->scope->subjectReflection->hasMethod($methodName)) {
             return null; // @codeCoverageIgnore
@@ -905,7 +907,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->varClassBindings = [];
             $this->scope->varGuardBindings = [];
             $this->scope->varDocBindings = [];
-            $this->scope->nonNullReads = $this->proofsAcrossCall($this->scope);
+            $this->scope->nonNullReads = $this->proofsAcrossCall($this->scope, $call);
             $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
@@ -972,7 +974,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($filtered !== null) {
                 $analysis = $filtered;
             } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
-                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel) ?? new ResourceAnalysis;
+                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? new ResourceAnalysis;
             } else {
                 $analysis = new ResourceAnalysis;
             }

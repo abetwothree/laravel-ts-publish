@@ -30,6 +30,7 @@ use PhpParser\Node\Name;
 /**
  * The read paths a guard proves non-null, kept on AnalysisScope::$nonNullReads, and whether a proof holds for a read.
  *
+ * @phpstan-import-type NonNullRead from AnalysisScope
  * @phpstan-import-type NonNullReadsMap from AnalysisScope
  *
  * @internal
@@ -69,18 +70,18 @@ trait ReadsNonNullGuards
     }
 
     /**
-     * Prove each read path non-null for the reads past $after, or for every read when it is null. The caller restores
-     * the table.
+     * Prove each read path non-null for the reads between the offsets $after and $before, a null one leaving that side
+     * open. The caller restores the table.
      *
      * @param  list<Expr>  $reads
      */
-    protected function proveNonNull(array $reads, AnalysisScope $scope, ?int $after = null): void
+    protected function proveNonNull(array $reads, AnalysisScope $scope, ?int $after = null, ?int $before = null): void
     {
         foreach ($reads as $read) {
             $root = $this->readRoot($read);
 
             if ($root !== null) {
-                $scope->nonNullReads[$root][] = ['read' => $read, 'after' => $after];
+                $scope->nonNullReads[$root][] = ['read' => $read, 'after' => $after, 'before' => $before];
             }
         }
     }
@@ -108,14 +109,21 @@ trait ReadsNonNullGuards
     }
 
     /**
-     * The proofs that hold in another method of the subject, called where they hold: those of `$this` reads, since it
-     * reads the same object, but none of the caller's variables and none bound to an offset in the caller's body.
+     * The proofs that hold in another method of the subject, called at $call: each proof of a `$this` read that holds
+     * where the call sits, for the whole callee, since it reads the same object. None of the caller's variables, and
+     * for a call no offset places, none an offset bounds.
      *
      * @return NonNullReadsMap
      */
-    protected function proofsAcrossCall(AnalysisScope $scope): array
+    protected function proofsAcrossCall(AnalysisScope $scope, ?Expr $call = null): array
     {
-        $proofs = array_values(array_filter($scope->nonNullReads['this'] ?? [], fn (array $proof): bool => $proof['after'] === null));
+        $proofs = [];
+
+        foreach ($scope->nonNullReads['this'] ?? [] as $proof) {
+            if ($this->holdsAt($proof, $call?->getStartFilePos() ?? -1)) {
+                $proofs[] = ['read' => $proof['read'], 'after' => null, 'before' => null];
+            }
+        }
 
         return $proofs === [] ? [] : ['this' => $proofs];
     }
@@ -129,7 +137,7 @@ trait ReadsNonNullGuards
 
         return $root !== null && array_any(
             $scope->nonNullReads[$root] ?? [],
-            fn (array $proof): bool => ($proof['after'] === null || $read->getStartFilePos() > $proof['after'])
+            fn (array $proof): bool => $this->holdsAt($proof, $read->getStartFilePos())
                 && $this->isSameReadPath($proof['read'], $read),
         );
     }
@@ -144,6 +152,17 @@ trait ReadsNonNullGuards
         }
 
         return $expr instanceof Variable && is_string($expr->name) ? $expr->name : null;
+    }
+
+    /**
+     * Whether a proof holds at a file offset, a bound it leaves null being open.
+     *
+     * @param  NonNullRead  $proof
+     */
+    private function holdsAt(array $proof, int $offset): bool
+    {
+        return ($proof['after'] === null || $offset > $proof['after'])
+            && ($proof['before'] === null || $offset < $proof['before']);
     }
 
     /**

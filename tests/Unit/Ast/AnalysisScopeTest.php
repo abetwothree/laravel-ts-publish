@@ -74,7 +74,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
         $scope->requestVarNames[$name] = Request::class;
-        $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null]];
+        $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
     }
 
     return $scope;

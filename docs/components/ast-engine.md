@@ -223,8 +223,9 @@ A guard binds `$x` only when no write to it can land after the test, and a write
 `GuardWritePostResource` pins both cases. Neither mechanism sees a write through a reference.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
-`mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, and an
-early exit's for the reads past it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads.
+`mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
+`if` chain's for each block it runs, and the failed conditions of the chain's leading branches that always exit for the
+rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads.
 
 A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
 the body, where `$x` is what the test excluded.

@@ -135,7 +135,8 @@ final class StaticCallHandlerOrphanCollection extends ResourceCollection {}
 
 /**
  * A resource that returns early when its parent is null, so only the return after the guard wraps a parent it proves.
- * The spread helper runs inside the exit, where the early exit's proof does not reach, and under a when() guard.
+ * The spread helper runs inside the exit, where the early exit's proof does not reach, under a when() guard, and after
+ * the exit, where the proof holds for the whole helper.
  *
  * @mixin Category
  */
@@ -151,6 +152,7 @@ final class StaticCallHandlerEarlyExitResource extends JsonResource
         return [
             'after' => CategoryResource::make($this->parent),
             'guarded' => $this->when($this->parent, fn () => [...$this->spreadParent()]),
+            ...$this->spreadAfterExit(),
         ];
     }
 
@@ -158,6 +160,347 @@ final class StaticCallHandlerEarlyExitResource extends JsonResource
     public function spreadParent(): array
     {
         return ['spread' => CategoryResource::make($this->parent)];
+    }
+
+    /** @return array<string, mixed> */
+    public function spreadAfterExit(): array
+    {
+        return ['spread_after' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * Returns inside `if` blocks: only the block whose condition tests the parent itself proves it.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerIfBlockResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent_id !== null) {
+            return ['foreign_key' => CategoryResource::make($this->parent)];
+        }
+
+        if ($this->name) {
+            return ['other_read' => CategoryResource::make($this->parent)];
+        }
+
+        if ($this->parent) {
+            return ['inside' => CategoryResource::make($this->parent)];
+        }
+
+        return ['after' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * Returns in the `elseif` and `else` blocks of a null check, where every earlier condition failed.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerElseBlockResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent === null) {
+            return ['id' => $this->id];
+        } elseif ($request->boolean('brief')) {
+            return ['elseif' => CategoryResource::make($this->parent)];
+        } else {
+            return ['else' => CategoryResource::make($this->parent)];
+        }
+    }
+}
+
+/**
+ * An early exit nested in another block proves the parent to the end of that block only.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerNestedExitResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($request->boolean('full')) {
+            if ($this->parent === null) {
+                return ['id' => $this->id];
+            }
+
+            return ['nested' => CategoryResource::make($this->parent)];
+        }
+
+        return ['past' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * An early exit an `elseif` follows: every path past the chain went through the failed null check.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerElseifExitResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent === null) {
+            return ['id' => $this->id];
+        } elseif ($request->boolean('brief')) {
+            return ['brief' => $this->id];
+        }
+
+        return ['after' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * A variable whose key is written inside a null check, and again outside it.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerKeyInIfResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        $data = ['id' => $this->id];
+
+        if ($this->parent !== null) {
+            $data['inside'] = CategoryResource::make($this->parent);
+        }
+
+        $data['after'] = CategoryResource::make($this->parent);
+
+        return $data;
+    }
+}
+
+/**
+ * Spread helpers that each wrap the parent inside one `if` block, by a return or a key write. The last four are
+ * controls: a check on another read, on the foreign key, a block that rewrites the parent, and a truthy one's else.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerGuardedHelpersResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            ...$this->returnInIf(),
+            ...$this->returnInElse(),
+            ...$this->keyNotNull(),
+            ...$this->keyTruthy(),
+            ...$this->keyIsset(),
+            ...$this->keyInElse(),
+            ...$this->keyOtherRead(),
+            ...$this->keyForeignKey(),
+            ...$this->keyRewritten(),
+            ...$this->keyElseOfTruthy(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function returnInIf(): array
+    {
+        if ($this->parent) {
+            return ['return_in_if' => CategoryResource::make($this->parent)];
+        }
+
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function returnInElse(): array
+    {
+        if ($this->parent === null) {
+            return [];
+        } else {
+            return ['return_in_else' => CategoryResource::make($this->parent)];
+        }
+    }
+
+    /** @return array<string, mixed> */
+    public function keyNotNull(): array
+    {
+        $data = [];
+
+        if ($this->parent !== null) {
+            $data['key_not_null'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyTruthy(): array
+    {
+        $data = [];
+
+        if ($this->parent) {
+            $data['key_truthy'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyIsset(): array
+    {
+        $data = [];
+
+        if (isset($this->parent)) {
+            $data['key_isset'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyInElse(): array
+    {
+        $data = [];
+
+        if ($this->parent === null) {
+            $data['no_parent'] = true;
+        } else {
+            $data['key_in_else'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyOtherRead(): array
+    {
+        $data = [];
+
+        if ($this->name) {
+            $data['other_read'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyForeignKey(): array
+    {
+        $data = [];
+
+        if ($this->parent_id !== null) {
+            $data['foreign_key'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyRewritten(): array
+    {
+        $data = [];
+
+        if ($this->parent) {
+            $this->parent = $this->parent->parent;
+            $data['rewritten'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function keyElseOfTruthy(): array
+    {
+        $data = [];
+
+        if ($this->parent) {
+            $data['has_parent'] = true;
+        } else {
+            $data['else_of_truthy'] = CategoryResource::make($this->parent);
+        }
+
+        return $data;
+    }
+}
+
+/**
+ * A helper the first-return fallback reads, called inside a null check's block.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerReturnedCallResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent !== null) {
+            return $this->returnedFields();
+        }
+
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function returnedFields(): array
+    {
+        return ['returned' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * A spread helper whose own first return calls another helper inside a null check's block.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerFirstReturnCallResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [...$this->firstReturnCall()];
+    }
+
+    /** @return array<string, mixed> */
+    public function firstReturnCall(): array
+    {
+        if ($this->parent !== null) {
+            return $this->firstReturnFields();
+        }
+
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function firstReturnFields(): array
+    {
+        return ['first_return' => CategoryResource::make($this->parent)];
+    }
+}
+
+/**
+ * A helper spread by its bare name, as a trait's is, inside a null check's block.
+ *
+ * @mixin Category
+ */
+final class StaticCallHandlerFunctionSpreadResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        if ($this->parent !== null) {
+            return [...functionStyleFields()];
+        }
+
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public function functionStyleFields(): array
+    {
+        return ['function_spread' => CategoryResource::make($this->parent)];
     }
 }
 
@@ -423,6 +766,18 @@ it('drops a wrap\'s null arm where a guard proves its payload non-null', functio
     'transform(), its parameter' => ['$this->transform($this->parent, fn ($p) => self::make($p))', 'FluentSelfResource'],
     'transform(), the read it passes' => ['$this->transform($this->parent, fn ($p) => self::make($this->parent))', 'FluentSelfResource'],
     'an early exit in a closure' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } return self::make($this->parent); })', 'string | FluentSelfResource'],
+    'a return in a closure\'s if' => ['$this->when(true, function () { if ($this->parent) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string'],
+    'a return in a closure\'s else' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } else { return self::make($this->parent); } })', 'string | FluentSelfResource'],
+    'a return in a closure\'s elseif' => ['$this->when(true, function () { if ($this->name === "") { return "none"; } elseif ($this->parent !== null) { return self::make($this->parent); } return "none"; })', 'string | FluentSelfResource'],
+    'an early exit nested in a closure\'s block' => ['$this->when(true, function () { if ($this->name) { if ($this->parent === null) { return "none"; } return self::make($this->parent); } return "none"; })', 'string | FluentSelfResource'],
+    'an early exit an elseif follows, in a closure' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } elseif ($this->name) { return "x"; } return self::make($this->parent); })', 'string | FluentSelfResource'],
+    'a return in a merge closure\'s if' => ['[$this->mergeWhen(true, function () { if ($this->parent) { return ["p" => self::make($this->parent)]; } return []; })]', '{ p?: FluentSelfResource }'],
+    'an early exit in a merge closure' => ['[$this->mergeWhen(true, function () { if ($this->parent === null) { return []; } return ["p" => self::make($this->parent)]; })]', '{ p?: FluentSelfResource }'],
+    'a key written in a merge closure\'s if' => ['[$this->mergeWhen(true, function () { $d = []; if ($this->parent) { $d["p"] = self::make($this->parent); } return $d; })]', '{ p?: FluentSelfResource }'],
+    'an early exit whose own body writes through $this' => ['$this->when(true, function () { if ($this->parent === null) { $this->name = "orphan"; return "none"; } return self::make($this->parent); })', 'string | FluentSelfResource'],
+    'a nested early exit with a write past its block' => ['$this->when(true, function () { if ($this->name) { if ($this->parent === null) { return "none"; } return self::make($this->parent); } $this->name = "x"; return "none"; })', 'string | FluentSelfResource'],
+    'an early exit nested in a foreach' => ['$this->when(true, function () { foreach ([1] as $i) { if ($this->parent === null) { return "none"; } return self::make($this->parent); } return "none"; })', 'string | FluentSelfResource'],
+    'an early exit nested in a try' => ['$this->when(true, function () { try { if ($this->parent === null) { return "none"; } return self::make($this->parent); } catch (\Throwable) { return "none"; } })', 'string | FluentSelfResource'],
 ]);
 
 // A guard proves only the read it tests, only where it holds, and only until a closure parameter takes the read's name.
@@ -453,6 +808,14 @@ it('keeps a wrap\'s null arm where no guard proves its payload non-null', functi
     'a closure parameter named like the guarded read' => ['$this->whenHas("parent", fn ($p) => $this->when($p, fn ($p = null) => self::make($p)))', 'FluentSelfResource | null'],
     'a return inside an early exit' => ['$this->when(true, function () { if ($this->parent === null) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],
     'an early exit the body writes past' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } $this->parent = null; return self::make($this->parent); })', 'string | FluentSelfResource | null'],
+    'a closure\'s if on another read' => ['$this->when(true, function () { if ($this->name) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],
+    'a closure\'s if whose block writes the read' => ['$this->when(true, function () { if ($this->parent) { $this->parent = null; return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],
+    'the else of a closure\'s truthy if' => ['$this->when(true, function () { if ($this->parent) { return "none"; } else { return self::make($this->parent); } })', 'string | FluentSelfResource | null'],
+    'a read past the block an early exit is nested in' => ['$this->when(true, function () { if ($this->name) { if ($this->parent === null) { return "none"; } } return self::make($this->parent); })', 'string | FluentSelfResource | null'],
+    'an elseif exit after a branch that does not exit' => ['$this->when(true, function () { if ($this->name) { $n = 1; } elseif ($this->parent === null) { return "none"; } return self::make($this->parent); })', 'string | FluentSelfResource | null'],
+    'an early exit whose elseif writes the read' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } elseif ($this->name) { $this->parent = null; } return self::make($this->parent); })', 'string | FluentSelfResource | null'],
+    'a merge closure\'s if on a foreign key' => ['[$this->mergeWhen(true, function () { if ($this->parent_id !== null) { return ["p" => self::make($this->parent)]; } return []; })]', '{ p?: FluentSelfResource | null }'],
+    'a catch after a try that exits early' => ['$this->when(true, function () { try { if ($this->parent === null) { return "none"; } } catch (\Throwable) { return self::make($this->parent); } return "none"; })', 'string | FluentSelfResource | null'],
 ]);
 
 it('drops a wrap\'s null arm after a method\'s early exit proves its payload non-null', function () {
@@ -461,8 +824,55 @@ it('drops a wrap\'s null arm after a method\'s early exit proves its payload non
     expect($props['inside']['type'])->toBe('CategoryResource | null')
         ->and($props['spread']['type'])->toBe('CategoryResource | null')
         ->and($props['after']['type'])->toBe('CategoryResource')
-        ->and($props['guarded']['type'])->toBe('{ spread: CategoryResource }');
+        ->and($props['guarded']['type'])->toBe('{ spread: CategoryResource }')
+        ->and($props['spread_after']['type'])->toBe('CategoryResource');
 });
+
+/**
+ * The type a key of a resource over a Category publishes.
+ *
+ * @param  class-string<JsonResource>  $resource
+ */
+function staticCallHandlerKeyType(string $resource, string $key): string
+{
+    return collect(new ResourceAstAnalyzer(new ReflectionClass($resource), Category::class)->analyze()->properties)
+        ->keyBy('name')[$key]['type'];
+}
+
+// A condition proves its reads for the statement block it runs, and an exit for the rest of the block that holds it.
+it('drops a wrap\'s null arm in a statement block a guard proves its payload non-null for', function (string $resource, string $key, string $type) {
+    expect(staticCallHandlerKeyType($resource, $key))->toBe($type);
+})->with([
+    'toArray(), a return in an if' => [StaticCallHandlerIfBlockResource::class, 'inside', 'CategoryResource'],
+    'toArray(), a return in an elseif' => [StaticCallHandlerElseBlockResource::class, 'elseif', 'CategoryResource'],
+    'toArray(), a return in an else' => [StaticCallHandlerElseBlockResource::class, 'else', 'CategoryResource'],
+    'toArray(), an early exit nested in a block' => [StaticCallHandlerNestedExitResource::class, 'nested', 'CategoryResource'],
+    'toArray(), an early exit an elseif follows' => [StaticCallHandlerElseifExitResource::class, 'after', 'CategoryResource'],
+    'toArray(), a key written in an if' => [StaticCallHandlerKeyInIfResource::class, 'inside', 'CategoryResource'],
+    'a helper, a return in an if' => [StaticCallHandlerGuardedHelpersResource::class, 'return_in_if', 'CategoryResource'],
+    'a helper, a return in an else' => [StaticCallHandlerGuardedHelpersResource::class, 'return_in_else', 'CategoryResource'],
+    'a helper, a key written in an if, !== null' => [StaticCallHandlerGuardedHelpersResource::class, 'key_not_null', 'CategoryResource'],
+    'a helper, a key written in an if, a truthy read' => [StaticCallHandlerGuardedHelpersResource::class, 'key_truthy', 'CategoryResource'],
+    'a helper, a key written in an if, isset()' => [StaticCallHandlerGuardedHelpersResource::class, 'key_isset', 'CategoryResource'],
+    'a helper, a key written in an else' => [StaticCallHandlerGuardedHelpersResource::class, 'key_in_else', 'CategoryResource'],
+    'a helper the first-return fallback reads, called in an if' => [StaticCallHandlerReturnedCallResource::class, 'returned', 'CategoryResource'],
+    'a helper a helper\'s first return calls in an if' => [StaticCallHandlerFirstReturnCallResource::class, 'first_return', 'CategoryResource'],
+    'a helper spread by its bare name in an if' => [StaticCallHandlerFunctionSpreadResource::class, 'function_spread', 'CategoryResource'],
+]);
+
+it('keeps a wrap\'s null arm in a statement block no guard proves its payload non-null for', function (string $resource, string $key, string $type) {
+    expect(staticCallHandlerKeyType($resource, $key))->toBe($type);
+})->with([
+    'toArray(), a return in an if on another read' => [StaticCallHandlerIfBlockResource::class, 'other_read', 'CategoryResource | null'],
+    'toArray(), a return in an if on a foreign key' => [StaticCallHandlerIfBlockResource::class, 'foreign_key', 'CategoryResource | null'],
+    'toArray(), a return past a truthy if' => [StaticCallHandlerIfBlockResource::class, 'after', 'CategoryResource | null'],
+    'toArray(), a return past the block an early exit is nested in' => [StaticCallHandlerNestedExitResource::class, 'past', 'CategoryResource | null'],
+    'toArray(), a key written past an if' => [StaticCallHandlerKeyInIfResource::class, 'after', 'CategoryResource | null'],
+    'a helper, a key written in an if on another read' => [StaticCallHandlerGuardedHelpersResource::class, 'other_read', 'CategoryResource | null'],
+    'a helper, a key written in an if on a foreign key' => [StaticCallHandlerGuardedHelpersResource::class, 'foreign_key', 'CategoryResource | null'],
+    'a helper, a key written in an if that rewrites the read' => [StaticCallHandlerGuardedHelpersResource::class, 'rewritten', 'CategoryResource | null'],
+    'a helper, a key written in the else of a truthy if' => [StaticCallHandlerGuardedHelpersResource::class, 'else_of_truthy', 'CategoryResource | null'],
+]);
 
 it('declines an expression it does not claim', function () {
     $expr = new MethodCall(new Variable('this'), 'somethingElse');
