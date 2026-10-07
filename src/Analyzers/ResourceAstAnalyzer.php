@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -208,6 +209,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether the subject is a ResourceCollection whose toArray() is Laravel's own, declared by no class in between.
+     */
+    private function runsFrameworkCollectionToArray(): bool
+    {
+        return $this->methodName === 'toArray'
+            && $this->isResourceCollection($this->scope)
+            && $this->scope->subjectReflection->getMethod('toArray')->getDeclaringClass()->getName() === ResourceCollection::class;
+    }
+
+    /**
      * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
      * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
      *
@@ -232,6 +243,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $toArrayMethod = $context?->method;
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
+            $ownCollection = $this->runsFrameworkCollectionToArray() ? $this->buildCollectionDelegatedAnalysis() : null;
+
+            // Laravel's collects() reads #[Collects], $collects and the naming convention off static::class, so the
+            // class collects what it names itself; a parent's answer stands only where the class names nothing.
+            if ($ownCollection !== null && ($ownCollection->properties !== [] || $ownCollection->flatTypeAlias !== null)) {
+                return $ownCollection;
+            }
+
             $inherited = $this->analyzeParentToArray();
 
             // An empty result means no ancestor declared the method either, so keep delegating.
@@ -246,7 +265,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             if ($this->isResourceCollection($this->scope)) {
-                return $this->buildCollectionDelegatedAnalysis();
+                return $ownCollection ?? $this->buildCollectionDelegatedAnalysis();
             }
 
             $delegated = $this->buildModelDelegatedAnalysis();

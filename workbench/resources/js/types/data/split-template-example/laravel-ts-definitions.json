@@ -13270,6 +13270,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\HandoverCollection": {
+            "name": "HandoverCollection",
+            "properties": [
+                {
+                    "name": "handovers",
+                    "type": "HandoverResource[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverDigestCollection": {
+            "name": "HandoverDigestCollection",
+            "properties": [
+                {
+                    "name": "handovers",
+                    "type": "HandoverSummaryResource[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\HandoverNoticeResource": {
             "name": "HandoverNoticeResource",
             "properties": [
@@ -13321,6 +13341,16 @@
                 {
                     "name": "audience",
                     "type": "ModelsUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverRosterCollection": {
+            "name": "HandoverRosterCollection",
+            "properties": [
+                {
+                    "name": "handovers",
+                    "type": "HandoverResource[]",
                     "optional": false
                 }
             ]

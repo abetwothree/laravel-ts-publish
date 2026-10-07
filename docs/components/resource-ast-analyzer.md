@@ -44,8 +44,8 @@ every profile, the order handlers run in decides which one answers; see
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. That guard is why the walk can run before
-  the collection check: Laravel's own `ResourceCollection::toArray()` yields no properties.
+  `buildCollectionDelegatedAnalysis()` or `buildModelDelegatedAnalysis()`. A collection running Laravel's own
+  `toArray()` resolves its own delegation first, so no parent's answer outranks what the collection names itself.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
@@ -91,14 +91,15 @@ statements to a class, interface, enum or trait is never kept, since it needs an
 `@return` keeps no such name (`keepsUnresolvedNames: false`), because there an unresolved name is as likely an
 unimported class, which `tsc` rejects with TS2304.
 
-### A stacked body-less collection resolves its parent's `$collects`
+### A stacked body-less collection collects what its own class names
 
-Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`.
-`LeafCollection`'s walk reaches `MidCollection`, whose own collection delegation returns a wrapped `{ data: … }`
-shape. That shape has properties, so `LeafCollection` publishes its parent's collected type, even when its own
-`#[Collects]` names another resource. When `MidCollection` sets `$wrap = null`, its delegation returns no properties, so
-`LeafCollection` resolves its own `$collects`. It still inherits `$wrap = null`, because
-`buildCollectionDelegatedAnalysis()` reads the default through reflection. No fixture has this shape.
+Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`. Laravel's
+`collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
+own name, and `runsFrameworkCollectionToArray()` lets `LeafCollection` resolve that before its walk reaches
+`MidCollection`. It inherits `$wrap`, `null` included, because `buildCollectionDelegatedAnalysis()` reads the default
+through reflection. It keeps `MidCollection`'s type only when it names nothing
+([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
+A `toArray()` an ancestor or a trait declares still wins. The `Handover*Collection` fixtures pin it.
 
 ### An inherited shape needs an inherited model
 

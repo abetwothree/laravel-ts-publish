@@ -3393,6 +3393,17 @@ declare global {
             archived?: boolean;
             [key: number]: workbench.app.models.OrderItem;
         }
+        /** A body-less collection with its own wrap key, which every collection stacked on it inherits. */
+        export interface HandoverCollection {
+            handovers: HandoverResource[];
+        }
+        /**
+         * Stacked on a body-less collection and body-less itself: Laravel collects its own `$collects`, under the inherited
+         * `handovers` wrap.
+         */
+        export interface HandoverDigestCollection {
+            handovers: HandoverSummaryResource[];
+        }
         /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
         export interface HandoverNoticeResource {
             id: number;
@@ -3407,6 +3418,13 @@ declare global {
             pair: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
             parties: { first: workbench.app.models.User | null; either: workbench.app.models.User | workbench.crm.models.User | null };
             audience: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /**
+         * Declares nothing: the `$collects` it inherits outranks the naming convention, so Laravel collects HandoverResource,
+         * not HandoverRosterResource.
+         */
+        export interface HandoverRosterCollection {
+            handovers: HandoverResource[];
         }
         /** Reads members typed by a docblock union whose arms render alike for two models that share a name. */
         export interface HandoverRosterResource {

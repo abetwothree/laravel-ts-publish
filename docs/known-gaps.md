@@ -331,6 +331,15 @@ alias `{relation}_{function}_{column}` a built-in cast on the parent model, or d
 `@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration, so an
 `integer` cast on its alias makes the response hold one.
 
+### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
+
+A collection stacked on another collects what its own class names: its own `#[Collects]`, the `$collects` it inherits,
+then the naming convention on its own name. When none names a resource, as with `StackedUnnamedCollection` over
+`SupplierSummaryCollection`, Laravel collects the raw models, but the package publishes the parent's
+`SupplierSummaryResource[]` rather than an empty interface, which would drop the `data` key the response carries. Name
+the resource on the stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both
+Laravel versions, and the published type and the response agree.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

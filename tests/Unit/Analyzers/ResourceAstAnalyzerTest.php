@@ -28,6 +28,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedAttributeDigestCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedUnnamedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedUnwrappedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TraitShapedChildCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
@@ -109,6 +114,10 @@ use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
+use Workbench\App\Http\Resources\HandoverDigestCollection;
+use Workbench\App\Http\Resources\HandoverRosterCollection;
+use Workbench\App\Http\Resources\HandoverRosterResource;
+use Workbench\App\Http\Resources\HandoverSummaryResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
@@ -4332,6 +4341,63 @@ it('honours an inherited $wrap = null on a body-less collection', function () {
 
     expect($analysis->flatTypeAlias)->toBe('PostResource[]');
 });
+
+// Laravel's collects() reads #[Collects], $collects and the naming convention off static::class, so a body-less
+// collection stacked on another collects what it names itself, under the $wrap it inherits.
+it('collects a stacked body-less collection\'s own $collects under its inherited wrap', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(HandoverDigestCollection::class)))->analyze();
+
+    expect($analysis->properties)->toHaveCount(1)
+        ->and($analysis->properties[0]['name'])->toBe('handovers')
+        ->and($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]')
+        ->and($analysis->nestedResources)->toBe(['handovers' => HandoverSummaryResource::class]);
+});
+
+it('lets an inherited $collects outrank the naming convention on a stacked collection', function () {
+    // Non-vacuous: the convention's own candidate exists, so only the inherited $collects explains the result.
+    expect(class_exists(HandoverRosterResource::class))->toBeTrue();
+
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(HandoverRosterCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('HandoverResource[]');
+});
+
+it('collects a stacked collection\'s own #[Collects] over the $collects it inherits', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedAttributeDigestCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]');
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+// Laravel collects raw models here, which no resource type describes, so the parent's type stays rather than none.
+it('keeps the parent\'s collected type when a stacked collection names none itself', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnnamedCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('SupplierSummaryResource[]');
+});
+
+it('honours a stacked collection\'s own $wrap = null over the wrap it inherits', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnwrappedCollection::class)))->analyze();
+
+    expect($analysis->flatTypeAlias)->toBe('HandoverResource[]')
+        ->and($analysis->properties)->toBeEmpty();
+});
+
+it('delegates a body-less collection for toArray() alone', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(HandoverDigestCollection::class), methodName: 'jsonSerialize');
+
+    expect($analyzer->analyze()->properties)->toBeEmpty();
+});
+
+// Each collects a resource, so reaching the delegation instead of the trait's body would publish a `data` key.
+it('reads a collection\'s toArray() a trait in another file supplies, not its delegation', function (string $class) {
+    $props = collect((new ResourceAstAnalyzer(new ReflectionClass($class)))->analyze()->properties)->keyBy('name');
+
+    expect($props)->toHaveKey('label')->not->toHaveKey('data')
+        ->and($props['label'])->toMatchArray(['type' => 'string', 'optional' => false]);
+})->with([
+    'the trait user' => [TraitShapedCollection::class],
+    'a body-less child of the trait user' => [TraitShapedChildCollection::class],
+]);
 
 describe('ResourceAstAnalyzer with PreserveKeysCollection (#[PreserveKeys] attribute)', function () {
     test('emits a keyed record for a collection carrying #[PreserveKeys]', function () {
