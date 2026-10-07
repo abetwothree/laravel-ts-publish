@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedBodylessParentChildResource;
@@ -29,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOpaqueVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedOptionalResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedParentWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPartialValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReturnedPushedKeyResource;
@@ -217,6 +219,24 @@ test('a return a parent\'s sweep skips makes a child variable built on it skip, 
 
 test('a parent delegating to no model makes a child variable built on it skip', function () {
     expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string');
+});
+
+// At a JsonResource, parent::with() is `[]` and parent::jsonSerialize() is the subject's toArray(), never the model.
+test('a parent call to a method other than toArray() over a JsonResource publishes none of the model\'s keys', function (string $method, array $members) {
+    $published = array_map(
+        fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
+        resolve(AstEngine::class)->analyze(ReturnedParentWithResource::class, $method)->properties,
+    );
+
+    expect($published)->toBe($members);
+})->with([
+    'a variable built on parent::with()' => ['with', ['extra: string']],
+    'a return of parent::jsonSerialize()' => ['jsonSerialize', []],
+]);
+
+test('the body fallback types a with() built on parent::with() by the keys it writes', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(ReturnedParentWithResource::class, 'with')['type'] ?? null)
+        ->toBe('{ extra: string }');
 });
 
 test('a returned variable is a branch only when the walk reads every whole write to it', function (string $body, bool $reads) {

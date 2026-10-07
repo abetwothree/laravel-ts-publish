@@ -362,7 +362,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if ($this->isParentCallTo($expr, $this->methodName)) {
-            return $this->analyzeParentToArray() ?? $this->buildModelSerializedAnalysis();
+            return $this->analyzeParentToArray();
         }
 
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
