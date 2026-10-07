@@ -38,9 +38,8 @@ it must:
 4. **Numeric suffix**: a member that runs out of segments takes `2`, `3` and so on, in FQCN order. The first keeps the
    unsuffixed name.
 
-One segment is not enough to be unique. Two unrelated `MailPrice` models, each in a `MailPrice\Models` namespace, both
-come out of step 2 as `MailPriceMailPrice`, a TypeScript duplicate identifier (`TS2300`). Step 3 extends both until
-they differ.
+One segment is not enough to be unique. Two unrelated `Rate` models, each in a `Rate\Models` namespace, both come out of
+step 2 as `RateRate`, a TypeScript duplicate identifier (`TS2300`). Step 3 extends both until they differ.
 
 The result holds two invariants:
 
