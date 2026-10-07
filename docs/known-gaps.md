@@ -314,10 +314,10 @@ the closure does not return.
 Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php), as
 [ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
 On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
-every other `when*()` call as that class's own method, so Laravel's `Conditionable::when()` publishes `unknown`,
-required, as `ConditionableBroadcastEvent` pins. The resource rule would be wrong there: `Conditionable::when()`
-returns the callback's result, or the object itself, and the key is always sent. Until the package types
-`Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
+every other `when*()` call as that class's own method. So Laravel's `Conditionable::when()` publishes `unknown`,
+required, as `ConditionableBroadcastEvent` pins. The resource rule would be wrong there, because
+`Conditionable::when()` returns the callback's result, or the object itself, and the key is always sent. Until the
+package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
 
 ### An aggregate's type follows the database of the machine that publishes
 
