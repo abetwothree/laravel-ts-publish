@@ -735,7 +735,7 @@ stands for two different things, so it stays two references.
 `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
 parameter, so `$case = Status::Draft` wraps a case the engine alone reads as `unknown`. Any other payload, such as a
 coalesce or a method's return, goes to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that
-holds one enum and nothing else, or a list of it for `::collection()`. Two enums, even two one name spells, stay
+holds one enum and nothing else, or a list of it for `::collection()`. Two enums, even two that share a name, stay
 `unknown`. The payload's own `| null` stays in every subject: an enum branch returns before `wrapsNullablePayload()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no

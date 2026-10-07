@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceBodyFallbackResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
@@ -3236,6 +3237,12 @@ describe('an EnumResource wrapping an enum reached through a local or a helper',
             'status_from_method' => 'StatusType',
         ])
             ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
+    });
+
+    // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.
+    test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
+        expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
+            ->toBe('{ s: unknown; title: string }');
     });
 });
 

@@ -18,6 +18,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Return_;
 
 /**
  * The value a subject's own `$this->m()` helper returns when every return wraps an enum in an `EnumResource` or is
@@ -53,7 +54,12 @@ final class SubjectHelperReturnResolver
      */
     public function resolveEnumResourceReturn(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (! $this->hasThisReceiver($call) || ! $call->name instanceof Identifier || $call->isFirstClassCallable()) {
+        // Without imports the body fallback would drop its whole shape for the enum a wrap names.
+        if (! $scope->carriesImports
+            || ! $this->hasThisReceiver($call)
+            || ! $call->name instanceof Identifier
+            || $call->isFirstClassCallable()
+        ) {
             return null;
         }
 
@@ -64,11 +70,17 @@ final class SubjectHelperReturnResolver
             return null;
         }
 
+        $method = $subject->getMethod($name);
         $stmts = resolve(MethodLocator::class)->locate($subject->getName(), $name)?->method->stmts ?? [];
         $returns = $this->collectReturnExpressions($stmts);
 
         // Only a wrap holds what no declared return can name, so any other helper's body is left unread.
         if (! array_all($returns, $this->wrapsEnumOrIsNull(...)) || array_all($returns, $this->isNullLiteral(...))) {
+            return null;
+        }
+
+        // An untyped helper that runs off its end returns a null no return shows; a declared return type throws there.
+        if (! $method->hasReturnType() && ! end($stmts) instanceof Return_) {
             return null;
         }
 
@@ -83,7 +95,7 @@ final class SubjectHelperReturnResolver
             $scope->resolvingLocalVars = [];
             // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
             $scope->closureRelationModelClass = null;
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($subject->getMethod($name));
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             $this->collectLocalVarBindings($stmts, $scope);
 
             $result = ValueResult::analyzeClosureUnion($returns, $engine, $scope);

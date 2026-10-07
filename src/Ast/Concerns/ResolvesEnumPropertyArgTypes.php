@@ -22,7 +22,8 @@ use PhpParser\Node\Name;
 /**
  * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, a local, or the one
  * enum a resolved payload holds, for both resource-construction shapes: `EnumResource::make()`/`::collection()` and
- * `new EnumResource(...)`.
+ * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
+ * fallback would drop its whole shape for the enum either names.
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -64,7 +65,10 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                if (isset($scope->localVarBindings[$name]) && ! isset($scope->resolvingLocalVars[$name])) {
+                if ($scope->carriesImports
+                    && isset($scope->localVarBindings[$name])
+                    && ! isset($scope->resolvingLocalVars[$name])
+                ) {
                     $scope->resolvingLocalVars[$name] = true;
 
                     try {
@@ -169,12 +173,21 @@ trait ResolvesEnumPropertyArgTypes
 
     /**
      * The one enum a payload those spellings cannot read resolves to, such as a helper's return or a coalesce: its
-     * type, `| null` kept, on the wrap's `enumFqcn`. A collection's payload may also be a list of that enum.
+     * type, `| null` kept, and its optional flag, on the wrap's `enumFqcn`. A collection's payload may also be a list
+     * of that enum.
      *
-     * @return ValueExpressionResult|null null for several enums, or a type that holds anything besides the enum
+     * @return ValueExpressionResult|null null without imports, for several enums, or a type holding more than the enum
      */
-    protected function resolveEnumFromResolvedPayload(Expr $payload, ExpressionEngine $engine, bool $allowsList = false): ?array
-    {
+    protected function resolveEnumFromResolvedPayload(
+        Expr $payload,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        bool $allowsList = false,
+    ): ?array {
+        if (! $scope->carriesImports) {
+            return null;
+        }
+
         $resolved = $engine->resolve($payload);
         // A union of enum reads, such as a `??` over a case, carries its one enum on the multi-entry channel.
         $fqcns = array_values(array_unique([
@@ -193,7 +206,8 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        return [...ValueResult::unknown(), 'type' => $resolved['type'], 'enumFqcn' => $fqcns[0]];
+        // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
+        return ['type' => $resolved['type'], 'optional' => $resolved['optional'], 'enumFqcn' => $fqcns[0]];
     }
 
     /**

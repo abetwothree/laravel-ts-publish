@@ -101,6 +101,26 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     {
         return new JsonResource($this->resource);
     }
+
+    /**
+     * The team's latest status as an enum resource with a team; without one it runs off its end and returns null.
+     */
+    public function presentStatusResource()
+    {
+        if ($this->resource !== null) {
+            return EnumResource::make($this->latest_status);
+        }
+    }
+
+    /**
+     * The team's latest status as an enum resource with a team; without one PHP throws on the declared return type.
+     */
+    public function declaredPresentStatusResource(): EnumResource
+    {
+        if ($this->resource !== null) {
+            return EnumResource::make($this->latest_status);
+        }
+    }
 }
 
 /**
@@ -212,3 +232,21 @@ it('declines a helper whose every wrap the engine leaves untyped', function (str
     'beside a null' => ['attributeStatusResource'],
     'around its own call' => ['selfWrappedResource'],
 ]);
+
+// No return shows the null an untyped helper returns when it runs off its end; a declared return type throws there.
+it('reads a helper that can run off its end only when it declares a return type', function (string $method, ?array $expected) {
+    expect(subjectHelperReturn($method, SubjectHelperReturnProbeResource::class, Team::class)[0])->toBe($expected);
+})->with([
+    'untyped' => ['presentStatusResource', null],
+    'declared' => ['declaredPresentStatusResource', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+]);
+
+// The helper wraps `$this->visibility`, a read that keeps imports, so only the resolver's own check leaves it unknown.
+it('declines in a scope that carries no import', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostStatusSourcesResource::class), Post::class);
+    $scope->carriesImports = false;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostStatusSourcesResource::class), Post::class, 'toArray', null, $scope);
+
+    expect(resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn(new MethodCall(new Variable('this'), 'visibilityResource'), $scope, $engine))
+        ->toBeNull();
+});

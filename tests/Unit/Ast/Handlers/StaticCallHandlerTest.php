@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AnnulledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceShadowedParameterResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
@@ -239,6 +240,8 @@ it('wraps the one enum a resolved payload holds', function (string $php, array $
     'new, a coalesce' => ['new \\'.EnumResource::class.'($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
     'make(), a coalesce that can be null' => ['\\'.EnumResource::class.'::make($this->visibility ?? null)', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
     'make(), an enum beside a string' => ['\\'.EnumResource::class.'::make($this->status ?? "draft")', ['type' => 'unknown', 'optional' => false]],
+    'make(), a whenHas() payload' => ['\\'.EnumResource::class.'::make($this->whenHas("status"))', ['type' => 'StatusType', 'optional' => true, 'enumFqcn' => Status::class]],
+    'new, a whenNotNull() payload' => ['new \\'.EnumResource::class.'($this->whenNotNull($this->visibility))', ['type' => 'VisibilityType', 'optional' => true, 'enumFqcn' => Visibility::class]],
 ]);
 
 // The guard against a cyclic local is keyed by name, so it must not hide a parameter named like the local resolving,
@@ -253,7 +256,14 @@ it('follows a closure parameter while an outer local of its name resolves', func
         ->toBe(['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]);
 });
 
-// Only a collection wraps a list, and two enums that one name spells are not one enum.
+it('follows a whenHas() parameter named like the local its value is assigned to', function () {
+    $properties = new ResourceAstAnalyzer(new ReflectionClass(EnumResourceShadowedParameterResource::class), Post::class)->analyze()->properties;
+
+    expect(array_map(fn (array $property): array => [$property['name'], $property['type'], $property['optional']], $properties))
+        ->toBe([['status', 'StatusType', true]]);
+});
+
+// Only a collection wraps a list, and two enums that share a name are not one enum.
 it('wraps a resolved payload only when it holds one enum and nothing else', function (string $subject, string $model, string $php, array $expected) {
     $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
 
@@ -261,7 +271,7 @@ it('wraps a resolved payload only when it holds one enum and nothing else', func
 })->with([
     'collection(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::collection(collect($this->status_history)->all())', ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class]],
     'make(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::make(collect($this->status_history)->all())', ['type' => 'unknown', 'optional' => false]],
-    'make(), two enums one name spells' => [WarehouseResource::class, Warehouse::class, '\\'.EnumResource::class.'::make($this->status ?? $this->current_crm_status)', ['type' => 'unknown', 'optional' => false]],
+    'make(), two enums that share a name' => [WarehouseResource::class, Warehouse::class, '\\'.EnumResource::class.'::make($this->status ?? $this->current_crm_status)', ['type' => 'unknown', 'optional' => false]],
 ]);
 
 it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound — guard 5 must precede guard 6', function () {

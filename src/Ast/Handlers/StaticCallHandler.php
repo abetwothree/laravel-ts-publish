@@ -375,7 +375,7 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         return $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $engine)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
             ?? ValueResult::unknown();
     }
 
@@ -398,7 +398,7 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $engine, allowsList: true);
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine, allowsList: true);
 
         if ($enumResult === null) {
             return $result;

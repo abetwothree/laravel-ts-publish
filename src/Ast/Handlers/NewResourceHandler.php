@@ -80,7 +80,7 @@ final class NewResourceHandler implements ExpressionHandler
             }
 
             return $this->resolveEnumFromPropertyArg($payload, $scope)
-                ?? $this->resolveEnumFromResolvedPayload($payload, $engine)
+                ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
                 ?? $result;
         }
 
