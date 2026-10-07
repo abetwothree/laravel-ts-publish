@@ -31,6 +31,25 @@ it('changes the config fingerprint when a database driver changes', function () 
         ->and(ConfigFingerprint::compute())->not->toBe($mysql)->not->toBe($sqlite);
 });
 
+// Laravel connects with the driver a connection's url names, over its `driver` key, and getDriverName() reports it.
+it('changes the config fingerprint when only a connection\'s url changes its driver', function () {
+    config()->set('database.connections.reporting', ['driver' => 'mysql', 'url' => 'mysql://root@127.0.0.1/forge']);
+    $mysql = ConfigFingerprint::compute();
+
+    config()->set('database.connections.reporting.url', 'pgsql://root@127.0.0.1/forge');
+
+    expect(ConfigFingerprint::compute())->not->toBe($mysql);
+});
+
+it('does not throw and forces a rebuild when a connection\'s url is malformed', function () {
+    config()->set('database.connections.reporting', ['driver' => 'mysql', 'url' => 'mysql://root@127.0.0.1:port/forge']);
+
+    $first = ConfigFingerprint::compute();
+
+    expect($first)->toBeString()->not->toBe('')
+        ->and(ConfigFingerprint::compute())->not->toBe($first);
+});
+
 it('ignores the cache config slice when fingerprinting', function () {
     $before = ConfigFingerprint::compute();
 

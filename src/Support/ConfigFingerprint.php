@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\Config;
 use Throwable;
 
@@ -22,24 +23,34 @@ class ConfigFingerprint
 
         unset($config['cache']);
 
-        $config = [
-            'ts-publish' => $config,
-            'database.default' => Config::get('database.default'),
-            'database.drivers' => array_map(
-                fn (mixed $connection): mixed => is_array($connection) ? $connection['driver'] ?? null : null,
-                Config::array('database.connections', []),
-            ),
-        ];
-
-        self::ksortRecursive($config);
-
         try {
+            $config = [
+                'ts-publish' => $config,
+                'database.default' => Config::get('database.default'),
+                'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
+            ];
+
+            self::ksortRecursive($config);
+
             return hash('xxh128', serialize($config));
         } catch (Throwable) {
-            // A non-serializable config value (e.g. a closure) must not crash generation. A per-run
-            // token can never match a stored manifest header, forcing a full rebuild over stale output.
+            // A non-serializable config value (e.g. a closure) or a malformed connection url must not crash generation.
+            // A per-run token can never match a stored manifest header, forcing a full rebuild over stale output.
             return 'unfingerprintable-'.bin2hex(random_bytes(16));
         }
+    }
+
+    /**
+     * The driver Laravel connects a configured connection with: the one its `url` names, else its `driver` key.
+     */
+    private static function connectionDriver(mixed $connection): mixed
+    {
+        return is_array($connection)
+            ? new ConfigurationUrlParser()->parseConfiguration([
+                'driver' => $connection['driver'] ?? null,
+                'url' => $connection['url'] ?? null,
+            ])['driver'] ?? null
+            : null;
     }
 
     /**
