@@ -136,7 +136,7 @@ final class StaticCallHandlerOrphanCollection extends ResourceCollection {}
 /**
  * A resource that returns early when its parent is null, so only the return after the guard wraps a parent it proves.
  * The spread helper runs inside the exit, where the early exit's proof does not reach, under a when() guard, and after
- * the exit, where the proof holds for the whole helper.
+ * the exit, where the proof holds for the whole helper unless the helper rewrites the parent.
  *
  * @mixin Category
  */
@@ -152,8 +152,18 @@ final class StaticCallHandlerEarlyExitResource extends JsonResource
         return [
             'after' => CategoryResource::make($this->parent),
             'guarded' => $this->when($this->parent, fn () => [...$this->spreadParent()]),
+            'rewritten_when' => $this->when($this->parent, fn () => [...$this->rewriteParent()]),
             ...$this->spreadAfterExit(),
+            ...$this->rewriteParent(),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function rewriteParent(): array
+    {
+        $this->parent = $this->parent->parent;
+
+        return ['rewritten' => CategoryResource::make($this->parent)];
     }
 
     /** @return array<string, mixed> */
@@ -816,6 +826,8 @@ it('keeps a wrap\'s null arm where no guard proves its payload non-null', functi
     'an early exit whose elseif writes the read' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } elseif ($this->name) { $this->parent = null; } return self::make($this->parent); })', 'string | FluentSelfResource | null'],
     'a merge closure\'s if on a foreign key' => ['[$this->mergeWhen(true, function () { if ($this->parent_id !== null) { return ["p" => self::make($this->parent)]; } return []; })]', '{ p?: FluentSelfResource | null }'],
     'a catch after a try that exits early' => ['$this->when(true, function () { try { if ($this->parent === null) { return "none"; } } catch (\Throwable) { return self::make($this->parent); } return "none"; })', 'string | FluentSelfResource | null'],
+    'a merge closure that writes the guarded read' => ['[$this->mergeWhen($this->parent, function () { $this->parent = null; return ["p" => self::make($this->parent)]; })]', '{ p?: FluentSelfResource | null }'],
+    'a merge closure that writes the guarded read before its walk' => ['[$this->mergeWhen($this->parent, function () { $d = []; $this->parent = null; $d["p"] = self::make($this->parent); return $d; })]', '{ p?: FluentSelfResource | null }'],
 ]);
 
 it('drops a wrap\'s null arm after a method\'s early exit proves its payload non-null', function () {
@@ -825,7 +837,9 @@ it('drops a wrap\'s null arm after a method\'s early exit proves its payload non
         ->and($props['spread']['type'])->toBe('CategoryResource | null')
         ->and($props['after']['type'])->toBe('CategoryResource')
         ->and($props['guarded']['type'])->toBe('{ spread: CategoryResource }')
-        ->and($props['spread_after']['type'])->toBe('CategoryResource');
+        ->and($props['spread_after']['type'])->toBe('CategoryResource')
+        ->and($props['rewritten_when']['type'])->toBe('{ rewritten: CategoryResource | null }')
+        ->and($props['rewritten']['type'])->toBe('CategoryResource | null');
 });
 
 /**

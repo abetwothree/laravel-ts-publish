@@ -129,7 +129,7 @@ final class AnalysisScope
      * block it runs, an exit's for the rest of its block, each between the offsets it sets.
      *
      * A resource built around one never serializes as null. Scoped like varClassBindings, and a closure parameter, or a
-     * write in a closure's body, drops the proofs of its name.
+     * write in a closure's or a called method's body, drops the proofs of its name.
      *
      * @var NonNullReadsMap
      */

@@ -64,7 +64,7 @@ trait CollectsInstanceofGuards
             }
         }
 
-        $this->proveBlockGuards($stmts, null, $scope, $writes);
+        $this->proveGuardedReads($stmts, $scope, $writes);
     }
 
     /**
@@ -73,7 +73,7 @@ trait CollectsInstanceofGuards
     protected function proveClosureGuards(Expr $closure, AnalysisScope $scope): void
     {
         if ($closure instanceof ClosureExpr) {
-            $this->proveBlockGuards($closure->stmts, null, $scope, $this->collectVariableWrites($closure->stmts));
+            $this->proveGuardedReads($closure->stmts, $scope, $this->collectVariableWrites($closure->stmts));
         }
     }
 
@@ -107,6 +107,22 @@ trait CollectsInstanceofGuards
         }
 
         return $negated;
+    }
+
+    /**
+     * Prove what a body's guards show, once every name it writes has lost the proofs it came in with: a closure's or a
+     * called method's body may rewrite a read its caller's guard tested.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes
+     */
+    private function proveGuardedReads(array $stmts, AnalysisScope $scope, array $writes): void
+    {
+        foreach ($writes as [$name]) {
+            unset($scope->nonNullReads[$name]);
+        }
+
+        $this->proveBlockGuards($stmts, null, $scope, $writes);
     }
 
     /**
