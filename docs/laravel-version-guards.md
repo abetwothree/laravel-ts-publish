@@ -29,8 +29,10 @@ row is converted.
 
 The `Collects` row's test guards are not written as `class_exists()`. They spell the condition as
 `->skip(fn () => ! version_compare(app()->version(), '13', '>='))`, so grep for that form, not the FQCN, when you
-convert the row. Each covers a `PostFlatCollection` assertion. That fixture's collected resource is reachable only
-through the attribute, so on Laravel 12 `resolveCollectedResourceClass()` returns null and the type degrades.
+convert the row. Each covers a `PostFlatCollection` assertion, except one in `ResourceAstAnalyzerTest.php`, which
+covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so the `$collects` it inherits wins.
+`PostFlatCollection`'s collected resource is reachable only through the attribute, so on Laravel 12
+`resolveCollectedResourceClass()` returns null and the type degrades.
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute
 but also follows the `FooCollection` to `FooResource` naming convention, so it resolves either way.
 
