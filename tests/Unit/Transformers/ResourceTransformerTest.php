@@ -2488,7 +2488,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 });
 
-// Regression: the mixed-ternary arm shape (Task 28) is recorded once, in TernaryHandler, but is
+// Regression: the mixed-ternary arm shape (Task 28) is recorded once, by ValueResult::withEnumArmShapes(), but is
 // only useful if every ResourceAnalysis-building collector threads it through to the transformer —
 // not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
 describe('ResourceTransformer with mixed-ternary collector regressions', function () {

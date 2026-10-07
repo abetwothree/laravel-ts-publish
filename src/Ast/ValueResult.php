@@ -230,8 +230,8 @@ final class ValueResult
      * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
      *
      * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union
-     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their shape.
-     * A Closure defers resolving the arms again until the union proves mixed, since only then is it worth the cost.
+     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their
+     * shape. A Closure defers resolving the arms again until the union proves mixed, the only case worth the cost.
      *
      * @param  ValueExpressionResult  $union
      * @param  list<ValueExpressionResult>|Closure(): list<ValueExpressionResult>  $arms

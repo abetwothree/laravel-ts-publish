@@ -131,7 +131,7 @@ it('returns all 28 handlers in the documented dispatch order', function () {
     expect($classes)->toBe(resourceExpressionHandlerOrder());
 });
 
-it('excludes exactly the three resource-only handlers from withoutResourceHandlers(), same relative order', function () {
+it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler from withoutResourceHandlers(), same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::withoutResourceHandlers(),
@@ -151,7 +151,7 @@ it('excludes exactly the three resource-only handlers from withoutResourceHandle
 });
 
 // A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
-it('keeps RelationFilterHandler in forModelClosures() and excludes the two other resource-only handlers, same relative order', function () {
+it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMethodHandler and ToResourceHandler, same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::forModelClosures(),

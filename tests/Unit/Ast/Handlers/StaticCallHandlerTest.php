@@ -346,7 +346,7 @@ it('keeps the foreign-receiver boundary: a non-self-returning method on a foreig
 
 // A nested resource whose payload is null serializes as null, but resolve() runs the resource's own toArray() on it.
 // PHP builds `new` and make() as an object, so a payload spelled that way never makes its wrapper null.
-it('keeps a nullable payload\'s null arm through a fluent self-returning call, never through resolve()', function (string $php, string $type) {
+it('types a wrap\'s null arm: kept through a fluent self-returning call, dropped by resolve() and around a resource PHP builds', function (string $php, string $type) {
     expect(staticCallHandlerResolveOnCategory($php))->toBe($type);
 })->with([
     'make() over a nullable relation' => ['self::make($this->parent)', 'FluentSelfResource | null'],

@@ -3734,7 +3734,7 @@ describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpr
     });
 });
 
-describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExpression with Closure)', function () {
+describe('ResourceAstAnalyzer with MergeClosureResource (a merge closure\'s returns as branches)', function () {
     beforeEach(function () {
         $reflection = new ReflectionClass(MergeClosureResource::class);
         $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();

@@ -130,6 +130,6 @@ test('a new recording site cannot go unpinned', function () {
         .'that drops an arm there, then pin that key\'s drop in dropped-union-arms-baseline.php: a bare row fails the corpus test.';
 
     expect($unparsed)->toBe([], 'These src/ files do not parse, so the scan read none of their DroppedUnionArms::record() calls.')
-        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan found no DroppedUnionArms::record() call at all, so it proves nothing.')
+        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no record() call and proves nothing.')
         ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([], $remedy);
 });

@@ -607,7 +607,7 @@ describe('value argument types the arm', function () {
     });
 
     // json_decode() returns mixed: a plain title decodes to null, so `title`'s own `string` would be a type the key
-    // never holds. The value stays `unknown` rather than borrowing the attribute's.
+    // does not always hold. The value stays `unknown` rather than borrowing the attribute's.
     test('an untypable value publishes unknown, not the type of the attribute it names', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
@@ -781,6 +781,7 @@ it('reads a column aggregate through the model\'s own accessor, cast or @propert
 })->with([
     'a string cast' => ['$this->whenAggregated("comments", "post_id", "sum")', 'string | null'],
     'a datetime cast, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null', 'oracle'],
+    'a datetime cast with a format, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "min")', 'string | null', 'oracle'],
     'an @property tag, where MySQL\'s own AVG() is a string' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null', 'mysql'],
     'an accessor that coalesces the null' => ['$this->whenAggregated("comments", "post_id", "max")', 'number'],
     'an accessor, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "max", fn ($m) => ["m" => $m])', '{ m: number }'],

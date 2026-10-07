@@ -89,7 +89,8 @@ it('keeps an EnumResource arm on the enum-resource channel', function () {
         ->toMatchArray(['type' => 'StatusType | null', 'enumFqcn' => Status::class]);
 });
 
-// The merged type spells both arms of a mixed enum union as one bare name, so each arm's own `[]` is recorded beside it.
+// The merged type spells both arms of a mixed enum union as one bare name, so each arm's own `[]` is recorded beside
+// it.
 it('records the arm shapes of a mixed enum match as its ternary twin does', function (string $match, string $ternary, bool $wrapIsCollection, bool $directIsArray) {
     $result = matchHandlerResolveOnTeam($match);
 
@@ -110,7 +111,8 @@ it('records the arm shapes of a mixed enum match as its ternary twin does', func
     ],
 ]);
 
-// A ternary has two arms and a match any number, so these have no twin: every arm counts, and an arm with no enum does not.
+// A ternary has two arms and a match any number, so these have no twin: every arm counts, and an arm with no enum does
+// not.
 it('reads the shape of every arm of a mixed enum match', function (string $php, bool $wrapIsCollection, bool $directIsArray) {
     expect(matchHandlerResolveOnTeam($php))->toMatchArray(['wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
 })->with([
