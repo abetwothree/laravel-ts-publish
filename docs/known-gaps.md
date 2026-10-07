@@ -315,9 +315,11 @@ Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handl
 [ResourceAstAnalyzer § Where things live](./components/resource-ast-analyzer.md#where-things-live) lists by profile.
 On a broadcast event, a model metadata provider or any other class, the package reads `$this->when()`, `unless()` and
 every other `when*()` call as that class's own method. So Laravel's `Conditionable::when()` publishes `unknown`,
-required, as `ConditionableBroadcastEvent` pins. The resource rule would be wrong there, because
-`Conditionable::when()` returns the callback's result, or the object itself, and the key is always sent. Until the
-package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
+required, as `ConditionableBroadcastEvent` pins. A resource built around the call is the exception:
+`UserResource::make($this->when(…))`, or its `unless()` form, still publishes optional on any subject, because
+`InspectsResourceCalls::isConditionalMethodCall()` does not check the subject. The resource rule is wrong off a
+resource, because `Conditionable::when()` returns the callback's result, or the object itself, and the key is always
+sent. Until the package types `Conditionable::when()`, write the key as a ternary, or type it with `#[TsCasts]`.
 
 ### An aggregate's type follows the database of the machine that publishes
 
@@ -368,6 +370,17 @@ The package reads each collection's declared `$wrap` default, never a value the 
 redeclare `$wrap` sends a bare list, while its published interface still has the `data` key. A runtime `wrap('items')`
 is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
 extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
+
+### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
+
+Laravel 13's `JsonApiResource` declares no `toArray()`, so a subclass without one walks
+`ResourceAstAnalyzer::analyzeParentToArray()` up to `JsonResource` and publishes whole-model delegation: the model's
+columns, appended accessors and relations. Laravel sends a JSON:API document instead,
+`{ data: { id, type, attributes?, relationships?, links?, meta? }, included?, jsonapi? }`, with `attributes` from
+`toAttributes()`. Declaring `toArray()` does not help: `toAttributes()` falls back to it, so its keys become
+`data.attributes`, while the package publishes them as the whole response. No attribute replaces the whole type, since
+`#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
+`#[TsExclude]` or `resources.excluded`, and type the document by hand.
 
 ## Deliberate non-goals
 
