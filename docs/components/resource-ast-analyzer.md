@@ -741,8 +741,8 @@ holds one enum and nothing else, or a list of it for `::collection()`. Two enums
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
 ternary of those, and one wraps, so no other helper's body is read. The body is its own scope: the caller's name tables
-and relation model are set aside, and a union that types no wrap declines. `PostStatusSourcesResource` pins a local, a
-helper and a method's return.
+and relation model are set aside, and a union that types no wrap declines. An untyped helper that can end without a
+value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
 
 ## Related
 
