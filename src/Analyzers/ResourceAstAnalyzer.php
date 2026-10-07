@@ -301,20 +301,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $branchAnalysis;
         }
 
-        // Fallback: find the first Return_ for non-array returns (parent::toArray, $this->only, etc.)
-        $returnStmt = $finder->findFirst($toArrayMethod->stmts, function (Node $node): bool {
-            return $node instanceof Return_;
-        });
+        // Fallback: the method's own first return for non-array returns (parent::toArray, $this->only, etc.); a
+        // closure's return is the closure's value, never the method's.
+        $returned = $this->collectReturnExpressions($toArrayMethod->stmts)[0] ?? null;
 
-        if (! $returnStmt instanceof Return_ || $returnStmt->expr === null) {
+        if ($returned === null) {
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        if ($returnStmt->expr instanceof Variable && is_string($returnStmt->expr->name)) {
-            return $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returnStmt->expr->name);
+        if ($returned instanceof Variable && is_string($returned->name)) {
+            return $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name);
         }
 
-        $analysis = $this->analyzeArrayExpression($returnStmt->expr);
+        $analysis = $this->analyzeArrayExpression($returned);
 
         if ($analysis === null) {
             $this->lenientReads++;
@@ -952,7 +951,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The first-Return_ selection: the fallback whenever the branch sweep above cannot classify
+     * The method's own first return, never a closure's: the fallback whenever the branch sweep above cannot classify
      * every return a method makes, so it is always a lenient read.
      *
      * @param  array<Node\Stmt>  $stmts
@@ -961,22 +960,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         $this->lenientReads++;
 
-        $returnStmt = new NodeFinder()->findFirst($stmts, function (Node $node): bool {
-            return $node instanceof Return_;
-        });
+        $returned = $this->collectReturnExpressions($stmts)[0] ?? null;
 
-        if ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Array_) {
-            $analysis = $this->analyzeReturnArray($returnStmt->expr, $topLevel);
-        } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof Variable
-            && is_string($returnStmt->expr->name)) {
-            $analysis = $this->resolveVariableReturnAnalysis($stmts, $returnStmt->expr->name, $topLevel);
-        } elseif ($returnStmt instanceof Return_ && $returnStmt->expr instanceof MethodCall) {
-            $filtered = $this->analyzeThisAttributeFilter($returnStmt->expr);
+        if ($returned instanceof Array_) {
+            $analysis = $this->analyzeReturnArray($returned, $topLevel);
+        } elseif ($returned instanceof Variable && is_string($returned->name)) {
+            $analysis = $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel);
+        } elseif ($returned instanceof MethodCall) {
+            $filtered = $this->analyzeThisAttributeFilter($returned);
 
             if ($filtered !== null) {
                 $analysis = $filtered;
-            } elseif ($this->hasThisReceiver($returnStmt->expr) && $returnStmt->expr->name instanceof Identifier) {
-                $analysis = $this->analyzeThisMethodSpread($returnStmt->expr->name->toString(), $topLevel) ?? new ResourceAnalysis;
+            } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
+                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel) ?? new ResourceAnalysis;
             } else {
                 $analysis = new ResourceAnalysis;
             }

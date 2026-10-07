@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceBodyFallbackResource;
@@ -3121,6 +3124,30 @@ describe('a union of two models that share a name', function () {
     test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
         expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
             ->toBe('CrmUser | null');
+    });
+});
+
+// A closure's `return` hands its value to whatever called the closure, so the first-return fallback reads only the
+// method's own returns.
+describe('a closure that returns an array before the method\'s own return', function () {
+    test('publishes the keys the method\'s own only() reads', function (string $resource) {
+        expect(array_map(fn (array $property): string => $property['type'], (new ResourceTransformer($resource))->properties))
+            ->toBe(['id' => 'number', 'title' => 'string']);
+    })->with([
+        'in toArray()' => [ClosureReturnBeforeOnlyResource::class],
+        'in a spread helper' => [ClosureReturnBeforeSpreadResource::class],
+    ]);
+
+    test('publishes the delegated keys and the key array_merge() adds', function () {
+        $properties = (new ResourceTransformer(ClosureReturnBeforeMergeResource::class))->properties;
+
+        expect(array_keys($properties))->toBe([
+            'id', 'title', 'content', 'user_id', 'status', 'published_at', 'metadata', 'rating', 'category', 'options',
+            'deleted_at', 'created_at', 'updated_at', 'category_id', 'visibility', 'priority', 'word_count',
+            'reading_time_minutes', 'featured_image_url', 'is_pinned', 'author', 'category_rel', 'comments', 'tags',
+            'images', 'attachment',
+        ])
+            ->and($properties['comments'])->toMatchArray(['type' => '{ comment_id: number; body: string }[]', 'optional' => false]);
     });
 });
 
