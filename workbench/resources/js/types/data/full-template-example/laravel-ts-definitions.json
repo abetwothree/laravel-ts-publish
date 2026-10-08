@@ -7991,6 +7991,14 @@
                     "type": "unknown[]"
                 },
                 {
+                    "name": "length_callable",
+                    "type": "Record<string, never>"
+                },
+                {
+                    "name": "key_callable",
+                    "type": "Record<string, never>"
+                },
+                {
                     "name": "trait_version",
                     "type": "{ major: number; label: string }"
                 }
@@ -11137,6 +11145,61 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CallableValueResource": {
+            "name": "CallableValueResource",
+            "properties": [
+                {
+                    "name": "length",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "upper",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "key",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "supervisor_resource",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ length: Record<string, never> }",
+                    "optional": false
+                },
+                {
+                    "name": "when_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "when_label",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "label_or_zero",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "supervisor",
+                    "type": "UserResource | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CartTotalsResource": {
             "name": "CartTotalsResource",
             "properties": [
@@ -11352,7 +11415,7 @@
                 },
                 {
                     "name": "children_self_collection_first_callable",
-                    "type": "CategoryResource[]",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {
@@ -16210,12 +16273,12 @@
                 },
                 {
                     "name": "fcc_enum",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {
                     "name": "fcc_enum_collection",
-                    "type": "unknown",
+                    "type": "Record<string, never>",
                     "optional": false
                 },
                 {

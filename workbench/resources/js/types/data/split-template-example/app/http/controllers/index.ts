@@ -9,6 +9,7 @@ export { default as DomainController } from './domain-controller';
 export { default as EnumBoundController } from './enum-bound-controller';
 export { default as ExcludableController } from './excludable-controller';
 export { default as InertiaAddressController } from './inertia-address-controller';
+export { default as InertiaCallablePropsController } from './inertia-callable-props-controller';
 export { default as InertiaController } from './inertia-controller';
 export { default as InertiaFacilityController } from './inertia-facility-controller';
 export { default as InertiaFormRequestController } from './inertia-form-request-controller';

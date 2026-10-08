@@ -1372,6 +1372,10 @@ declare global {
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
             dynamic_totals: unknown[];
+            /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+            length_callable: Record<string, never>;
+            /** The same for a first-class callable on the model's own method. */
+            key_callable: Record<string, never>;
             trait_version: { major: number; label: string };
             /** Old-style accessor with a vague signature and a literal body. */
             summary: { major: number };
@@ -2735,6 +2739,22 @@ declare global {
             owned_by: app.models.User;
         }
         /**
+         * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
+         * when() or whenLoaded() value that holds one is called first, so the key sends that call's return.
+         */
+        export interface CallableValueResource {
+            length: Record<string, never>;
+            upper: Record<string, never>;
+            key: Record<string, never>;
+            label: Record<string, never>;
+            supervisor_resource: Record<string, never>;
+            nested: { length: Record<string, never> };
+            when_key?: number;
+            when_label?: string;
+            label_or_zero: number | string;
+            supervisor?: UserResource | null;
+        }
+        /**
          * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
          * reads after its assignment and before the variable is written again.
          */
@@ -2798,7 +2818,7 @@ declare global {
             posts_count?: number;
             children_self_collection: CategoryResource[];
             children_self_resource_collection: CategoryResource[];
-            children_self_collection_first_callable: CategoryResource[];
+            children_self_collection_first_callable: Record<string, never>;
             children_when_self_collection?: CategoryResource[];
             children_when_self_resource_collection?: CategoryResource[];
             children_when_self_collection_first_callable?: CategoryResource[];
@@ -4382,8 +4402,8 @@ declare global {
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
-            fcc_enum: unknown;
-            fcc_enum_collection: unknown;
+            fcc_enum: Record<string, never>;
+            fcc_enum_collection: Record<string, never>;
             not_enum: unknown;
             uncast_enum: unknown;
             empty_new_enum: unknown;

@@ -127,4 +127,16 @@ class Release extends Model
             return $totals;
         });
     }
+
+    /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+    protected function lengthCallable(): Attribute
+    {
+        return Attribute::get(fn () => strlen(...));
+    }
+
+    /** The same for a first-class callable on the model's own method. */
+    protected function keyCallable(): Attribute
+    {
+        return Attribute::get(fn () => $this->getKey(...));
+    }
 }

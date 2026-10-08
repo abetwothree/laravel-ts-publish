@@ -1186,3 +1186,19 @@ it('records no warning for a $this->when() whose subject is no API resource', fu
 
     expect(AnalysisWarnings::all())->toBe([]);
 });
+
+// Laravel's value() calls a Closure, and a first-class callable is one, so each conditional types the call it stands
+// for, and none warns.
+it('types a first-class callable the conditional family calls as the call it stands for', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type)
+        ->and(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'when() value, a model method' => ['$this->when($this->title, $this->resource->getKey(...))', 'number'],
+    'when() value, a function' => ['$this->when($this->title, date_default_timezone_get(...))', 'string'],
+    'when() default, a model method' => ['$this->when($this->title, "x", $this->resource->getKey(...))', 'string | number'],
+    'unless() value' => ['$this->unless($this->title, $this->resource->getKey(...))', 'number'],
+    'whenNotNull() value' => ['$this->whenNotNull($this->resource->getKey(...))', 'number'],
+    'whenHas() value' => ['$this->whenHas("title", $this->resource->getKey(...))', 'number'],
+    'whenLoaded() value, a static resource factory' => ['$this->whenLoaded("categoryRel", \\Workbench\\App\\Http\\Resources\\CategoryResource::make(...))', 'CategoryResource | null'],
+    'transform() callback' => ['$this->transform($this->title, strtoupper(...))', 'string'],
+]);

@@ -196,6 +196,16 @@ it('gives a JsonResource subject make() and any other subject forNonResourceSubj
     'a model' => [Comment::class, false],
 ]);
 
+// Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands.
+it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type) {
+    $timezone = new FuncCall(new Name('date_default_timezone_get'), [new VariadicPlaceholder]);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($timezone)['type'])->toBe($type);
+})->with([
+    'a shared-data middleware' => [HandleInertiaRequests::class, 'string'],
+    'a broadcast event' => [PayloadDiffersEvent::class, 'Record<string, never>'],
+]);
+
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
 // isThisMethodCall() matches on method name alone, ignoring args — so if ConditionalMethodHandler
 // ran first it would call getArgs(), which asserts !isFirstClassCallable() and fatals.
@@ -203,7 +213,7 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     $expr = new MethodCall(new Variable('this'), 'when', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
 });
 
 // MethodChainHandler declines every only()/except(), so the order of the two cannot decide this Pick<>, in either
@@ -273,7 +283,7 @@ it('tries FirstClassCallableHandler before KnownFunctionCallHandler for auth()->
     $expr = new MethodCall(new FuncCall(new Name('auth')), 'user', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
 });
 
 // Ordering pin #6: ToResourceHandler matches on the method name alone and then calls getArgs(),
@@ -283,5 +293,5 @@ it('tries FirstClassCallableHandler before ToResourceHandler for $this->post->to
     $expr = new MethodCall(new PropertyFetch(new Variable('this'), 'post'), 'toResource', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
 });

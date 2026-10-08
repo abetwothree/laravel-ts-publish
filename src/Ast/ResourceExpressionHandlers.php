@@ -58,13 +58,20 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
+     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects(),
+     * with invokingCallables() for an Inertia middleware, since Inertia calls every callable it shares.
      *
      * @return list<ExpressionHandler>
      */
     public static function forSubject(string $subjectClass, ExpressionEngine $engine): array
     {
-        return is_a($subjectClass, JsonResource::class, true) ? self::make($engine) : self::forNonResourceSubjects();
+        if (is_a($subjectClass, JsonResource::class, true)) {
+            return self::make($engine);
+        }
+
+        return is_subclass_of($subjectClass, 'Inertia\\Middleware')
+            ? self::invokingCallables(self::forNonResourceSubjects())
+            : self::forNonResourceSubjects();
     }
 
     /**
@@ -112,6 +119,22 @@ final class ResourceExpressionHandlers
             static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler
                 && ! $handler instanceof ToResourceHandler,
         ));
+    }
+
+    /**
+     * The same handlers where the caller calls each callable value, as Inertia does with props and shared data.
+     *
+     * @param  list<ExpressionHandler>  $handlers
+     * @return list<ExpressionHandler>
+     */
+    public static function invokingCallables(array $handlers): array
+    {
+        return array_map(
+            static fn (ExpressionHandler $handler): ExpressionHandler => $handler instanceof FirstClassCallableHandler
+                ? new FirstClassCallableHandler(invoked: true)
+                : $handler,
+            $handlers,
+        );
     }
 
     /**

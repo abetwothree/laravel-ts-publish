@@ -1049,7 +1049,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         ['posts_with_default', 'PostResource[]'],
     ]);
 
-    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+    test('self::collection(...) first-class callable is a Closure, which json_encode() writes as {}', function () {
         $reflection = new ReflectionClass(CategoryResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
         $analysis = $analyzer->analyze();
@@ -1057,7 +1057,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'children_self_collection_first_callable');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['type'])->toBe('Record<string, never>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1892,17 +1892,17 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($emptyEnum['type'])->toBe('unknown');
     });
 
-    test('resolves EnumResource::make first-class callable as unknown', function () {
+    test('resolves EnumResource::make first-class callable as the Closure it is', function () {
         $fccEnum = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum');
 
-        expect($fccEnum['type'])->toBe('unknown')
+        expect($fccEnum['type'])->toBe('Record<string, never>')
             ->and($fccEnum['optional'])->toBeFalse();
     });
 
-    test('resolves EnumResource::collection first-class callable as unknown', function () {
+    test('resolves EnumResource::collection first-class callable as the Closure it is', function () {
         $fccEnumCollection = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum_collection');
 
-        expect($fccEnumCollection['type'])->toBe('unknown')
+        expect($fccEnumCollection['type'])->toBe('Record<string, never>')
             ->and($fccEnumCollection['optional'])->toBeFalse();
     });
 

@@ -29,6 +29,10 @@ export interface Release
     column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
     /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
     dynamic_totals: unknown[];
+    /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+    length_callable: Record<string, never>;
+    /** The same for a first-class callable on the model's own method. */
+    key_callable: Record<string, never>;
     trait_version: { major: number; label: string };
     /** Old-style accessor with a vague signature and a literal body. */
     summary: { major: number };

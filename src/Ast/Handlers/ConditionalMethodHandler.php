@@ -227,7 +227,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
             $scope->bindUnpassedParameters($valueArg->value, 0, $engine);
 
-            $inner = $engine->resolve($valueArg->value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -432,7 +432,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $value = $engine->resolve($valueArg->value);
+        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
 
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
@@ -524,7 +524,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
                 $scope->bindUnpassedParameters($valueExpr, 1, $engine);
 
-                $inner = $engine->resolve($valueExpr);
+                $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueExpr));
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
                 $scope->restoreNameBindings($previousNameBindings);
@@ -589,7 +589,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             // transform() calls back only for a filled value, so the read it passes is not null in the callback.
             $this->proveNonNull([$value], $scope);
 
-            $inner = $engine->resolve($callbackArg->value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($callbackArg->value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -695,7 +695,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             $scope->bindUnpassedParameters($default, $passed === null ? 0 : 1, $engine);
 
-            return $engine->resolve($default);
+            return $engine->resolve(FirstClassCallableHandler::invokedCall($default));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -784,7 +784,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             $scope->bindUnpassedParameters($value, $argument === null ? 0 : 1, $engine);
 
-            $inner = $engine->resolve($value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }

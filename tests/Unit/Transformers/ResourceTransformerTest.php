@@ -1172,10 +1172,10 @@ describe('ResourceTransformer self-referencing resources', function () {
         expect($data->properties['children_self_resource_collection']['optional'])->toBeFalse();
     });
 
-    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+    test('self::collection(...) first-class callable is a Closure, which json_encode() writes as {}', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('Record<string, never>');
         expect($data->properties['children_self_collection_first_callable']['optional'])->toBeFalse();
     });
 

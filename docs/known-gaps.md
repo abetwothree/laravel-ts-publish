@@ -417,6 +417,13 @@ date object instead, yet publishes the same type. The reverse holds for a new-st
 body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
 in both places, so declare one, or type the key with `#[TsCasts]`.
 
+### A closure nothing calls, and a first-class callable in delegated Inertia props, publish the wrong type
+
+`'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
+as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method are read
+as that class's own values, so a first-class callable there publishes `Record<string, never>`, and `ts:publish` warns,
+though Inertia calls it. Use a closure such as `fn () => $this->label()` there instead.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

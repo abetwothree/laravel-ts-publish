@@ -16,6 +16,7 @@ use Workbench\App\Http\Controllers\EnumBoundController;
 use Workbench\App\Http\Controllers\ExcludableController;
 use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\InertiaAddressController;
+use Workbench\App\Http\Controllers\InertiaCallablePropsController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
@@ -126,6 +127,7 @@ Route::get('/pagination/simple', [InertiaPaginationsController::class, 'simple']
 Route::get('/pagination/cursor', [InertiaPaginationsController::class, 'cursor'])->name('pagination.cursor');
 
 Route::get('/facilities/{facility}', [InertiaFacilityController::class, 'show'])->name('facilities.show');
+Route::get('/facilities/{facility}/callables', [InertiaCallablePropsController::class, 'show'])->name('facilities.callables');
 Route::get('/collection/resource-paginated-collection', [InertiaSingleResourceController::class, 'resourcePaginatedCollection'])->name('collection.resource-paginated-collection');
 Route::get('/collection/resource-anon-collection', [InertiaSingleResourceController::class, 'resourceAnonymousCollection'])->name('collection.resource-anon-collection');
 Route::get('/collection/resource', [InertiaSingleResourceController::class, 'resource'])->name('collection.resource');

@@ -7,12 +7,16 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\StaticCall;
 
 /**
- * First-class callables (e.g. $this->when(...)) have no args — bail early.
+ * A first-class callable, such as `strlen(...)` or `$this->label(...)`, is a Closure, never a call: json_encode()
+ * writes it as `{}`. Where the caller invokes every callable it holds, as Inertia does, it types as that call.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -20,19 +24,68 @@ use PhpParser\Node\Expr\MethodCall;
  */
 final class FirstClassCallableHandler implements ExpressionHandler
 {
+    /**
+     * @param  bool  $invoked  true where the subject's caller calls each callable value before it encodes it
+     */
+    public function __construct(private readonly bool $invoked = false) {}
+
+    /**
+     * The call a first-class callable stands for, with its `...` dropped; any other expression unchanged.
+     */
+    public static function invokedCall(Expr $value): Expr
+    {
+        if (! self::isFirstClassCallable($value)) {
+            return $value;
+        }
+
+        $call = clone $value;
+        $call->args = [];
+
+        return $call;
+    }
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
-        return [MethodCall::class];
+        return [FuncCall::class, MethodCall::class, StaticCall::class];
     }
 
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($expr instanceof MethodCall && $expr->isFirstClassCallable()) {
-            return ValueResult::unknown();
+        if (! self::isFirstClassCallable($expr)) {
+            return null;
         }
 
-        return null;
+        if ($this->invoked) {
+            return $engine->resolve(self::invokedCall($expr));
+        }
+
+        $this->warnOfUncalledCallable($expr, $scope);
+
+        return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
+    }
+
+    /**
+     * Whether the expression is a first-class callable: PHP allows one only on a function, method or static call.
+     *
+     * @phpstan-assert-if-true FuncCall|MethodCall|StaticCall $expr
+     */
+    private static function isFirstClassCallable(Expr $expr): bool
+    {
+        return ($expr instanceof FuncCall || $expr instanceof MethodCall || $expr instanceof StaticCall)
+            && $expr->isFirstClassCallable();
+    }
+
+    /**
+     * Warn that a first-class callable is a value nothing calls, so Laravel sends `{}` where a call was likely meant.
+     */
+    private function warnOfUncalledCallable(Expr $expr, AnalysisScope $scope): void
+    {
+        AnalysisWarnings::addOnce($scope->subjectReflection->getName(), sprintf(
+            'A first-class callable on line %d is a value nothing calls, so Laravel sends it as {}. Call the method, or '
+            .'pass the callable where Laravel calls it, such as when() or whenLoaded().',
+            $expr->getStartLine(),
+        ));
     }
 }

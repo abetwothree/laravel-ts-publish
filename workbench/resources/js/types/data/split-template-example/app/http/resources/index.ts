@@ -20,6 +20,7 @@ export * from './bulletin-loaded-resource';
 export * from './bulletin-ownership-spread-resource';
 export * from './bulletin-resource';
 export * from './bulletin-wrapped-resource';
+export * from './callable-value-resource';
 export * from './cart-totals-resource';
 export * from './case-spread-resource';
 export * from './category-lineage-resource';

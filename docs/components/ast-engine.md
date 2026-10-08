@@ -54,7 +54,8 @@ winner changes published types, so treat it as a behavior change, not a refactor
   filter on a collection-cast column or an `Eloquent\Collection` accessor.
 
 `ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
-`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. Only
+`forNonResourceSubjects()`, which an Inertia middleware takes through `invokingCallables()`, and
+`ResourceAstAnalyzer::handlers()` calls it when no profile is injected. Only
 `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject `$this->when()`
 is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and `RelationFilterHandler` too was
 measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an event's `toResource()` into
@@ -75,7 +76,8 @@ expression shape makes an inert pair disagree, the matrix fails. Pin the pair in
 `withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
 a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
 element array. Placed later, the two additions would be unreachable for those shapes. `ControllerExpressionHandlersTest`
-pins the structure and the three orderings.
+pins the structure and the three orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
+Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's route-bound
 models, `Request` parameters and locals. The seeded scope is why `compact()`, a route-bound `$post` and
@@ -93,8 +95,8 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
-| `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
-| `FuncCall` | `ArrayMergeHandler`, `KnownFunctionCallHandler` | None | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
+| `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
+| `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
 
 These `MethodCall` pairs are the ones most likely to break under an edit:
