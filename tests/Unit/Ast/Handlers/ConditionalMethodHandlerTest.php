@@ -791,6 +791,22 @@ it('reads a column aggregate through the model\'s own accessor, cast or @propert
     'no declaration, the driver\'s number' => ['$this->whenAggregated("comments", "post_id", "min")', 'number | null'],
 ]);
 
+// MIN() and MAX() keep the column's type, so a user's mapping for it wins over the driver as it does for the column.
+// SUM() widens the column, so it keeps the driver's type. SQLite's schema reports a decimal column as `numeric`.
+it('publishes MIN() and MAX() of a column by a custom_ts_mappings entry for its type', function (string $php, string $type) {
+    config()->set('ts-publish.custom_ts_mappings', ['numeric' => 'number']);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'max()' => ['$this->whenAggregated("orderItems", "unit_price", "max")', 'number | null'],
+    'min()' => ['$this->whenAggregated("orderItems", "unit_price", "min")', 'number | null'],
+    'sum(), which widens the column' => ['$this->whenAggregated("orderItems", "total_price", "sum")', 'string | null'],
+]);
+
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
 // is a list, never the record the engine types an array literal as, and a list the evaluator cannot read binds nothing.
 it('binds a parameter default to the value it evaluates to', function (string $php, string $type) {

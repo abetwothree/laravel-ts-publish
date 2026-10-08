@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -620,8 +621,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * The aggregate's type with its null arm, read as getAttribute() reads `{relation}_{function}_{column}`: the
-     * model's own accessor or `@property` as declared, then its built-in cast, then what the connection's driver
-     * returns for the related column. A count is `number`; null when nothing types the aggregate.
+     * model's own accessor or `@property` as declared, then its built-in cast, then a user's mapping of the related
+     * column's type for MIN() or MAX(), then what the driver returns. A count is `number`; null when nothing types it.
      *
      * @return ValueExpressionResult|null
      */
@@ -669,6 +670,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         $columns = $relation === null ? null : $resolver->getAttributes($relation['related']);
         $columnType = $columns?->firstWhere('name', $column->value)['type'] ?? null;
+
+        // MIN() and MAX() keep the column's type, so a user's mapping for it wins here as it does for the column.
+        if ($columnType !== null && in_array($function, ['min', 'max'], true)
+            && (new TypeScriptMap)->isCustomMapped($columnType)
+        ) {
+            return ['type' => ValueResult::withNullArm(LaravelTsPublish::toTsType($columnType)['type']), 'optional' => false];
+        }
+
         $driver = $resolver->connectionDriver($scope->modelClass);
         $type = $columnType === null || $driver === null ? null : AggregateValueType::of($function, $columnType, $driver);
 
