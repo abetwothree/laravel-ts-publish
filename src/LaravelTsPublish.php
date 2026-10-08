@@ -1187,8 +1187,8 @@ class LaravelTsPublish
     }
 
     /**
-     * What serializedDateReturnTypes() answers for a native return, read off an `Attribute<X, …>` docblock getter type
-     * instead: each arm of X naming a date is the date type. Null when none is.
+     * What serializedDateReturnTypes() answers for a native return, read off a getter's `Attribute<X, …>` docblock or
+     * a cast get()'s `@return` instead: each arm of the type naming a date is the date type. Null when none is.
      *
      * @return TypeScriptTypeInfo|null
      */

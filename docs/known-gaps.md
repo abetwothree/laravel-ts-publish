@@ -421,11 +421,11 @@ in both places, so declare one, or type the key with `#[TsCasts]`.
 ### A closure nothing calls, and some first-class callables Laravel or Inertia call, publish the wrong type
 
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
-as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method are read
-as that class's own values, so a first-class callable there publishes `Record<string, never>`, and `ts:publish` warns,
-though Inertia calls it. So does one held in a local and then passed to `when()`, as in
-`$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not read as a position
-Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
+as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
+helper method the action calls, are read as that method's own values, so a first-class callable there publishes
+`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
+to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
+read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
 
 ## Deliberate non-goals
 

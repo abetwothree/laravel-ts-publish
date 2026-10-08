@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 /**
  * The type a relation aggregate (`withSum()`, `withAvg()`, `withMin()`, `withMax()`) reaches a payload with: what the
  * connection's PDO extension returns for an aggregate of the column's database type, under Laravel's default options.
+ * `column()` types a plain read of an uncast column, such as a DECIMAL, by the same table.
  *
  * @internal
  */
