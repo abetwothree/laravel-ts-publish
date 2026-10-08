@@ -865,12 +865,11 @@ it('restores the outer binding after a conditional default binds its parameter',
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('{ a: number | null; b: string }');
 });
 
-// timestamps_as_date publishes a Carbon attribute as Date, but the value a default holds reaches JSON as an ISO string.
-it('binds a Carbon new default as string under timestamps_as_date', function (string $class) {
+it('binds a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {
     config()->set('ts-publish.timestamps_as_date', true);
 
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = new '.$class.'("2020-01-01")) => $t)')['type'])
-        ->toBe('string');
+        ->toBe('Date');
 })->with([
     'Illuminate\\Support\\Carbon' => ['\\Illuminate\\Support\\Carbon'],
     'Carbon\\Carbon' => ['\\Carbon\\Carbon'],

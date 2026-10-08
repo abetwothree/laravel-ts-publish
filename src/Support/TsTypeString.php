@@ -18,6 +18,9 @@ class TsTypeString
         'null', 'undefined', 'object', 'unknown', 'any', 'never', 'void',
     ];
 
+    /** The spelling of an object with no keys: TypeScript's `{}` accepts any value but null and undefined. */
+    public const string EMPTY_OBJECT = 'Record<string, never>';
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.

@@ -16,15 +16,42 @@ use ReflectionNamedType;
 use ReflectionUnionType;
 
 /**
- * Answers whether a class `toTsType()` publishes as `string` reaches JSON as something other than a string.
+ * Answers whether `json_encode()` writes an instance of a class as a string, and whether a class `toTsType()` publishes
+ * as `string` reaches JSON as something else.
  *
- * `toTsType()` maps `DateTime` and any `__toString()` class to `string`, but `json_encode()` ignores `__toString()`
- * and writes a plain `DateTime` as a `{date, timezone_type, timezone}` object.
+ * `json_encode()` reads only `jsonSerialize()`, never `__toString()`, and writes a plain `DateTime` as a
+ * `{date, timezone_type, timezone}` object, though `toTsType()`'s date map types it as a date.
  *
  * @internal
  */
 final class StringSerialization
 {
+    /**
+     * The type `json_encode()` writes an instance of a class or interface as, when that is a string: `string`, or
+     * `string | null` for a `?string` `jsonSerialize()`; null for anything else.
+     *
+     * Carbon's own `jsonSerialize()` declares `mixed` but writes its ISO string, so a date that keeps it is `string`.
+     */
+    public static function jsonStringType(string $class): ?string
+    {
+        if ((! class_exists($class) && ! interface_exists($class))
+            || ! is_a($class, JsonSerializable::class, true)
+            || is_a($class, Model::class, true)) {
+            return null;
+        }
+
+        $method = new ReflectionMethod($class, 'jsonSerialize');
+        $type = $method->getReturnType();
+
+        if ($type instanceof ReflectionNamedType && $type->getName() === 'string') {
+            return $type->allowsNull() ? 'string | null' : 'string';
+        }
+
+        return is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\')
+            ? 'string'
+            : null;
+    }
+
     /**
      * Whether a method's native return type or `@return` docblock names a class published as a false `string`.
      *

@@ -98,6 +98,14 @@ Know these five points before you change it:
   steps 5a, 5a-bis and 5b, where the same test does decide. Don't delete it, and don't cite it as the reason models
   never inline.
 
+### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
+
+`json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
+`StringSerialization::jsonStringType()` reads one from `jsonSerialize()`. Step 5d publishes `TsTypeString::EMPTY_OBJECT`
+for a concrete `__toString()` class `serializesAsEmptyObject()` accepts, such as an exception or `HtmlString`. Only a
+`__toString()` class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public properties
+publishes its step 5c shape first.
+
 ### Cast strings with arguments
 
 Laravel's `AsEnumCollection::of()`, `AsCollection::of()` and `AsCollection::using()` build cast strings of the form

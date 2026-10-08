@@ -56,6 +56,7 @@ export * from './release';
 export * from './review';
 export * from './roster-slot';
 export * from './service-desk';
+export * from './shift';
 export * from './slug-post';
 export * from './squad';
 export * from './stockroom';

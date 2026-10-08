@@ -797,7 +797,7 @@ declare global {
             uploaders_from_docblock_string: Record<string, User>;
             tree_from_docblock: { label: string; child: unknown[] };
             price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
+            label_from_docblock: Record<string, never>;
             no_docblock_accessor: null;
             wrong_format_docblock: string | null;
             positive_int_accessor: number;
@@ -1453,6 +1453,14 @@ declare global {
             crm_agent: workbench.crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
+        }
+        /** A work shift, whose resource publishes each value as json_encode() writes it. */
+        export interface Shift {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
         }
         export interface SlugPost {
             // Columns
@@ -4653,6 +4661,12 @@ declare global {
         export interface ShadowedClosureParamResource {
             outer: string;
             shadowed?: unknown;
+        }
+        /** Publishes each value as json_encode() writes it, not as `__toString()` reads it. */
+        export interface ShiftResource {
+            fault: Record<string, never>;
+            handover_note: string | null;
+            checked_at: string | null;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {

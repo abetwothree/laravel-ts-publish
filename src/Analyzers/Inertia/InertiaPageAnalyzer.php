@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -411,7 +412,7 @@ class InertiaPageAnalyzer
     protected function buildTypeStringWithOverrides(array $props, array $overrides): string
     {
         if ($props === [] && $overrides === []) {
-            return 'Record<string, never>'; // @codeCoverageIgnore
+            return TsTypeStringService::EMPTY_OBJECT; // @codeCoverageIgnore
         }
 
         $parts = [];

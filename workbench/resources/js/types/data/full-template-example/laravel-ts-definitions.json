@@ -6302,7 +6302,7 @@
                 },
                 {
                     "name": "label_from_docblock",
-                    "type": "string"
+                    "type": "Record<string, never>"
                 },
                 {
                     "name": "no_docblock_accessor",
@@ -8169,6 +8169,27 @@
                 {
                     "name": "crm_agent_exists",
                     "type": "boolean"
+                }
+            ]
+        },
+        "Workbench\\App\\Models\\Shift": {
+            "name": "Shift",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
                 }
             ]
         },
@@ -16987,6 +17008,26 @@
                     "name": "shadowed",
                     "type": "unknown",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ShiftResource": {
+            "name": "ShiftResource",
+            "properties": [
+                {
+                    "name": "fault",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "handover_note",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "checked_at",
+                    "type": "string | null",
+                    "optional": false
                 }
             ]
         },

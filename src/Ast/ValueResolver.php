@@ -8,9 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use BackedEnum;
 use DateTimeInterface;
-use JsonSerializable;
 use PhpParser\BuilderFactory;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
@@ -22,8 +22,6 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use ReflectionClass;
-use ReflectionMethod;
-use ReflectionNamedType;
 use Throwable;
 use UnitEnum;
 
@@ -143,18 +141,29 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` by the string json_encode() writes X as, such as a Carbon date's, whatever TS name the package
-     * publishes X under: `string`, or `string | null` for a nullable one; null for any other class.
+     * Type `new X(...)` by the string json_encode() writes X as, whatever TS name the package publishes X under:
+     * `string`, or `string | null` for a nullable one; null for any other class. A date takes `toTsType()`'s type.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveStringSerializedNew(New_ $new): ?array
     {
-        $class = $new->class instanceof Name ? $new->class->toString() : null;
+        if (! $new->class instanceof Name) {
+            return null;
+        }
 
-        $type = $class !== null && class_exists($class) ? $this->stringSerializationType($class) : null;
+        $class = $new->class->toString();
+        $type = StringSerialization::jsonStringType($class);
 
-        return $type === null ? null : ['type' => $type, 'optional' => false];
+        if ($type === null) {
+            return null;
+        }
+
+        // So timestamps_as_date publishes a Carbon date here as `Date`, as it does everywhere else.
+        return [
+            'type' => is_a($class, DateTimeInterface::class, true) ? LaravelTsPublish::toTsType($class)['type'] : $type,
+            'optional' => false,
+        ];
     }
 
     /**
@@ -467,28 +476,6 @@ final class ValueResolver
             $case instanceof BackedEnum && $property === 'value' => $case->value,
             default => throw new ConstExprEvaluationException("Property {$property} of an enum case cannot be read"),
         };
-    }
-
-    /**
-     * The type json_encode() writes an instance as, when a string: `string | null` for a `?string` jsonSerialize(),
-     * `string` for a `string` one or for a date that keeps Carbon's own, the ISO string; null for anything else.
-     */
-    private function stringSerializationType(string $class): ?string
-    {
-        if (! is_a($class, JsonSerializable::class, true)) {
-            return null;
-        }
-
-        $method = new ReflectionMethod($class, 'jsonSerialize');
-        $type = $method->getReturnType();
-
-        if ($type instanceof ReflectionNamedType && $type->getName() === 'string') {
-            return $type->allowsNull() ? 'string | null' : 'string';
-        }
-
-        return is_a($class, DateTimeInterface::class, true) && str_starts_with($method->getDeclaringClass()->getName(), 'Carbon\\')
-            ? 'string'
-            : null;
     }
 
     /**

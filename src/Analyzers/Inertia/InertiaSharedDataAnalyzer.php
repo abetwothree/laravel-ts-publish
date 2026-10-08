@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use Illuminate\Support\Facades\Config;
 use ReflectionClass;
@@ -338,7 +339,7 @@ class InertiaSharedDataAnalyzer
     protected function buildTypeStringWithOverrides(array $props, array $overrides): string
     {
         if ($props === [] && $overrides === []) {
-            return 'Record<string, never>';
+            return TsTypeStringService::EMPTY_OBJECT;
         }
 
         $parts = [];

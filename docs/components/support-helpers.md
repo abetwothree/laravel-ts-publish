@@ -95,11 +95,12 @@ every generated tree.
 
 ### `StringSerialization`
 
-Its callers in `src/Ast/` use it to decline a receiver rule where `toTsType()` says `string` but `json_encode()` writes
-an object. It lives in `src/Support/` because it asks a type question and never touches a `PhpParser` node. The
-question a class answers decides its home, not where its callers sit. It has no facade and no delegation because it
-was never part of the pre-extraction surface. It answers from a class's declarations, and `JsEmitter::jsonValue()`
-from a live value.
+`toTsType()` step 5b and `ValueResolver` call `jsonStringType()`, the string `json_encode()` writes a class as. The
+receiver rules in `src/Ast/` call its false-string checks to decline where `toTsType()` says `string` but
+`json_encode()` writes an object. It lives in `src/Support/` because it asks a type question and never touches a
+`PhpParser` node. The question a class answers decides its home, not where its callers sit. It has no facade and no
+delegation because it was never part of the pre-extraction surface. It answers from a class's declarations, and
+`JsEmitter::jsonValue()` from a live value.
 
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay

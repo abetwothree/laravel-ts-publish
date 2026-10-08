@@ -12,7 +12,9 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use AllowDynamicProperties;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -41,6 +43,8 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use SplFileInfo;
+use Throwable;
 use UnitEnum;
 
 /**
@@ -301,12 +305,12 @@ class LaravelTsPublish
             }
         }
 
-        // 5b. __toString → string. Models are excluded: Model::__toString() returns JSON.
-        if (class_exists($phpType)
-            && ! is_a($phpType, Model::class, true)
-            && method_exists($phpType, '__toString')
-        ) {
-            $result['type'] = 'string';
+        // 5b. A class json_encode() writes as a string: `string`, or `string | null` for a `?string` jsonSerialize().
+        //     __toString() alone never counts, because json_encode() never calls it.
+        $jsonString = class_exists($phpType) ? StringSerialization::jsonStringType($phpType) : null;
+
+        if ($jsonString !== null) {
+            $result['type'] = $jsonString;
 
             return $result;
         }
@@ -326,6 +330,14 @@ class LaravelTsPublish
 
                 return $result;
             }
+        }
+
+        // 5d. A __toString() class json_encode() writes as `{}`. Any other class keeps its token, since the same rule
+        //     would type a sentinel such as MissingValue, which a resource strips before it encodes.
+        if (class_exists($phpType) && $this->serializesAsEmptyObject($phpType)) {
+            $result['type'] = TsTypeStringService::EMPTY_OBJECT;
+
+            return $result;
         }
 
         // 5. Any other existing class
@@ -544,6 +556,45 @@ class LaravelTsPublish
         }
 
         return $found;
+    }
+
+    /**
+     * Whether json_encode() writes every instance of a concrete `__toString()` class as `{}`.
+     *
+     * It has no public instance property, no jsonSerialize() or toArray(), and allows no dynamic property, and no
+     * internal ancestor but Throwable or SplFileInfo writes properties of its own, as DateTime and ArrayObject do.
+     *
+     * @param  class-string  $fqcn
+     */
+    protected function serializesAsEmptyObject(string $fqcn): bool
+    {
+        $reflection = new ReflectionClass($fqcn);
+
+        if (! $reflection->hasMethod('__toString')
+            || $reflection->isAbstract()
+            || $reflection->implementsInterface(JsonSerializable::class)
+            || $reflection->implementsInterface(Arrayable::class)) {
+            return false;
+        }
+
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            if ($class->getAttributes(AllowDynamicProperties::class) !== []) {
+                return false;
+            }
+
+            if ($class->isInternal()) {
+                if (! $class->implementsInterface(Throwable::class) && ! is_a($class->getName(), SplFileInfo::class, true)) {
+                    return false;
+                }
+
+                break;
+            }
+        }
+
+        return array_all(
+            $reflection->getProperties(ReflectionProperty::IS_PUBLIC),
+            fn (ReflectionProperty $property): bool => $property->isStatic(),
+        );
     }
 
     /**

@@ -389,6 +389,13 @@ columns, appended accessors and relations. Laravel sends a JSON:API document ins
 `#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
 `#[TsExclude]` or `resources.excluded`, and type the document by hand.
 
+### A `__toString()` class with no public property publishes `Record<string, never>`; four other kinds publish `unknown`
+
+`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties. A Carbon
+subclass whose `jsonSerialize()` declares `mixed`, a `JsonSerializable` with no declared return, a `SimpleXMLElement`
+and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says what they write.
+Declaring `jsonSerialize(): string` publishes `string`.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

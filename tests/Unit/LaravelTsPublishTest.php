@@ -231,10 +231,10 @@ describe('toTsType', function () {
             ->and($result['classFqcns'])->toBeEmpty();
     });
 
-    test('toTsType resolves class with __toString to string', function () {
+    test('toTsType resolves a __toString class with no public property to the empty object json_encode() writes', function () {
         $result = $this->service->toTsType(StringableValueObject::class);
 
-        expect($result['type'])->toBe('string')
+        expect($result['type'])->toBe('Record<string, never>')
             ->and($result['classes'])->toBeEmpty()
             ->and($result['classFqcns'])->toBeEmpty();
     });
@@ -1927,7 +1927,7 @@ class ArrayableValueObject implements Arrayable
 }
 
 /**
- * A value object with __toString for testing step 5b resolution.
+ * A value object with __toString and no public property, for testing step 5d resolution.
  */
 class StringableValueObject
 {

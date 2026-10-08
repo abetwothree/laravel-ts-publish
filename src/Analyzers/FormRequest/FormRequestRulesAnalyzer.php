@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use BackedEnum;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Http\FormRequest;
@@ -451,7 +452,7 @@ class FormRequestRulesAnalyzer
         }
 
         return [
-            'tsType' => $parts === [] ? 'Record<string, never>' : '{ '.implode('; ', $parts).' }',
+            'tsType' => $parts === [] ? TsTypeString::EMPTY_OBJECT : '{ '.implode('; ', $parts).' }',
             'isRequired' => $own !== null && $own['isRequired'],
             'isNullable' => $own !== null && $own['isNullable'],
             'isProhibited' => $own !== null && $own['isProhibited'],
