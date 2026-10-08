@@ -4417,6 +4417,8 @@ declare global {
             resource_key: number;
             bare_comments_count: number;
             resource_comments_count: number;
+            author_bound: workbench.app.models.User | null;
+            resource_bound: workbench.app.models.Post | null;
             author_resource?: UserResource;
         }
         /**

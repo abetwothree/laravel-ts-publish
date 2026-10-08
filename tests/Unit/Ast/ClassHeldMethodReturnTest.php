@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathFactory;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathSubjectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathWrappedResource;
 use Workbench\App\Models\Post;
@@ -69,6 +70,17 @@ describe('every call path that holds a class names only published models', funct
             'this_static_base_model' => 'unknown',
             'own_base_model' => 'unknown',
             'own_auth_user' => 'unknown',
+        ]);
+    });
+
+    test('a route binding on a relation and on the resource, under a registered published set', function () {
+        PublishedModelRegistry::register([Post::class, User::class]);
+
+        expect(classHeldTypes(CallPathPostResource::class, Post::class))->toBe([
+            'author_route_binding_nullsafe' => 'User | null',
+            'author_route_binding' => 'User | null',
+            'own_route_binding' => 'unknown',
+            'resource_route_binding' => 'Post | null',
         ]);
     });
 

@@ -258,9 +258,19 @@ describe('ReceiverMethodReturnResolver', function () {
     test('a framework or abstract model token declines, because no file is published for it', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
 
-        expect($resolver->resolve(ReceiverType::of(User::class), 'resolveRouteBinding', receiverProbeScope()))->toBeNull()
+        expect($resolver->resolve(ReceiverType::of(User::class), 'resolveChildRouteBinding', receiverProbeScope()))->toBeNull()
             ->and($resolver->resolve(ReceiverType::of(User::class), 'newPivot', receiverProbeScope()))->toBeNull()
             ->and($resolver->resolve(ReceiverType::of(Model::class), 'fresh', receiverProbeScope()))->toBeNull();
+    });
+
+    test('an inherited route binding is the receiver itself or null, though Laravel declares Model|null', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+
+        expect($resolver->resolve(ReceiverType::of(User::class), 'resolveRouteBinding', receiverProbeScope()))
+            ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
+            ->and($resolver->resolve(ReceiverType::of(Post::class), 'resolveSoftDeletableRouteBinding', receiverProbeScope()))
+            ->toBe(['type' => 'Post | null', 'optional' => false, 'modelFqcn' => Post::class])
+            ->and($resolver->resolve(ReceiverType::of(Model::class), 'resolveRouteBinding', receiverProbeScope()))->toBeNull();
     });
 
     test('a union types only when every class types the method', function () {

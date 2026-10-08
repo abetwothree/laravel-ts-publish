@@ -162,10 +162,10 @@ Earlier claimants of these node classes decline a call they cannot type, as
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks three convention rules on each class before
+`ReceiverMethodReturnResolver` checks four convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all three loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
-`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, and `Model::except()` to the list `unknown[]`. Each
+Laravel declares all four loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
+`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, and `Model::except()` to the list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each
 rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
@@ -173,6 +173,9 @@ rule answers only on the receiver it names:
   and an abstract model get no rule, so reflection declines the inherited `mixed`. An override gets no rule either,
   because PHP holds every subclass to its declared return, which reflection types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list.
+- **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
+  the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
+  `resolveChildRouteBinding()` gets no rule, as it returns a related model.
 - **`only()`, `except()`**: a class that runs `Support\Collection`'s own filter publishes `Record<string, unknown>` for
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
@@ -185,8 +188,8 @@ return reflection types, such as `: string`, keeps that return wherever the call
 asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model agrees.
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
-even when the subject is backed by the integer-keyed `Post`. The filter rule names a model token, so it applies the
-published-model check of step 6 itself. When no model instance can be built, the key rules do not answer, so `getKey()`
+even when the subject is backed by the integer-keyed `Post`. The filter and route binding rules name a model token, so
+they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules do not answer, so `getKey()`
 declines on `mixed` and `modelKeys()` keeps its reflected `(string | number)[]`.
 
 ### The order for one class
@@ -206,9 +209,10 @@ step can decline:
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object.
 6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
-   `Illuminate\`, or an abstract one, declines, so `User::resolveRouteBinding()`'s `Model | null` does too. The same
-   check runs inside `MethodReturnTypeResolver::resolve()` for every call path that reads a method off a class, so here
-   it still guards step 3.
+   `Illuminate\`, or an abstract one, declines, so `User::resolveChildRouteBinding()`'s `Model | null` does too.
+   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the four
+   direct reflections (`RelationCollectionChainHandler`, `MethodChainHandler`, `ResolvesRelatedModelTypes`) apply it
+   themselves, so here it still guards step 3.
 
 ### The body fallback carries no FQCN channel
 

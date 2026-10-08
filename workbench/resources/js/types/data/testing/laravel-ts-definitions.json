@@ -16359,6 +16359,16 @@
                     "optional": false
                 },
                 {
+                    "name": "author_bound",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "resource_bound",
+                    "type": "Post | null",
+                    "optional": false
+                },
+                {
                     "name": "author_resource",
                     "type": "UserResource",
                     "optional": true
