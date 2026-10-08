@@ -221,8 +221,9 @@ class JsEmitter
     /**
      * The data json_encode() writes for a value, in the form toJsLiteral() spells the same way.
      *
-     * A JsonSerializable object becomes its jsonSerialize() value, any other object its public initialized
-     * properties, and a pure enum its name. A PHP array keeps its keys; an object with no string key is a stdClass.
+     * A JsonSerializable value, an enum case among them, becomes its jsonSerialize() value, any other case its scalar
+     * (a pure case its name), and any other object the public properties json_encode() reads, through any get hook.
+     * A PHP array keeps its keys; an object with no string key is a stdClass.
      *
      * @return JsonData
      *
@@ -413,7 +414,7 @@ class JsEmitter
             return $value;
         }
 
-        if ($value instanceof UnitEnum) {
+        if ($value instanceof UnitEnum && ! $value instanceof JsonSerializable) {
             return $this->enumScalar($value);
         }
 
@@ -467,10 +468,9 @@ class JsEmitter
     }
 
     /**
-     * Walked members as json_encode() writes them: an array's keep their keys, and an object's with no string key
-     * become a stdClass.
+     * Walked members as json_encode() writes them; an object with no string key becomes a stdClass.
      *
-     * Only a stdClass spells such an object, `{}` among them, without printing it as a list.
+     * An array keeps its keys. Only a stdClass spells such an object, `{}` among them, without printing it as a list.
      *
      * @param  array<array-key, JsonData>  $members
      * @return array<array-key, JsonData>|stdClass
@@ -491,9 +491,10 @@ class JsEmitter
     }
 
     /**
-     * The properties json_encode() writes for a plain object: its public, initialized ones.
+     * The properties json_encode() writes for a plain object: its public, initialized ones, read through any get hook.
      *
-     * The array cast reaches the properties internal classes such as DateTime expose, which get_object_vars() misses.
+     * get_object_vars() runs get hooks and initializes a lazy object; the array cast adds the properties internal
+     * classes such as DateTime expose only to it, with every non-public key dropped.
      *
      * @return array<array-key, mixed>
      */
@@ -504,7 +505,7 @@ class JsEmitter
             return [];
         }
 
-        return array_filter(
+        return get_object_vars($value) + array_filter(
             (array) $value,
             fn (int|string $key): bool => ! is_string($key) || ! str_starts_with($key, "\0"),
             ARRAY_FILTER_USE_KEY,

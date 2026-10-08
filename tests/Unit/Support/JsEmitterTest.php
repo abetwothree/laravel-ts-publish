@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Support\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HookedPropertiesValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableTier;
 use Carbon\CarbonImmutable;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -234,6 +236,13 @@ describe('toJsLiteral objects', function () {
 
         expect($this->service->toJsLiteral($user))->toBe("{name: 'Ada', email: 'ada@example.com'}");
     });
+
+    test('a property hook and a lazy object publish what json_encode() reads through them', function () {
+        $ghost = (new ReflectionClass(RateCard::class))->newLazyGhost(fn (RateCard $card) => $card->__construct(9));
+
+        expect($this->service->toJsLiteral(new HookedPropertiesValue('d7')))->toBe("{code: 'D7', label: 'dock-D7'}")
+            ->and($this->service->toJsLiteral($ghost))->toBe('{amount: 9}');
+    });
 });
 
 describe('jsonValue', function () {
@@ -248,6 +257,38 @@ describe('jsonValue', function () {
 
     test('an enum is its backed value, and a pure enum keeps its name', function () {
         expect($this->service->jsonValue([Role::Admin, Status::Published]))->toBe(['Admin', 1]);
+    });
+
+    test('a JsonSerializable enum is its jsonSerialize() value, but a lone case still spells its value', function () {
+        expect($this->service->jsonValue([JsonSerializableTier::Gold]))->toBe([['tier' => 'gold', 'label' => 'Gold']])
+            ->and($this->service->toJsLiteral(JsonSerializableTier::Gold))->toBe("'gold'");
+    });
+
+    test('writes what json_encode() writes for each kind of object', function (Closure $make) {
+        expect(json_encode($this->service->jsonValue($make()), JSON_THROW_ON_ERROR))
+            ->toBe(json_encode($make(), JSON_THROW_ON_ERROR));
+    })->with([
+        'a hooked and a virtual property' => [fn () => new HookedPropertiesValue('d7')],
+        'a lazy ghost' => [fn () => (new ReflectionClass(RateCard::class))->newLazyGhost(
+            fn (RateCard $card) => $card->__construct(9),
+        )],
+        'a DateTime subclass with a public property' => [
+            fn () => new class('2026-01-01 09:00:00', new DateTimeZone('UTC')) extends DateTime
+            {
+                public string $extra = 'kept';
+            },
+        ],
+        'a DateTimeImmutable' => [fn () => new DateTimeImmutable('2026-01-01 09:00:00', new DateTimeZone('UTC'))],
+        'an ArrayObject' => [fn () => new ArrayObject([1, 2])],
+        'a DateInterval' => [fn () => new DateInterval('P1D')],
+        'a DateTimeZone' => [fn () => new DateTimeZone('Europe/Paris')],
+        'a plain object with hidden properties' => [fn () => new RateCard(5)],
+    ]);
+
+    test('keeps a value nested as deep as json_encode() allows', function () {
+        $deepest = array_reduce(range(1, 512), fn (mixed $carry): array => [$carry], 1);
+
+        expect($this->service->jsonValue($deepest))->toBe($deepest);
     });
 
     test('throws as json_encode() does where it cannot write the value', function (mixed $value, string $message) {
@@ -269,8 +310,15 @@ describe('jsonValue', function () {
             new FreshObjectJsonSerializableMetadataValue,
             'Maximum stack depth exceeded',
         ],
-        'a resource' => [fopen('php://memory', 'r'), 'Type is not supported'],
     ]);
+
+    test('throws for a resource, as json_encode() does', function () {
+        $resource = fopen('php://memory', 'r');
+
+        expect(fn () => $this->service->jsonValue([$resource]))->toThrow(JsonException::class, 'Type is not supported');
+
+        fclose($resource);
+    });
 
     test('a throwing jsonSerialize() throws its own exception', function () {
         $throwing = new class implements JsonSerializable

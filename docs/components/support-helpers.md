@@ -65,7 +65,7 @@ broadcast-event and Inertia paths call them before any cast lookup.
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
 never prints as `[]`. A pure enum keeps its name, where `json_encode()` fails. A value `json_encode()` cannot write
 throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model metadata keeps
-`normalizeMetadataValue()`, which prefers `toArray()` and fails a companion with a property path.
+`normalizeMetadataValue()`.
 
 ### `TsTypeString`
 

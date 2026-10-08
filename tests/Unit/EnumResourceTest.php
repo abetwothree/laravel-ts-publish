@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HookedPropertiesEnum;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
 use Workbench\App\Enums\FreightClass;
@@ -188,6 +189,13 @@ describe('EnumResource sends what the published enum holds', function () {
             .'"cutoff":"2026-01-01T20:00:00.000000Z","tracking":{"code":"EXPRESS","carrier":"ups"},"zones":["north"],'
             .'"firstPickup":{"date":"2026-01-01 09:00:00.000000","timezone_type":3,"timezone":"UTC"},"manifest":{},'
             .'"defaultRate":{"amount":50}}',
+        );
+    });
+
+    it('sends a hooked object and a lazy object as json_encode() reads them', function () {
+        expect((new EnumResource(HookedPropertiesEnum::Dock))->response()->getContent())->toBe(
+            '{"name":"Dock","value":"dock","backed":true,'
+            .'"label":{"code":"DOCK","label":"dock-DOCK"},"rate":{"amount":9}}',
         );
     });
 });
