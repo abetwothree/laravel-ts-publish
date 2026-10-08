@@ -369,11 +369,11 @@ Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
 `$this->{manyRelation}`. [`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one
 rooted at `collect($arg)`, and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
-since the elements could come from either arm. A bare `collect($arg)` is typed by
-[`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
-or list literal is its element types. Each handler tracks in its own `match` whether the keys are still
+since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
-`SpellsKeyedCollections::keyedObjectArm()`.
+`SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
+[`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
+or list literal is its element types.
 
 The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
 a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:

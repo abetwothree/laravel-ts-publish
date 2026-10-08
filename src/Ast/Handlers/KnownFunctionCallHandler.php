@@ -37,10 +37,9 @@ use ReflectionMethod;
 use stdClass;
 
 /**
- * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
- * reflected return type, plus the Laravel helpers whose shape is knowable: `config('literal')`,
- * `config()->get()` and its typed accessors, `auth()->user()`/`auth()->id()`, and the value helpers `now()`, `today()`,
- * `str()`, `url()` and `collect()` as json_encode() writes what they return. Declines anything else.
+ * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its reflected return
+ * type, plus the Laravel helpers whose shape is knowable: `config('literal')`, `config()->get()` and its typed
+ * accessors, `auth()->user()`/`auth()->id()`, and `now()`, `today()`, `str()`, `url()` and `collect()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -234,15 +233,17 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * `now()` and `today()` as the string their Carbon serializes to, `str($s)` as its Stringable, `url($path)` as a
-     * string, and `collect($items)` as the list or object its items encode as; null for any other function.
+     * Resolve `now()`, `today()`, `str()`, `url()` or `collect()` as json_encode() writes what it returns.
      *
-     * Each declares a return the reflection below cannot type: an interface, a conditional docblock or a collection.
+     * `str($s)` is the string its Stringable serializes to, and `collect($items)` the list or object its items encode
+     * as. Reflection cannot type their returns: an interface, a conditional docblock or a collection.
      *
      * @return ValueExpressionResult|null
      */
     private function valueHelperRule(string $name, FuncCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        $name = strtolower($name);
+
         if (! in_array($name, ['now', 'today', 'str', 'url', 'collect'], true)) {
             return null;
         }
@@ -264,7 +265,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * `now()` and `today()` through the one rule for a class that serializes as a string, so `timestamps_as_date` applies.
+     * `now()` and `today()` through the one rule for a string-serialized class, so `timestamps_as_date` applies.
      *
      * @return ValueExpressionResult|null
      */
@@ -286,7 +287,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     {
         $path = $args->named('path')?->value;
 
-        if ($path === null || ValueResult::hasNullArm($engine->resolve($path)['type'])) {
+        $type = $path === null ? null : $engine->resolve($path)['type'];
+
+        // `unknown` admits null, which returns the UrlGenerator.
+        if ($type === null || $type === 'unknown' || ValueResult::hasNullArm($type)) {
             return null;
         }
 
@@ -294,9 +298,11 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     }
 
     /**
-     * `collect($items)` encodes as its items do: none or null is `never[]`, a constant array is typed as a parameter
-     * default's value is, a list literal is a list of its elements, and an expression typed as a list or an object
-     * shape keeps that type.
+     * Resolve `collect($items)` as the list or object its items encode as.
+     *
+     * None or null is `never[]`, a constant array is typed as a parameter default's value is, a list literal is a list
+     * of its elements, and an expression typed as a list or an object shape keeps that type. A literal holding a
+     * `when*()` value declines: Laravel's filter never recurses into a Collection, so the value encodes as `{}`.
      *
      * @return ValueExpressionResult|null
      */
@@ -320,6 +326,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
                 default => null,
             };
         } catch (ConstExprEvaluationException) {
+        }
+
+        if ($items instanceof Array_ && array_any($items->items, fn (ArrayItem $item): bool => $engine->resolve($item->value)['optional'])) {
+            return null;
         }
 
         if ($items instanceof Array_ && array_all($items->items, fn (ArrayItem $item): bool => $item->key === null && ! $item->unpack)) {

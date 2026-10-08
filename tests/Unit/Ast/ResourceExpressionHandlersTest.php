@@ -200,9 +200,9 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
 // Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
 // the event warns.
 it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type, int $warnings) {
-    $timezone = new FuncCall(new Name('now'), [new VariadicPlaceholder]);
+    $now = new FuncCall(new Name('now'), [new VariadicPlaceholder]);
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($timezone)['type'])->toBe($type)
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($now)['type'])->toBe($type)
         ->and(AnalysisWarnings::all())->toHaveCount($warnings);
 })->with([
     'a shared-data middleware' => [HandleInertiaRequests::class, 'string', 0],

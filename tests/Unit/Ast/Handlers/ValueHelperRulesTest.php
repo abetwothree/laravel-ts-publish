@@ -19,6 +19,7 @@ it('types the value helpers as json_encode() writes what they return', function 
     expect(valueHelperRuleType($php))->toBe($type);
 })->with([
     'now()' => ['now()', 'string'],
+    'now() in another case' => ['Now()', 'string'],
     'now() with a timezone' => ['now("UTC")', 'string'],
     'today()' => ['today()', 'string'],
     'str() with a string' => ['str("abc")', 'string'],
@@ -36,6 +37,7 @@ it('types the value helpers as json_encode() writes what they return', function 
     'collect() with a list of columns' => ['collect([$this->title, $this->content])', 'string[]'],
     'collect() with a record of columns' => ['collect(["title" => $this->title])', '{ title: string }'],
     'collect() with a list-typed expression' => ['collect(explode(",", $this->title))', 'string[]'],
+    'collect() with an optional list-typed expression' => ['collect($this->when($this->title, explode(",", $this->title)))', 'string[]'],
 ]);
 
 it('leaves the value helpers it cannot type, and __(), to unknown', function (string $php) {
@@ -45,7 +47,12 @@ it('leaves the value helpers it cannot type, and __(), to unknown', function (st
     'url() with null returns the UrlGenerator' => ['url(null)'],
     'collect() of a scalar' => ['collect("abc")'],
     'collect() of a list holding an untypable element' => ['collect([$this->title, json_decode("{}")])'],
-    'collect() of a record a resource re-indexes' => ['collect([1 => "a"])'],
+    'collect() of a numeric-keyed record, declined conservatively' => ['collect([1 => "a"])'],
+    'collect() of a keyed when() value, which encodes as {}' => ['collect(["a" => $this->when($this->title, 1)])'],
+    'collect() of a listed when() value, which encodes as {}' => ['collect([$this->when($this->title, 1)])'],
+    'collect() of a column' => ['collect($this->title)'],
+    'collect() of a nullable list' => ['collect($this->tags ?? null)'],
+    'url() of an unknown path' => ['url(json_decode("{}"))'],
     '__() can return an array' => ['__("x")'],
     'collect() of a spread, whose arguments are unknown' => ['collect(...$this->tags)'],
     'str() of a spread' => ['str(...[$this->title])'],
@@ -60,4 +67,10 @@ it('types now() as Date under timestamps_as_date', function () {
     config()->set('ts-publish.timestamps_as_date', true);
 
     expect(valueHelperRuleType('now()'))->toBe('Date');
+});
+
+it('publishes collect() of an optional expression as required', function () {
+    $expr = new AstParser()->parseSource('<?php collect($this->when($this->title, explode(",", $this->title)));')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['optional'])->toBeFalse();
 });
