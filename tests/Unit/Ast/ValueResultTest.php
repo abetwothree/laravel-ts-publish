@@ -338,3 +338,125 @@ describe('ValueResult::withAttributeChannels() and a per-token class queue', fun
         expect($result['embeddedModelFqcns'])->toBe([User::class, User::class, CrmUser::class]);
     });
 });
+
+describe('ValueResult::withEnumArmShapes()', function () {
+    $mixed = [
+        'type' => 'StatusType[] | StatusType',
+        'optional' => false,
+        'enumFqcn' => Status::class,
+        'directEnumFqcn' => Status::class,
+    ];
+
+    test('records which arm of a mixed union is a list, whatever the order of the arms', function (array $arms, bool $wrapIsCollection, bool $directIsArray) use ($mixed) {
+        expect(ValueResult::withEnumArmShapes($mixed, $arms))
+            ->toBe([...$mixed, 'wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+    })->with([
+        'a list wrap and a scalar direct read' => [
+            [
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            true,
+            false,
+        ],
+        'a scalar direct read and a list wrap' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ],
+            true,
+            false,
+        ],
+        'a scalar wrap and a list direct read' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            false,
+            true,
+        ],
+        'a nullable list on each side' => [
+            [
+                ['type' => 'StatusType[] | null', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[] | null', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            true,
+            true,
+        ],
+        'wraps that agree, and an arm holding no enum' => [
+            [
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+                ['type' => 'null', 'optional' => false],
+            ],
+            true,
+            false,
+        ],
+    ]);
+
+    test('leaves the union as it is when the arms cannot be attributed', function (array $arms) use ($mixed) {
+        expect(ValueResult::withEnumArmShapes($mixed, $arms))->toBe($mixed);
+    })->with([
+        'an arm carrying both channels' => [[
+            ['type' => 'StatusType[] | StatusType', 'optional' => false, 'enumFqcn' => Status::class, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'wrap arms that disagree' => [[
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'direct arms that disagree' => [[
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType[]', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'no arm that reads the enum directly' => [[
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+        ]],
+        'no arm that wraps the enum' => [[
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+    ]);
+
+    test('does not resolve the arms of a union that is not a mixed one of a single enum', function (array $union) {
+        $arms = fn (): array => throw new LogicException('the arms must not be resolved');
+
+        expect(ValueResult::withEnumArmShapes($union, $arms))->toBe($union);
+    })->with([
+        'a union with no enum' => [['type' => 'string | number', 'optional' => false]],
+        'a union that only wraps' => [['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+        'a union that only reads directly' => [['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]],
+        'a wrap and a direct read of two enums' => [[
+            'type' => 'StatusType | PriorityType',
+            'optional' => false,
+            'enumFqcn' => Status::class,
+            'directEnumFqcn' => Priority::class,
+        ]],
+    ]);
+
+    test('reads the arms of a mixed union from a closure as it does from a list', function () use ($mixed) {
+        $arms = [
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ];
+
+        expect(ValueResult::withEnumArmShapes($mixed, fn (): array => $arms))->toBe(ValueResult::withEnumArmShapes($mixed, $arms))
+            ->and(ValueResult::withEnumArmShapes($mixed, fn (): array => $arms))->toHaveKeys(['wrapIsCollection', 'directIsArray']);
+    });
+});
+
+describe('ValueResult::withNullArm() and hasNullArm()', function () {
+    // Two classes can share a name, so the arm is appended to the text, never merged into it.
+    test('append one top-level null arm and read only a top-level one', function (string $type, string $withArm, bool $hasArm) {
+        expect(ValueResult::withNullArm($type))->toBe($withArm)
+            ->and(ValueResult::hasNullArm($type))->toBe($hasArm);
+    })->with([
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null', false],
+        'unknown, which already admits null' => ['unknown', 'unknown', false],
+        'a leading null arm' => ['null | string', 'null | string', true],
+        'a null inside an element type, which is not top-level' => ['(X | null)[]', '(X | null)[] | null', false],
+        'a trailing null arm' => ['string | null', 'string | null', true],
+    ]);
+});

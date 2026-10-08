@@ -60,9 +60,10 @@ subject to the model. `resolveBody()` locates on the model, so the context alrea
 accessor, and the reset keeps that true for a caller that locates on the declaring class. `Release` pins the trait case
 through `DerivesReleaseVersion`.
 
-The closure profile drops `ConditionalMethodHandler` and `ToResourceHandler`, because a getter body is not a resource
-`toArray()`. It keeps `RelationFilterHandler`, which looks redundant on a single relation's filter, where
-`ReceiverMethodCallHandler` gives the same answer. Only `RelationFilterHandler` types these filters:
+The closure profile drops `ConditionalMethodHandler`, as any non-resource subject's does, and `ToResourceHandler`,
+because the model file cannot import a resource. It keeps `RelationFilterHandler`, which looks redundant on a single
+relation's filter, where `ReceiverMethodCallHandler` gives the same answer. Only `RelationFilterHandler` types these
+filters:
 
 - a to-many relation's filter, a map proxy, and a multi-model accessor's filter;
 - a filter on a column cast to a `Support\Collection`, which publishes `Record<string, unknown>`;

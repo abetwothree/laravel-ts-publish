@@ -1,8 +1,10 @@
 import type { ComputedNameEvent } from './workbench/app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './workbench/app/events/DeclaredPropsEvent';
+import type { DispatchRelayed } from './workbench/app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './workbench/app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './workbench/app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './workbench/app/events/FacilityAudited';
+import type { ManifestAssembled } from './workbench/app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './workbench/app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
 import type { OrderShipped } from './workbench/app/events/OrderShipped';
@@ -14,6 +16,7 @@ import type { SameBasenameModelEvent } from './workbench/app/events/SameBasename
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
+import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
 import type { UserNotification } from './workbench/app/events/UserNotification';
 import type { UserRegisteredEvent } from './workbench/app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './workbench/app/events/UserSynced';
@@ -22,9 +25,11 @@ import type { UserSynced as CrmUserSynced } from './workbench/crm/events/UserSyn
 export type BroadcastEvent =
     | '.Workbench.App.Events.ComputedNameEvent'
     | '.Workbench.App.Events.DeclaredPropsEvent'
+    | '.Workbench.App.Events.DispatchRelayed'
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.FacilityAudited'
+    | '.Workbench.App.Events.ManifestAssembled'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
     | '.Workbench.App.Events.OrderShipped'
@@ -36,6 +41,7 @@ export type BroadcastEvent =
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
     | '.Workbench.App.Events.TeamMessageSent'
+    | '.Workbench.App.Events.TeamRosterSynced'
     | '.Workbench.App.Events.UserNotification'
     | '.Workbench.App.Events.UserRegisteredEvent'
     | '.Workbench.App.Events.UserSynced'
@@ -44,9 +50,11 @@ export type BroadcastEvent =
 export const BroadcastEvents = Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
+    DispatchRelayed: '.Workbench.App.Events.DispatchRelayed',
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
+    ManifestAssembled: '.Workbench.App.Events.ManifestAssembled',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
     OrderShipped: '.Workbench.App.Events.OrderShipped',
@@ -58,6 +66,7 @@ export const BroadcastEvents = Object.freeze({
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
+    TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
     UserNotification: '.Workbench.App.Events.UserNotification',
     UserRegisteredEvent: '.Workbench.App.Events.UserRegisteredEvent',
     AppUserSynced: '.Workbench.App.Events.UserSynced',
@@ -67,9 +76,11 @@ export const BroadcastEvents = Object.freeze({
 export type {
     ComputedNameEvent,
     DeclaredPropsEvent,
+    DispatchRelayed,
     DocblockShapedEvent,
     EnumBroadcastEvent,
     FacilityAudited,
+    ManifestAssembled,
     MixedTypesEvent,
     MultiModelEvent,
     OrderShipped,
@@ -81,6 +92,7 @@ export type {
     ServerCreated,
     StatusSynced,
     TeamMessageSent,
+    TeamRosterSynced,
     UserNotification,
     UserRegisteredEvent,
     AppUserSynced,

@@ -61,6 +61,24 @@ final class ValueResult
     }
 
     /**
+     * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
+     */
+    public static function hasNullArm(string $type): bool
+    {
+        return in_array('null', TsTypeString::splitTopLevelUnion($type), true);
+    }
+
+    /**
+     * Append a top-level `| null` arm unless the type has one; `unknown` already admits null, so it stays as is.
+     *
+     * Never TsTypeString::hoistNull(): it de-duplicates members, so `User | User`, two classes, would lose one.
+     */
+    public static function withNullArm(string $type): string
+    {
+        return $type === 'unknown' || self::hasNullArm($type) ? $type : $type.' | null';
+    }
+
+    /**
      * Suffix a type with `[]`, parenthesizing a union or intersection first: TypeScript binds `[]`
      * tighter than both, so `A & B[]` parses as `A & (B[])`, not `(A & B)[]`.
      *
@@ -206,6 +224,59 @@ final class ValueResult
         // Arms that spell one name for two classes cannot be told apart by their text, so the members are read again
         // arm by arm, one member per class.
         return self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+    }
+
+    /**
+     * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
+     *
+     * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union
+     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their
+     * shape. A Closure defers resolving the arms again until the union proves mixed, the only case worth the cost.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<ValueExpressionResult>|Closure(): list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    public static function withEnumArmShapes(array $union, array|Closure $arms): array
+    {
+        if (! isset($union['enumFqcn'], $union['directEnumFqcn']) || $union['enumFqcn'] !== $union['directEnumFqcn']) {
+            return $union;
+        }
+
+        /** @var list<bool> $wrapIsList one entry per arm that wraps */
+        $wrapIsList = [];
+        /** @var list<bool> $directIsList one entry per arm that reads directly */
+        $directIsList = [];
+
+        foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
+            $wraps = isset($arm['enumFqcn']);
+            $reads = isset($arm['directEnumFqcn']);
+
+            // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
+            if ($wraps && $reads) {
+                return $union;
+            }
+
+            $isList = str_ends_with(rtrim(str_replace('| null', '', $arm['type'])), '[]');
+
+            if ($wraps) {
+                $wrapIsList[] = $isList;
+            } elseif ($reads) {
+                $directIsList[] = $isList;
+            }
+        }
+
+        $wrapShapes = array_values(array_unique($wrapIsList));
+        $directShapes = array_values(array_unique($directIsList));
+
+        if (count($wrapShapes) !== 1 || count($directShapes) !== 1) {
+            return $union;
+        }
+
+        $union['wrapIsCollection'] = $wrapShapes[0];
+        $union['directIsArray'] = $directShapes[0];
+
+        return $union;
     }
 
     /**

@@ -88,9 +88,7 @@ describe('AstEngine::analyze()', function () {
         expect(collect($result->properties)->firstWhere('name', 'reviewable')['type'])
             ->toBe('CrmUser | WorkbenchUser | null')
             ->and($result->typeImports)->toBe([
-                '@js/types/settings' => ['MenuSettingsType'],
                 '../../../crm/models' => ['User as CrmUser'],
-                '../../enums' => ['SizeType', 'StatusType'],
                 '../../models' => ['User as WorkbenchUser'],
             ]);
     });

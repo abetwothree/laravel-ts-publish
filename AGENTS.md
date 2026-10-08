@@ -66,6 +66,20 @@ When working on this project, make sure to use the available MCP servers and ski
 
 Use the skills in `.claude/skills` to help follow the best practices and standards.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for abetwothree/laravel-ts-publish, worked through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` at the repo root, with ADRs in `docs/decisions/`. See `docs/agents/domain.md`.
+
 ## To do lists
 
 When it makes sense, create a to-do list when working on a feature or bugfix. Use checkboxes so that it's easy to see what is done and what is left to do.
@@ -214,3 +228,11 @@ delegations must not be deleted for having no callers or swept onto the new faca
 ### Change log
 
 Do not update the CHANGELOG.md file. That is handled by CI when a new version is released. The CHANGELOG.md file is meant to be a record of changes for users, not for developers to update manually. It is automatically updated based on the commits and PRs that are merged into the main branch and updated when a new version is released.
+
+## AST & Analyzers
+
+Files in `src/Analyzers` contain the entry point for running AST analysis for several subsystems of the package. Analyzers should offload the actual AST analysis to the abstract syntax tree engine in `src/Ast`. The `src/Ast` directory should handle all AST analysis in an abstract manner so that it can be reused by different analyzers for HTTP resources, HTTP requests, Inertia, models, etc.
+
+Code in `src/Ast` should not depend on any specific analyzer; it should provide a generic interface and utilities for AST analysis that can be leveraged by multiple analyzers.
+
+Code in `src/Analyzers` must offload all AST analysis to the engine in `src/Ast` and should not attempt to analyze the AST directly.

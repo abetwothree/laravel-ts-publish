@@ -142,7 +142,7 @@ class InertiaPageAnalyzer
      */
     protected function analyzeAction(string $controllerClass, string $methodName): ?array
     {
-        $context = resolve(MethodLocator::class)->locateOwn($controllerClass, $methodName);
+        $context = resolve(MethodLocator::class)->locateDeclared($controllerClass, $methodName);
 
         if ($context === null) {
             return null;

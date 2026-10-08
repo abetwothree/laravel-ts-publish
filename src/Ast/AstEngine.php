@@ -36,7 +36,7 @@ final class AstEngine
 
     /**
      * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
-     * class or method runs the same engine with the same handlers. Cycle-guarded, and memoized for the run through
+     * class runs the same engine without the `when*()` family. Cycle-guarded, and memoized for the run through
      * AnalysisMemo: the outermost call in its chain always, any other call once nothing cut it short.
      *
      * @param  class-string  $class

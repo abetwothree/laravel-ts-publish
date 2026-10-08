@@ -3,8 +3,8 @@
 # name" (TS2304, or TS2552 when a similarly-named global exists) error — that
 # is precisely the signature of a type token emitted without its import. It
 # also counts TS2300 "Duplicate identifier" errors: two different imports
-# resolving to the same local name, e.g. two unrelated MailPrice models both
-# aliased to MailPriceMailPrice (see docs/components/import-name-registry.md).
+# resolving to the same local name, e.g. two unrelated Rate models both
+# aliased to RateRate (see docs/components/import-name-registry.md).
 # TS2440 is that same collision against a *local* declaration rather than a
 # second import, which TypeScript reports under its own code and not as TS2300.
 # TS2344 rounds out the set: a token that IS imported but named where its own

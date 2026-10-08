@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
@@ -25,6 +26,7 @@ use Workbench\App\Events\ReportSynced;
 use Workbench\App\Events\SameBasenameModelEvent;
 use Workbench\App\Events\ServerCreated;
 use Workbench\App\Events\TeamMessageSent;
+use Workbench\App\Events\TeamRosterSynced;
 use Workbench\App\Events\UserNotification;
 use Workbench\App\Events\UserRegisteredEvent;
 use Workbench\App\Models\Kpi;
@@ -500,7 +502,7 @@ describe('native engine cutover fixtures', function () {
 describe('ReportSynced (same basename and same parent segment — import aliasing)', function () {
     it('assigns distinct aliases to both Report models', function () {
         // Both Report models morphMany to Kpi under 'reportable'; their nearest namespace
-        // segment is identically 'Report', reproducing the eagle MailPrice collision at depth 1.
+        // segment is identically 'Report', reproducing a same-basename alias collision one namespace level deep.
         resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
             Kpi::class,
             SalesReport::class,
@@ -600,4 +602,25 @@ test('globalTypeReferenceMap() maps each alias to the class it aliases', functio
         'AppUser' => 'workbench.app.models.User',
         'CrmUser' => 'workbench.crm.models.User',
     ]);
+});
+
+// toResource() is a model method, and a broadcast payload is JSON-encoded, so the key holds the resource's own shape.
+test('an event types toResource() as the resource it builds, and imports it', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => TeamRosterSynced::class]);
+
+    expect($transformer->properties)->toBe(['team' => ['type' => 'TeamResource', 'optional' => false]])
+        ->and($transformer->typeImports)->toBe(['../http/resources' => ['TeamResource']]);
+});
+
+// Only JsonResource::resolve() drops the MissingValue a resource's when() returns. Conditionable::when() returns the
+// callback's value or the event itself, so the key is always sent, and its value is not the callback's type alone.
+test('a non-resource subject reads $this->when() as its own method, not as a resource conditional', function () {
+    $properties = array_column(
+        resolve(AstEngine::class)->analyzeMethod(ConditionableBroadcastEvent::class, 'broadcastWith')->properties,
+        null,
+        'name',
+    );
+
+    expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
+        ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
 });

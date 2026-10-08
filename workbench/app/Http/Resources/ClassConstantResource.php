@@ -29,7 +29,7 @@ class ClassConstantResource extends AbstractVersionedResource
     public function toArray(Request $request): array
     {
         return [
-            // Array constant with a nested array — the eaglesys OWNER_MINIMUM_CHANNELS shape.
+            // Array constant with a nested array, two levels deep.
             'owner_minimum_channels' => ChannelDefaults::DEFAULT_CHANNELS,
             // Scalar constant (int).
             'max_retries' => ChannelDefaults::MAX_RETRIES,

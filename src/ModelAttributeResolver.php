@@ -644,10 +644,7 @@ class ModelAttributeResolver
             return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
         }
 
-        $isMorphTo = $relation['type'] === 'MorphTo'
-            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
-
-        if ($isMorphTo) {
+        if (self::isMorphToRelation($relation)) {
             $targets = $this->resolveMorphToTargets($modelFqcn, $relationName);
 
             return $this->buildMorphUnionInfo($targets, $relation, $ctx);
@@ -661,20 +658,46 @@ class ModelAttributeResolver
         DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
-        $containsMany = str_contains(strtolower($relation['type']), 'many');
 
-        if ($containsMany) {
+        if (self::isToManyRelation($relation)) {
             return ['type' => $relatedModel.'[]', 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
         }
 
         $type = $relatedModel;
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
-        if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
+    }
+
+    /**
+     * Whether a relation can be loaded as null, by the rule its type takes `| null` with; null when the model declares
+     * no such relation or its context cannot be read.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function relationLoadsNull(string $modelFqcn, string $relationName): ?bool
+    {
+        // With `nullable_relations` off no relation publishes `| null`, declared or not.
+        if (! Config::boolean('ts-publish.models.nullable_relations')) {
+            return false;
+        }
+
+        $ctx = $this->resolveContext($modelFqcn);
+        $relation = $ctx === null ? null : $ctx['relations']->firstWhere('name', $relationName);
+
+        if ($ctx === null || $relation === null) {
+            return null;
+        }
+
+        // A loaded to-many relation is a collection, never null, whatever its strategy says.
+        if (self::isToManyRelation($relation)) {
+            return false;
+        }
+
+        return $this->typesRelationNullable($relation, $ctx['relationNullable']);
     }
 
     /**
@@ -841,16 +864,63 @@ class ModelAttributeResolver
             return []; // @codeCoverageIgnore
         }
 
-        $visible = $instance->getVisible();
-        $hidden = $instance->getHidden();
-
         /** @var list<string> $appends */
         $appends = $instance->getAppends();
 
         return array_values(array_unique(array_filter(
             [...$this->publishedColumnNames($modelFqcn), ...$appends],
-            fn (string $name): bool => ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $hidden, true),
+            fn (string $name): bool => self::isArrayable($instance, $name),
         )));
+    }
+
+    /**
+     * Names of the attributes whole-model delegation publishes: serializedAttributeNames() while `exclude_hidden` is
+     * on, else every published column, then the appended attributes, each name once.
+     *
+     * @param  class-string  $modelFqcn
+     * @return list<string>
+     */
+    public function delegatedAttributeNames(string $modelFqcn): array
+    {
+        if ($this->excludeHiddenAttributes()) {
+            return $this->serializedAttributeNames($modelFqcn);
+        }
+
+        /** @var list<string> $appends */
+        $appends = $this->getInstance($modelFqcn)?->getAppends() ?? [];
+
+        return array_values(array_unique([...$this->publishedColumnNames($modelFqcn), ...$appends]));
+    }
+
+    /**
+     * The key toArray() writes each relation under once loaded, keyed by relation name: snake-cased while the model's
+     * `$snakeAttributes` is on. While `exclude_hidden` is on, a relation `$visible` leaves out or `$hidden` lists by
+     * its method name is skipped, as relationsToArray() skips it.
+     *
+     * @param  class-string  $modelFqcn
+     * @return array<string, string>
+     */
+    public function delegatedRelationKeys(string $modelFqcn): array
+    {
+        $instance = $this->getInstance($modelFqcn);
+        $relations = $this->getRelations($modelFqcn);
+
+        if ($instance === null || $relations === null) {
+            return []; // @codeCoverageIgnore
+        }
+
+        $excludeHidden = $this->excludeHiddenAttributes();
+        $keys = [];
+
+        foreach ($relations as $relation) {
+            $name = $relation['name'];
+
+            if (! $excludeHidden || self::isArrayable($instance, $name)) {
+                $keys[$name] = $instance::$snakeAttributes ? Str::snake($name) : $name;
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -895,6 +965,22 @@ class ModelAttributeResolver
 
         // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
         return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+    }
+
+    /**
+     * The driver of the connection a model queries through, such as `mysql`, read from its config once the run has the
+     * model's context, which a cold call builds by inspecting its schema; null when the model cannot be instantiated or
+     * its connection is not configured.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function connectionDriver(string $modelFqcn): ?string
+    {
+        try {
+            return $this->getInstance($modelFqcn)?->getConnection()->getDriverName();
+        } catch (Throwable) { // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
+        }
     }
 
     /**
@@ -1292,14 +1378,22 @@ class ModelAttributeResolver
             ? implode(' | ', array_map(class_basename(...), $targets))
             : 'unknown';
 
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
-
         // 'unknown' already admits null, so appending the suffix would only add noise.
-        if ($type !== 'unknown' && $nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($type !== 'unknown' && $this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => null, 'morphFqcns' => $targets];
+    }
+
+    /**
+     * Whether a relation's type takes a `| null` arm: `nullable_relations` is on and its strategy calls it nullable.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function typesRelationNullable(array $relation, RelationNullable $nullable): bool
+    {
+        return Config::boolean('ts-publish.models.nullable_relations') && $nullable->isNullable($relation);
     }
 
     /**
@@ -1444,6 +1538,37 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * Whether a relation is a MorphTo, which resolves to one of several target models.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isMorphToRelation(array $relation): bool
+    {
+        return $relation['type'] === 'MorphTo'
+            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
+    }
+
+    /**
+     * Whether a relation loads a collection: its type names "many", and it is not a MorphTo, which loads one model.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isToManyRelation(array $relation): bool
+    {
+        return ! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many');
+    }
+
+    /**
+     * Whether toArray() writes a name past the model's `$visible` and `$hidden`, as getArrayableItems() decides.
+     */
+    private static function isArrayable(Model $instance, string $name): bool
+    {
+        $visible = $instance->getVisible();
+
+        return ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $instance->getHidden(), true);
     }
 
     /**

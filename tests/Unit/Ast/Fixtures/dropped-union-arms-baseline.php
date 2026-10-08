@@ -27,9 +27,11 @@ return [
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],
     // Deliberate: one key per recording site, each dropping `$this->opaqueValue()`, a method whose
-    // return type is deliberately absent. These four stay permanently — they prove each site fires.
+    // return type is deliberately absent. These six stay permanently — they prove each site fires.
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 28, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 29, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 31, 'expression' => '$this->opaqueValue()', 'site' => 'ternary-narrowed'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 32, 'expression' => '$this->opaqueValue()', 'site' => 'data-get-default'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 33, 'expression' => '$this->opaqueValue()', 'site' => 'conditional-default'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 35, 'expression' => '$this->opaqueValue()', 'site' => 'match-arm'],
 ];

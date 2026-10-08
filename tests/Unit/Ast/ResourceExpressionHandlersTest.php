@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
@@ -47,7 +48,10 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Events\PayloadDiffersEvent;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
@@ -89,6 +93,7 @@ function resourceExpressionHandlerOrder(): array
         CollectionPipelineHandler::class,
         VariableHandler::class,
         TernaryHandler::class,
+        MatchHandler::class,
         ReceiverPropertyFetchHandler::class,
         ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
@@ -117,7 +122,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 27 handlers in the documented dispatch order', function () {
+it('returns all 28 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -126,7 +131,7 @@ it('returns all 27 handlers in the documented dispatch order', function () {
     expect($classes)->toBe(resourceExpressionHandlerOrder());
 });
 
-it('excludes exactly the three resource-only handlers from withoutResourceHandlers(), same relative order', function () {
+it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler from withoutResourceHandlers(), same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::withoutResourceHandlers(),
@@ -141,12 +146,12 @@ it('excludes exactly the three resource-only handlers from withoutResourceHandle
         ], true),
     ));
 
-    expect($classes)->toHaveCount(24)
+    expect($classes)->toHaveCount(25)
         ->and($classes)->toBe($expected);
 });
 
 // A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
-it('keeps RelationFilterHandler in forModelClosures() and excludes the two other resource-only handlers, same relative order', function () {
+it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMethodHandler and ToResourceHandler, same relative order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::forModelClosures(),
@@ -157,10 +162,39 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes the two other
         fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
     ));
 
-    expect($classes)->toHaveCount(25)
+    expect($classes)->toHaveCount(26)
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
+
+// Only JsonResource::resolve() drops the MissingValue the when*() family returns. toResource() and a relation filter
+// mean the same in any body, and a model's own method needs RelationFilterHandler for a to-many or map-proxy filter.
+it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same relative order', function () {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forNonResourceSubjects(),
+    );
+
+    expect($classes)->toHaveCount(27)
+        ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
+});
+
+it('gives a JsonResource subject make() and any other subject forNonResourceSubjects()', function (string $subject, bool $isResource) {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forSubject($subject, resourceExpressionHandlersTestEngine()),
+    );
+
+    expect($classes)->toBe($isResource
+        ? resourceExpressionHandlerOrder()
+        : array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
+})->with([
+    'a resource' => [CommentResource::class, true],
+    'a resource collection' => [PostCollection::class, true],
+    'a broadcast event' => [PayloadDiffersEvent::class, false],
+    'a shared-data middleware' => [HandleInertiaRequests::class, false],
+    'a model' => [Comment::class, false],
+]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
 // isThisMethodCall() matches on method name alone, ignoring args — so if ConditionalMethodHandler

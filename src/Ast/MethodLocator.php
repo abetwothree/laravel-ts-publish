@@ -57,6 +57,17 @@ class MethodLocator
     }
 
     /**
+     * Locate a method the class itself declares, in its own file or through a trait it uses.
+     *
+     * A method only an ancestor declares stays a miss, as in locateOwn(), so a caller still detects delegation.
+     */
+    public function locateDeclared(string $class, string $method): ?MethodContext
+    {
+        return $this->locateOwn($class, $method)
+            ?? ($this->declaresThroughTrait($class, $method) ? $this->locate($class, $method) : null);
+    }
+
+    /**
      * Locate a method wherever it is declared (class, trait, or parent), matching case-insensitively
      * to mirror PHP's own method dispatch.
      */
@@ -115,6 +126,30 @@ class MethodLocator
         }
 
         return new MethodContext($reflection, $node, $stmts);
+    }
+
+    /**
+     * Whether a trait in another file gives the class its own copy of a method.
+     *
+     * PHP reports the using class as a trait method's declaring class, so a trait an ancestor uses names that ancestor.
+     */
+    protected function declaresThroughTrait(string $class, string $method): bool
+    {
+        if (! class_exists($class)) {
+            return false;
+        }
+
+        /** @var ReflectionClass<object> $reflection */
+        $reflection = new ReflectionClass($class);
+
+        if (! $reflection->hasMethod($method)) {
+            return false;
+        }
+
+        $declaration = $reflection->getMethod($method);
+
+        return $declaration->getDeclaringClass()->getName() === $reflection->getName()
+            && $declaration->getFileName() !== $reflection->getFileName();
     }
 
     /**

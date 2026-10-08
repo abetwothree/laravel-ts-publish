@@ -63,8 +63,8 @@ final class ThisPropertyHandler implements ExpressionHandler
     /**
      * Extract properties and FQCNs from an array expression, e.g. for mergeWhen's second argument.
      *
-     * Public: the analyzer's own resolveArrayOrClosureToProperties() (merge()/mergeWhen() resolution)
-     * calls this directly — the array machinery moved here while that caller stayed on the analyzer.
+     * Public: the analyzer's own mergedArrayAnalysis() (merge()/mergeWhen() resolution) calls this
+     * directly — the array machinery moved here while that caller stayed on the analyzer.
      *
      * @param  ReflectionClass<object>  $subject  the analyzed subject, which decides whether a numeric key survives
      */

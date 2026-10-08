@@ -21,20 +21,27 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
 use Workbench\App\Models\Activity;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\DocblockGenericsFixture;
@@ -293,6 +300,67 @@ test('publishedColumnNames tracks the exclude_hidden setting', function () {
     expect($resolver->publishedColumnNames(User::class))->not->toContain('password');
 });
 
+describe('delegatedAttributeNames()', function () {
+    it('lists $hidden columns while exclude_hidden is off, and not while it is on', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        config()->set('ts-publish.models.exclude_hidden', false);
+        expect($resolver->delegatedAttributeNames(User::class))->toContain('password');
+
+        config()->set('ts-publish.models.exclude_hidden', true);
+        expect($resolver->delegatedAttributeNames(User::class))->not->toContain('password');
+    });
+
+    it('lists an appended accessor, and not one the model does not append', function () {
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(Address::class))
+            ->toContain('full_address')
+            ->not->toContain('has_coordinates');
+    });
+
+    // VisibleFilterOverrideModel appends `name`, a column, and hides `color`, which `$visible` lists.
+    it('lists the columns, then the appends, each name once, past $visible and $hidden only while exclude_hidden is off', function (bool $excludeHidden, array $names) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(VisibleFilterOverrideModel::class))
+            ->toBe($names);
+    })->with([
+        'exclude_hidden off' => [false, ['id', 'name', 'slug', 'color', 'created_at', 'updated_at', 'label', 'shade']],
+        'exclude_hidden on' => [true, ['id', 'name', 'label']],
+    ]);
+});
+
+// relationsToArray() writes a loaded relation under its name, snake-cased while $snakeAttributes is on, and
+// getArrayableRelations() matches `$visible` and `$hidden` against the method name; exclude_hidden gates both lists.
+describe('delegatedRelationKeys()', function () {
+    $userKeys = [
+        'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+        'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams',
+        'ownedTeams' => 'owned_teams', 'images' => 'images', 'notifications' => 'notifications',
+    ];
+
+    it('keys each relation as toArray() writes it', function (string $model, bool $excludeHidden, array $keys) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedRelationKeys($model))->toBe($keys);
+    })->with([
+        'snake-cased' => [User::class, false, $userKeys],
+        'snake-cased, no relation hidden, exclude_hidden on' => [User::class, true, $userKeys],
+        '$snakeAttributes off' => [RelationKeyCaseUser::class, false, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primaryAddress', 'teams' => 'teams',
+            'ownedTeams' => 'ownedTeams', 'images' => 'images', 'notifications' => 'notifications',
+        ]],
+        '$visible, exclude_hidden off' => [RelationVisibilityUser::class, false, $userKeys],
+        '$visible names the method, exclude_hidden on' => [RelationVisibilityUser::class, true, ['ownedTeams' => 'owned_teams']],
+        '$hidden, exclude_hidden off' => [RelationHiddenUser::class, false, $userKeys],
+        '$hidden names the method, exclude_hidden on' => [RelationHiddenUser::class, true, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams', 'images' => 'images',
+            'notifications' => 'notifications',
+        ]],
+    ]);
+});
+
 test('buildMorphTargetMap builds map from MorphMany inverse relations', function () {
     $resolver = resolve(ModelAttributeResolver::class);
 
@@ -423,9 +491,8 @@ test('a bare @return MorphTo<Model, $this> generic is not narrowing and falls th
 
 describe('morphTo docblock generics', function () {
     test('a concrete generic types the relation without any reverse relation', function () {
-        // causer() is declared on the HasRelatableLinkedRecord trait (mirroring eagle's own
-        // shape) with no reverse morphMany anywhere pointing at Activity — only the docblock
-        // generic can type it.
+        // causer() is a morphTo declared in the HasRelatableLinkedRecord trait, not on the model, with no reverse
+        // morphMany anywhere pointing at Activity — only the docblock generic can type it.
         $info = resolve(ModelAttributeResolver::class)->resolveRelation(Activity::class, 'causer');
 
         expect($info['type'])->toContain('User')
@@ -1103,5 +1170,34 @@ describe('a morphTo docblock that names a class_alias', function () {
 
         expect($result['morphFqcns'])->toBe([Facility::class])
             ->and($result['type'])->toBe('Facility | null');
+    });
+});
+
+// One rule decides whether a relation can load as null: the one resolveRelation() types its `| null` arm with.
+describe('relationLoadsNull()', function () {
+    it('tells whether a relation can be loaded as null', function (string $model, string $relation, ?bool $expected) {
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull($model, $relation))->toBe($expected);
+    })->with([
+        'a BelongsTo whose foreign key is nullable' => [Category::class, 'parent', true],
+        'a BelongsTo whose foreign key is required' => [Comment::class, 'user', false],
+        'a HasOne' => [User::class, 'profile', true],
+        'a nullable MorphTo' => [Image::class, 'reviewable', true],
+        'a required MorphTo' => [Image::class, 'imageable', false],
+        'a HasMany' => [User::class, 'posts', false],
+        'a relation the model does not declare' => [User::class, 'featuredPosts', null],
+    ]);
+
+    it('answers false for every relation while nullable_relations is off', function () {
+        config()->set('ts-publish.models.nullable_relations', false);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(Category::class, 'parent'))->toBeFalse()
+            ->and(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'featuredPosts'))->toBeFalse();
+    });
+
+    // A loaded to-many relation is a collection, so a nullability map that calls it nullable cannot make it load null.
+    it('answers false for a to-many relation its strategy calls nullable', function () {
+        config()->set('ts-publish.models.relation_nullability_map', [HasMany::class => 'nullable']);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'posts'))->toBeFalse();
     });
 });

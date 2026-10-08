@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -19,8 +20,10 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, for both
- * resource-construction shapes: `EnumResource::make()`/`::collection()` and `new EnumResource(...)`.
+ * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, a local, or the one
+ * enum a resolved payload holds, for both resource-construction shapes: `EnumResource::make()`/`::collection()` and
+ * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
+ * fallback would drop its whole shape for the enum either names.
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()`).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -52,12 +55,27 @@ trait ResolvesEnumPropertyArgTypes
         $result = ValueResult::unknown();
 
         if (! $this->isThisPropertyFetch($argExpr)) {
-            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition.
+            // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local
+            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: it is keyed by
+            // name, and a parameter, never bound to a variable, may shadow an outer local that is mid-resolution.
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
-                $boundExpr = $scope->closureParamExprBindings[$argExpr->name] ?? null;
+                $name = $argExpr->name;
 
-                if ($boundExpr !== null) {
-                    return $this->resolveEnumFromPropertyArg($boundExpr, $scope);
+                if (isset($scope->closureParamExprBindings[$name])) {
+                    return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
+                }
+
+                if ($scope->carriesImports
+                    && isset($scope->localVarBindings[$name])
+                    && ! isset($scope->resolvingLocalVars[$name])
+                ) {
+                    $scope->resolvingLocalVars[$name] = true;
+
+                    try {
+                        return $this->resolveEnumFromPropertyArg($scope->localVarBindings[$name], $scope);
+                    } finally {
+                        unset($scope->resolvingLocalVars[$name]);
+                    }
                 }
             }
 
@@ -151,6 +169,45 @@ trait ResolvesEnumPropertyArgTypes
             'type' => $info['type'],
             'enumFqcn' => $info['enumFqcn'],
         ];
+    }
+
+    /**
+     * The one enum a payload those spellings cannot read resolves to, such as a helper's return or a coalesce: its
+     * type, `| null` kept, and its optional flag, on the wrap's `enumFqcn`. A collection's payload may also be a list
+     * of that enum.
+     *
+     * @return ValueExpressionResult|null null without imports, for several enums, or a type holding more than the enum
+     */
+    protected function resolveEnumFromResolvedPayload(
+        Expr $payload,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        bool $allowsList = false,
+    ): ?array {
+        if (! $scope->carriesImports) {
+            return null;
+        }
+
+        $resolved = $engine->resolve($payload);
+        // A union of enum reads, such as a `??` over a case, carries its one enum on the multi-entry channel.
+        $fqcns = array_values(array_unique([
+            ...(isset($resolved['directEnumFqcn']) ? [$resolved['directEnumFqcn']] : []),
+            ...($resolved['embeddedEnumFqcns'] ?? []),
+        ]));
+
+        if (count($fqcns) !== 1) {
+            return null;
+        }
+
+        $enumType = LaravelTsPublish::toTsType($fqcns[0])['type'];
+        $held = ValueResult::stripNullArm($resolved['type']);
+
+        if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
+            return null;
+        }
+
+        // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
+        return ['type' => $resolved['type'], 'optional' => $resolved['optional'], 'enumFqcn' => $fqcns[0]];
     }
 
     /**

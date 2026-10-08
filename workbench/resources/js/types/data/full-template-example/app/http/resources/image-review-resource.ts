@@ -10,7 +10,7 @@ import type { UserResource as ResourcesUserResource } from '.';
 export interface ImageReviewResource
 {
     id: number;
-    reviewable?: CrmUserResource | ResourcesUserResource;
+    reviewable?: CrmUserResource | ResourcesUserResource | null;
     reviewer: CrmUserResource | ResourcesUserResource;
     review: { subject: CrmUserResource | ResourcesUserResource; label: string | null };
 }

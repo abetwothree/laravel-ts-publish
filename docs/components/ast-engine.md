@@ -14,6 +14,7 @@ These are the classes a change to the engine usually touches:
 | --- | --- |
 | [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
+| [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
 | [`ExpressionHandler`], [`ExpressionEngine`] | The handler contract, and the callback a handler uses for a sub-expression it does not own |
 | [`ResourceExpressionHandlers`], [`ControllerExpressionHandlers`] | The ordered handler profiles |
@@ -43,17 +44,21 @@ When more than one handler claims a node class, registration order decides which
 winner changes published types, so treat it as a behavior change, not a refactor.
 `ResourceExpressionHandlers::handlers()` is the one ordered list, and each profile filters it:
 
-- **`make()`**: the resource profile. It also runs for every subject `AstEngine::analyzeMethod()` reaches, such as a
-  broadcast event, model metadata or a DTO.
+- **`make()`**: the resource profile, a `JsonResource` subject's.
+- **`forNonResourceSubjects()`**: drops `ConditionalMethodHandler` alone, for every other subject
+  `AstEngine::analyzeMethod()` reaches, such as a broadcast event, shared data, model metadata or a DTO.
 - **`withoutResourceHandlers()`**: drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`.
   Its one production caller is `ControllerExpressionHandlers::make()`.
 - **`forModelClosures()`**: drops only the first two, for `AstEngine::analyzeModelClosure()`. `RelationFilterHandler`
   stays as the only handler that types a to-many relation's filter, a map proxy, a multi-model accessor's filter, or a
   filter on a collection-cast column or an `Eloquent\Collection` accessor.
 
-Events and metadata run `make()`, so the three resource-only handlers are live in their bodies. Pointing
-`analyzeMethod()` at `withoutResourceHandlers()` would move published event and metadata types. Measure the diff both
-ways before you change it.
+`ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
+`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. Only
+`JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject `$this->when()`
+is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and `RelationFilterHandler` too was
+measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an event's `toResource()` into
+`unknown`, which the payload contradicts.
 
 `ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` sit last, with only `KnownMethodRuleHandler` after them,
 so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,
@@ -85,7 +90,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
 | `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
-| `NullsafeMethodCall` | `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
 | `StaticCall` | `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
@@ -173,7 +178,7 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
-| `whenAggregated()`, other aggregates | The aggregate | Nothing: its type depends on column, function and driver |
+| `whenAggregated()`, other aggregates | The aggregate | The aggregate without its `null`, as the model's declaration or [`AggregateValueType`] types it; nothing when neither does |
 | `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
 | `transform()`'s default | The blank value | The value's full type, `null` included |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
@@ -187,14 +192,17 @@ These rules settle the cases the table leaves open:
   so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
   `never[]`, and leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
   `whenNotNull()` or `whenNull()` value closure's, stay unbound.
-- **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`. The
-  map writers skip one, since `map()` passes two values of different types, and a `morphTo` `whenLoaded()` binds nothing
-  for one.
+- **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and a
+  `morphTo` `whenLoaded()` binds the list of its targets, its element never `null`. The map writers skip one, since
+  `map()` passes two values of different types.
 - **`when()` and `unless()` bind a required first parameter anyway**: they bind the condition's `$this->prop`, although
   Laravel passes nothing and the call throws `ArgumentCountError`. The workbench pins it with
-  `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays.
-- **`whenAggregated()` publishes `number` for an aggregate it cannot type**: a driver can return a numeric or date
-  string instead, such as a MySQL `SUM()`, which that `number` does not describe.
+  `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays, and `ts:publish` warns that the
+  call throws.
+- **`whenAggregated()` types its aggregate as the model declares it**: the model's own accessor or `@property` on
+  `{relation}_{function}_{column}`, as declared, then its built-in cast, then what the connection's driver returns for
+  the related column ([`AggregateValueType`]), else `number`. Every aggregate but a count or one whose function the
+  call computes keeps `| null`, the SQL `NULL` over no rows, unless the model's declaration rules it out.
 
 `ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
 green with either mechanism alone, so it pins neither.
@@ -213,6 +221,14 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
 `GuardWritePostResource` pins both cases. Neither mechanism sees a write through a reference.
+
+A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
+`mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
+`if` chain's for each block it runs, and the failed conditions of the chain's leading branches that always exit for the
+rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads. A closure or a
+spread method that writes a name drops the proofs of that name it came in with. A call between a guard and its read,
+such as a method that assigns the read or `setRelation()`, is not seen as a write, so the proof survives it
+(#115).
 
 A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
 the body, where `$x` is what the test excluded.
@@ -280,7 +296,8 @@ read that bypasses it leaves the generation cache serving stale output when that
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
 method inherited from another file is a deliberate miss, the signal callers use to detect delegation, while a parent
-declared in the same file is a hit. Both memoize misses.
+declared in the same file is a hit. Both memoize misses. `locateDeclared()` searches the class's own file, then a trait
+the class itself uses, composed of those two memoized lookups.
 
 The body fallback records its dependencies the same way, because `MethodReturnTypeResolver` re-enters `analyzeMethod()`,
 which reads the helper's file through `MethodLocator`. So a resource typed from a helper's body is invalidated when that
@@ -343,17 +360,19 @@ A key the resource's own `only()` or `except()` selects keeps only part of these
 A union arm the engine cannot type is left out, never widened to `unknown`, so `$cond ? <untypable> : null` publishes
 `null`. `unknown` would be more honest but less specific, and no change may make a published type less specific. Close
 the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
-see. Return-branch merges outside a spread helper keep the strict rule, where one `unknown` branch makes the key
-`unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
+makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
-`KnownFunctionCallHandler`'s `data_get()` default and `CoalesceHandler`. `analyzeClosureUnion()` records because
+`KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler`,
+`ConditionalMethodHandler::applyConditionalDefault()` and `MatchHandler`'s arms. `analyzeClosureUnion()` records because
 `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
 left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
 union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
-`ConditionalMethodHandler::applyConditionalDefault()` also leaves an `unknown` default arm out, but records nothing, so
-neither the drop count nor `DroppedUnionArmsAuditTest` sees that drop.
+`applyConditionalDefault()` records a default only beside a value arm with a type.
+`ResourceAstAnalyzer::branchUnion()` records nothing for a spread helper's branches or a merge call's sides, since it
+unions type strings and cannot name the expression it drops.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
@@ -361,9 +380,11 @@ answer.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
-proves each recording site still fires. The baseline only shrinks: teach a rule to type the shape, then delete its
-entries. A recorded arm is a candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back
-to a return-type annotation or to `null`. Read the published property before you call an entry a bug.
+proves each recording site still fires. A `DroppedUnionArms::record()` call whose site no baseline row names fails
+`a new recording site cannot go unpinned`, so a new site brings its own `UnionHonestyResource` key and row. Apart from
+those rows, the baseline only shrinks: teach a rule to type the shape, then delete its entries. A recorded arm is a
+candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back to a return-type annotation
+or to `null`. Read the published property before you call an entry a bug.
 
 ## Public API
 
@@ -416,9 +437,12 @@ Each consumer enters the engine at the point that fits its subject:
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
 | `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
-| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
+
+Every consumer that reaches `ResourceAstAnalyzer::analyze()` without a context locates through
+`MethodLocator::locateDeclared()`, as both Inertia analyzers do for an action.
 
 ## Related
 
@@ -435,6 +459,7 @@ These pages cover the engine's neighbors:
 - [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
   inference feature moved onto this engine.
 
+[`AggregateValueType`]: ../../src/Ast/AggregateValueType.php
 [`AnalysisComposer`]: ../../src/Ast/AnalysisComposer.php
 [`AnalysisImports`]: ../../src/Ast/AnalysisImports.php
 [`AnalysisMemo`]: ../../src/Ast/AnalysisMemo.php
@@ -450,6 +475,7 @@ These pages cover the engine's neighbors:
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
 [`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/MethodLocator.php
+[`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php
 [`ReturnLiteralReader`]: ../../src/Ast/ReturnLiteralReader.php

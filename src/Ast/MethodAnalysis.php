@@ -54,7 +54,7 @@ class MethodAnalysis
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
-     *                                                          for a mixed EnumResource/direct-access ternary
+     *                                                          for a mixed EnumResource/direct-access ternary or match
      * @param  ImportedCastKeyMap  $importedCastKeys  property name => true, for a key whose method-level #[TsCasts]
      *                                                entry brings its own import: that text is the app's own
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface

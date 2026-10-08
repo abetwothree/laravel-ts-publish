@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -22,6 +22,7 @@ use ReflectionClass;
  *
  * @phpstan-import-type AttributeInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
+ * @phpstan-import-type ValueExpressionResult from \AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler
  *
  * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, classTokenFqcns?: list<class-string>, customImports: array<string, list<string>>}
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
@@ -31,8 +32,6 @@ trait ResolvesModelTypes
     use ResolvesFilteredRelationTypes;
 
     protected ?Model $modelInstance = null;
-
-    protected ?RelationNullable $relationNullable = null;
 
     /** @var ReflectionClass<Model>|null */
     protected ?ReflectionClass $modelReflection = null;
@@ -55,7 +54,6 @@ trait ResolvesModelTypes
         $this->modelRelations = $resolver->getRelations($this->scope->modelClass);
         $this->modelInstance = $resolver->getInstance($this->scope->modelClass);
         $this->modelReflection = $resolver->getReflection($this->scope->modelClass);
-        $this->relationNullable = $resolver->getRelationNullable($this->scope->modelClass);
     }
 
     /**
@@ -86,9 +84,9 @@ trait ResolvesModelTypes
     }
 
     /**
-     * Build a ResourceAnalysis from all model attributes and relations when the resource
-     * delegates to JsonResource::toArray(). $excludeHidden is false only for only(), whose
-     * property set is the caller's own keys — also gates the write-only mutator skip below.
+     * Build a ResourceAnalysis from all model attributes and relations, the pool a top-level only()/except() filters.
+     * $excludeHidden is false only for only(), whose property set is the caller's own keys — also gates the
+     * write-only mutator skip below.
      */
     protected function buildModelDelegatedAnalysis(bool $excludeHidden = true): ?ResourceAnalysis
     {
@@ -119,42 +117,122 @@ trait ResolvesModelTypes
                 continue;
             }
 
-            $info = $this->resolveModelAttributeTypeInfo($attr['name']);
-
-            // A cast class's own type name and its #[TsType(import:)] path travel with the property, the
-            // same way ThisPropertyHandler carries them — without this the delegated shape names a token
-            // no import supplies, and only ResourceTransformer's own model lookup made it resolve.
-            $classFqcns = $info['classFqcns'];
-
-            $analysis->addProperty($attr['name'], [
-                'type' => $info['type'],
-                'optional' => false,
-                ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
-                ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => ClassTokenQueue::fqcnsOf($info)] : []),
-                ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
-                ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
-            ]);
+            $this->addModelAttributeProperty($analysis, $attr['name']);
         }
 
-        // Also include relations so they can be referenced by only()/except() filters
-        if ($this->modelRelations !== null) {
-            foreach ($this->modelRelations as $relation) {
-                $info = $this->resolveModelRelationTypeInfo($relation['name'], $this->scope);
-
-                if ($info['type'] !== 'unknown') {
-                    // Morph arms travel as embedded FQCNs: self-keyed in modelFqcns so every arm of a
-                    // MorphTo union is imported, and queued per property so ResourceTransformer can
-                    // alias same-basename parents apart.
-                    $analysis->addProperty($relation['name'], [
-                        'type' => $info['type'],
-                        'optional' => false,
-                        ...($info['modelFqcn'] !== null ? ['modelFqcn' => $info['modelFqcn']] : []),
-                        'embeddedModelFqcns' => $info['morphFqcns'],
-                    ]);
-                }
-            }
+        foreach ($this->modelRelations ?? [] as $relation) {
+            $this->addModelRelationProperty($analysis, $relation['name'], $relation['name'], optional: false);
         }
 
         return $analysis;
+    }
+
+    /**
+     * Build the property set Model::toArray() writes, for a resource that delegates to JsonResource::toArray(): the
+     * attributes attributesToArray() serializes, then each relation optional under the key relationsToArray() gives
+     * it, since only a loaded relation is written.
+     */
+    protected function buildModelSerializedAnalysis(): ?ResourceAnalysis
+    {
+        if ($this->modelAttributes === null || $this->scope->modelClass === null) {
+            return null;
+        }
+
+        /** @var class-string $modelClass */
+        $modelClass = $this->scope->modelClass;
+        $resolver = resolve(ModelAttributeResolver::class);
+        $dbColumns = $resolver->databaseColumnNames($modelClass);
+        $relationKeys = $resolver->delegatedRelationKeys($modelClass);
+        $analysis = new ResourceAnalysis;
+
+        foreach ($resolver->delegatedAttributeNames($modelClass) as $name) {
+            if (! in_array($name, $dbColumns, true) && $resolver->isOmittedMutator($modelClass, $name)) {
+                continue;
+            }
+
+            $relationName = array_search($name, $relationKeys, true);
+
+            if ($relationName === false) {
+                $this->addModelAttributeProperty($analysis, $name);
+
+                continue;
+            }
+
+            // array_merge() lets a loaded relation overwrite the attribute of the same key, which is always written.
+            unset($relationKeys[$relationName]);
+            $analysis->addProperty($name, ValueResult::unionResults([
+                $this->modelAttributeResult($name),
+                $this->modelRelationResult($relationName),
+            ]));
+        }
+
+        foreach ($relationKeys as $relationName => $key) {
+            $this->addModelRelationProperty($analysis, $relationName, $key, optional: true);
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * Add one model attribute, typed as a `$this->column` read with its enum, class and #[TsType] channels.
+     */
+    private function addModelAttributeProperty(ResourceAnalysis $analysis, string $name): void
+    {
+        $analysis->addProperty($name, $this->modelAttributeResult($name));
+    }
+
+    /**
+     * Add one relation under $key, typed as the relation's own read; a relation nothing can type is left out.
+     */
+    private function addModelRelationProperty(ResourceAnalysis $analysis, string $relationName, string $key, bool $optional): void
+    {
+        $result = $this->modelRelationResult($relationName);
+
+        if ($result['type'] !== 'unknown') {
+            $analysis->addProperty($key, $result, $optional);
+        }
+    }
+
+    /**
+     * The value a `$this->column` read of a model attribute resolves to, with its enum, class and #[TsType] channels.
+     *
+     * @return ValueExpressionResult
+     */
+    private function modelAttributeResult(string $name): array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($name);
+
+        // A cast class's own type name and its #[TsType(import:)] path travel with the property, the
+        // same way ThisPropertyHandler carries them — without this the delegated shape names a token
+        // no import supplies, and only ResourceTransformer's own model lookup made it resolve.
+        $classFqcns = $info['classFqcns'];
+
+        return [
+            'type' => $info['type'],
+            'optional' => false,
+            ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
+            ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => ClassTokenQueue::fqcnsOf($info)] : []),
+            ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
+            ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
+        ];
+    }
+
+    /**
+     * The value a read of a model relation resolves to.
+     *
+     * @return ValueExpressionResult
+     */
+    private function modelRelationResult(string $relationName): array
+    {
+        $info = $this->resolveModelRelationTypeInfo($relationName, $this->scope);
+
+        // Morph arms travel as embedded FQCNs: self-keyed in modelFqcns so every arm of a MorphTo union is
+        // imported, and queued per property so ResourceTransformer can alias same-basename parents apart.
+        return [
+            'type' => $info['type'],
+            'optional' => false,
+            ...($info['modelFqcn'] !== null ? ['modelFqcn' => $info['modelFqcn']] : []),
+            'embeddedModelFqcns' => $info['morphFqcns'],
+        ];
     }
 }

@@ -14,10 +14,10 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsResourceCalls.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php` (see below) | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Analyzers/Concerns/ChecksPreserveKeys.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
-| `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
-| `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
-| `Illuminate\Database\Eloquent\Attributes\Appends` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Appends` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Connection` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
@@ -29,8 +29,10 @@ row is converted.
 
 The `Collects` row's test guards are not written as `class_exists()`. They spell the condition as
 `->skip(fn () => ! version_compare(app()->version(), '13', '>='))`, so grep for that form, not the FQCN, when you
-convert the row. Each covers a `PostFlatCollection` assertion. That fixture's collected resource is reachable only
-through the attribute, so on Laravel 12 `resolveCollectedResourceClass()` returns null and the type degrades.
+convert the row. Each covers a `PostFlatCollection` assertion, except one in `ResourceAstAnalyzerTest.php`, which
+covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so the `$collects` it inherits wins.
+`PostFlatCollection`'s collected resource is reachable only through the attribute, so on Laravel 12
+`resolveCollectedResourceClass()` returns null and the type degrades.
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute
 but also follows the `FooCollection` to `FooResource` naming convention, so it resolves either way.
 
@@ -39,9 +41,11 @@ attributes itself in `Model::__construct()`, and this package reads only the res
 `getAppends()` and the inspector's `attributeIsHidden()`, as
 [ModelAttributeResolver](./components/model-attribute-resolver.md) describes.
 
-Their only `class_exists()` is the `->skip()` on each attribute's test in `ModelTransformerTest.php`. The scanner does
-not read `tests/`, so the enforcement test neither needs these rows nor checks them. A test-only guard still earns a
-row, because its `->skip()` must go with the row once the floor reaches `13.0.0`.
+Their only `class_exists()` is the `->skip()` on each attribute's test in `ModelTransformerTest.php`. The
+`Laravel13AttributesSummaryResource` test in `ResourceAstAnalyzerTest.php` reads `#[Table]`, `#[Hidden]` and
+`#[Appends]` together, so it is skipped with the `version_compare()` form instead. The scanner does not read `tests/`,
+so the enforcement test neither needs these rows nor checks them. A test-only guard still earns a row, because its
+`->skip()` must go with the row once the floor reaches `13.0.0`.
 
 The workbench fixture models `use`-import these five attributes, and that is safe on Laravel 12. A `use` statement is
 a compile-time alias that loads nothing, and PHP never instantiates a class attribute unless something calls

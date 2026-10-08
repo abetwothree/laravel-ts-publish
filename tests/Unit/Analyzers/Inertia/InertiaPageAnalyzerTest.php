@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -164,6 +165,14 @@ it('types props delegated to a collaborator, and reads both inertia() helper for
         ->and($helper['pageType'])->toBe('Inertia.SharedData & { label: string }')
         ->and($chain['component'])->toBe('Dashboard/HelperChain')
         ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
+it('types an action a trait in another file supplies', function () {
+    $data = pageData(ControllerWithTraitAction::class.'@helper');
+
+    expect($data)->not->toBeNull()
+        ->and($data['component'])->toBe('Dashboard/Helper')
+        ->and($data['pageType'])->toBe('Inertia.SharedData & { label: string }');
 });
 
 // Task 32 review, fix round 2: the props array literal passed to Inertia::render() is a whole

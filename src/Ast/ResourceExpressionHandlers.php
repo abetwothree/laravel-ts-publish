@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
@@ -33,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Builds the ordered ExpressionHandler lists ExpressionDispatcher runs. Registration order is
@@ -44,8 +46,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 final class ResourceExpressionHandlers
 {
     /**
-     * The full resource profile, in the dispatch order derived from the guard order of the single
-     * if/else chain these handlers replaced. $engine mirrors the `make($this)` call site; unused today,
+     * The full resource profile, a JsonResource subject's, in the dispatch order derived from the guard order of the
+     * single if/else chain these handlers replaced. $engine mirrors the `make($this)` call site; unused today,
      * kept for a future handler that needs the engine at construction.
      *
      * @return list<ExpressionHandler>
@@ -56,9 +58,33 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * make() minus the three resource-only handlers (ConditionalMethodHandler, ToResourceHandler and
-     * RelationFilterHandler), in the same order. Named for what it drops: its one production caller is
-     * ControllerExpressionHandlers::make(), and every other non-resource subject but a getter body runs make().
+     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
+     *
+     * @return list<ExpressionHandler>
+     */
+    public static function forSubject(string $subjectClass, ExpressionEngine $engine): array
+    {
+        return is_a($subjectClass, JsonResource::class, true) ? self::make($engine) : self::forNonResourceSubjects();
+    }
+
+    /**
+     * make() minus ConditionalMethodHandler, same relative order: a broadcast event's, model metadata's, shared data's
+     * or a body-fallback method's profile. Only JsonResource::resolve() filters the MissingValue the `when*()` family
+     * returns, so elsewhere `$this->when()` is another method, while toResource() and a filter mean the same anywhere.
+     *
+     * @return list<ExpressionHandler>
+     */
+    public static function forNonResourceSubjects(): array
+    {
+        return array_values(array_filter(
+            self::handlers(),
+            static fn (ExpressionHandler $handler): bool => ! $handler instanceof ConditionalMethodHandler,
+        ));
+    }
+
+    /**
+     * make() minus ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler, in the same order. Named for
+     * what it drops: its one production caller is ControllerExpressionHandlers::make().
      *
      * @return list<ExpressionHandler>
      */
@@ -89,7 +115,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 27 handlers in registration order — the single source both profiles above filter.
+     * Construct all 28 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -120,6 +146,7 @@ final class ResourceExpressionHandlers
             new CollectionPipelineHandler,
             new VariableHandler,
             new TernaryHandler,
+            new MatchHandler,
             new ReceiverPropertyFetchHandler,
             new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,

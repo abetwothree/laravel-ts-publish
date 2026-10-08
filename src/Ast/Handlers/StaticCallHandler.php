@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -51,6 +52,7 @@ final class StaticCallHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use InspectsResourceSubject;
+    use ReadsNullablePayloads;
     use ResolvesAuthHelperCalls;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesRelatedModelTypes;
@@ -76,13 +78,16 @@ final class StaticCallHandler implements ExpressionHandler
             return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
         }
 
-        // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and delegate.
+        // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and delegate. resolve() runs the
+        // resource's own toArray(), so a null payload never makes it null.
         if ($expr instanceof MethodCall
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'resolve'
             && $expr->var instanceof StaticCall
         ) {
-            return $this->analyzeStaticCall($expr->var, $scope, $engine);
+            $resolved = $this->analyzeStaticCall($expr->var, $scope, $engine);
+
+            return isset($resolved['resourceFqcn']) ? [...$resolved, 'type' => ValueResult::stripNullArm($resolved['type'])] : $resolved;
         }
 
         // new SomeResource(...)->resolve() — resolve() is Laravel's serializer, not the resource's own
@@ -96,7 +101,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver = $engine->resolve($expr->var);
 
             if (isset($receiver['resourceFqcn'])) {
-                return $receiver;
+                return [...$receiver, 'type' => ValueResult::stripNullArm($receiver['type'])];
             }
         }
 
@@ -193,14 +198,14 @@ final class StaticCallHandler implements ExpressionHandler
 
         // EnumResource::make($this->prop)
         if ($this->isEnumResourceClass($className) && $methodName === 'make') {
-            return $this->analyzeEnumResourceMake($call, $className, $scope);
+            return $this->analyzeEnumResourceMake($call, $className, $scope, $engine);
         }
 
         // EnumResource::collection($this->prop) — must precede the generic isResourceClass()
         // checks below: EnumResource extends JsonResource, so those would match it too and
         // yield the unsuffixed 'EnumResource[]' instead of resolving the wrapped enum.
         if ($this->isEnumResourceClass($className) && $methodName === 'collection') {
-            return $this->analyzeEnumResourceCollection($call, $className, $scope);
+            return $this->analyzeEnumResourceCollection($call, $className, $scope, $engine);
         }
 
         // SomeCollection::make()/::collection() on a ResourceCollection subclass. Must precede the generic
@@ -227,7 +232,7 @@ final class StaticCallHandler implements ExpressionHandler
             /** @var class-string $className */
             return [
                 ...$result,
-                'type' => $resourceName,
+                'type' => $this->wrapsNullablePayload($call, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];
@@ -276,7 +281,7 @@ final class StaticCallHandler implements ExpressionHandler
         // A collection receiver (e.g. ::collection()) resolves to an AnonymousResourceCollection
         // instance, not a $resourceFqcn instance — reflecting the method below would validate
         // against the wrong receiver, so exclude it rather than misfire on e.g. ->additional().
-        if ($resourceFqcn === null || $receiverResult['type'] !== TsNaming::resourceTypeName($resourceFqcn)) {
+        if ($resourceFqcn === null || ValueResult::stripNullArm($receiverResult['type']) !== TsNaming::resourceTypeName($resourceFqcn)) {
             return null;
         }
 
@@ -305,8 +310,8 @@ final class StaticCallHandler implements ExpressionHandler
             return ['type' => $this->buildInlineObjectType($analysis), 'optional' => false];
         }
 
-        if ($this->methodReturnAllowsNull($method) && ! str_contains($receiverResult['type'], 'null')) {
-            $receiverResult['type'] .= ' | null';
+        if ($this->methodReturnAllowsNull($method)) {
+            $receiverResult['type'] = ValueResult::withNullArm($receiverResult['type']);
         }
 
         return $receiverResult;
@@ -357,11 +362,11 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze EnumResource::make($this->prop) — resolve the enum class from the model property.
+     * Analyze EnumResource::make($this->prop) — resolve the enum class from the model property, else from the payload.
      *
      * @return ValueExpressionResult
      */
-    private function analyzeEnumResourceMake(StaticCall $call, string $className, AnalysisScope $scope): array
+    private function analyzeEnumResourceMake(StaticCall $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
@@ -369,7 +374,9 @@ final class StaticCallHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        return $this->resolveEnumFromPropertyArg($payload, $scope) ?? ValueResult::unknown();
+        return $this->resolveEnumFromPropertyArg($payload, $scope)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
+            ?? ValueResult::unknown();
     }
 
     /**
@@ -381,7 +388,7 @@ final class StaticCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeEnumResourceCollection(StaticCall $call, string $className, AnalysisScope $scope): array
+    private function analyzeEnumResourceCollection(StaticCall $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $result = ValueResult::unknown();
         $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
@@ -390,7 +397,8 @@ final class StaticCallHandler implements ExpressionHandler
             return $result;
         }
 
-        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope);
+        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine, allowsList: true);
 
         if ($enumResult === null) {
             return $result;

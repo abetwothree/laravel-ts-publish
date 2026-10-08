@@ -10,7 +10,7 @@ use Workbench\App\Models\Kpi;
 
 /**
  * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
- * reproducing the eagle MailPrice alias collision through a resource instead of a model.
+ * reproducing a same-basename alias collision through a resource instead of a model.
  *
  * @mixin Kpi
  */

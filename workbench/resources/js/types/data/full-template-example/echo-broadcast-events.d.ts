@@ -1,8 +1,10 @@
 import type { ComputedNameEvent } from './app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
+import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
 import type { OrderShipped } from './app/events/OrderShipped';
@@ -14,6 +16,7 @@ import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
+import type { TeamRosterSynced } from './app/events/TeamRosterSynced';
 import type { UserNotification } from './app/events/UserNotification';
 import type { UserRegisteredEvent } from './app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './app/events/UserSynced';
@@ -23,9 +26,11 @@ declare module "@laravel/echo" {
     interface Events {
         ".Workbench.App.Events.ComputedNameEvent": ComputedNameEvent;
         ".Workbench.App.Events.DeclaredPropsEvent": DeclaredPropsEvent;
+        ".Workbench.App.Events.DispatchRelayed": DispatchRelayed;
         ".Workbench.App.Events.DocblockShapedEvent": DocblockShapedEvent;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
         ".Workbench.App.Events.FacilityAudited": FacilityAudited;
+        ".Workbench.App.Events.ManifestAssembled": ManifestAssembled;
         ".Workbench.App.Events.MixedTypesEvent": MixedTypesEvent;
         ".Workbench.App.Events.MultiModelEvent": MultiModelEvent;
         ".Workbench.App.Events.OrderShipped": OrderShipped;
@@ -37,6 +42,7 @@ declare module "@laravel/echo" {
         "server.created": ServerCreated;
         ".Workbench.Crm.Events.StatusSynced": StatusSynced;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;
+        ".Workbench.App.Events.TeamRosterSynced": TeamRosterSynced;
         ".Workbench.App.Events.UserNotification": UserNotification;
         ".Workbench.App.Events.UserRegisteredEvent": UserRegisteredEvent;
         ".Workbench.App.Events.UserSynced": AppUserSynced;

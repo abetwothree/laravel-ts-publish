@@ -75,7 +75,7 @@ guess. [AST engine § Narrowing](ast-engine.md#narrowing) covers what writes the
 
 PHP binds `self` and `parent` to the class that declares the method body, and the engine can analyze an inherited body
 under a child subject. `AnalysisScope::$declaringFileClass` cannot stand in for that class, because it tracks files for
-inline `@var` imports. It names a trait for a trait's method, and the main `analyze()` path leaves it as the subject. So
+inline `@var` imports. It names a trait for a trait's method, and `analyze()` sets it from the located method. So
 `new self`, `new parent`, `self::m()` and `parent::m()` resolve only when the subject's parent is absent or under
 `Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` always names the subject,
 since late static binding follows the object.
@@ -214,8 +214,9 @@ step can decline:
 ### The body fallback carries no FQCN channel
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
-body once. The shape its literal return spells replaces the declaration's array arms, so `PriceQuoteService::quote()`,
-which declares only `: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`.
+body once. The shape spelled by its literal return, or by a returned variable the walk reads, replaces the
+declaration's array arms, so `PriceQuoteService::quote()`, which declares only `: array`, publishes
+`{ unit: string; minimum: number; discounted: { unit: string } }`.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
@@ -251,7 +252,9 @@ and every resource still publish the getter's own analysis, and `CommentRelation
 
 One read keeps imports on purpose: `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` types
 `EnumResource::make($author->role)` on a bound closure parameter from the attribute's first enum FQCN, a channel a
-spelling without imports can lose. The enum it names is one the body fallback drops anyway.
+spelling without imports can lose. The enum it names is one the body fallback drops anyway. A wrap over a local or any
+other resolved payload, and a `$this->helper()` that `SubjectHelperReturnResolver` reads, stay `unknown` without
+imports, so their siblings keep their types.
 
 An accessor still costs the method its whole shape when its type names a class any other way:
 

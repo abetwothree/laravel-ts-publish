@@ -256,10 +256,11 @@ export interface UserResource {
 Key capabilities include:
 
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
-- **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties.
+- **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
 - **Computed values**: method calls, local variables, `instanceof` narrowing, and collection chains keep their types.
-- **Spreads and inheritance**: `merge()`, parent `toArray()` spreads, and trait method spreads add their keys.
+- **Spreads and inheritance**: `merge()`, `mergeWhen()` and its default, parent `toArray()` and trait method spreads, and a trait's own `toArray()` add their keys.
+- **Base delegation**: a resource with no `toArray()` publishes the model's columns, appended accessors, and relations, each relation an optional key.
 - **Attribute filters**: `only([...])` and `except([...])`, on the resource or on a relation, are typed from the model.
 - **Overrides**: `#[TsResource]` sets the name or model, and `#[TsCasts]` overrides or adds property types.
 
@@ -603,7 +604,7 @@ Key capabilities include:
 
 - **Ready to render**: the properties and both import maps agree, so a module that renders all three compiles.
 - **Any class, any method**: `toArray()` by default, or another method, such as `analyze($event, 'broadcastWith')`.
-- **Resource semantics**: conditional methods, nested resources, and relation filters type as they do in a publish.
+- **Resource semantics**: on an API resource, conditional methods, nested resources, and relation filters type as they do in a publish. On any other class, Laravel's `Conditionable::when()` comes back `unknown`.
 - **Public API**: `analyze()` and `AnalysisResult` are supported, and every other engine class is internal.
 
 For the arguments, the result's fields, and what it can't analyze, see the [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).

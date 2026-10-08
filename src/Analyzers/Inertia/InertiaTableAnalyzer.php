@@ -119,14 +119,14 @@ class InertiaTableAnalyzer
     }
 
     /**
-     * Locate a class method's own-file declaration via MethodLocator, recording its file dependency.
+     * Locate a class method's own declaration, a trait's included, via MethodLocator, recording its file dependency.
      *
      * @param  class-string  $class
      * @return array{reflection: ReflectionClass<object>, method: ClassMethod}|null
      */
     protected function methodContext(string $class, string $methodName): ?array
     {
-        $context = resolve(MethodLocator::class)->locateOwn($class, $methodName);
+        $context = resolve(MethodLocator::class)->locateDeclared($class, $methodName);
 
         if ($context === null) {
             return null;

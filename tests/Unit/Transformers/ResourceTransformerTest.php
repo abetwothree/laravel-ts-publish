@@ -4,14 +4,21 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
@@ -89,8 +96,11 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\PostStateCastResource;
 use Workbench\App\Http\Resources\PostStateResource;
+use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Http\Resources\ProductResource;
+use Workbench\App\Http\Resources\ProductSalesResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProfileSummaryResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
@@ -365,14 +375,14 @@ describe('ResourceTransformer with PostResource', function () {
     test('relation::staticMethod() in whenLoaded closure resolves return type — category_class_name', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->properties['category_class_name']['type'])->toBe('string');
+        expect($data->properties['category_class_name']['type'])->toBe('string | null');
         expect($data->properties['category_class_name']['optional'])->toBeTrue();
     });
 
     test('resource->relation::staticMethod() in whenLoaded closure resolves return type — category_table_name', function () {
         $data = (new ResourceTransformer(PostResource::class))->data();
 
-        expect($data->properties['category_table_name']['type'])->toBe('string');
+        expect($data->properties['category_table_name']['type'])->toBe('string | null');
         expect($data->properties['category_table_name']['optional'])->toBeTrue();
     });
 });
@@ -729,10 +739,10 @@ describe('ResourceTransformer with OrderResource', function () {
         expect($data->properties['items_count']['optional'])->toBeTrue();
     });
 
-    test('transforms whenAggregated as optional number', function () {
+    test('transforms whenAggregated as an optional nullable number', function () {
         $data = (new ResourceTransformer(OrderResource::class))->data();
 
-        expect($data->properties['total_avg']['type'])->toBe('number');
+        expect($data->properties['total_avg']['type'])->toBe('number | null');
         expect($data->properties['total_avg']['optional'])->toBeTrue();
     });
 
@@ -1142,7 +1152,7 @@ describe('ResourceTransformer self-referencing resources', function () {
     test('self-referencing resource resolves self-reference property types', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent']['type'])->toBe('CategoryResource | null');
         expect($data->properties['children']['type'])->toBe('CategoryResource[]');
     });
 
@@ -1193,35 +1203,35 @@ describe('ResourceTransformer self-referencing resources', function () {
     test('new self() resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_self']['optional'])->toBeFalse();
     });
 
     test('self::make() resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_make_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_make_self']['optional'])->toBeFalse();
     });
 
     test('new self() via $this->resource resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_resource_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_resource_self']['optional'])->toBeFalse();
     });
 
     test('whenLoaded with new self() in closure resolves to optional CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_when_self']['optional'])->toBeTrue();
     });
 
     test('whenLoaded with new self() via $this->resource in closure resolves to optional CategoryResource', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource');
+        expect($data->properties['parent_when_resource_self']['type'])->toBe('CategoryResource | null');
         expect($data->properties['parent_when_resource_self']['optional'])->toBeTrue();
     });
 });
@@ -2100,7 +2110,7 @@ describe('ResourceTransformer ternary operator support', function () {
     test('Resource::make vs Resource::make (same) resolves to CategoryResource', function () {
         $data = (new ResourceTransformer(TernaryResource::class))->data();
 
-        expect($data->properties['category_or_category']['type'])->toBe('CategoryResource');
+        expect($data->properties['category_or_category']['type'])->toBe('CategoryResource | null');
         expect($data->properties['category_or_category']['optional'])->toBeFalse();
     });
 
@@ -2478,7 +2488,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 });
 
-// Regression: the mixed-ternary arm shape (Task 28) is recorded once, in TernaryHandler, but is
+// Regression: the mixed-ternary arm shape (Task 28) is recorded once, by ValueResult::withEnumArmShapes(), but is
 // only useful if every ResourceAnalysis-building collector threads it through to the transformer —
 // not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
 describe('ResourceTransformer with mixed-ternary collector regressions', function () {
@@ -2593,14 +2603,14 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
             ->and($allTypeImports)->toContain('Post', 'Product', 'User as WorkbenchUser', 'User as CrmUser');
     });
 
-    test('a get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
-        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no
-        // annotation to read, so its body types it: `fn () => null`. ModelTransformer::transformMutators()
-        // keeps such a mutator rather than omitting it, and buildModelDelegatedAnalysis() must agree.
-        $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
+    test('an appended get-having accessor with no annotation survives model-delegated analysis typed by its body', function () {
+        // no_docblock_accessor has a real getter (unlike search_index's write-only case) and no annotation to read, so
+        // its body types it: `fn () => null`. Delegation keeps it once the model appends it, as toArray() does.
+        $data = (new ResourceTransformer(AppendingImageResource::class))->data();
 
         expect($data->properties)->toHaveKey('no_docblock_accessor')
-            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null');
+            ->and($data->properties['no_docblock_accessor']['type'])->toBe('null')
+            ->and((new ResourceTransformer(ImageDelegatedResource::class))->data()->properties)->not->toHaveKey('no_docblock_accessor');
     });
 
     // A widened container names its element in both arms; aliasing only the first left the second bare.
@@ -2621,9 +2631,9 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
     // #[TsType(['type' => ..., 'import' => ...])] on a cast: no analysis path carried the author's
     // import into a resource, so the token was emitted alone.
     test('a #[TsType(import:)] cast reaching a resource brings its import', function () {
-        $data = (new ResourceTransformer(ImageDelegatedResource::class))->data();
+        $data = (new ResourceTransformer(ProfileSummaryResource::class))->data();
 
-        expect($data->properties['config_from_docblock']['type'])->toBe('MenuSettingsType')
+        expect($data->properties['menu_settings']['type'])->toBe('MenuSettingsType | null')
             ->and($data->typeImports['@js/types/settings'] ?? [])->toContain('MenuSettingsType');
     });
 })->group('transformer');
@@ -2631,7 +2641,7 @@ describe('ResourceTransformer with morphTo-backed resources', function () {
 describe('ResourceTransformer import alias resolution for same basename and same parent segment', function () {
     test('same basename and same parent segment produce distinct aliases', function () {
         // Kpi::reportable() morphs to both Report models; their nearest namespace segment is
-        // identically 'Report', reproducing the eagle MailPrice collision at depth 1.
+        // identically 'Report', reproducing a same-basename alias collision one namespace level deep.
         resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
             Kpi::class,
             SalesReport::class,
@@ -3077,7 +3087,7 @@ test('an EnumResource const steps aside for a name the resource\'s own cast impo
 test('a morph union over two resources that share a name spells each one by its own alias', function () {
     $transformer = new ResourceTransformer(ImageReviewResource::class);
 
-    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource', 'optional' => true])
+    expect($transformer->properties['reviewable'])->toMatchArray(['type' => 'CrmUserResource | WorkbenchUserResource | null', 'optional' => true])
         ->and($transformer->properties['reviewer']['type'])->toBe('CrmUserResource | WorkbenchUserResource')
         // The same union one level down, inside an inline array.
         ->and($transformer->properties['review']['type'])->toBe('{ subject: CrmUserResource | WorkbenchUserResource; label: string | null }')
@@ -3115,6 +3125,52 @@ describe('a union of two models that share a name', function () {
     test('names a `whenNull()` default by its own class, whatever classes the value names', function () {
         expect((new ResourceTransformer(HandoverNoticeResource::class))->properties['unclaimed']['type'])
             ->toBe('CrmUser | null');
+    });
+
+    test('names a key written twice by its last write\'s class', function () {
+        expect((new ResourceTransformer(HandoverRewrittenKeyResource::class))->properties['who']['type'])
+            ->toBe('{ p: WorkbenchUser | null }');
+    });
+});
+
+// A closure's `return` hands its value to whatever called the closure, so the first-return fallback reads only the
+// method's own returns.
+describe('a closure that returns an array before the method\'s own return', function () {
+    test('publishes the keys the method\'s own only() reads', function (string $resource) {
+        expect(array_map(fn (array $property): string => $property['type'], (new ResourceTransformer($resource))->properties))
+            ->toBe(['id' => 'number', 'title' => 'string']);
+    })->with([
+        'in toArray()' => [ClosureReturnBeforeOnlyResource::class],
+        'in a spread helper' => [ClosureReturnBeforeSpreadResource::class],
+    ]);
+
+    test('publishes the delegated keys and the key array_merge() adds', function () {
+        $properties = (new ResourceTransformer(ClosureReturnBeforeMergeResource::class))->properties;
+
+        expect(array_keys($properties))->toBe([
+            'id', 'title', 'content', 'user_id', 'status', 'published_at', 'metadata', 'rating', 'category', 'options',
+            'deleted_at', 'created_at', 'updated_at', 'category_id', 'visibility', 'priority', 'word_count',
+            'reading_time_minutes', 'featured_image_url', 'is_pinned', 'author', 'category_rel', 'comments', 'tags',
+            'images', 'attachment',
+        ])
+            ->and($properties['comments'])->toMatchArray(['type' => '{ comment_id: number; body: string }[]', 'optional' => false]);
+    });
+});
+
+// A bare `{ }` block runs its statements in place, so a `return` inside it is the method's or the closure's own.
+describe('a return inside a bare block', function () {
+    beforeEach(function () {
+        require_once __DIR__.'/../../Fixtures/BareBlockReturnResources.php.stub';
+    });
+
+    test('publishes the keys a spread helper and a closure return from one', function () {
+        expect(array_map(fn (array $property): string => ($property['optional'] ? '?' : '').$property['type'], (new ResourceTransformer(BareBlockReturnResource::class))->properties))
+            ->toBe(['id' => 'number', 'title' => 'string', 'label' => '?string']);
+    });
+
+    test('publishes the keys toArray() returns from one', function () {
+        expect(array_map(fn (array $property): string => $property['type'], (new ResourceTransformer(BareBlockToArrayResource::class))->properties))
+            ->toBe(['id' => 'number']);
     });
 });
 
@@ -3201,4 +3257,73 @@ test('publishes each cast over an enum resource as written, importing only the e
         ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
         ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
         ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
+});
+
+// A local, a helper and a method returning the enum each reach the channel `EnumResource::make($this->status)` does.
+describe('an EnumResource wrapping an enum reached through a local or a helper', function () {
+    test('publishes the AsEnum type, imports the enum const and keeps the nullable arm', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(PostStatusSourcesResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'status_from_local' => 'AsEnum<typeof Status>',
+            'visibility_from_local' => 'AsEnum<typeof Visibility> | null',
+            'status_from_helper' => 'AsEnum<typeof Status>',
+            'visibility_from_helper' => 'AsEnum<typeof Visibility> | null',
+            'status_from_method' => 'AsEnum<typeof Status>',
+        ])
+            ->and($transformer->typeImports)->toBe([])
+            ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']]);
+    });
+
+    test('publishes the enum type with tolki disabled', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        $transformer = new ResourceTransformer(PostStatusSourcesResource::class);
+
+        expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+            'status_from_local' => 'StatusType',
+            'visibility_from_local' => 'VisibilityType | null',
+            'status_from_helper' => 'StatusType',
+            'visibility_from_helper' => 'VisibilityType | null',
+            'status_from_method' => 'StatusType',
+        ])
+            ->and($transformer->typeImports)->toBe(['../../enums' => ['StatusType', 'VisibilityType']]);
+    });
+
+    // The body fallback's shape carries no import channel, so a wrap that named the enum would cost it every member.
+    test('leaves a wrap over a local unknown in a helper the body fallback reads, so its siblings stay typed', function () {
+        expect(new ResourceTransformer(EnumResourceBodyFallbackResource::class)->properties['summary']['type'])
+            ->toBe('{ s: unknown; title: string }');
+    });
+
+    test('publishes an untyped helper that can run off its end with its null', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(EnumResourceUntypedHelperResource::class));
+
+        expect($content)->toContain('pinned_status: AsEnum<typeof Status> | null;')
+            ->toMatch("/^import \\{ Status \\} from '[^']+';$/m");
+    });
+});
+
+// The workbench runs SQLite: a date or text MIN()/MAX() is a string and any other column aggregate a number. Each but a
+// count is SQL NULL over no rows, which Laravel returns before it calls a value closure.
+describe('ResourceTransformer with ProductSalesResource', function () {
+    test('publishes each aggregate as the driver returns it, with its null', function () {
+        $transformer = new ResourceTransformer(ProductSalesResource::class);
+
+        expect(array_map(fn (array $property): array => [$property['type'], $property['optional']], $transformer->properties))->toBe([
+            'id' => ['string', false],
+            'last_sold_at' => ['string | null', true],
+            'first_item_name' => ['string | null', true],
+            'average_quantity' => ['number | null', true],
+            'top_quantity' => ['{ max: number } | null', true],
+            'has_bulk_line' => ['boolean | null', true],
+            'revenue' => ['number | null', false],
+            'has_items' => ['boolean', true],
+        ]);
+    });
 });

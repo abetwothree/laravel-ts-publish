@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -31,6 +32,7 @@ final class NewResourceHandler implements ExpressionHandler
     use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
+    use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
 
     /** @return list<class-string<Expr>> */
@@ -43,7 +45,7 @@ final class NewResourceHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof New_) {
-            return $this->analyzeNewResource($expr, $scope);
+            return $this->analyzeNewResource($expr, $scope, $engine);
         }
 
         return null;
@@ -54,7 +56,7 @@ final class NewResourceHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeNewResource(New_ $expr, AnalysisScope $scope): array
+    private function analyzeNewResource(New_ $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $result = ValueResult::unknown();
 
@@ -73,7 +75,13 @@ final class NewResourceHandler implements ExpressionHandler
         if ($this->isEnumResourceClass($className)) {
             $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-            return $payload === null ? $result : ($this->resolveEnumFromPropertyArg($payload, $scope) ?? $result);
+            if ($payload === null) {
+                return $result;
+            }
+
+            return $this->resolveEnumFromPropertyArg($payload, $scope)
+                ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
+                ?? $result;
         }
 
         // new SomeCollection($this->items) — resolve the collected element type. Must precede the
@@ -101,7 +109,7 @@ final class NewResourceHandler implements ExpressionHandler
         /** @var class-string $className */
         return [
             ...$result,
-            'type' => $resourceName,
+            'type' => $this->wrapsNullablePayload($expr, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
             'optional' => $optional,
             'resourceFqcn' => $className,
         ];

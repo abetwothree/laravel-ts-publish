@@ -293,7 +293,7 @@ test('a --source run clears a full run\'s stale registry instead of narrowing ag
     expect($sourceRunner->resourceGenerators->first())->toBeInstanceOf(ResourceGenerator::class);
 
     expect($sourceRunner->resourceGenerators->first()->content)
-        ->toContain('owner_via_closure?: UserResource;')
+        ->toContain('owner_via_closure?: UserResource | null;')
         ->not->toContain('owner_via_closure?: unknown;');
 });
 

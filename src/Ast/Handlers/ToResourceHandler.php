@@ -23,6 +23,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -30,7 +31,7 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * `$model->toResource()` / `$model->toResource(SomeResource::class)` and
+ * `$model->toResource()` / `$model?->toResource()` / `$model->toResource(SomeResource::class)` and
  * `$collection->toResourceCollection()` / `->toResourceCollection(SomeResource::class)`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -47,7 +48,7 @@ final class ToResourceHandler implements ExpressionHandler
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
-        return [MethodCall::class];
+        return [MethodCall::class, NullsafeMethodCall::class];
     }
 
     /** @return ValueExpressionResult|null */
@@ -58,6 +59,13 @@ final class ToResourceHandler implements ExpressionHandler
         // receiver shapes share one resolution path; see resolveToResourceReceiverModel().
         if ($expr instanceof MethodCall && $expr->name instanceof Identifier && $expr->name->toString() === 'toResource') {
             return $this->analyzeToResourceCall($expr, $scope);
+        }
+
+        // $model?->toResource() is null for a null receiver, where the arrow form above throws.
+        if ($expr instanceof NullsafeMethodCall && $expr->name instanceof Identifier && $expr->name->toString() === 'toResource') {
+            $result = $this->analyzeToResourceCall($expr, $scope);
+
+            return [...$result, 'type' => ValueResult::withNullArm($result['type'])];
         }
 
         if ($expr instanceof MethodCall
@@ -76,7 +84,7 @@ final class ToResourceHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeToResourceCall(MethodCall $call, AnalysisScope $scope): array
+    private function analyzeToResourceCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): array
     {
         $result = ValueResult::unknown();
         $args = $this->callArguments($call, Model::class, 'toResource');
@@ -182,7 +190,7 @@ final class ToResourceHandler implements ExpressionHandler
      *
      * @param  class-string  $class
      */
-    private function callArguments(MethodCall $call, string $class, string $method): CallArguments
+    private function callArguments(MethodCall|NullsafeMethodCall $call, string $class, string $method): CallArguments
     {
         if (method_exists($class, $method)) {
             return CallArguments::for($call, new ReflectionMethod($class, $method));

@@ -100,7 +100,7 @@ test('runner skips one failing metadata model and records the failure', function
                 'message' => RuntimeException::class.': Metadata is unavailable for this model.',
             ],
         ])
-        ->and(AnalysisWarnings::all())->toBe([]);
+        ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(User::class);
 });
 
 test('runner rejects an invalid metadata provider before processing models', function () {

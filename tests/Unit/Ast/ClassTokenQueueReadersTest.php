@@ -61,11 +61,11 @@ describe('a union of resources that share a name, under one key of an inline arr
     })->with([
         'a single and a list of one resource' => [
             'resource_pair',
-            '{ x: WorkbenchUserResource | WorkbenchUserResource[]; y: CrmUserResource }',
+            '{ x: WorkbenchUserResource | WorkbenchUserResource[] | null; y: CrmUserResource | null }',
         ],
         'two arrays naming one resource' => [
             'resource_arms',
-            '{ w: { r: WorkbenchUserResource } | { r: WorkbenchUserResource; q: number }; y: CrmUserResource }',
+            '{ w: { r: WorkbenchUserResource | null } | { r: WorkbenchUserResource | null; q: number }; y: CrmUserResource | null }',
         ],
     ]);
 });
@@ -78,7 +78,7 @@ describe('a member that spells one name for a model and for a resource', functio
     })->with([
         'a pair, one array under another' => [
             'data_pair',
-            '{ data: { raw: WorkbenchAddress2 | null; address: WorkbenchAddress } }',
+            '{ data: { raw: WorkbenchAddress2 | null; address: WorkbenchAddress | null } }',
         ],
         'a list of each' => [
             'data_lists',
@@ -86,15 +86,15 @@ describe('a member that spells one name for a model and for a resource', functio
         ],
         'a pair, then the resource again' => [
             'data_pair_then_resource',
-            '{ data: { raw: WorkbenchAddress2 | null; address: WorkbenchAddress }; again: WorkbenchAddress }',
+            '{ data: { raw: WorkbenchAddress2 | null; address: WorkbenchAddress | null }; again: WorkbenchAddress | null }',
         ],
         'a union of the model\'s list and the resource' => [
             'models_or_resource',
-            '{ x: WorkbenchAddress2[] | WorkbenchAddress }',
+            '{ x: WorkbenchAddress2[] | WorkbenchAddress | null }',
         ],
         'a model or its list in one member, the resource in the next' => [
             'model_or_list_then_resource',
-            '{ m: WorkbenchAddress2 | WorkbenchAddress2[] | null; r: WorkbenchAddress }',
+            '{ m: WorkbenchAddress2 | WorkbenchAddress2[] | null; r: WorkbenchAddress | null }',
         ],
     ]);
 });

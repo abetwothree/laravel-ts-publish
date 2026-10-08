@@ -7,6 +7,9 @@ PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../
 `toTsType()` and `methodOrDocblockReturnTypes()`, and its rules are on this page too. Usage is on the tolki
 [Models](https://tolki.abe.dev/ts/models.html) page.
 
+`connectionDriver()` reads the driver of a model's connection from its config, for the aggregate types
+`whenAggregated()` publishes. A model the run has not resolved yet is inspected first, which queries its schema.
+
 ## Where things live
 
 The attribute waterfall spans these classes:
@@ -210,8 +213,10 @@ The reverse map follows four rules:
 - **Stale analyses**: `buildMorphTargetMap()` clears `AnalysisMemo`, so no analysis typed under an older map is reused.
 
 An unresolved `morphTo` publishes bare `unknown`, never `unknown | null`, since `unknown` already admits `null`.
-`buildMorphUnionInfo()` and `transformRelations()` each apply that guard to their own nullable suffix, and they must
-agree.
+`typesRelationNullable()` (with `isToManyRelation()` and `isMorphToRelation()`) decides a relation's `| null` for
+`resolveRelation()`, `buildMorphUnionInfo()` and `relationLoadsNull()`, which is tri-state: `null` means undeclared or
+unreadable. `ModelTransformer::transformRelations()` keeps its own copy without the to-many exemption, so a model
+interface can publish `Post[] | null` where a resource publishes `Post[]`.
 
 ## Models a run publishes
 
@@ -257,12 +262,20 @@ complement from it; see
 
 A call site that asks whether a name is a real column uses `databaseColumnNames()` and applies the hidden rule itself.
 The `except()` branch of `resolveFilteredRelationType()` does, so an inlined `except()` expands to columns only, as
-`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` does too, so `isOmittedMutator()` never drops a real
-column.
+`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` and `buildModelSerializedAnalysis()` do too, so
+`isOmittedMutator()` never drops a real column.
 
-The two lists differ only when `ts-publish.models.exclude_hidden` is on, and it defaults to `false`.
-`excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with the per-model
-context, because the context is fixed for the model while the config can change between calls, as it does in tests.
+`serializedAttributeNames()` lists what `toArray()` writes: the published columns, then the appends, within `$visible`
+and less `$hidden`, whatever `exclude_hidden` says. Whole-model delegation reads `delegatedAttributeNames()` and
+`delegatedRelationKeys()` instead, which apply `$visible` and `$hidden`, a relation's by its method name, only while
+`exclude_hidden` is on. So `delegatedAttributeNames()` equals `serializedAttributeNames()` while the option is on, and
+differs only while it is off, the default. A relation's key is snake-cased while the model's `$snakeAttributes` is on,
+as `relationsToArray()` writes it.
+
+`databaseColumnNames()` and `publishedColumnNames()` differ only when `ts-publish.models.exclude_hidden` is on, and it
+defaults to `false`. `excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with
+the per-model context, because the context is fixed for the model while the config can change between calls, as it does
+in tests.
 
 ## Laravel 13 model attributes need instance reads
 

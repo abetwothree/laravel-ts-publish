@@ -321,10 +321,9 @@ final class ValueResolver
     }
 
     /**
-     * Guard a class-constant array against inlining an unreadable type: too many total elements
-     * or nested too deep. Both limits are generous for realistic config-shaped constants (the
-     * eaglesys OWNER_MINIMUM_CHANNELS shape is 2 levels deep with about a dozen elements) while
-     * blocking a large external lookup table from bloating every resource that references it.
+     * Guard a class-constant array against inlining an unreadable type: too many total elements or nested too deep.
+     * Both limits are generous for a config-shaped constant, such as a nested array two levels deep with about a dozen
+     * elements, while blocking a large external lookup table from bloating every resource that references it.
      *
      * @param  array<array-key, mixed>  $value
      */

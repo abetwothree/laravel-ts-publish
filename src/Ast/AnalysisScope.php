@@ -35,6 +35,8 @@ use ReflectionClass;
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
+ * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
+ * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
  *      type: string,
  *      context: ReflectionClass<object>,
@@ -52,6 +54,7 @@ use ReflectionClass;
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
  *      varGuardBindings: VarGuardBindingsMap,
+ *      nonNullReads: NonNullReadsMap,
  *      varDocBindings: VarDocBindingsMap,
  *      varModelBindings: VarModelBindingsMap,
  *      varCollectionBindings: VarCollectionBindingsMap,
@@ -120,6 +123,17 @@ final class AnalysisScope
      * @var VarGuardBindingsMap
      */
     public array $varGuardBindings = [];
+
+    /**
+     * Read paths a guard proves non-null, keyed by the variable each starts at: a condition's for the value, arm or
+     * block it runs, an exit's for the rest of its block, each between the offsets it sets.
+     *
+     * A resource built around one never serializes as null. Scoped like varClassBindings, and a closure parameter, or a
+     * write in a closure's or a called method's body, drops the proofs of its name.
+     *
+     * @var NonNullReadsMap
+     */
+    public array $nonNullReads = [];
 
     /**
      * Variables an inline `@var` on their assignment declares a type for: the type as written, the class whose file
@@ -261,6 +275,7 @@ final class AnalysisScope
             'closureParamExprBindings' => $this->closureParamExprBindings,
             'varClassBindings' => $this->varClassBindings,
             'varGuardBindings' => $this->varGuardBindings,
+            'nonNullReads' => $this->nonNullReads,
             'varDocBindings' => $this->varDocBindings,
             'varModelBindings' => $this->varModelBindings,
             'varCollectionBindings' => $this->varCollectionBindings,
@@ -281,6 +296,7 @@ final class AnalysisScope
         $this->closureParamExprBindings = $snapshot['closureParamExprBindings'];
         $this->varClassBindings = $snapshot['varClassBindings'];
         $this->varGuardBindings = $snapshot['varGuardBindings'];
+        $this->nonNullReads = $snapshot['nonNullReads'];
         $this->varDocBindings = $snapshot['varDocBindings'];
         $this->varModelBindings = $snapshot['varModelBindings'];
         $this->varCollectionBindings = $snapshot['varCollectionBindings'];
@@ -344,7 +360,8 @@ final class AnalysisScope
     }
 
     /**
-     * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture.
+     * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture, but a
+     * proof: each spells the read it proves under the variable's own name.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
@@ -452,6 +469,7 @@ final class AnalysisScope
                 $this->closureParamExprBindings[$name],
                 $this->varClassBindings[$name],
                 $this->varGuardBindings[$name],
+                $this->nonNullReads[$name],
                 $this->varDocBindings[$name],
                 $this->varModelBindings[$name],
                 $this->varCollectionBindings[$name],

@@ -154,7 +154,8 @@ trait IncludesConditionalData
     }
 
     /**
-     * Handle assignments inside a do-while loop.
+     * Handle assignments inside a do-while loop, whose body runs at least once. Only a write before any break or
+     * continue always lands: one in a branch, after a break or continue, or in a loop under a branch may not.
      */
     protected function returnsFromDoWhile(): array
     {
@@ -162,7 +163,29 @@ trait IncludesConditionalData
 
         do {
             $data['doWhileKey'] = strtoupper('once');
+
+            if ($this->resource === null) {
+                $data['doWhileBranchKey'] = strtolower('branch');
+
+                break;
+            }
+
+            $data['doWhileAfterBreakKey'] = strtolower('after break');
         } while (false);
+
+        do {
+            if ($this->resource === null) {
+                continue;
+            }
+
+            $data['doWhileAfterContinueKey'] = strtolower('after continue');
+        } while (false);
+
+        if ($this->resource !== null) {
+            do {
+                $data['doWhileUnderBranchKey'] = strtolower('under branch');
+            } while (false);
+        }
 
         return $data;
     }

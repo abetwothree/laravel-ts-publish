@@ -342,9 +342,9 @@ class ResourceTransformer extends CoreTransformer
             $nullable = str_contains($type, 'null');
             // $type itself may already carry '| null' here, so the suffix check must strip it first.
             $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
-            // TernaryHandler records each arm's own shape for a mixed EnumResource/direct-access
-            // ternary; anything else mixed (e.g. a `??`) falls back to the merged-string guess,
-            // which never marks the wrap arm collection — the behaviour this replaces preserved.
+            // ValueResult::withEnumArmShapes() records each arm's own shape for a mixed EnumResource/direct-access
+            // ternary or match; anything else mixed (e.g. a `??`) falls back to the merged-string guess, which never
+            // marks the wrap arm collection — the behaviour this replaces preserved.
             $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
             $this->enumResourceProperties[$propName] = [
                 'fqcn' => $fqcn,
