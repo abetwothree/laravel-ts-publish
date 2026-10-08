@@ -1227,3 +1227,12 @@ it('moves only a number column to the string its driver returns', function () {
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UncastDecimalOrderItem::class, 'created_at')['type'])
         ->toBe('Date | null');
 });
+
+// A user's entry wins over the driver as it does over the built-in map; SQLite's schema reports the column `numeric`.
+it('keeps a custom_ts_mappings entry for an uncast column\'s type over the driver', function () {
+    config()->set('ts-publish.custom_ts_mappings', ['numeric' => 'number']);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UncastDecimalOrderItem::class, 'unit_price')['type'])
+        ->toBe('number');
+});

@@ -193,13 +193,13 @@ class TypeScriptMap
             'scalar' => 'string | number | boolean',
         ];
 
-        $customMappings = Config::array('ts-publish.custom_ts_mappings', []);
+        $customMappings = array_change_key_case(Config::array('ts-publish.custom_ts_mappings', []), CASE_LOWER);
 
         /** @var array<string, string|(callable(): string)> $merged */
         $merged = array_change_key_case(array_merge($map, $customMappings), CASE_LOWER);
 
         /** @var array<string, true> $customKeys */
-        $customKeys = array_fill_keys(array_keys(array_change_key_case($customMappings, CASE_LOWER)), true);
+        $customKeys = array_fill_keys(array_keys($customMappings), true);
         self::$customKeys = $customKeys;
 
         return self::$map = $merged;
@@ -215,6 +215,20 @@ class TypeScriptMap
         $this->gather();
 
         return self::$customKeys;
+    }
+
+    /**
+     * Whether a user's `custom_ts_mappings` entry names the type as toTsType() steps 1 and 1a read it, whole or before
+     * a `(`; the built-in map is never consulted.
+     */
+    public function isCustomMapped(string $type): bool
+    {
+        $keys = $this->customKeys();
+        $lower = strtolower($type);
+        $parenPos = strpos($lower, '(');
+        $bareName = $parenPos !== false && $parenPos > 0 ? substr($lower, 0, $parenPos) : null;
+
+        return isset($keys[$lower]) || ($bareName !== null && isset($keys[$bareName]));
     }
 
     protected function validateDate(): string

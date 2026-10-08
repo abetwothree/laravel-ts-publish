@@ -356,9 +356,18 @@ describe('castToTsType', function () {
         ]);
 
         expect($this->service->castToTsType('timestamp')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType(' Timestamp ')['type'])->toBe('boolean')
             ->and($this->service->castToTsType('decimal:2')['type'])->toBe('number')
             ->and($this->service->castToTsType('decimal:3')['type'])->toBe('boolean')
             ->and($this->service->castToTsType('decimal:4')['type'])->toBe('string');
+    });
+
+    // getCastType() reads every `decimal:N` cast as `decimal`, so a user's `decimal` entry types each one.
+    test('lets a custom_ts_mappings entry for the type getCastType() reads a cast as win', function () {
+        config()->set('ts-publish.custom_ts_mappings', ['decimal' => 'Money']);
+
+        expect($this->service->castToTsType('decimal:2')['type'])->toBe('Money')
+            ->and($this->service->castToTsType('decimal:0')['type'])->toBe('Money');
     });
 });
 

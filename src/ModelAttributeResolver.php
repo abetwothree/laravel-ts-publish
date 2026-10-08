@@ -170,7 +170,8 @@ class ModelAttributeResolver
 
     /**
      * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
-     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number.
+     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number. A user's `custom_ts_mappings` entry for the
+     * column type wins over the driver, as it does over the built-in map.
      *
      * @param  class-string  $modelFqcn
      * @return TypeScriptTypeInfo
@@ -178,7 +179,9 @@ class ModelAttributeResolver
     protected function columnTsType(string $modelFqcn, string $columnType): array
     {
         $tsInfo = LaravelTsPublish::toTsType($columnType);
-        $driver = $tsInfo['type'] === 'number' ? $this->connectionDriver($modelFqcn) : null;
+        $driver = $tsInfo['type'] === 'number' && ! (new TypeScriptMap)->isCustomMapped($columnType)
+            ? $this->connectionDriver($modelFqcn)
+            : null;
 
         return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
             ? [...$tsInfo, 'type' => 'string']

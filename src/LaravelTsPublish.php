@@ -422,16 +422,25 @@ class LaravelTsPublish
     /**
      * Resolve the TypeScript type of an Eloquent cast's value: a cast name is not the column type it spells.
      *
-     * Reads the cast as `HasAttributes::getCastType()` does: `decimal:N` by its case-sensitive prefix, a built-in name
-     * trimmed and lowercased. A `custom_ts_mappings` entry for the cast, and any other cast, go through toTsType().
+     * Reads the cast as `HasAttributes::getCastType()` does: `decimal:N` by its case-sensitive prefix as `decimal`, a
+     * built-in name trimmed and lowercased. A `custom_ts_mappings` entry for the cast, or for the type getCastType()
+     * reads it as, goes through toTsType() under that name, and any other cast as it is spelled.
      *
      * @return TypeScriptTypeInfo
      */
     public function castToTsType(string $cast): array
     {
+        $typesMap = new TypeScriptMap;
+        $castType = str_starts_with($cast, 'decimal:') ? 'decimal' : trim($cast);
+
+        // A user's entry for the cast, or for the type getCastType() reads it as, outranks each rule below.
+        foreach ([$cast, $castType] as $mappedType) {
+            if ($typesMap->isCustomMapped($mappedType)) {
+                return $this->toTsType($mappedType);
+            }
+        }
+
         $type = match (true) {
-            // Null defers to toTsType(), whose map holds the user's entry, so a custom mapping outranks each rule.
-            isset((new TypeScriptMap)->customKeys()[strtolower($cast)]) => null,
             // asDecimal() returns a string on every driver.
             str_starts_with($cast, 'decimal:') => 'string',
             // asTimestamp() returns the Unix integer, and toArray() serializes no `timestamp` cast as a date.

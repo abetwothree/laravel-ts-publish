@@ -51,3 +51,14 @@ it('types an aggregate as the driver returns it', function (string $function, st
     'a function the rule does not cover' => ['group_concat', 'varchar(255)', 'mysql', null],
     'a count, which is no column aggregate' => ['count', 'integer', 'mysql', null],
 ]);
+
+// MIN() and MAX() keep the column's type, so a plain read of the column reaches the payload as their result does.
+it('types a plain column read as MIN() and MAX() do', function (string $columnType, string $driver, ?string $type) {
+    expect(AggregateValueType::column($columnType, $driver))->toBe($type);
+})->with([
+    'mysql decimal(10,2)' => ['decimal(10,2)', 'mysql', 'string'],
+    'sqlite numeric' => ['numeric', 'sqlite', 'number'],
+    'pgsql integer[], an array pdo_pgsql returns as its text literal' => ['integer[]', 'pgsql', 'string'],
+    'mysql int unsigned' => ['int unsigned', 'mysql', 'number'],
+    'sqlsrv decimal(10,2), which proves no type' => ['decimal(10,2)', 'sqlsrv', null],
+]);

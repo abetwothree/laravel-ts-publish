@@ -332,11 +332,12 @@ sent. Until the package types `Conditionable::when()`, write the key as a ternar
 model's connection on the machine that publishes, as column types follow that machine's schema. A `SUM()` of a decimal
 column publishes `number | null` from SQLite and `string | null` from MySQL, and a DECIMAL column with no cast follows
 the same rule, so publishing against SQLite for an app that runs MySQL keeps a `number` the response does not hold.
-Publish against the driver production runs; the generation cache rebuilds when `database.default` or a connection's
-driver changes, even through its `url`. Or give the alias `{relation}_{function}_{column}`, such as
-`order_items_sum_total_price`, a built-in cast on the parent model whose published type is the value Laravel returns,
-such as `integer`, `float` or `decimal:2`, or declare it with an accessor or `@property`, and that type publishes on
-every driver. A query-time `withCasts()` cannot be seen by a publish.
+Publish against the driver production runs, or cast a plain DECIMAL column `decimal:N`, which publishes `string` on
+every driver; the generation cache rebuilds when `database.default` or a connection's driver changes, even through its
+`url`. Or give the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the
+parent model whose published type is the value Laravel returns, such as `integer`, `float` or `decimal:2`, or declare it
+with an accessor or `@property`, and that type publishes on every driver. A query-time `withCasts()` cannot be seen by a
+publish.
 
 ### On SQL Server a numeric aggregate and every count publish `number`, though pdo_sqlsrv returns numbers as strings by default
 

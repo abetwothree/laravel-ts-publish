@@ -8,8 +8,9 @@ The PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](..
 [Models](https://tolki.abe.dev/ts/models.html) page.
 
 `connectionDriver()` reads the driver of a model's connection from its config, for the aggregate types
-`whenAggregated()` publishes and for an uncast DECIMAL column, which pdo_mysql and pdo_pgsql return as a string. A model
-the run has not resolved yet is inspected first, which queries its schema.
+`whenAggregated()` publishes and for an uncast DECIMAL column, which pdo_mysql and pdo_pgsql return as a string. A
+`custom_ts_mappings` entry for the column type keeps its own type on every driver. A model the run has not resolved yet
+is inspected first, which queries its schema.
 
 ## Where things live
 
@@ -65,7 +66,8 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
 `toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()`, the
 `ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
 
-1. A `custom_ts_mappings` key equal to the lowercased cast goes to `toTsType()`, so the user's entry wins.
+1. A `custom_ts_mappings` key for the cast, or for the type `getCastType()` reads it as (`decimal` for `decimal:N`),
+   goes to `toTsType()` under that name, so the user's entry wins.
 2. `decimal:N`, by the case-sensitive prefix `isDecimalCast()` reads, publishes `string`, as `asDecimal()` returns.
 3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
 4. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
