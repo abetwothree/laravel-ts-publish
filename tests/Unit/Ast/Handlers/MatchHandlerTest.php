@@ -50,7 +50,7 @@ it('types a match as the union of its arms', function (string $php, string $type
 })->with([
     'one type' => ['match ($this->status) { \Workbench\App\Enums\Status::Draft => "draft", default => "live" }', 'string'],
     'two types' => ['match (true) { $this->id > 1 => "many", default => 1 }', 'string | number'],
-    'a nullable arm' => ['match (true) { $this->id > 1 => $this->rating, default => null }', 'number | null'],
+    'a nullable arm' => ['match (true) { $this->id > 1 => $this->rating, default => null }', 'string | null'],
     'a null arm' => ['match (true) { $this->id > 1 => $this->title, default => null }', 'string | null'],
     'no arm typed' => ['match (true) { $this->id > 1 => json_decode("x"), default => json_decode("y") }', 'unknown'],
 ]);

@@ -22,7 +22,7 @@ export interface DealResource
 {
     id: number;
     title: string;
-    value: number;
+    value: string;
     status: EnumsStatusType;
     status_enum: AsEnum<typeof EnumsStatus>;
     crm_status: CrmStatusType;

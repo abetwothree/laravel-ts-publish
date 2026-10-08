@@ -15,7 +15,7 @@ export interface Post
     status: StatusType;
     published_at: string | null;
     metadata: Record<string, {title: string, content: string}>;
-    rating: number | null;
+    rating: string | null;
     category: string;
     options: Record<string, string> | null;
     deleted_at: string | null;

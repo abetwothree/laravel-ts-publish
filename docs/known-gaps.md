@@ -330,13 +330,13 @@ sent. Until the package types `Conditionable::when()`, write the key as a ternar
 
 [`AggregateValueType`](../src/Ast/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
 model's connection on the machine that publishes, as column types follow that machine's schema. A `SUM()` of a decimal
-column publishes `number | null` from SQLite and `string | null` from MySQL, so publishing against SQLite for an app
-that runs MySQL keeps a `number` the response does not hold. Publish against the driver production runs; the
-generation cache rebuilds when `database.default` or a connection's driver changes, even through its `url`. Or give
-the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the parent model
-whose published type is the value Laravel returns, such as `integer` or `float` (a `decimal:2` cast publishes `number`
-for a string), or declare it with an accessor or `@property`, and that type publishes on every driver. A query-time
-`withCasts()` cannot be seen by a publish.
+column publishes `number | null` from SQLite and `string | null` from MySQL, and a DECIMAL column with no cast follows
+the same rule, so publishing against SQLite for an app that runs MySQL keeps a `number` the response does not hold.
+Publish against the driver production runs; the generation cache rebuilds when `database.default` or a connection's
+driver changes, even through its `url`. Or give the alias `{relation}_{function}_{column}`, such as
+`order_items_sum_total_price`, a built-in cast on the parent model whose published type is the value Laravel returns,
+such as `integer`, `float` or `decimal:2`, or declare it with an accessor or `@property`, and that type publishes on
+every driver. A query-time `withCasts()` cannot be seen by a publish.
 
 ### On SQL Server a numeric aggregate and every count publish `number`, though pdo_sqlsrv returns numbers as strings by default
 
@@ -346,9 +346,9 @@ number, and `getDriverName()` is `sqlsrv` for both. So a numeric `whenAggregated
 `MAX()` publishes `string | null`. `PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE` makes pdo_sqlsrv return an integer or float
 as a number, but never a `decimal`, `numeric` or `money` value, so a decimal `SUM()` is a string either way. Give the
 alias `{relation}_{function}_{column}` a built-in cast on the parent model whose published type is the value Laravel
-returns, such as `integer` or `float` (a `decimal:2` cast publishes `number` for a string), or declare it with an
-accessor or `@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration,
-so an `integer` cast on its alias makes the response hold one.
+returns, such as `integer`, `float` or `decimal:2`, or declare it with an accessor or `@property`, and that type
+publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
+the response hold one.
 
 ### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
 

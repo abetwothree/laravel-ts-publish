@@ -11,7 +11,7 @@ export interface QuirkyResource
     flag?: unknown;
     extra: string;
     dynamic?: string;
-    normal_merge_key?: number;
+    normal_merge_key?: string;
     formatted: unknown;
     plain_user: UserResource;
     empty_user: UserResource;

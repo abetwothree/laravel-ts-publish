@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
@@ -1200,4 +1202,28 @@ describe('relationLoadsNull()', function () {
 
         expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'posts'))->toBeFalse();
     });
+});
+
+// pdo_mysql and pdo_pgsql return a DECIMAL column as a string and pdo_sqlite as a number; an integer column stays put.
+it('types an uncast decimal column as the connection\'s driver returns it', function (string $driver, string $decimal) {
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    expect($resolver->resolveAttribute(UncastDecimalOrderItem::class, 'unit_price')['type'])->toBe($decimal)
+        ->and($resolver->resolveAttribute(UncastDecimalOrderItem::class, 'quantity')['type'])->toBe('number');
+})->with([
+    'sqlite' => ['sqlite', 'number'],
+    'mysql' => ['mysql', 'string'],
+    'mariadb' => ['mariadb', 'string'],
+    'pgsql' => ['pgsql', 'string'],
+    'sqlsrv, which proves no type' => ['sqlsrv', 'number'],
+]);
+
+// Only a `number` moves: a date column, which every driver returns as text, keeps the Date timestamps_as_date gives it.
+it('moves only a number column to the string its driver returns', function () {
+    config()->set('ts-publish.timestamps_as_date', true);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UncastDecimalOrderItem::class, 'created_at')['type'])
+        ->toBe('Date | null');
 });

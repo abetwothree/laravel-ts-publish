@@ -7,8 +7,8 @@ namespace Workbench\App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer, while the
- * `created_at` and `updated_at` columns keep the date type.
+ * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer and a `decimal:2`
+ * cast a string on every driver, while the `created_at` and `updated_at` columns keep the date type.
  */
 class Consignment extends Model
 {
@@ -21,6 +21,7 @@ class Consignment extends Model
     {
         return [
             'scanned_at' => 'timestamp',
+            'declared_value' => 'decimal:2',
         ];
     }
 }

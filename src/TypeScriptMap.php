@@ -27,6 +27,13 @@ class TypeScriptMap
     protected static ?array $map = null;
 
     /**
+     * The `custom_ts_mappings` keys the cached map was built with, lowercased as it merges them.
+     *
+     * @var array<string, true>
+     */
+    protected static array $customKeys = [];
+
+    /**
      * @return array<string, string|(callable(): string)>
      */
     public function gather(): array
@@ -186,13 +193,28 @@ class TypeScriptMap
             'scalar' => 'string | number | boolean',
         ];
 
+        $customMappings = Config::array('ts-publish.custom_ts_mappings', []);
+
         /** @var array<string, string|(callable(): string)> $merged */
-        $merged = array_change_key_case(array_merge(
-            $map,
-            Config::array('ts-publish.custom_ts_mappings', []),
-        ), CASE_LOWER);
+        $merged = array_change_key_case(array_merge($map, $customMappings), CASE_LOWER);
+
+        /** @var array<string, true> $customKeys */
+        $customKeys = array_fill_keys(array_keys(array_change_key_case($customMappings, CASE_LOWER)), true);
+        self::$customKeys = $customKeys;
 
         return self::$map = $merged;
+    }
+
+    /**
+     * The `custom_ts_mappings` keys of the map gather() returns, lowercased as it merges them.
+     *
+     * @return array<string, true>
+     */
+    public function customKeys(): array
+    {
+        $this->gather();
+
+        return self::$customKeys;
     }
 
     protected function validateDate(): string

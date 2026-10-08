@@ -326,10 +326,14 @@ describe('castable-with-arguments cast strings', function () {
 });
 
 describe('castToTsType', function () {
-    // HasAttributes::asTimestamp() returns the Unix integer, which toArray() never formats as a date.
+    // HasAttributes::asDecimal() returns a string, and asTimestamp() the Unix integer, which toArray() never formats.
     test('types a cast as Laravel serializes its value', function (string $cast, string $type) {
         expect($this->service->castToTsType($cast)['type'])->toBe($type);
     })->with([
+        'decimal:2' => ['decimal:2', 'string'],
+        'decimal:0' => ['decimal:0', 'string'],
+        'Decimal:2, which isDecimalCast() reads case-sensitively, so Laravel rejects it' => ['Decimal:2', 'unknown'],
+        'a bare decimal, which Laravel throws on, left to toTsType()' => ['decimal', 'number'],
         'timestamp' => ['timestamp', 'number'],
         'timestamp, trimmed and lowercased as getCastType() reads it' => [' Timestamp ', 'number'],
         'datetime, which keeps the date type' => ['datetime', 'string'],
@@ -345,9 +349,16 @@ describe('castToTsType', function () {
 
     // The documented override surface: a user's entry takes precedence over the built-in map, a cast rule included.
     test('lets a custom_ts_mappings entry for the cast win', function () {
-        config()->set('ts-publish.custom_ts_mappings', ['Timestamp' => 'string']);
+        config()->set('ts-publish.custom_ts_mappings', [
+            'Timestamp' => 'boolean',
+            'decimal:2' => 'number',
+            'decimal:3' => 'boolean',
+        ]);
 
-        expect($this->service->castToTsType('timestamp')['type'])->toBe('string');
+        expect($this->service->castToTsType('timestamp')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType('decimal:2')['type'])->toBe('number')
+            ->and($this->service->castToTsType('decimal:3')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType('decimal:4')['type'])->toBe('string');
     });
 });
 

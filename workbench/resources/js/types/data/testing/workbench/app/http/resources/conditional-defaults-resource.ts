@@ -12,7 +12,7 @@ export interface ConditionalDefaultsResource
 {
     not_null_no_default?: string;
     not_null_with_default: string | number;
-    not_null_same_type_default: number;
+    not_null_same_type_default: string;
     null_with_default: string | null;
     not_null_explicit_null_default: string | null;
     not_null_named_default: string | number;

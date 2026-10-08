@@ -7,6 +7,6 @@ export interface ConsignmentResource
 {
     id: number;
     scanned_at: number | null;
-    declared_value: number;
+    declared_value: string;
     legs: string | null;
 }

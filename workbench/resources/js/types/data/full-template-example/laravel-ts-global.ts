@@ -36,9 +36,9 @@ declare global {
             user_id: number;
             number: string;
             status: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at: string | null;
             paid_at: string | null;
@@ -62,7 +62,7 @@ declare global {
             status: accounting.enums.PaymentStatusType;
             method: app.enums.PaymentMethodType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             reference: string | null;
             paid_at: string | null;
             created_at: string | null;
@@ -567,14 +567,14 @@ declare global {
             commentable_exists: boolean;
         }
         /**
-         * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer, while the
-         * `created_at` and `updated_at` columns keep the date type.
+         * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer and a `decimal:2`
+         * cast a string on every driver, while the `created_at` and `updated_at` columns keep the date type.
          */
         export interface Consignment {
             // Columns
             id: number;
             scanned_at: number | null;
-            declared_value: number;
+            declared_value: string;
             legs: string | null;
             created_at: string | null;
             updated_at: string | null;
@@ -973,10 +973,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
@@ -1026,8 +1026,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             options: Record<string, string | number | boolean> | null;
             created_at: string | null;
             updated_at: string | null;
@@ -1086,7 +1086,7 @@ declare global {
             status: app.enums.StatusType;
             published_at: string | null;
             metadata: Record<string, {title: string, content: string}>;
-            rating: number | null;
+            rating: string | null;
             category: string;
             options: Record<string, string> | null;
             deleted_at: string | null;
@@ -1161,9 +1161,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price: number | null;
-            cost_price: number | null;
+            price: string;
+            compare_at_price: string | null;
+            cost_price: string | null;
             quantity: number;
             weight: number | null;
             dimensions: { length: number; width: number; height: number; unit: "cm" | "in" };
@@ -2045,7 +2045,7 @@ declare global {
             title: string;
             status: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
-            value: number;
+            value: string;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -2448,9 +2448,9 @@ declare global {
             id: number;
             number: string;
             status?: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at?: string;
             paid_at?: string | null;
@@ -2469,7 +2469,7 @@ declare global {
             id: number;
             status: accounting.enums.PaymentStatusType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             method?: app.enums.PaymentMethodType;
             reference?: string;
             paid_at?: string;
@@ -2600,7 +2600,7 @@ declare global {
         export interface BodylessOrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
@@ -3071,7 +3071,7 @@ declare global {
         export interface ConditionalDefaultsResource {
             not_null_no_default?: string;
             not_null_with_default: string | number;
-            not_null_same_type_default: number;
+            not_null_same_type_default: string;
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
@@ -3172,7 +3172,7 @@ declare global {
         export interface ConditionalParamMappedResource {
             id: number;
             items_mapped?: { id: number; name: string; quantity: number }[];
-            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            items_priced?: { id: number; sku: string; unit_price: string; total_price: string }[];
             item_names?: string[];
         }
         /**
@@ -3196,7 +3196,7 @@ declare global {
         export interface ConsignmentResource {
             id: number;
             scanned_at: number | null;
-            declared_value: number;
+            declared_value: string;
             legs: string | null;
         }
         /**
@@ -3208,7 +3208,7 @@ declare global {
             archived?: boolean;
             inline_enum_branch?: { method: app.enums.PaymentMethodType | null };
             draft?: boolean;
-            total?: number;
+            total?: string;
             status?: app.enums.OrderStatusType;
         }
         /**
@@ -3430,7 +3430,7 @@ declare global {
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
         export interface FqcnMixinResource {
             id: number;
-            total: number;
+            total: string;
         }
         /**
          * Exercises the bug where resolveClosureReturnExpression() picks the first
@@ -3443,7 +3443,7 @@ declare global {
          */
         export interface GuardClauseClosureResource {
             id: number;
-            total: number;
+            total: string;
             buyer?: { name: string; email: string } | null;
         }
         /**
@@ -3713,7 +3713,7 @@ declare global {
         export interface LoopReturnResource {
             id: number;
             first_item_name?: string;
-            total?: number;
+            total?: string;
         }
         /**
          * Regression pin: `$this->map->only([...])` must route through the relation-filter guard, not
@@ -3808,7 +3808,7 @@ declare global {
             note_text: string | null;
             owner_id?: number;
             subtotal_label?: string;
-            k: number;
+            k: string;
             null_total: null;
         }
         /**
@@ -3819,7 +3819,7 @@ declare global {
         export interface MergeMultiBranchClosureResource {
             id: number;
             archived_at?: string | null;
-            total?: number;
+            total?: string;
             currency?: app.enums.CurrencyType;
         }
         export interface MiscCollection {
@@ -3979,7 +3979,7 @@ declare global {
             shipped_at?: string | null;
             tracking?: string | null;
             currency_label: app.enums.CurrencyType;
-            total_display: number;
+            total_display: string;
         }
         export interface OrderCollection {
             data: OrderResource[];
@@ -4016,10 +4016,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4065,8 +4065,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             product?: ProductResource;
             order?: app.models.Order;
             options?: Record<string, string | number | boolean> | null;
@@ -4077,7 +4077,7 @@ declare global {
         export interface OrderOnlyResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             item_count: number;
             search_index: unknown;
@@ -4087,7 +4087,7 @@ declare global {
         export interface OrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
@@ -4107,7 +4107,7 @@ declare global {
             formatted_total: string;
             user: app.models.User;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             search_index: unknown;
         }
@@ -4286,9 +4286,10 @@ declare global {
             members_count?: number;
             settings?: Record<string, unknown> | null;
         }
-        /** An aggregate whose alias the parent model casts: a `timestamp` cast writes the Unix integer. */
+        /** Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer. */
         export interface ProductAggregateCastResource {
             first_sold_ts?: number | null;
+            unit_price_total?: string | null;
         }
         /**
          * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,
@@ -4300,9 +4301,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price?: number;
-            cost_price?: number | null;
+            price: string;
+            compare_at_price?: string;
+            cost_price?: string | null;
             quantity: number;
             is_active: boolean;
             is_featured: boolean;
@@ -4425,7 +4426,7 @@ declare global {
             flag?: unknown;
             extra: string;
             dynamic?: string;
-            normal_merge_key?: number;
+            normal_merge_key?: string;
             formatted: unknown;
             plain_user: UserResource;
             empty_user: UserResource;
@@ -4813,10 +4814,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4841,10 +4842,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -5436,7 +5437,7 @@ declare global {
         export interface DealResource {
             id: number;
             title: string;
-            value: number;
+            value: string;
             status: app.enums.StatusType;
             status_enum: app.enums.StatusType;
             crm_status: crm.enums.StatusType;

@@ -774,7 +774,7 @@ describe('ResourceTransformer with a body-less subclass', function () {
         $data = (new ResourceTransformer(BodylessOrderResource::class))->data();
 
         expect($data->properties['id']['type'])->toBe('number')
-            ->and($data->properties['total']['type'])->toBe('number')
+            ->and($data->properties['total']['type'])->toBe('string')
             ->and($data->properties['paid_at']['type'])->toBe('string | null')
             ->and(array_column($data->properties, 'type'))->not->toContain('unknown');
     });
@@ -1019,7 +1019,7 @@ describe('ResourceTransformer with FqcnMixinResource', function () {
         $data = (new ResourceTransformer(FqcnMixinResource::class))->data();
 
         expect($data->properties['id']['type'])->toBe('number')
-            ->and($data->properties['total']['type'])->toContain('number');
+            ->and($data->properties['total']['type'])->toContain('string');
     });
 });
 

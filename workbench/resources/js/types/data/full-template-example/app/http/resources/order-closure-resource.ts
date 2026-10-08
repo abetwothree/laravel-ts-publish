@@ -16,5 +16,5 @@ export interface OrderClosureResource
     shipped_at?: string | null;
     tracking?: string | null;
     currency_label: CurrencyType;
-    total_display: number;
+    total_display: string;
 }

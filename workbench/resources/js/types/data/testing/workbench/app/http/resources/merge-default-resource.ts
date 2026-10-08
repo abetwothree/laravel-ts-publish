@@ -15,6 +15,6 @@ export interface MergeDefaultResource
     note_text: string | null;
     owner_id?: number;
     subtotal_label?: string;
-    k: number;
+    k: string;
     null_total: null;
 }

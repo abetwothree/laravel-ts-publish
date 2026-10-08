@@ -1626,7 +1626,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
 
         $total = collect($analysis->properties)->firstWhere('name', 'total');
 
-        expect($total['type'])->toContain('number');
+        expect($total['type'])->toContain('string');
     });
 
     test('resolves enum FQCN from EnumResource::make for model property', function () {
@@ -2297,7 +2297,7 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         $total = collect($this->analysis->properties)->firstWhere('name', 'total');
 
         expect($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($total['optional'])->toBeFalse();
     });
 
@@ -2379,7 +2379,7 @@ describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function ()
         $status = collect($this->analysis->properties)->firstWhere('name', 'status');
 
         expect($id['type'])->toBe('number')
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status['type'])->toBe('OrderStatusType');
     });
 
@@ -2609,7 +2609,7 @@ describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', functio
         expect($id)->not->toBeNull()
             ->and($id['type'])->toBe('number')
             ->and($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status)->not->toBeNull()
             ->and($status['type'])->toBe('OrderStatusType');
     });
@@ -2752,7 +2752,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
         $totalDisplay = collect($this->analysis->properties)->firstWhere('name', 'total_display');
 
         expect($totalDisplay)->not->toBeNull()
-            ->and($totalDisplay['type'])->toBe('number')
+            ->and($totalDisplay['type'])->toBe('string')
             ->and($totalDisplay['optional'])->toBeFalse();
     });
 
@@ -3803,7 +3803,7 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
         'an array default' => ['state', 'string | number'],
         'a closure default' => ['cancelled', 'boolean'],
         'a named default' => ['note_text', 'string | null'],
-        'both sides set it, the default untypable' => ['k', 'number'],
+        'both sides set it, the default untypable' => ['k', 'string'],
         'both sides set it, the value null and the default untypable' => ['null_total', 'null'],
     ]);
 
@@ -3892,7 +3892,7 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'archived')['type'])->toBe('boolean')
             ->and($props->firstWhere('name', 'draft')['type'])->toBe('boolean')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string')
             ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
     });
 
@@ -3961,7 +3961,7 @@ describe('ResourceAstAnalyzer with LoopReturnResource (collectDirectReturns loop
 
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'first_item_name')['type'])->toBe('string')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number');
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string');
     });
 });
 
@@ -4715,7 +4715,7 @@ describe('ResourceAstAnalyzer with ConditionalParamMappedResource — issue #38 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'items_priced');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: number; total_price: number }[]')
+            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: string; total_price: string }[]')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -4862,7 +4862,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_same_type_default']['type'])->toBe('number')
+        expect($props['not_null_same_type_default']['type'])->toBe('string')
             ->and($props['not_null_same_type_default']['optional'])->toBeFalse();
     });
 

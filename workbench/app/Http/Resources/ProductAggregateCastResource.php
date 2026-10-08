@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Product;
 
 /**
- * An aggregate whose alias the parent model casts: a `timestamp` cast writes the Unix integer.
+ * Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer.
  *
  * @mixin Product
  */
@@ -22,6 +22,7 @@ class ProductAggregateCastResource extends JsonResource
     {
         return [
             'first_sold_ts' => $this->whenAggregated('orderItems', 'created_at', 'min'),
+            'unit_price_total' => $this->whenAggregated('orderItems', 'unit_price', 'sum'),
         ];
     }
 }

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadata
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingCastAndInferredEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DecimalPriceMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
@@ -30,11 +31,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerBackedStatus;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsupportedMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
 use Illuminate\Database\ClassMorphViolationException;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
 use Workbench\App\Providers\AstInferredModelMetadataProvider;
 
@@ -130,6 +134,21 @@ test('uses only body-inferred keys present in the concrete model payload', funct
         ->and($user->propertyTypes)->toBe(['userModel' => 'boolean'])
         ->and($address->properties)->toBe(['otherModel' => 1])
         ->and($address->propertyTypes)->toBe(['otherModel' => 'number']);
+});
+
+// asDecimal() returns a string, so the value a `decimal:2` attribute emits and its `satisfies` type agree.
+test('types a decimal-cast attribute the provider returns as the string it holds', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.provider_class', DecimalPriceMetadataProvider::class);
+
+    expect(rtrim((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(Product::class))))
+        ->toBe(<<<'TYPESCRIPT'
+export const ProductModelMetadata = {
+    price: '9.99',
+} as const satisfies {
+    price: string;
+};
+TYPESCRIPT);
 });
 
 test('transforms configured morph map aliases', function () {

@@ -17,9 +17,9 @@ export interface InvoiceResource
     id: number;
     number: string;
     status?: AsEnum<typeof InvoiceStatus>;
-    subtotal: number;
-    tax: number;
-    total: number;
+    subtotal: string;
+    tax: string;
+    total: string;
     due_at: string | null;
     issued_at?: string;
     paid_at?: string | null;

@@ -138,7 +138,7 @@ test('generates GuardClauseClosureResource with guard clause producing union wit
     expect($generator->content)
         ->toContain('export interface GuardClauseClosureResource')
         ->toContain('id: number')
-        ->toContain('total: number')
+        ->toContain('total: string')
         ->toContain('buyer?: { name: string; email: string } | null');
 });
 

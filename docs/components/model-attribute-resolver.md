@@ -8,7 +8,8 @@ The PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](..
 [Models](https://tolki.abe.dev/ts/models.html) page.
 
 `connectionDriver()` reads the driver of a model's connection from its config, for the aggregate types
-`whenAggregated()` publishes. A model the run has not resolved yet is inspected first, which queries its schema.
+`whenAggregated()` publishes and for an uncast DECIMAL column, which pdo_mysql and pdo_pgsql return as a string. A model
+the run has not resolved yet is inspected first, which queries its schema.
 
 ## Where things live
 
@@ -65,8 +66,9 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
 `ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
 
 1. A `custom_ts_mappings` key equal to the lowercased cast goes to `toTsType()`, so the user's entry wins.
-2. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
-3. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+2. `decimal:N`, by the case-sensitive prefix `isDecimalCast()` reads, publishes `string`, as `asDecimal()` returns.
+3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
+4. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
 
 `isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
 where the call throws.
@@ -136,10 +138,11 @@ Know these five points before you change it:
 
 Laravel's `AsEnumCollection::of()`, `AsCollection::of()` and `AsCollection::using()` build cast strings of the form
 `CastClass:arguments`. Step 1b handles one only when the text before the first colon is an existing class, so
-`decimal:2` and `encrypted:array` fall through to the later steps. `AsEnumCollection` publishes a list of the
-enum's type, with the enum's import. `AsCollection` publishes a list of its map class when that class resolves to an
-inline shape or an enum, and `unknown[]` otherwise, because a bare class token has no import channel. Any other cast
-class resolves as the bare class, arguments ignored.
+`decimal:2` and `encrypted:array` fall through to the later steps, though a model's `decimal:2` cast never reaches them:
+`castToTsType()` answers it first. `AsEnumCollection` publishes a list of the enum's type, with the enum's import.
+`AsCollection` publishes a list of its map class when that class resolves to an inline shape or an enum, and `unknown[]`
+otherwise, because a bare class token has no import channel. Any other cast class resolves as the bare class, arguments
+ignored.
 
 ### Database types come from the schema grammar
 

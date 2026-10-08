@@ -27,7 +27,6 @@ use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use JsonSerializable;
 use PhpParser\Error;
@@ -423,17 +422,18 @@ class LaravelTsPublish
     /**
      * Resolve the TypeScript type of an Eloquent cast's value: a cast name is not the column type it spells.
      *
-     * Reads a built-in cast name trimmed and lowercased, as `HasAttributes::getCastType()` does. A `custom_ts_mappings`
-     * entry for the cast, and any other cast, go through toTsType().
+     * Reads the cast as `HasAttributes::getCastType()` does: `decimal:N` by its case-sensitive prefix, a built-in name
+     * trimmed and lowercased. A `custom_ts_mappings` entry for the cast, and any other cast, go through toTsType().
      *
      * @return TypeScriptTypeInfo
      */
     public function castToTsType(string $cast): array
     {
-        $customMappings = array_change_key_case(Config::array('ts-publish.custom_ts_mappings', []), CASE_LOWER);
-
         $type = match (true) {
-            array_key_exists(strtolower($cast), $customMappings) => null,
+            // Null defers to toTsType(), whose map holds the user's entry, so a custom mapping outranks each rule.
+            isset((new TypeScriptMap)->customKeys()[strtolower($cast)]) => null,
+            // asDecimal() returns a string on every driver.
+            str_starts_with($cast, 'decimal:') => 'string',
             // asTimestamp() returns the Unix integer, and toArray() serializes no `timestamp` cast as a date.
             strtolower(trim($cast)) === 'timestamp' => 'number',
             default => null,

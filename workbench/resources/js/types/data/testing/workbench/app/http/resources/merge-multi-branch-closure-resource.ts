@@ -11,6 +11,6 @@ export interface MergeMultiBranchClosureResource
 {
     id: number;
     archived_at?: string | null;
-    total?: number;
+    total?: string;
     currency?: CurrencyType;
 }

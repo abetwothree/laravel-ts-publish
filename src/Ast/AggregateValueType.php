@@ -35,6 +35,15 @@ final class AggregateValueType
     }
 
     /**
+     * The TypeScript type a plain read of the column reaches a payload with, which is what MIN() and MAX() return,
+     * since both keep the column's type; null when nothing proves one.
+     */
+    public static function column(string $columnType, string $driver): ?string
+    {
+        return self::of('max', $columnType, $driver);
+    }
+
+    /**
      * The SQL result an aggregate of a column kind gives: `number` (an integer or a float), `decimal` (DECIMAL or
      * NUMERIC) or `text` (a date, a time, a string or an array literal), or null for a function or column kind no rule
      * covers.

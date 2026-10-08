@@ -15,7 +15,7 @@ export interface Payment
     status: PaymentStatusType;
     method: PaymentMethodType;
     currency: CurrencyType;
-    amount: number;
+    amount: string;
     reference: string | null;
     paid_at: string | null;
     created_at: string | null;

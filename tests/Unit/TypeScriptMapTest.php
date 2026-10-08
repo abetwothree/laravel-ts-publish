@@ -78,6 +78,16 @@ test('custom_ts_mappings override default mappings', function () {
     expect($map['string'])->toBe('CustomString');
 });
 
+// castToTsType() defers a cast these keys name to toTsType(), so they must be the keys the map it reads was built with.
+test('customKeys names the custom_ts_mappings keys of the cached map, lowercased as gather() merges them', function () {
+    config()->set('ts-publish.custom_ts_mappings', ['Timestamp' => 'boolean', 'decimal:2' => 'number']);
+    $keys = (new TypeScriptMap)->customKeys();
+    config()->set('ts-publish.custom_ts_mappings', []);
+
+    expect($keys)->toBe(['timestamp' => true, 'decimal:2' => true])
+        ->and((new TypeScriptMap)->customKeys())->toBe($keys);
+});
+
 test('date types resolve to string by default', function () {
     config()->set('ts-publish.timestamps_as_date', false);
 

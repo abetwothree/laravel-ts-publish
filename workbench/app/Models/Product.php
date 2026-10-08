@@ -54,7 +54,8 @@ class Product extends Model
             'is_featured' => 'boolean',
             'published_at' => 'datetime',
             'metadata' => 'array',
-            // The withMin() alias ProductAggregateCastResource reads.
+            // The withSum() and withMin() aliases ProductAggregateCastResource reads.
+            'order_items_sum_unit_price' => 'decimal:2',
             'order_items_min_created_at' => 'timestamp',
         ];
     }

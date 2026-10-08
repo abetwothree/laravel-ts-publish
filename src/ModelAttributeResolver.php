@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -156,7 +157,7 @@ class ModelAttributeResolver
             return $empty;
         }
 
-        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
+        $tsInfo = $this->columnTsType($modelFqcn, $attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
             return $empty; // @codeCoverageIgnore
@@ -165,6 +166,23 @@ class ModelAttributeResolver
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
         return $this->appendNullable($tsInfo, $attr['nullable']);
+    }
+
+    /**
+     * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
+     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    protected function columnTsType(string $modelFqcn, string $columnType): array
+    {
+        $tsInfo = LaravelTsPublish::toTsType($columnType);
+        $driver = $tsInfo['type'] === 'number' ? $this->connectionDriver($modelFqcn) : null;
+
+        return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
+            ? [...$tsInfo, 'type' => 'string']
+            : $tsInfo;
     }
 
     /**

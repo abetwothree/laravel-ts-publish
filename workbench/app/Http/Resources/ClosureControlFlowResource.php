@@ -50,7 +50,7 @@ class ClosureControlFlowResource extends JsonResource
             // Closure with try/catch/finally — exercises lines 253-263
             'safe_total' => $this->whenLoaded('user', function () {
                 try {
-                    return ['amount' => $this->total];
+                    return ['amount' => (float) $this->total];
                 } catch (\Throwable $e) {
                     return ['amount' => 0];
                 } finally {

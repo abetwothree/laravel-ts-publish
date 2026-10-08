@@ -17,7 +17,7 @@ export interface Deal
     title: string;
     status: EnumsStatusType;
     crm_status: CrmStatusType;
-    value: number;
+    value: string;
     created_at: string | null;
     updated_at: string | null;
     // Relations

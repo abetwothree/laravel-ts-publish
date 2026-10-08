@@ -4004,15 +4004,15 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "tax",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "total",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "due_at",
@@ -4093,7 +4093,7 @@
                 },
                 {
                     "name": "amount",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "reference",
@@ -5718,7 +5718,7 @@
                 },
                 {
                     "name": "declared_value",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "legs",
@@ -6926,19 +6926,19 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "tax",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "discount",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "total",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "shipping_address",
@@ -7099,11 +7099,11 @@
                 },
                 {
                     "name": "unit_price",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "total_price",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "options",
@@ -7278,7 +7278,7 @@
                 },
                 {
                     "name": "rating",
-                    "type": "number | null"
+                    "type": "string | null"
                 },
                 {
                     "name": "category",
@@ -7528,15 +7528,15 @@
                 },
                 {
                     "name": "price",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "compare_at_price",
-                    "type": "number | null"
+                    "type": "string | null"
                 },
                 {
                     "name": "cost_price",
-                    "type": "number | null"
+                    "type": "string | null"
                 },
                 {
                     "name": "quantity",
@@ -9687,7 +9687,7 @@
                 },
                 {
                     "name": "value",
-                    "type": "number"
+                    "type": "string"
                 },
                 {
                     "name": "created_at",
@@ -10068,17 +10068,17 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "tax",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -10148,7 +10148,7 @@
                 },
                 {
                     "name": "amount",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -10632,7 +10632,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -12266,7 +12266,7 @@
                 },
                 {
                     "name": "not_null_same_type_default",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -12561,7 +12561,7 @@
                 },
                 {
                     "name": "items_priced",
-                    "type": "{ id: number; sku: string; unit_price: number; total_price: number }[]",
+                    "type": "{ id: number; sku: string; unit_price: string; total_price: string }[]",
                     "optional": true
                 },
                 {
@@ -12631,7 +12631,7 @@
                 },
                 {
                     "name": "declared_value",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -12666,7 +12666,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -13464,7 +13464,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 }
             ]
@@ -13479,7 +13479,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -14114,7 +14114,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": true
                 }
             ]
@@ -14384,7 +14384,7 @@
                 },
                 {
                     "name": "k",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -14409,7 +14409,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -14814,7 +14814,7 @@
                 },
                 {
                     "name": "total_display",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 }
             ]
@@ -14929,22 +14929,22 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "tax",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "discount",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -15118,12 +15118,12 @@
                 },
                 {
                     "name": "unit_price",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "total_price",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -15168,7 +15168,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -15213,7 +15213,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -15288,7 +15288,7 @@
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -15807,6 +15807,11 @@
                     "name": "first_sold_ts",
                     "type": "number | null",
                     "optional": true
+                },
+                {
+                    "name": "unit_price_total",
+                    "type": "string | null",
+                    "optional": true
                 }
             ]
         },
@@ -15840,17 +15845,17 @@
                 },
                 {
                     "name": "price",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "compare_at_price",
-                    "type": "number",
+                    "type": "string",
                     "optional": true
                 },
                 {
                     "name": "cost_price",
-                    "type": "number | null",
+                    "type": "string | null",
                     "optional": true
                 },
                 {
@@ -16320,7 +16325,7 @@
                 },
                 {
                     "name": "normal_merge_key",
-                    "type": "number",
+                    "type": "string",
                     "optional": true
                 },
                 {
@@ -17524,22 +17529,22 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "tax",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "discount",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -17659,22 +17664,22 @@
                 },
                 {
                     "name": "subtotal",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "tax",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "discount",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
                     "name": "total",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {
@@ -19544,7 +19549,7 @@
                 },
                 {
                     "name": "value",
-                    "type": "number",
+                    "type": "string",
                     "optional": false
                 },
                 {

@@ -338,7 +338,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   computes takes no arm.
 - **`transform()` types from the callback**: the helper returns `$callback($value)` for a filled value, with the
   callback's first parameter bound to the value. Its default receives the value too, `null` arm included:
-  `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.
+  `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | null`.
 - **A first-class callable types as the call it stands for in a `value()` position**: Laravel calls the `Closure`, so
   `when($c, $this->label(...))` types as `$this->label()`. Anywhere else the key holds the `Closure`, which
   `json_encode()` writes as `{}`, so it publishes `Record<string, never>` and `ts:publish` warns.

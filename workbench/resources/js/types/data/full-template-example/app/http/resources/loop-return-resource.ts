@@ -8,5 +8,5 @@ export interface LoopReturnResource
 {
     id: number;
     first_item_name?: string;
-    total?: number;
+    total?: string;
 }

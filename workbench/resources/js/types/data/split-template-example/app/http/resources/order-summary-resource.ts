@@ -15,7 +15,7 @@ export interface OrderSummaryResource
     formatted_total: string;
     user: User;
     status: OrderStatusType;
-    total: number;
+    total: string;
     notes: string | null;
     search_index: unknown;
 }
