@@ -27,6 +27,8 @@ use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\Break_;
+use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
@@ -36,6 +38,7 @@ use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
+use PhpParser\NodeFinder;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
@@ -134,8 +137,9 @@ trait ReadsReturnedVariables
     /**
      * Recursively collect array assignments to a variable from method statements.
      *
-     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional. A whole-array
-     * write that analyzes as nothing counts as a lenient read, since its keys are then unknown.
+     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional, except those a
+     * `do` body makes before its first `break` or `continue`, which always run. A whole-array write that analyzes as
+     * nothing counts as a lenient read, since its keys are then unknown.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -147,7 +151,8 @@ trait ReadsReturnedVariables
         bool $topLevel = true,
     ): void {
         foreach ($stmts as $stmt) {
-            if ($stmt instanceof TryCatch || $stmt instanceof Switch_ || $stmt instanceof Block) {
+            if ($stmt instanceof TryCatch || $stmt instanceof Switch_
+                || $stmt instanceof Block || $stmt instanceof Do_) {
                 $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
 
                 continue;
@@ -160,8 +165,7 @@ trait ReadsReturnedVariables
             }
 
             if (! $stmt instanceof ExpressionStmt && ! $stmt instanceof If_
-                && ! $stmt instanceof Foreach_ && ! $stmt instanceof For_
-                && ! $stmt instanceof While_ && ! $stmt instanceof Do_) {
+                && ! $stmt instanceof Foreach_ && ! $stmt instanceof For_ && ! $stmt instanceof While_) {
                 continue;
             }
 
@@ -279,8 +283,7 @@ trait ReadsReturnedVariables
             }
 
             // Loop bodies are conditional: a loop may execute zero times.
-            if ($stmt instanceof Foreach_ || $stmt instanceof For_
-                || $stmt instanceof While_ || $stmt instanceof Do_) {
+            if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_) {
                 $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
             }
         }
@@ -436,11 +439,12 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Collect a variable's writes inside a `try`, `switch` or bare block: a catch or a case may not run, nor a `try`
-     * body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's condition.
+     * Collect a variable's writes inside a `try`, `switch`, `do` or bare block: a catch or a case may not run, nor a
+     * `try` body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's
+     * condition. A `do` body, which runs once, keeps it too, until a statement that can `break` or `continue`.
      */
     private function collectNestedArrayAssignments(
-        TryCatch|Switch_|Block $stmt,
+        TryCatch|Switch_|Block|Do_ $stmt,
         string $varName,
         bool $isConditional,
         MethodAnalysis $into,
@@ -448,6 +452,17 @@ trait ReadsReturnedVariables
     ): void {
         if ($stmt instanceof Block) {
             $this->collectVariableArrayAssignments($stmt->stmts, $varName, $isConditional, $into, $topLevel);
+
+            return;
+        }
+
+        if ($stmt instanceof Do_) {
+            $body = array_values($stmt->stmts);
+            $jump = array_find_key($body, $this->holdsBreakOrContinue(...)) ?? count($body);
+            $head = array_slice($body, 0, $jump);
+
+            $this->collectVariableArrayAssignments($head, $varName, $isConditional, $into, $topLevel);
+            $this->collectVariableArrayAssignments(array_slice($body, $jump), $varName, true, $into, $topLevel);
 
             return;
         }
@@ -469,6 +484,17 @@ trait ReadsReturnedVariables
         if ($stmt->finally !== null) {
             $this->collectVariableArrayAssignments($stmt->finally->stmts, $varName, $isConditional, $into, $topLevel);
         }
+    }
+
+    /**
+     * Whether a statement holds a `break` or `continue` at any depth, even one a loop or `switch` inside it takes.
+     */
+    private function holdsBreakOrContinue(Node\Stmt $stmt): bool
+    {
+        return new NodeFinder()->findFirst(
+            $stmt,
+            fn (Node $node): bool => $node instanceof Break_ || $node instanceof Continue_,
+        ) !== null;
     }
 
     /**

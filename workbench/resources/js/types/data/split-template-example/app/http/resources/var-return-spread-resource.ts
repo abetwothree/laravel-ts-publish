@@ -19,6 +19,10 @@ export interface VarReturnSpreadResource
     foreachKey?: string;
     forKey?: string;
     whileKey?: string;
-    doWhileKey?: string;
+    doWhileKey: string;
+    doWhileBranchKey?: string;
+    doWhileAfterBreakKey?: string;
+    doWhileAfterContinueKey?: string;
+    doWhileUnderBranchKey?: string;
     status: string;
 }

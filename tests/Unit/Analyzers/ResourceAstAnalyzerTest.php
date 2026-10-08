@@ -3020,7 +3020,7 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
             ->and($whileKey['optional'])->toBeTrue();
     });
 
-    test('marks do-while loop dim assignments as optional', function () {
+    test('marks do-while dim assignments before any break or continue as required', function () {
         $reflection = new ReflectionClass(VarReturnSpreadResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
         $analysis = $analyzer->analyze();
@@ -3028,8 +3028,25 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
         $doWhileKey = collect($analysis->properties)->firstWhere('name', 'doWhileKey');
 
         expect($doWhileKey)->not->toBeNull()
-            ->and($doWhileKey['optional'])->toBeTrue();
+            ->and($doWhileKey['optional'])->toBeFalse();
     });
+
+    test('keeps a do-while dim assignment optional when the first pass can skip it', function (string $key) {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', $key);
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    })->with([
+        'inside a branch' => 'doWhileBranchKey',
+        'after a break' => 'doWhileAfterBreakKey',
+        'after a continue' => 'doWhileAfterContinueKey',
+        'in a do-while under a branch' => 'doWhileUnderBranchKey',
+    ]);
 
     test('resolves all loop properties in variable-return methods', function () {
         $reflection = new ReflectionClass(VarReturnSpreadResource::class);

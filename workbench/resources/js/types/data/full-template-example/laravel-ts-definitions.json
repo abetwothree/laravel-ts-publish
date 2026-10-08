@@ -18656,6 +18656,26 @@
                 {
                     "name": "doWhileKey",
                     "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "doWhileBranchKey",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "doWhileAfterBreakKey",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "doWhileAfterContinueKey",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "doWhileUnderBranchKey",
+                    "type": "string",
                     "optional": true
                 },
                 {

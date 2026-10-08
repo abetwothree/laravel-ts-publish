@@ -5159,7 +5159,11 @@ declare global {
             foreachKey?: string;
             forKey?: string;
             whileKey?: string;
-            doWhileKey?: string;
+            doWhileKey: string;
+            doWhileBranchKey?: string;
+            doWhileAfterBreakKey?: string;
+            doWhileAfterContinueKey?: string;
+            doWhileUnderBranchKey?: string;
             status: string;
         }
         /** One arm of the reviewable morph union ReviewResource unions over. */

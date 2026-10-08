@@ -59,7 +59,8 @@ every profile, the order handlers run in decides which one answers; see
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
   variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys, a whole re-assignment drops the writes
-  before it, and a key first written in a branch, loop, `try` or `switch` publishes optional.
+  before it, and a key first written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body
+  before its first `break` or `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
