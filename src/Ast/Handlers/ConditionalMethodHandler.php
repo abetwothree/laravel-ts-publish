@@ -652,7 +652,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // A built-in cast hands the SQL NULL back untouched. Laravel reads its own cast names before any class, which
         // matters for `datetime`: PHP's class lookup ignores case and finds `DateTime`.
         $castType = is_string($cast) && ($resolver->isDateFamilyCast($cast) || ! class_exists(Str::before($cast, ':')))
-            ? LaravelTsPublish::toTsType($cast)['type']
+            ? LaravelTsPublish::castToTsType($cast)['type']
             : 'unknown';
 
         if ($castType !== 'unknown') {

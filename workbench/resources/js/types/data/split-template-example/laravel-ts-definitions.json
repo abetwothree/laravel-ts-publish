@@ -5705,6 +5705,35 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\Consignment": {
+            "name": "Consignment",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "scanned_at",
+                    "type": "number | null"
+                },
+                {
+                    "name": "declared_value",
+                    "type": "number"
+                },
+                {
+                    "name": "legs",
+                    "type": "string | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\Crew": {
             "name": "Crew",
             "properties": [
@@ -12587,6 +12616,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ConsignmentResource": {
+            "name": "ConsignmentResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "scanned_at",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "declared_value",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "legs",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ControlFlowReturnResource": {
             "name": "ControlFlowReturnResource",
             "properties": [
@@ -15742,6 +15796,16 @@
                 {
                     "name": "settings",
                     "type": "Record<string, unknown> | null",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ProductAggregateCastResource": {
+            "name": "ProductAggregateCastResource",
+            "properties": [
+                {
+                    "name": "first_sold_ts",
+                    "type": "number | null",
                     "optional": true
                 }
             ]

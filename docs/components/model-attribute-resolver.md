@@ -1,9 +1,9 @@
 # ModelAttributeResolver
 
 [`ModelAttributeResolver`](../../src/ModelAttributeResolver.php) types a model's attributes and relations for the model
-transformer, the resource analyzer and the AST engine. `resolveAttribute()` tries the accessor, then the cast, then
-the database column type, and `resolveRelation()` and `resolveMorphToTargets()` type relations. The
-PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../src/LaravelTsPublish.php), chiefly
+transformer, the resource analyzer and the AST engine. `resolveAttribute()` tries the accessor, then the cast through
+`castToTsType()`, then the database column type, and `resolveRelation()` and `resolveMorphToTargets()` type relations.
+The PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../src/LaravelTsPublish.php), chiefly
 `toTsType()` and `methodOrDocblockReturnTypes()`, and its rules are on this page too. Usage is on the tolki
 [Models](https://tolki.abe.dev/ts/models.html) page.
 
@@ -57,6 +57,19 @@ then falls through to a real column's type, and `ModelTransformer::transformMuta
 
 To assert that a name is left out, use `isOmittedMutator()`, which reads the accessor step's `omit` flag.
 `resolveAttribute()` returns `unknown` both for an omitted mutator and for an attribute it cannot type.
+
+## A cast name is not a column type
+
+A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer `asTimestamp()` returns, which
+`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()`, the
+`ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
+
+1. A `custom_ts_mappings` key equal to the lowercased cast goes to `toTsType()`, so the user's entry wins.
+2. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
+3. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+
+`isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
+where the call throws.
 
 ## Class types in `toTsType()`
 

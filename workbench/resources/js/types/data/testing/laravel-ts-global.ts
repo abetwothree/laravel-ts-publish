@@ -584,6 +584,19 @@ declare global {
             commentable_count: number;
             commentable_exists: boolean;
         }
+        /**
+         * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer, while the
+         * `created_at` and `updated_at` columns keep the date type.
+         */
+        export interface Consignment {
+            // Columns
+            id: number;
+            scanned_at: number | null;
+            declared_value: number;
+            legs: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+        }
         /** One model a RosterSlot's assignee can be. */
         export interface Crew {
             // Columns
@@ -3179,6 +3192,13 @@ declare global {
             notes_length_or_default: string | number;
             notes_length_variadic_default: string | number;
         }
+        /** Reads each cast through the model, so the resource publishes what the cast returns, as the model does. */
+        export interface ConsignmentResource {
+            id: number;
+            scanned_at: number | null;
+            declared_value: number;
+            legs: string | null;
+        }
         /**
          * Exercises collectDirectReturns elseif, else, and loop branches
          * in the main toArray() body (not inside closures).
@@ -4265,6 +4285,10 @@ declare global {
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
+        }
+        /** An aggregate whose alias the parent model casts: a `timestamp` cast writes the Unix integer. */
+        export interface ProductAggregateCastResource {
+            first_sold_ts?: number | null;
         }
         /**
          * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,

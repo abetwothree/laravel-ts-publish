@@ -325,6 +325,32 @@ describe('castable-with-arguments cast strings', function () {
     });
 });
 
+describe('castToTsType', function () {
+    // HasAttributes::asTimestamp() returns the Unix integer, which toArray() never formats as a date.
+    test('types a cast as Laravel serializes its value', function (string $cast, string $type) {
+        expect($this->service->castToTsType($cast)['type'])->toBe($type);
+    })->with([
+        'timestamp' => ['timestamp', 'number'],
+        'timestamp, trimmed and lowercased as getCastType() reads it' => [' Timestamp ', 'number'],
+        'datetime, which keeps the date type' => ['datetime', 'string'],
+        'integer, which falls through to toTsType()' => ['integer', 'number'],
+    ]);
+
+    test('keeps a timestamp cast a number under timestamps_as_date, while a timestamp column follows it', function () {
+        config()->set('ts-publish.timestamps_as_date', true);
+
+        expect($this->service->castToTsType('timestamp')['type'])->toBe('number')
+            ->and($this->service->toTsType('timestamp')['type'])->toBe('Date');
+    });
+
+    // The documented override surface: a user's entry takes precedence over the built-in map, a cast rule included.
+    test('lets a custom_ts_mappings entry for the cast win', function () {
+        config()->set('ts-publish.custom_ts_mappings', ['Timestamp' => 'string']);
+
+        expect($this->service->castToTsType('timestamp')['type'])->toBe('string');
+    });
+});
+
 describe('toTsType substring fallback restriction', function () {
     test('class-ish names degrade to unknown instead of partial-matching', function (string $name) {
         expect($this->service->toTsType($name)['type'])->toBe('unknown');

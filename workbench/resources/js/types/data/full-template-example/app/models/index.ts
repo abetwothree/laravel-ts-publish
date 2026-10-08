@@ -18,6 +18,7 @@ export * from './category';
 export * from './child-shared-extendable-model';
 export * from './comment';
 export * from './composite-comment';
+export * from './consignment';
 export * from './crew';
 export * from './custom-key-post';
 export * from './depot';

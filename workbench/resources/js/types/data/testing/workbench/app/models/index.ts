@@ -38,6 +38,8 @@ export * from './comment';
 export * from './comment_meta';
 export * from './composite-comment';
 export * from './composite-comment_meta';
+export * from './consignment';
+export * from './consignment_meta';
 export * from './crew';
 export * from './crew_meta';
 export * from './custom-key-post';

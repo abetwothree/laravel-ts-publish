@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
@@ -25,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
@@ -7010,3 +7013,16 @@ test('only a spread helper\'s branches and a merge call\'s sides drop an untypab
         ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('unknown')
         ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true, keepsLoneNull: true)->properties[0]['type'])->toBe('null');
 });
+
+// A `timestamp` cast holds the Unix integer, so a Carbon method on it is no Carbon call: Laravel throws on `format()`.
+it('reflects a Carbon method on a date cast, never on a timestamp cast', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'an immutable_datetime cast' => ['$this->published_at->format("Y")', 'string'],
+    'a timestamp cast' => ['$this->deleted_at->format("Y")', 'unknown'],
+    'the timestamp cast itself' => ['$this->deleted_at', 'number | null'],
+]);

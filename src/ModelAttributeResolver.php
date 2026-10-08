@@ -145,7 +145,7 @@ class ModelAttributeResolver
         }
 
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::toTsType($cast);
+            $tsInfo = LaravelTsPublish::castToTsType($cast);
 
             $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
@@ -428,13 +428,13 @@ class ModelAttributeResolver
     }
 
     /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     * Determine whether a resolved model cast holds a Carbon date, including immutable_* variants and the `:format`
+     * suffix on custom_datetime casts. A `timestamp` cast holds the Unix integer, so it is no date cast.
      */
     public function isDateFamilyCast(string $cast): bool
     {
         return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
+            'date', 'datetime', 'custom_datetime',
             'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
         ], true);
     }
@@ -460,16 +460,11 @@ class ModelAttributeResolver
             return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
         }
 
-        $head = Str::before($cast, ':');
-
-        // Laravel's timestamp cast returns the Unix integer, not a date object.
         if ($this->isDateFamilyCast($cast)) {
-            return match (true) {
-                $head === 'timestamp' => null,
-                str_starts_with($cast, 'immutable_') => CarbonImmutable::class,
-                default => Carbon::class,
-            };
+            return str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
         }
+
+        $head = Str::before($cast, ':');
 
         if (is_a($head, Castable::class, true)) {
             return $this->castableValueClass($head);
