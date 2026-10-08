@@ -3,6 +3,7 @@
     "app\/Enums\/Color.php",
     "app\/Enums\/Currency.php",
     "app\/Enums\/ExcludableEnum.php",
+    "app\/Enums\/FreightClass.php",
     "app\/Enums\/Grade.php",
     "app\/Enums\/MediaType.php",
     "app\/Enums\/MembershipLevel.php",

@@ -252,7 +252,9 @@ class EnumTransformer extends CoreTransformer
             foreach ($this->reflectionEnum->getCases() as $case) {
                 try {
                     $caseInstance = $case->getValue();
-                    $returns[$case->getName()] = $method->invokeArgs($caseInstance, $attributeParams);
+                    $returns[$case->getName()] = JsEmitter::jsonValue(
+                        $method->invokeArgs($caseInstance, $attributeParams),
+                    );
                 } catch (Throwable) {
                     $returns[$case->getName()] = null;
                 }
@@ -315,7 +317,7 @@ class EnumTransformer extends CoreTransformer
                 $case = $this->reflectionEnum->getCases()[0] ?? null;
                 if ($case) {
                     $caseInstance = $case->getValue();
-                    $return = $method->invokeArgs($caseInstance, $attributeParams);
+                    $return = JsEmitter::jsonValue($method->invokeArgs($caseInstance, $attributeParams));
                 }
             } catch (Throwable $e) {
                 // If the method requires parameters or something else goes wrong, we just ignore the return value

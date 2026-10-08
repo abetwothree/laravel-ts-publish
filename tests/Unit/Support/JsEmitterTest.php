@@ -3,8 +3,15 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
+use Carbon\CarbonImmutable;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\RateCard;
+use Workbench\App\ValueObjects\SealedManifest;
+use Workbench\App\ValueObjects\TrackingCode;
 
 beforeEach(function () {
     $this->service = new JsEmitter;
@@ -180,6 +187,101 @@ describe('toJsLiteral', function () {
         expect($this->service->toJsLiteral(new stdClass))->toBe('{}')
             ->and($this->service->toJsLiteral((object) ['a' => new stdClass]))->toBe('{a: {}}')
             ->and($this->service->toJsLiteral([]))->toBe('[]');
+    });
+});
+
+describe('toJsLiteral objects', function () {
+    test('a plain object publishes its public initialized properties only', function () {
+        $partial = new class
+        {
+            public int $id;
+
+            public string $label = 'pending';
+        };
+
+        expect($this->service->toJsLiteral(new RateCard(100)))->toBe('{amount: 100}')
+            ->and($this->service->toJsLiteral($partial))->toBe("{label: 'pending'}");
+    });
+
+    test('an object with no public property, and a closure, publish {}', function () {
+        expect($this->service->toJsLiteral(new SealedManifest))->toBe('{}')
+            ->and($this->service->toJsLiteral(fn (): int => 1))->toBe('{}');
+    });
+
+    test('a JsonSerializable object publishes its jsonSerialize() value', function () {
+        expect($this->service->toJsLiteral(new TrackingCode('express')))->toBe("{code: 'EXPRESS', carrier: 'ups'}")
+            ->and($this->service->toJsLiteral(CarbonImmutable::parse('2026-01-01 17:00:00', 'UTC')))
+            ->toBe("'2026-01-01T17:00:00.000000Z'")
+            ->and($this->service->toJsLiteral(str('abc')))->toBe("'abc'")
+            ->and($this->service->toJsLiteral(collect(['a' => new RateCard(5)])))->toBe('{a: {amount: 5}}');
+    });
+
+    test('a jsonSerialize() that returns $this publishes the public properties', function () {
+        expect($this->service->toJsLiteral(new CircularJsonSerializableMetadataValue))->toBe('{}');
+    });
+
+    test('a DateTime publishes the object json_encode() writes for it', function () {
+        expect($this->service->toJsLiteral(new DateTime('2026-01-01 09:00:00', new DateTimeZone('UTC'))))
+            ->toBe("{date: '2026-01-01 09:00:00.000000', timezone_type: 3, timezone: 'UTC'}");
+    });
+
+    test('a stdClass is always an object, even with list keys', function () {
+        expect($this->service->toJsLiteral((object) ['a', 'b']))->toBe('{"0": \'a\', "1": \'b\'}');
+    });
+
+    test('a model publishes its jsonSerialize() value, so a hidden attribute never does', function () {
+        $user = new User(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+
+        expect($this->service->toJsLiteral($user))->toBe("{name: 'Ada', email: 'ada@example.com'}");
+    });
+});
+
+describe('jsonValue', function () {
+    test('a PHP array keeps its keys, and an object with no string key becomes a stdClass', function () {
+        expect($this->service->jsonValue([1, 2]))->toBe([1, 2])
+            ->and($this->service->jsonValue([]))->toBe([])
+            ->and($this->service->jsonValue(['a' => 1, 3 => 2]))->toBe(['a' => 1, 3 => 2])
+            ->and($this->service->jsonValue([1 => 'a', 3 => 'b']))->toBe([1 => 'a', 3 => 'b'])
+            ->and($this->service->jsonValue(new SealedManifest))->toEqual(new stdClass)
+            ->and($this->service->jsonValue([(object) ['a', 'b']]))->toEqual([(object) ['a', 'b']]);
+    });
+
+    test('an enum is its backed value, and a pure enum keeps its name', function () {
+        expect($this->service->jsonValue([Role::Admin, Status::Published]))->toBe(['Admin', 1]);
+    });
+
+    test('throws as json_encode() does where it cannot write the value', function (mixed $value, string $message) {
+        expect(fn () => $this->service->jsonValue($value))->toThrow(JsonException::class, $message);
+    })->with([
+        'a non-finite float' => [[INF], 'Inf and NaN cannot be JSON encoded'],
+        'invalid UTF-8' => ["\xB1\x31", 'Malformed UTF-8 characters, possibly incorrectly encoded'],
+        'a cycle' => [(function () {
+            $node = new stdClass;
+            $node->next = $node;
+
+            return $node;
+        })(), 'Recursion detected'],
+        'nesting past 512 levels' => [
+            array_reduce(range(1, 513), fn (array $carry): array => [$carry], []),
+            'Maximum stack depth exceeded',
+        ],
+        'a jsonSerialize() returning a fresh object every call' => [
+            new FreshObjectJsonSerializableMetadataValue,
+            'Maximum stack depth exceeded',
+        ],
+        'a resource' => [fopen('php://memory', 'r'), 'Type is not supported'],
+    ]);
+
+    test('a throwing jsonSerialize() throws its own exception', function () {
+        $throwing = new class implements JsonSerializable
+        {
+            public function jsonSerialize(): mixed
+            {
+                throw new RuntimeException('cannot serialize');
+            }
+        };
+
+        expect(fn () => $this->service->jsonValue($throwing))->toThrow(RuntimeException::class, 'cannot serialize');
     });
 });
 

@@ -793,6 +793,111 @@
             "methods": [],
             "staticMethods": []
         },
+        "Workbench\\App\\Enums\\FreightClass": {
+            "name": "FreightClass",
+            "cases": [
+                {
+                    "name": "Standard",
+                    "value": "standard",
+                    "description": ""
+                },
+                {
+                    "name": "Express",
+                    "value": "express",
+                    "description": ""
+                }
+            ],
+            "caseKinds": [
+                "'Standard'",
+                "'Express'"
+            ],
+            "caseTypes": [
+                "'standard'",
+                "'express'"
+            ],
+            "methods": {
+                "rateCard": {
+                    "name": "rateCard",
+                    "description": "Rate card for the class",
+                    "returns": {
+                        "Standard": {
+                            "amount": 100
+                        },
+                        "Express": {
+                            "amount": 250
+                        }
+                    }
+                },
+                "cutoff": {
+                    "name": "cutoff",
+                    "description": "Daily pickup cutoff",
+                    "returns": {
+                        "Standard": "2026-01-01T17:00:00.000000Z",
+                        "Express": "2026-01-01T20:00:00.000000Z"
+                    }
+                },
+                "tracking": {
+                    "name": "tracking",
+                    "description": "",
+                    "returns": {
+                        "Standard": {
+                            "code": "STANDARD",
+                            "carrier": "ups"
+                        },
+                        "Express": {
+                            "code": "EXPRESS",
+                            "carrier": "ups"
+                        }
+                    }
+                },
+                "zones": {
+                    "name": "zones",
+                    "description": "",
+                    "returns": {
+                        "Standard": [
+                            "north",
+                            "south"
+                        ],
+                        "Express": [
+                            "north"
+                        ]
+                    }
+                },
+                "firstPickup": {
+                    "name": "firstPickup",
+                    "description": "",
+                    "returns": {
+                        "Standard": {
+                            "date": "2026-01-01 09:00:00.000000",
+                            "timezone_type": 3,
+                            "timezone": "UTC"
+                        },
+                        "Express": {
+                            "date": "2026-01-01 09:00:00.000000",
+                            "timezone_type": 3,
+                            "timezone": "UTC"
+                        }
+                    }
+                },
+                "manifest": {
+                    "name": "manifest",
+                    "description": "",
+                    "returns": {
+                        "Standard": {},
+                        "Express": {}
+                    }
+                }
+            },
+            "staticMethods": {
+                "defaultRate": {
+                    "name": "defaultRate",
+                    "description": "",
+                    "return": {
+                        "amount": 50
+                    }
+                }
+            }
+        },
         "Workbench\\App\\Enums\\Grade": {
             "name": "Grade",
             "cases": [

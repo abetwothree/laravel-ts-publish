@@ -2178,6 +2178,15 @@ declare global {
         export type ExcludableEnumType = 'alpha' | 'beta';
         export type ExcludableEnumKind = 'Alpha' | 'Beta';
 
+        /** Freight classes whose methods return objects, each published as json_encode() writes it. */
+        export interface FreightClass
+        {
+            Standard: 'standard',
+            Express: 'express',
+        }
+        export type FreightClassType = 'standard' | 'express';
+        export type FreightClassKind = 'Standard' | 'Express';
+
         /** Shares its name with the Grade model, whose own file imports this enum's const. */
         export interface Grade
         {

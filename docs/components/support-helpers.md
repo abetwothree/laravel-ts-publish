@@ -61,6 +61,12 @@ only in a type position, so every value-position caller must leave the default a
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
 broadcast-event and Inertia paths call them before any cast lookup.
 
+`jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
+a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
+never prints as `[]`. A pure enum keeps its name, where `json_encode()` fails. A value `json_encode()` cannot write
+throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model metadata keeps
+`normalizeMetadataValue()`, which prefers `toArray()` and fails a companion with a property path.
+
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward call is
@@ -91,7 +97,8 @@ every generated tree.
 Its callers in `src/Ast/` use it to decline a receiver rule where `toTsType()` says `string` but `json_encode()` writes
 an object. It lives in `src/Support/` because it asks a type question and never touches a `PhpParser` node. The
 question a class answers decides its home, not where its callers sit. It has no facade and no delegation because it
-was never part of the pre-extraction surface.
+was never part of the pre-extraction surface. It answers from a class's declarations, and `JsEmitter::jsonValue()`
+from a live value.
 
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay

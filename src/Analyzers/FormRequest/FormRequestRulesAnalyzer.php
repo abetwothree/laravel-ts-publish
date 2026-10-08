@@ -35,6 +35,7 @@ use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationRuleParser;
 use ReflectionClass;
 use ReflectionException;
+use Stringable;
 use Throwable;
 use UnitEnum;
 
@@ -679,8 +680,9 @@ class FormRequestRulesAnalyzer
             return 'string';
         }
 
+        // In::__toString() compares a Stringable value by its string, never by its properties.
         $literals = array_map(
-            fn (mixed $v): string => JsEmitter::toJsLiteral($v),
+            fn (mixed $v): string => JsEmitter::toJsLiteral($v instanceof Stringable ? (string) $v : $v),
             array_filter($values, fn (mixed $v): bool => $v !== null && $v !== ''),
         );
 

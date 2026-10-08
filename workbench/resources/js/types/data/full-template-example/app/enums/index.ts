@@ -2,6 +2,7 @@ export * from './clearance';
 export * from './color';
 export * from './currency';
 export * from './excludable-enum';
+export * from './freight-class';
 export * from './grade';
 export * from './media-type';
 export * from './membership-level';

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
+use Workbench\App\Enums\FreightClass;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
@@ -177,6 +178,17 @@ describe('EnumResource with TsCase overrides', function () {
         expect($result)
             ->toHaveKey('name', 'Purple')
             ->toHaveKey('value', 'purple');
+    });
+});
+
+describe('EnumResource sends what the published enum holds', function () {
+    it('sends each object a method returns as json_encode() writes it', function () {
+        expect((new EnumResource(FreightClass::Express))->response()->getContent())->toBe(
+            '{"name":"Express","value":"express","backed":true,"rateCard":{"amount":250},'
+            .'"cutoff":"2026-01-01T20:00:00.000000Z","tracking":{"code":"EXPRESS","carrier":"ups"},"zones":["north"],'
+            .'"firstPickup":{"date":"2026-01-01 09:00:00.000000","timezone_type":3,"timezone":"UTC"},"manifest":{},'
+            .'"defaultRate":{"amount":50}}',
+        );
     });
 });
 
