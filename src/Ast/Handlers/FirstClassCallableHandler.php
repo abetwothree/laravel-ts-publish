@@ -24,9 +24,7 @@ use PhpParser\Node\Expr\StaticCall;
  */
 final class FirstClassCallableHandler implements ExpressionHandler
 {
-    /**
-     * @param  bool  $invoked  true where the subject's caller calls each callable value before it encodes it
-     */
+    /** Whether the subject's caller calls each callable value before it encodes it, as Inertia does. */
     public function __construct(private readonly bool $invoked = false) {}
 
     /**
@@ -78,13 +76,13 @@ final class FirstClassCallableHandler implements ExpressionHandler
     }
 
     /**
-     * Warn that a first-class callable is a value nothing calls, so Laravel sends `{}` where a call was likely meant.
+     * Warn that a first-class callable creates a Closure where nothing calls it, so a call was almost certainly meant.
      */
     private function warnOfUncalledCallable(Expr $expr, AnalysisScope $scope): void
     {
         AnalysisWarnings::addOnce($scope->subjectReflection->getName(), sprintf(
-            'A first-class callable on line %d is a value nothing calls, so Laravel sends it as {}. Call the method, or '
-            .'pass the callable where Laravel calls it, such as when() or whenLoaded().',
+            'A first-class callable on line %d creates a Closure instead of calling the method; nothing in this '
+            .'position calls it. Call the method instead.',
             $expr->getStartLine(),
         ));
     }

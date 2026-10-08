@@ -54,12 +54,12 @@ winner changes published types, so treat it as a behavior change, not a refactor
   filter on a collection-cast column or an `Eloquent\Collection` accessor.
 
 `ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
-`forNonResourceSubjects()`, which an Inertia middleware takes through `invokingCallables()`, and
-`ResourceAstAnalyzer::handlers()` calls it when no profile is injected. Only
-`JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject `$this->when()`
-is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and `RelationFilterHandler` too was
-measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an event's `toResource()` into
-`unknown`, which the payload contradicts.
+`forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. An Inertia
+middleware takes `forNonResourceSubjects()` through `invokingCallables()`, since Inertia calls every callable it shares.
+Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
+`$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
+`RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
+event's `toResource()` into `unknown`, which the payload contradicts.
 
 `ReceiverPropertyFetchHandler` and `ReceiverMethodCallHandler` sit last, with only `KnownMethodRuleHandler` after them,
 so every specific handler answers first. `CollectionPipelineHandler` sits right after `RelationCollectionChainHandler`,

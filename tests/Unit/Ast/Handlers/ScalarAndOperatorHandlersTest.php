@@ -148,7 +148,7 @@ it('turns only a first-class callable into the zero-argument call it stands for'
         ->and(FirstClassCallableHandler::invokedCall($closure))->toBe($closure);
 });
 
-// R25: a key that holds a Closure sends `{}`, so its author almost certainly meant to call it.
+// R25: a Closure nothing calls is almost always a call its author meant to write.
 it('warns of a first-class callable nothing calls, and never of one Laravel calls', function () {
     $strlen = new FuncCall(new Name('strlen'), [new VariadicPlaceholder], ['startLine' => 1]);
     $when = new AstParser()->parseSource('<?php $this->when($this->title, $this->helper(...));')[0]->expr;
@@ -163,7 +163,7 @@ it('warns of a first-class callable nothing calls, and never of one Laravel call
 
     expect(AnalysisWarnings::all())->toBe([[
         'subject' => stdClass::class,
-        'message' => 'A first-class callable on line 1 is a value nothing calls, so Laravel sends it as {}. Call the method, or pass the callable where Laravel calls it, such as when() or whenLoaded().',
+        'message' => 'A first-class callable on line 1 creates a Closure instead of calling the method; nothing in this position calls it. Call the method instead.',
     ]]);
 });
 

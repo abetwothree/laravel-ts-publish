@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -179,7 +180,7 @@ it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same r
         ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
 });
 
-it('gives a JsonResource subject make() and any other subject forNonResourceSubjects()', function (string $subject, bool $isResource) {
+it("gives a JsonResource subject make() and any other subject forNonResourceSubjects()'s handler classes", function (string $subject, bool $isResource) {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::forSubject($subject, resourceExpressionHandlersTestEngine()),
@@ -196,14 +197,16 @@ it('gives a JsonResource subject make() and any other subject forNonResourceSubj
     'a model' => [Comment::class, false],
 ]);
 
-// Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands.
-it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type) {
+// Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
+// the event warns.
+it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type, int $warnings) {
     $timezone = new FuncCall(new Name('date_default_timezone_get'), [new VariadicPlaceholder]);
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($timezone)['type'])->toBe($type);
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($timezone)['type'])->toBe($type)
+        ->and(AnalysisWarnings::all())->toHaveCount($warnings);
 })->with([
-    'a shared-data middleware' => [HandleInertiaRequests::class, 'string'],
-    'a broadcast event' => [PayloadDiffersEvent::class, 'Record<string, never>'],
+    'a shared-data middleware' => [HandleInertiaRequests::class, 'string', 0],
+    'a broadcast event' => [PayloadDiffersEvent::class, 'Record<string, never>', 1],
 ]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
