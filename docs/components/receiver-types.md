@@ -147,7 +147,7 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
 - **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, `forwardedThisReceiver()`
   names the backing class, since `JsonResource::__call()` forwards the call. On a `Post` resource, `$this->getKey()` is
   `number` and `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper
-  such as `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer, even when that answer declines.
+  such as `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
 - **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.

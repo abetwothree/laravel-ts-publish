@@ -26,7 +26,7 @@ final class CallPathModel extends Model
         return '';
     }
 
-    /** A string the resource's own declaration of the same name shadows. */
+    /** A string the resource's `mixed` declaration of the same name returns. */
     public function shadowedLabel(): string
     {
         return '';

@@ -114,10 +114,9 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   chain. They agree because the peel spells `values()` through `SpellsKeyedCollections::valuesList()` and peels only an
   `Enumerable` receiver or a `map()` it types itself. Typing the `collect()` argument needs a third handler, so
   `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
-- **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, or when the
-  subject's own declaration declines, so `RelationCollectionChainHandler` never floors `$this->when()` or
-  `$this->can()` at `unknown`. It rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a
-  forwarded `$this->getKey()`.
+- **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, so
+  `RelationCollectionChainHandler` never floors `$this->when()` or `$this->can()` at `unknown`. It rejects
+  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()`.
 
 One `PropertyFetch` pair can disagree where the corpus is silent. `VariableHandler` types `$x->member` from the
 attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()` closure's relation model. It answers a

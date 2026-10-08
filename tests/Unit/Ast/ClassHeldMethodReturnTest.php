@@ -107,6 +107,7 @@ describe('every call path that holds a class names only published models', funct
             'chained_base_model' => 'unknown',
             'relation_nullsafe_base_model' => 'unknown',
             'relation_static_base_model' => 'unknown',
+            'own_shadowed_label' => 'string',
         ]);
     });
 });

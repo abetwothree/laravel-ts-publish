@@ -33,12 +33,13 @@ final class CallPathModelResource extends JsonResource
             'chained_base_model' => $this->resource->baseModel(),
             'relation_nullsafe_base_model' => $this->sibling?->baseModel(),
             'relation_static_base_model' => $this->whenLoaded('sibling', fn () => $this->sibling::staticBaseModel()),
+            'own_shadowed_label' => $this->shadowedLabel(),
         ];
     }
 
-    /** Shadows the model's string namesake, which PHP never runs from here; `mixed` publishes nothing. */
+    /** Declares `mixed` and returns the model's string namesake, whose declaration types the call instead. */
     public function shadowedLabel(): mixed
     {
-        return null;
+        return $this->resource->shadowedLabel();
     }
 }
