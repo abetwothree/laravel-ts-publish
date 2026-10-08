@@ -6,6 +6,11 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DateTimeListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StaleDocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use Carbon\CarbonInterface;
@@ -27,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Collection;
+use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -368,6 +374,36 @@ describe('castToTsType', function () {
 
         expect($this->service->castToTsType('decimal:2')['type'])->toBe('Money')
             ->and($this->service->castToTsType('decimal:0')['type'])->toBe('Money');
+    });
+});
+
+describe('custom cast get() docblock', function () {
+    test('reads a vague get()\'s @return list<Dto> as the element\'s public properties', function () {
+        expect($this->service->toTsType(ConsignmentLegsCast::class)['type'])
+            ->toBe('({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]');
+    });
+
+    test('keeps the native type when the @return names a class no cast type can import', function () {
+        expect($this->service->toTsType(ModelListCast::class)['type'])->toBe('unknown[]');
+    });
+
+    // json_encode() never calls __toString(), and the label's only property is private, so each element is `{}`.
+    test('publishes a list of empty objects for a list of __toString() value objects', function () {
+        expect($this->service->toTsType(StringableLabelListCast::class)['type'])->toBe('Record<string, never>[]');
+    });
+
+    // Model::toArray() runs serializeDate() on the date a class cast returns, never on a date inside a list.
+    test('publishes a vague get()\'s @return date as the date type Model::toArray() writes', function () {
+        expect($this->service->toTsType(DocblockDateCast::class)['type'])->toBe('string');
+    });
+
+    test('keeps each date of a vague get()\'s @return list as the object json_encode() writes', function () {
+        expect($this->service->toTsType(DateTimeListCast::class)['type'])
+            ->toBe(LaravelTsPublish::DATE_TIME_OBJECT_TYPE.'[]');
+    });
+
+    test('keeps a precise native get() over a @return date', function () {
+        expect($this->service->toTsType(StaleDocblockDateCast::class)['type'])->toBe('number');
     });
 });
 

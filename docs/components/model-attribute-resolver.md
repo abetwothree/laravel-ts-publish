@@ -80,6 +80,10 @@ where the call throws.
 `LaravelTsPublish::toTsType()` numbers its resolution steps in its source comments, and this section uses those
 numbers.
 
+Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
+`@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
+import.
+
 ### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
 
 - **4b**: a `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes

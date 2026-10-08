@@ -5722,7 +5722,7 @@
                 },
                 {
                     "name": "legs",
-                    "type": "string | null"
+                    "type": "({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]"
                 },
                 {
                     "name": "created_at",
@@ -12636,7 +12636,7 @@
                 },
                 {
                     "name": "legs",
-                    "type": "string | null",
+                    "type": "({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]",
                     "optional": false
                 }
             ]

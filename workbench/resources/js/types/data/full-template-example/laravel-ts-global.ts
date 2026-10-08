@@ -575,7 +575,7 @@ declare global {
             id: number;
             scanned_at: number | null;
             declared_value: string;
-            legs: string | null;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
             created_at: string | null;
             updated_at: string | null;
         }
@@ -3197,7 +3197,7 @@ declare global {
             id: number;
             scanned_at: number | null;
             declared_value: string;
-            legs: string | null;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
         }
         /**
          * Exercises collectDirectReturns elseif, else, and loop branches

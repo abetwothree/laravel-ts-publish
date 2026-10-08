@@ -273,11 +273,11 @@ class LaravelTsPublish
             return $result;
         }
 
-        // 4. Custom CastsAttributes class — infer from get() return type, otherwise unknown. Model::toArray() runs
-        //    serializeDate() on a date a class cast returns, so a declared date is the date type.
+        // 4. Custom CastsAttributes class — infer from get()'s return type or `@return`, otherwise unknown.
+        //    Model::toArray() runs serializeDate() on a date a class cast returns, so a declared date is the date type.
         if (class_exists($phpType) && is_a($phpType, CastsAttributes::class, true)) {
             $castReturnType = $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
-                ?? $this->methodReturnedTypes(new ReflectionClass($phpType), 'get');
+                ?? $this->castGetReturnTypes(new ReflectionClass($phpType));
 
             if ($castReturnType['type'] !== 'unknown') {
                 return $castReturnType;
@@ -514,6 +514,31 @@ class LaravelTsPublish
 
         return $head !== ''
             && (preg_match('/[A-Z]/', $head) === 1 || str_contains($head, '\\'));
+    }
+
+    /**
+     * The type a custom cast's get() publishes: its native return, or its `@return` where the native one is vague, a
+     * date there being the date type serializeDate() writes. The native type stays when the docblock names a class
+     * token, which no cast type can import.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $cast
+     * @return TypeScriptTypeInfo
+     */
+    protected function castGetReturnTypes(ReflectionClass $cast): array
+    {
+        $get = $cast->getMethod('get');
+        $native = $this->resolveReflectionType($get->getReturnType());
+        $docComment = $get->getDocComment();
+        $docReturn = $docComment !== false && TsTypeString::isVagueTsType($native['type'])
+            ? $this->extractReturnTypeFromDocblock($docComment)
+            : null;
+
+        $declared = ($docReturn === null ? null : $this->serializedDateDocblockTypes($get, $docReturn))
+            ?? $this->methodOrDocblockReturnTypes($cast, 'get');
+
+        return $declared['classFqcns'] === [] ? $declared : $native;
     }
 
     /**

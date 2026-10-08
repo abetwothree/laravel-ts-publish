@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Workbench\App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Workbench\App\Casts\ConsignmentLegsCast;
 
 /**
  * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer and a `decimal:2`
@@ -22,6 +23,7 @@ class Consignment extends Model
         return [
             'scanned_at' => 'timestamp',
             'declared_value' => 'decimal:2',
+            'legs' => ConsignmentLegsCast::class,
         ];
     }
 }
