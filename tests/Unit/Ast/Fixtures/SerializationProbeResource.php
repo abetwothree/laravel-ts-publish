@@ -10,8 +10,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 
 /**
- * Reads each value a JSON serialization rule covers through every path the engine types: a receiver's method, the
- * resource's own property, an inline `@var`, an in-place `new`, and a parameter default.
+ * Reads each value a JSON serialization rule covers through every path the engine types: a receiver's method and
+ * property, the resource's own property, an inline `@var`, an in-place `new`, and a parameter default.
  */
 final class SerializationProbeResource extends JsonResource
 {
@@ -39,7 +39,13 @@ final class SerializationProbeResource extends JsonResource
         $caught = $this->service->failure();
 
         return [
+            'failure' => $this->service->failure(),
+            'opened_on' => $this->service->openedOn(),
             'note' => $this->service->note(),
+            'now' => $this->service->now(),
+            'failures' => $this->service->failures(),
+            'last_error' => $this->service->lastError,
+            'opened_at' => $this->service->openedAt,
             'own_error' => $this->ownError,
             'own_note' => $this->ownNote,
             'caught' => $caught,

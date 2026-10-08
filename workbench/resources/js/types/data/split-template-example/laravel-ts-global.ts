@@ -1443,6 +1443,11 @@ declare global {
             name: string;
             created_at: string | null;
             updated_at: string | null;
+            // Mutators
+            /** When the shift clocked in. Model::toArray() hands an old-style getter's DateTime to json_encode() as it is. */
+            clocked_at: { date: string; timezone_type: number; timezone: string };
+            /** The day the shift starts. Model::toArray() runs serializeDate() on a new-style getter's date. */
+            starts_on: string;
         }
         export interface SlugPost {
             // Columns
@@ -3467,15 +3472,12 @@ declare global {
          * receiver-method inference on a datetime-cast attribute, and the
          * can()/count() known-method rules (Task 11).
          *
-         * `diff_result` and `period_result` are a Task 12 regression: Carbon methods that
-         * return a Stringable-but-not-string value object (CarbonInterval, CarbonPeriod) must
-         * degrade to unknown rather than falsely resolve to `string` via toTsType()'s
-         * __toString fallback.
+         * `diff_result` and `period_result` are Carbon methods that return a Stringable value
+         * object json_encode() never writes as its __toString(): a CarbonInterval writes
+         * DateInterval's fields, and a CarbonPeriod the list of its dates.
          *
-         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: unlike CarbonInterval/
-         * CarbonPeriod, Carbon and CarbonImmutable themselves ARE correctly `string` via
-         * __toString() (their canonical ISO-ish datetime representation), so the Stringable
-         * guard must not over-degrade these two.
+         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: Carbon and
+         * CarbonImmutable themselves are `string`, the ISO string their jsonSerialize() writes.
          *
          * `user_key`: `getKey()`'s type depends on which model it's called on, unlike
          * can()/cannot()/canAny() which are bool regardless of receiver. A resource's
@@ -3487,8 +3489,8 @@ declare global {
             ship_date: string;
             can_edit: boolean;
             item_total: number;
-            diff_result: unknown;
-            period_result: unknown;
+            diff_result: { y: number; m: number; d: number; h: number; i: number; s: number; f: number; invert: number; days: number | false; from_string: false };
+            period_result: string[];
             to_mutable: string;
             to_immutable: string;
             user_key: unknown;
@@ -4664,8 +4666,11 @@ declare global {
         }
         /** Publishes each value as json_encode() writes it, not as `__toString()` reads it. */
         export interface ShiftResource {
+            last_fault: Record<string, never>;
             fault: Record<string, never>;
+            started_at: { date: string; timezone_type: number; timezone: string };
             handover_note: string | null;
+            next_bell: string;
             checked_at: string | null;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */

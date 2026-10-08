@@ -17,7 +17,7 @@ use Workbench\App\Services\UrlService;
  */
 final class ReceiverVarProbe
 {
-    /** A date toTsType() publishes as `string`, which json_encode() writes as a date object. */
+    /** A plain date, which json_encode() writes as its date object. */
     public DateTime $plainDate;
 
     /** A framework model no published file exists for. */

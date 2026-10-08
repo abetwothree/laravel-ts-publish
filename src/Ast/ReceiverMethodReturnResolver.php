@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
@@ -260,10 +259,6 @@ final class ReceiverMethodReturnResolver
 
         // A model's toArray() serializes whichever relations are loaded, runtime state no declaration describes.
         if ($methodName === 'toArray' && is_a($class, Model::class, true)) {
-            return null;
-        }
-
-        if (StringSerialization::methodReturnsFalseString($class, $methodName)) {
             return null;
         }
 

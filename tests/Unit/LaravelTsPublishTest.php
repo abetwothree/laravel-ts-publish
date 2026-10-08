@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -239,6 +240,17 @@ describe('toTsType', function () {
             ->and($result['classFqcns'])->toBeEmpty();
     });
 
+    // The map is lowercased, so the `datetime` column entry and the DateTime class share one key.
+    test('a custom_ts_mappings entry keeps its key beside the date rules', function (array $mappings, string $phpType, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect($this->service->toTsType($phpType)['type'])->toBe($type);
+    })->with([
+        'the datetime column type takes the entry' => [['datetime' => 'Date'], 'datetime', 'Date'],
+        'the DateTime class keeps the object json_encode() writes' => [['datetime' => 'Date'], DateTime::class, LaravelTsPublish::DATE_TIME_OBJECT_TYPE],
+        'CarbonInterface follows the Carbon\\Carbon entry' => [['Carbon\\Carbon' => 'Date'], CarbonInterface::class, 'Date'],
+    ]);
+
     test('toTsType resolves numeric-string to string via exact map', function () {
         expect($this->service->toTsType('numeric-string')['type'])->toBe('string');
     });
@@ -318,7 +330,7 @@ describe('toTsType substring fallback restriction', function () {
         'Point', 'Constraint', 'Blueprint', 'Endpoint', 'Waypoint', 'Realm',
         'Print', 'Integration', 'Maintenance', 'Interface',
         'Update', 'Candidate', 'Runtime', 'Chart',
-        'DateTimeInterface', 'App\\Casts\\NotARealCast', '\\Foo\\Bar',
+        'App\\Casts\\NotARealCast', '\\Foo\\Bar',
     ]);
 
     test('a class name that case-insensitively equals a literal DB type keyword is caught earlier, at the exact-match step, not here', function () {

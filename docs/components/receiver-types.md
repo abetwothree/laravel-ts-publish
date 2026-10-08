@@ -186,7 +186,7 @@ asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to su
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
 even when the subject is backed by the integer-keyed `Post`. The filter rule names a model token, so it applies the
-published-model check of step 7 itself. When no model instance can be built, the key rules do not answer, so `getKey()`
+published-model check of step 6 itself. When no model instance can be built, the key rules do not answer, so `getKey()`
 declines on `mixed` and `modelKeys()` keeps its reflected `(string | number)[]`.
 
 ### The order for one class
@@ -198,17 +198,14 @@ step can decline:
    [visibility](#visibility) rule.
 2. `Model::toArray()` declines. Its output depends on which relations are loaded, and no declaration describes that
    runtime state. See [known gaps][gap-to-array].
-3. A declared return naming a class that `toTsType()` publishes as `string` but `json_encode()` does not declines, such
-   as a plain `DateTime` or `CarbonInterval`. `StringSerialization::methodReturnsFalseString()` decides, and
-   [Support helpers § `StringSerialization`][string-serialization] explains why.
-4. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,
+3. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,
    the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so `Model::fresh()` on a
    `User` is `User | null`.
-5. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
+4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
    signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel).
-6. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
+5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object.
-7. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
+6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
    `Illuminate\`, or an abstract one, declines, so `User::resolveRouteBinding()`'s `Model | null` does too.
 
 ### The body fallback carries no FQCN channel
@@ -276,12 +273,8 @@ Each class types the property one of two ways:
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
   its import.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
-  three steps as subject mode. It must hold no false-string class and name only published models, for the reasons under
+  three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
-
-`ReceiverClassResolver::memberProperty()` is public so the false-string check can run one receiver class at a time. Take
-an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `string`. `resolve()` on the whole expression
-answers `null`, which reads as no false string, so `A`'s arm would publish as `string`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
@@ -319,4 +312,3 @@ These pages cover the neighbors of receiver resolution:
 [reader-no-import]: accessor-body-analyzer.md#a-reader-that-carries-no-import
 [resource-filter]: resource-ast-analyzer.md#this-resource-spells-the-same-filter
 [resource-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
-[string-serialization]: support-helpers.md#stringserialization

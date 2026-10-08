@@ -396,6 +396,13 @@ subclass whose `jsonSerialize()` declares `mixed`, a `JsonSerializable` with no 
 and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says what they write.
 Declaring `jsonSerialize(): string` publishes `string`.
 
+### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
+
+A Carbon date, and a date a class cast or new-style accessor returns, publishes the `Carbon\Carbon` date-map entry:
+`string`, or `Date` under `timestamps_as_date`. `Carbon::serializeUsing()`, a factory's `toJsonFormat` and a model's
+`serializeDate()` override can write something else, such as a number, but they are application code the package
+does not run. Type such a property with `#[TsCasts]`.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Carbon\CarbonInterval;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Stringable;
@@ -40,5 +41,20 @@ it('answers the string json_encode() writes a class as, reading jsonSerialize() 
     'a CarbonInterval, written as its DateInterval fields' => [CarbonInterval::class, null],
     'a CarbonPeriod, written as a list of dates' => [CarbonPeriod::class, null],
     'a model, written as its attributes' => [User::class, null],
+    'a model narrowing jsonSerialize() to string' => [StringJsonModelProbe::class, null],
     'a name no class has' => ['No\\Such\\ClassName', null],
 ]);
+
+/**
+ * A model whose jsonSerialize() narrows to `string`, which the rule leaves to the model's own publishing.
+ */
+class StringJsonModelProbe extends Model
+{
+    /**
+     * The string json_encode() writes.
+     */
+    public function jsonSerialize(): string
+    {
+        return 'x';
+    }
+}

@@ -98,6 +98,16 @@ Know these five points before you change it:
   steps 5a, 5a-bis and 5b, where the same test does decide. Don't delete it, and don't cite it as the reason models
   never inline.
 
+### Step 4b publishes a plain date as the object `json_encode()` writes
+
+A `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes `LaravelTsPublish::DATE_TIME_OBJECT_TYPE`.
+`isPlainDateClass()` keeps step 1's `datetime` column key off the `DateTime` class, so the column type stays a date.
+`DateTimeInterface` publishes the date type or that object. The date type is the `Carbon\Carbon` map entry, which a
+Carbon date with no entry of its own, such as `CarbonInterface`, also takes at step 5b. A class cast's `get()` or a
+new-style accessor's getter publishes each date it declares as the date type, because `Model::toArray()` runs
+`serializeDate()` there, while an old-style `getXAttribute()` keeps the object. A `CarbonInterval` publishes
+`CARBON_INTERVAL_OBJECT_TYPE`, and a `CarbonPeriod` a list of the date type.
+
 ### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
 
 `json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where

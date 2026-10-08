@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
+use ReflectionFunction;
 
 /**
  * Resolves the TypeScript type of a model accessor or mutator by name.
@@ -51,7 +52,9 @@ trait ResolvesAccessorType
                     /** @var \Closure $getter */
                     $getter = $attrInstance->get;
 
-                    $getterReturn = LaravelTsPublish::closureReturnedTypes($getter);
+                    // Model::toArray() runs serializeDate() on a date a new-style getter returns, not an old-style one.
+                    $getterReturn = LaravelTsPublish::serializedDateReturnTypes(new ReflectionFunction($getter))
+                        ?? LaravelTsPublish::closureReturnedTypes($getter);
 
                     if ($getterReturn['type'] !== 'unknown' && ! $this->isVagueTsType($getterReturn['type'])) {
                         return $getterReturn;

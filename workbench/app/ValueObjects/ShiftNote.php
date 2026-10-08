@@ -12,13 +12,22 @@ use JsonSerializable;
  */
 class ShiftNote implements JsonSerializable
 {
+    /**
+     * Hold the note's text, or null for no note.
+     */
     public function __construct(private readonly ?string $text = null) {}
 
+    /**
+     * The text a Blade echo writes.
+     */
     public function __toString(): string
     {
         return (string) $this->text;
     }
 
+    /**
+     * The text or null json_encode() writes.
+     */
     public function jsonSerialize(): ?string
     {
         return $this->text;

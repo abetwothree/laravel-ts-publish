@@ -30,7 +30,7 @@ Ask what the helper's input domain is, not what calls it:
 | What does this PHP value or docblock text become in a `.ts` file: a literal, key, identifier or comment? | `JsEmitter` |
 | What is true of this TypeScript type string, or what does it become? | `TsTypeString` |
 | What is this FQCN, file path or array key called, and where does it live? | `TsNaming` |
-| Does `json_encode()` write a string for this class, or for this method's declared return? | `StringSerialization` |
+| Does `json_encode()` write a string for this class? | `StringSerialization` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
@@ -95,12 +95,14 @@ every generated tree.
 
 ### `StringSerialization`
 
-`toTsType()` step 5b and `ValueResolver` call `jsonStringType()`, the string `json_encode()` writes a class as. The
-receiver rules in `src/Ast/` call its false-string checks to decline where `toTsType()` says `string` but
-`json_encode()` writes an object. It lives in `src/Support/` because it asks a type question and never touches a
-`PhpParser` node. The question a class answers decides its home, not where its callers sit. It has no facade and no
-delegation because it was never part of the pre-extraction surface. It answers from a class's declarations, and
-`JsEmitter::jsonValue()` from a live value.
+`StringSerialization` answers for a class only. Its `jsonStringType()` method returns the type of the string
+`json_encode()` writes an instance as, `string` or `string | null`, and null when it writes anything else.
+`toTsType()` step 5b and `ValueResolver` call it. It lives in `src/Support/` because it asks a type question of
+reflection alone and never touches a `PhpParser` node. The question a class answers decides its home, not where its
+callers sit. The engine calls it and it never calls back, and
+[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins that one-way rule for all of
+`src/Support/`. It has no facade and no delegation because it was never part of the pre-extraction surface. It answers
+from a class's declarations, and `JsEmitter::jsonValue()` from a live value.
 
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay
@@ -194,5 +196,3 @@ These pages hold the neighboring rules:
   generated tree. The helpers have no user-facing docs.
 - [Known gaps](../known-gaps.md), whose entry on overriding a moved helper on a `LaravelTsPublish` subclass says why a
   subclass override leaves the output unchanged, and which container binding does change it.
-- [Receiver types § Following a method's return type](receiver-types.md#following-a-methods-return-type), where
-  `StringSerialization`'s callers decline.

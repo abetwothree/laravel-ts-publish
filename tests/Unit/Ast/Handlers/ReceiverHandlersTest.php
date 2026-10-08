@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
@@ -200,14 +201,14 @@ describe('ReceiverMethodCallHandler through the resource analyzer', function () 
             ->and($analyzer->resolve(receiverHandlerExpr('$this->resource?->getKey()'))['type'])->toBe('number | null');
     });
 
-    test('a DateTime return stays unknown in every spelling, since json_encode() writes it as an object', function (string $php) {
+    test('a DateTime return publishes the object json_encode() writes, in every spelling', function (string $php, string $type) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 
-        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
-        '$this->resource->published_at->toDateTime()',
-        '$this->published_at?->toDateTime()',
-        '$this->resource?->published_at?->toDateTime()',
+        ['$this->resource->published_at->toDateTime()', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
+        ['$this->published_at?->toDateTime()', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' | null'],
+        ['$this->resource?->published_at?->toDateTime()', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' | null'],
     ]);
 });
 
@@ -232,22 +233,25 @@ describe('ReceiverMethodReturnResolver', function () {
             ->toBe('string');
     });
 
-    test('a class published as string through __toString declines unless it serializes as one', function () {
+    test('a __toString class publishes what json_encode() writes, and a string only when it serializes as one', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
         $probe = ReceiverType::of(ReceiverMethodProbe::class);
+        $interval = LaravelTsPublishService::CARBON_INTERVAL_OBJECT_TYPE;
 
-        expect($resolver->resolve($probe, 'interval', receiverProbeScope()))->toBeNull()
-            ->and($resolver->resolve($probe, 'docblockInterval', receiverProbeScope()))->toBeNull()
-            ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'diff', receiverProbeScope()))->toBeNull()
-            ->and($resolver->resolve($probe, 'docblockIntervals', receiverProbeScope()))->toBeNull()
+        expect($resolver->resolve($probe, 'interval', receiverProbeScope())['type'] ?? null)->toBe($interval)
+            ->and($resolver->resolve($probe, 'docblockInterval', receiverProbeScope())['type'] ?? null)->toBe($interval)
+            ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'diff', receiverProbeScope())['type'] ?? null)->toBe($interval)
+            ->and($resolver->resolve($probe, 'docblockIntervals', receiverProbeScope())['type'] ?? null)->toBe('('.$interval.')[]')
             ->and($resolver->resolve($probe, 'text', receiverProbeScope())['type'] ?? null)->toBe('string');
     });
 
-    test('a DateTime that is not JsonSerializable declines, while Carbon keeps its string', function () {
+    test('a DateTime that is not JsonSerializable publishes its object, while Carbon keeps its string', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $date = LaravelTsPublishService::DATE_TIME_OBJECT_TYPE;
 
-        expect($resolver->resolve(ReceiverType::of(Carbon::class), 'toDateTime', receiverProbeScope()))->toBeNull()
-            ->and($resolver->resolve(ReceiverType::of(ReceiverMethodProbe::class), 'plainDate', receiverProbeScope()))->toBeNull()
+        expect($resolver->resolve(ReceiverType::of(Carbon::class), 'toDateTime', receiverProbeScope())['type'] ?? null)->toBe($date)
+            ->and($resolver->resolve(ReceiverType::of(ReceiverMethodProbe::class), 'plainDate', receiverProbeScope())['type'] ?? null)
+            ->toBe('string | '.$date.' | '.$date)
             ->and($resolver->resolve(ReceiverType::of(Carbon::class), 'toMutable', receiverProbeScope())['type'] ?? null)->toBe('string');
     });
 
@@ -614,17 +618,18 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->toBeNull();
     });
 
-    test('a reflected property json_encode() writes as an object declines, while one it writes as a string types', function () {
+    test('a reflected property json_encode() writes as an object publishes the object, one it writes as a string types', function () {
         $handler = new ReceiverPropertyFetchHandler;
         $scope = receiverProbeScope();
         $scope->localVarBindings['probe'] = receiverHandlerExpr('new '.ReceiverVarProbe::class);
+        $date = LaravelTsPublishService::DATE_TIME_OBJECT_TYPE;
 
-        expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'plainDate')['type'])->toBe('string')
-            ->and($handler->resolve(receiverHandlerExpr('$probe->plainDate'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+        expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverVarProbe::class), 'plainDate')['type'])->toBe($date)
+            ->and($handler->resolve(receiverHandlerExpr('$probe->plainDate'), $scope, chainHandlersThrowingEngine())['type'] ?? null)->toBe($date)
             ->and($handler->resolve(receiverHandlerExpr('$probe->text'), $scope, chainHandlersThrowingEngine())['type'] ?? null)->toBe('string');
     });
 
-    test('a union receiver declines when only one arm holds a class json_encode() writes as an object', function () {
+    test('a union receiver types each arm as json_encode() writes it: one an object, one a string', function () {
         $handler = new ReceiverPropertyFetchHandler;
         $scope = receiverProbeScope();
         $union = '($flag ? new '.ReceiverVarProbe::class.' : new '.ReceiverStringDateProbe::class.')->plainDate';
@@ -632,7 +637,8 @@ describe('ReceiverPropertyFetchHandler', function () {
         expect(LaravelTsPublish::propertyTypes(new ReflectionClass(ReceiverStringDateProbe::class), 'plainDate')['type'])->toBe('string')
             ->and($handler->resolve(receiverHandlerExpr('(new '.ReceiverStringDateProbe::class.')->plainDate'), $scope, chainHandlersThrowingEngine())['type'] ?? null)
             ->toBe('string')
-            ->and($handler->resolve(receiverHandlerExpr($union), $scope, chainHandlersThrowingEngine()))->toBeNull();
+            ->and($handler->resolve(receiverHandlerExpr($union), $scope, chainHandlersThrowingEngine())['type'] ?? null)
+            ->toBe(LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' | string');
     });
 
     test('a reflected property naming a model no file is published for declines', function () {

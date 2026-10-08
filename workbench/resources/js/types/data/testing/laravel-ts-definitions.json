@@ -8190,6 +8190,14 @@
                 {
                     "name": "updated_at",
                     "type": "string | null"
+                },
+                {
+                    "name": "clocked_at",
+                    "type": "{ date: string; timezone_type: number; timezone: string }"
+                },
+                {
+                    "name": "starts_on",
+                    "type": "string"
                 }
             ]
         },
@@ -13566,12 +13574,12 @@
                 },
                 {
                     "name": "diff_result",
-                    "type": "unknown",
+                    "type": "{ y: number; m: number; d: number; h: number; i: number; s: number; f: number; invert: number; days: number | false; from_string: false }",
                     "optional": false
                 },
                 {
                     "name": "period_result",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
@@ -17015,13 +17023,28 @@
             "name": "ShiftResource",
             "properties": [
                 {
+                    "name": "last_fault",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
                     "name": "fault",
                     "type": "Record<string, never>",
                     "optional": false
                 },
                 {
+                    "name": "started_at",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
                     "name": "handover_note",
                     "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "next_bell",
+                    "type": "string",
                     "optional": false
                 },
                 {

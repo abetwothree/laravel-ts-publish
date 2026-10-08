@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
@@ -5542,16 +5543,16 @@ describe('helper and receiver method inference', function () {
             ->and($this->props['item_total']['optional'])->toBeFalse();
     });
 
-    // CarbonInterval/CarbonPeriod are Stringable but not strings — toTsType()'s __toString fallback must not fire.
-    test('Carbon diff() returning CarbonInterval degrades to unknown, not string', function () {
-        expect($this->props['diff_result']['type'])->toBe('unknown');
+    // CarbonInterval/CarbonPeriod are Stringable, but json_encode() never calls __toString().
+    test('Carbon diff() returning CarbonInterval publishes the DateInterval fields json_encode() writes', function () {
+        expect($this->props['diff_result']['type'])->toBe(LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE);
     });
 
-    test('Carbon toPeriod() returning CarbonPeriod degrades to unknown, not string', function () {
-        expect($this->props['period_result']['type'])->toBe('unknown');
+    test('Carbon toPeriod() returning CarbonPeriod publishes the list of date strings json_encode() writes', function () {
+        expect($this->props['period_result']['type'])->toBe('string[]');
     });
 
-    // Carbon/CarbonImmutable's __toString() IS their canonical form, so the Stringable guard must skip them.
+    // Carbon and CarbonImmutable keep Carbon's own jsonSerialize(), which writes the ISO string.
     test('Carbon toMutable() returning Carbon resolves to string, not unknown', function () {
         expect($this->props['to_mutable']['type'])->toBe('string');
     });
