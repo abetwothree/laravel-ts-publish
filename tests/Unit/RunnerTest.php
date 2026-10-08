@@ -38,6 +38,8 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Workbench\App\Enums\FreightClass;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Models\BaseExtendableModel;
@@ -1301,6 +1303,27 @@ describe('enum names that collide inside one namespace', function () {
             AnalysisWarnings::all(),
             fn (array $warning): bool => str_contains($warning['message'], 'also publishes in the same namespace'),
         ))->toBe([]);
+    });
+});
+
+describe('enum method values an EnumResource response re-indexes', function () {
+    test('warns of an enum method value whose integer keys an EnumResource response re-indexes', function () {
+        (new Runner)->run();
+
+        $warning = [
+            'subject' => Priority::class,
+            'message' => 'Method [filterByMinimum] returns an array whose integer keys are not 0 to n-1 in order, '
+                .'so the published enum writes it as an object while an EnumResource response writes it as a list. '
+                .'Wrap the array in array_values() to publish and send a list.',
+        ];
+
+        expect(array_keys(AnalysisWarnings::all(), $warning, true))->toHaveCount(1);
+    });
+
+    test('never warns of an associative array or a list', function () {
+        (new Runner)->run();
+
+        expect(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(FreightClass::class);
     });
 });
 

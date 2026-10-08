@@ -115,6 +115,7 @@ class Runner extends BaseRunner
         $this->enumGenerators = $enumGenerators;
 
         $this->enumModularBarrels = $this->barrelWriter->writeModular($this->enumGenerators);
+        $this->enumGenerators->each($this->warnOfReindexedEnumValues(...));
         $this->warnOfCollidingEnumNames();
         $this->logger?->success('Enums — '.$this->enumGenerators->count());
     }

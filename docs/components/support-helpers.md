@@ -63,8 +63,9 @@ broadcast-event and Inertia paths call them before any cast lookup.
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
-never prints as `[]`. A pure enum keeps its name, where `json_encode()` fails. A value `json_encode()` cannot write
-throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model metadata keeps
+never prints as `[]`. An array with out-of-order integer keys keeps them, and the runner warns because an `EnumResource`
+response re-indexes it into a list. A pure enum keeps its name, where `json_encode()` fails. A value `json_encode()`
+cannot write throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model metadata keeps
 `normalizeMetadataValue()`.
 
 ### `TsTypeString`

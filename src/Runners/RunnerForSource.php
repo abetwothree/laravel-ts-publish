@@ -193,6 +193,7 @@ class RunnerForSource extends BaseRunner
         );
 
         $this->enumGenerators = collect([$generator]);
+        $this->warnOfReindexedEnumValues($generator);
     }
 
     protected function generateModel(string $fqcn): void

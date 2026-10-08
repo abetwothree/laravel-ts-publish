@@ -50,6 +50,17 @@ test('generates single enum from FQCN', function () {
         ->and($runner->modelGenerators)->toHaveCount(0);
 });
 
+test('warns of an enum method value whose integer keys an EnumResource response re-indexes', function () {
+    (new RunnerForSource('Workbench\App\Enums\Priority'))->run();
+
+    expect(AnalysisWarnings::all())->toContain([
+        'subject' => 'Workbench\App\Enums\Priority',
+        'message' => 'Method [filterByMinimum] returns an array whose integer keys are not 0 to n-1 in order, '
+            .'so the published enum writes it as an object while an EnumResource response writes it as a list. '
+            .'Wrap the array in array_values() to publish and send a list.',
+    ]);
+});
+
 test('generates single model from FQCN', function () {
     $runner = new RunnerForSource('Workbench\App\Models\User');
     $runner->run();

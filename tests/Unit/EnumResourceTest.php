@@ -10,6 +10,7 @@ use Workbench\App\Enums\FreightClass;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Season;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\PostResource;
@@ -197,6 +198,17 @@ describe('EnumResource sends what the published enum holds', function () {
             '{"name":"Dock","value":"dock","backed":true,'
             .'"label":{"code":"DOCK","label":"dock-DOCK"},"rate":{"amount":9}}',
         );
+    });
+
+    it('sends null for a method that throws for the case', function () {
+        expect((new EnumResource(Season::Winter))->response()->getContent())->toBe(
+            '{"name":"Winter","value":"winter","backed":true,"avgTemp":-5,"warmGreeting":null,"broken":null}',
+        );
+    });
+
+    it('still sends a list for an array whose integer keys a resource re-indexes', function () {
+        expect((new EnumResource(Priority::High))->response()->getContent())
+            ->toContain('"filterByMinimum":[1,2,3]');
     });
 });
 
