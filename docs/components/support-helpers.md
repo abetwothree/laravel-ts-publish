@@ -97,12 +97,13 @@ every generated tree.
 
 `StringSerialization` answers for a class only. Its `jsonStringType()` method returns the type of the string
 `json_encode()` writes an instance as, `string` or `string | null`, and null when it writes anything else.
-`toTsType()` step 5b and `ValueResolver` call it. It lives in `src/Support/` because it asks a type question of
+`toTsType()` step 5b and `ValueResolver` call it. The `@return` of a `jsonSerialize()` declaring `mixed` needs the
+docblock engine, so step 5b reads that itself. The class lives in `src/Support/` because it asks a type question of
 reflection alone and never touches a `PhpParser` node. The question a class answers decides its home, not where its
-callers sit. The engine calls it and it never calls back, and
-[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins that one-way rule for all of
-`src/Support/`. It has no facade and no delegation because it was never part of the pre-extraction surface. It answers
-from a class's declarations, and `JsEmitter::jsonValue()` from a live value.
+callers sit. The engine calls the class and the class never calls back, a one-way rule
+[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins for all of `src/Support/`. The class has
+no facade and no delegation because it was never part of the pre-extraction surface. `jsonStringType()` answers from a
+class's declarations, and `JsEmitter::jsonValue()` from a live value.
 
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay

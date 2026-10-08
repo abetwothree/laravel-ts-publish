@@ -389,12 +389,12 @@ columns, appended accessors and relations. Laravel sends a JSON:API document ins
 `#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
 `#[TsExclude]` or `resources.excluded`, and type the document by hand.
 
-### A `__toString()` class with no public property publishes `Record<string, never>`; four other kinds publish `unknown`
+### A `__toString()` class with no public property publishes `Record<string, never>`; three others publish `unknown`
 
-`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties. A Carbon
-subclass whose `jsonSerialize()` declares `mixed`, a `JsonSerializable` with no declared return, a `SimpleXMLElement`
-and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says what they write.
-Declaring `jsonSerialize(): string` publishes `string`.
+`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties. A
+`jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a `SimpleXMLElement` and a plain
+`DateInterval` publish `unknown`, because only a method body or the runtime value says what they write. Declaring
+`jsonSerialize(): string`, or `@return string` on it, publishes `string`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
@@ -402,6 +402,20 @@ A Carbon date, and a date a class cast or new-style accessor returns, publishes 
 `string`, or `Date` under `timestamps_as_date`. `Carbon::serializeUsing()`, a factory's `toJsonFormat` and a model's
 `serializeDate()` override can write something else, such as a number, but they are application code the package
 does not run. Type such a property with `#[TsCasts]`.
+
+### A `DateTime` entry in `custom_ts_mappings` retypes the `datetime` column, never the class
+
+The map's keys are lowercased, so `DateTime` and the `datetime` column type share one key. The entry applies to the
+column type, and the `DateTime` class keeps the date object `json_encode()` writes. An entry for `DateTimeImmutable` or
+a `DateTime` subclass does retype that class.
+
+### A plain date from a new-style accessor or class cast publishes what `Model::toArray()` writes, in every context
+
+A new-style accessor or class cast that declares a plain `DateTime` or `DateTimeImmutable` publishes the date type,
+because `Model::toArray()` runs `serializeDate()` on it. An API resource that reads the attribute directly sends PHP's
+date object instead, yet publishes the same type. The reverse holds for a new-style getter with no declared type whose
+body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
+in both places, so declare one, or type the key with `#[TsCasts]`.
 
 ## Deliberate non-goals
 

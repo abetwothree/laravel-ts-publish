@@ -249,6 +249,8 @@ describe('toTsType', function () {
         'the datetime column type takes the entry' => [['datetime' => 'Date'], 'datetime', 'Date'],
         'the DateTime class keeps the object json_encode() writes' => [['datetime' => 'Date'], DateTime::class, LaravelTsPublish::DATE_TIME_OBJECT_TYPE],
         'CarbonInterface follows the Carbon\\Carbon entry' => [['Carbon\\Carbon' => 'Date'], CarbonInterface::class, 'Date'],
+        'a DateTimeImmutable entry retypes the class as Date' => [['DateTimeImmutable' => 'Date'], DateTimeImmutable::class, 'Date'],
+        'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
     ]);
 
     test('toTsType resolves numeric-string to string via exact map', function () {

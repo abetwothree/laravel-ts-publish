@@ -197,10 +197,10 @@ class LaravelTsPublish
             return $inner;
         }
 
-        // 1. Exact map match. A plain DateTime's lowercased name is the `datetime` column type, which it is not.
+        // 1. Exact map match. The DateTime class lowercases to the `datetime` column type, which it is not.
         $mapping = $typesMap[$lower] ?? null;
 
-        if ($mapping !== null && ! $this->isPlainDateClass($phpType)) {
+        if ($mapping !== null && ! ($lower === 'datetime' && $this->isPlainDateClass($phpType))) {
             $result['type'] = is_string($mapping) ? $mapping : $mapping();
 
             return $result;
@@ -302,13 +302,14 @@ class LaravelTsPublish
             return $result;
         }
 
+        // 4c. A CarbonInterval reaches JSON as DateInterval's fields.
         if (is_a($phpType, CarbonInterval::class, true) && ! is_a($phpType, JsonSerializable::class, true)) {
             $result['type'] = self::CARBON_INTERVAL_OBJECT_TYPE;
 
             return $result;
         }
 
-        // A CarbonPeriod's own jsonSerialize() lists its dates, each written as Carbon writes it.
+        // 4d. A CarbonPeriod's own jsonSerialize() lists its dates, each written as Carbon writes it.
         if (is_a($phpType, CarbonPeriod::class, true)
             && new ReflectionMethod($phpType, 'jsonSerialize')->getDeclaringClass()->getName() === CarbonPeriod::class) {
             return $this->wrapAsArray([...$result, 'type' => $this->carbonDateType()]);
@@ -345,17 +346,15 @@ class LaravelTsPublish
             }
         }
 
-        // 5b. A class json_encode() writes as a string: `string`, or `string | null` for a `?string` jsonSerialize().
-        //     __toString() alone never counts, because json_encode() never calls it. A date, such as CarbonInterface
-        //     or a Carbon subclass, follows Carbon's own date-map entry.
-        $jsonString = StringSerialization::jsonStringType($phpType);
+        // 5b. A class json_encode() writes as a string, `string` or `string | null`, as jsonSerialize() declares it or
+        //     a `mixed` one's `@return` says; never by __toString(), which json_encode() never calls. A date, such as
+        //     CarbonInterface or a Carbon subclass, follows Carbon's own date-map entry.
+        $jsonString = StringSerialization::jsonStringType($phpType) ?? $this->docblockJsonStringType($phpType);
 
         if ($jsonString !== null) {
-            $result['type'] = match (true) {
-                ! is_a($phpType, DateTimeInterface::class, true) => $jsonString,
-                $jsonString === 'string' => $this->carbonDateType(),
-                default => $this->carbonDateType().' | null',
-            };
+            $result['type'] = is_a($phpType, DateTimeInterface::class, true)
+                ? $this->carbonDateType().(str_ends_with($jsonString, ' | null') ? ' | null' : '')
+                : $jsonString;
 
             return $result;
         }
@@ -429,8 +428,37 @@ class LaravelTsPublish
     }
 
     /**
-     * Whether a type names a DateTime or DateTimeImmutable that keeps PHP's own JSON object, spelled as a class rather
-     * than as the lowercase `datetime` column type.
+     * The string json_encode() writes for a jsonSerialize() declaring `mixed` or nothing, as its `@return` says.
+     *
+     * Only `string` or a Carbon date counts, with or without `null`; anything else, or no `@return`, answers null.
+     */
+    protected function docblockJsonStringType(string $phpType): ?string
+    {
+        if (! is_a($phpType, JsonSerializable::class, true) || is_a($phpType, Model::class, true)) {
+            return null;
+        }
+
+        $method = new ReflectionMethod($phpType, 'jsonSerialize');
+        $native = $method->getReturnType();
+
+        if ($native !== null && ! ($native instanceof ReflectionNamedType && $native->getName() === 'mixed')) {
+            return null;
+        }
+
+        $arms = TsTypeString::splitTopLevelUnion($this->docblockReturnTypes($method)['type']);
+        $strings = array_values(array_diff($arms, ['null']));
+
+        if ($strings === [] || array_diff($strings, ['string', $this->carbonDateType()]) !== []) {
+            return null;
+        }
+
+        return implode(' | ', $strings).(in_array('null', $arms, true) ? ' | null' : '');
+    }
+
+    /**
+     * Whether a type names a DateTime or DateTimeImmutable that keeps PHP's own JSON object, spelled as a class.
+     *
+     * The class spelling keeps the lowercase `datetime` column type out.
      */
     protected function isPlainDateClass(string $phpType): bool
     {
@@ -869,20 +897,14 @@ class LaravelTsPublish
     public function serializedDateReturnTypes(ReflectionFunctionAbstract $function): ?array
     {
         $type = $function->getReturnType();
-        $dated = false;
-        $infos = [];
 
-        foreach ($type instanceof ReflectionUnionType ? $type->getTypes() : [$type] as $arm) {
-            $date = $arm instanceof ReflectionNamedType
+        return $this->serializedDateArms(
+            $type instanceof ReflectionUnionType ? $type->getTypes() : [$type],
+            fn (?ReflectionType $arm): ?bool => $arm instanceof ReflectionNamedType
                 && ! $arm->isBuiltin()
-                && is_a($arm->getName(), DateTimeInterface::class, true);
-            $dated = $dated || $date;
-            $infos[] = $date
-                ? [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType().($arm->allowsNull() ? ' | null' : '')]
-                : $this->resolveReflectionType($arm);
-        }
-
-        return $dated ? $this->mergeTypeScriptInfos($infos) : null;
+                && is_a($arm->getName(), DateTimeInterface::class, true) ? $arm->allowsNull() : null,
+            $this->resolveReflectionType(...),
+        );
     }
 
     /**
@@ -1108,8 +1130,8 @@ class LaravelTsPublish
     }
 
     /**
-     * The same for an `Attribute<X, …>` docblock getter type: each arm of X naming a date is the date type, which
-     * Model::toArray() writes through serializeDate(). Null when none is.
+     * What serializedDateReturnTypes() answers for a native return, read off an `Attribute<X, …>` docblock getter type
+     * instead: each arm of X naming a date is the date type. Null when none is.
      *
      * @return TypeScriptTypeInfo|null
      */
@@ -1118,18 +1140,16 @@ class LaravelTsPublish
         $context = $this->methodDeclaringFileClass($method);
         $useMap = $this->parseFileUseStatements($context);
         $namespace = $context->getNamespaceName();
-        $dated = false;
-        $infos = [];
 
-        foreach ($this->splitPhpDocUnionType($this->bindTraitTemplates($typeString, $method)) as $arm) {
-            $date = is_a($this->resolveDocblockTypeName(ltrim($arm, '?'), $useMap, $namespace), DateTimeInterface::class, true);
-            $dated = $dated || $date;
-            $infos[] = $date
-                ? [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType().(str_starts_with($arm, '?') ? ' | null' : '')]
-                : $this->resolveDocblockTypePartOrAlias($arm, $useMap, $namespace, $context);
-        }
-
-        return $dated ? $this->mergeTypeScriptInfos($infos) : null;
+        return $this->serializedDateArms(
+            $this->splitPhpDocUnionType($this->bindTraitTemplates($typeString, $method)),
+            fn (string $arm): ?bool => is_a(
+                $this->resolveDocblockTypeName(ltrim($arm, '?'), $useMap, $namespace),
+                DateTimeInterface::class,
+                true,
+            ) ? str_starts_with($arm, '?') : null,
+            fn (string $arm): array => $this->resolveDocblockTypePartOrAlias($arm, $useMap, $namespace, $context),
+        );
     }
 
     /**
@@ -1469,14 +1489,7 @@ class LaravelTsPublish
             }
         }
 
-        $infos = [];
-
-        foreach ($unionParts as $part) {
-            $resolved = $this->resolveDocblockTypeName(trim($part), $useMap, $namespace);
-            $infos[] = $this->toTsType($resolved);
-        }
-
-        return count($infos) === 1 ? $infos[0] : $this->mergeTypeScriptInfos($infos);
+        return $this->toTsType($this->resolveDocblockTypeName(trim($valueType), $useMap, $namespace));
     }
 
     /**
@@ -2230,6 +2243,36 @@ class LaravelTsPublish
             : in_array($info['type'], $seenTypeTokens, true);
 
         return $repeats ? null : $queue;
+    }
+
+    /**
+     * The arms of a date-declaring return as Model::toArray() writes them: a date arm is the date type, any other arm
+     * what `$resolve` types it as. Null, resolving nothing, when no arm names a date.
+     *
+     * @template TArm
+     *
+     * @param  array<TArm>  $arms
+     * @param  Closure(TArm): ?bool  $nullableDate  whether a date arm admits null, or null for an arm naming no date
+     * @param  Closure(TArm): TypeScriptTypeInfo  $resolve
+     * @return TypeScriptTypeInfo|null
+     */
+    private function serializedDateArms(array $arms, Closure $nullableDate, Closure $resolve): ?array
+    {
+        $nullables = array_map($nullableDate, $arms);
+
+        if (array_all($nullables, fn (?bool $nullable): bool => $nullable === null)) {
+            return null;
+        }
+
+        $infos = [];
+
+        foreach ($arms as $i => $arm) {
+            $infos[] = $nullables[$i] === null
+                ? $resolve($arm)
+                : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType().($nullables[$i] ? ' | null' : '')];
+        }
+
+        return $this->mergeTypeScriptInfos($infos);
     }
 
     /**

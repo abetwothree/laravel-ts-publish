@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Carbon\CarbonInterface;
 use Carbon\CarbonInterval;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
@@ -29,6 +30,9 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'the same class, nullable' => ['?'.NullableStringJson::class, 'string | null'],
     'a __toString() class whose ?string jsonSerialize() can write null' => [StringableNullableJson::class, 'string | null'],
     'a Stringable, whose jsonSerialize() is its string' => [Stringable::class, 'string'],
+    'a jsonSerialize(): mixed whose @return is string' => [DocStringJsonProbe::class, 'string'],
+    'a jsonSerialize(): mixed whose @return is ?string' => [DocNullableStringJsonProbe::class, 'string | null'],
+    'an untyped jsonSerialize() whose @return is string' => [UntypedDocStringJsonProbe::class, 'string'],
     'a __toString() class with no public property' => [HtmlString::class, 'Record<string, never>'],
     'an Exception' => [Exception::class, 'Record<string, never>'],
     'an UploadedFile' => [UploadedFile::class, 'Record<string, never>'],
@@ -56,6 +60,8 @@ it('keeps the class token of a __toString() class json_encode() can write proper
     'an untyped public property' => [UntypedPublicStringableProbe::class],
     'a jsonSerialize() that declares mixed' => [MixedJsonStringableProbe::class],
     'an internal class that writes its own properties' => [SimpleXMLElement::class],
+    'a model, whose mixed jsonSerialize() says string' => [DocStringJsonModelProbe::class],
+    'a mixed jsonSerialize() whose @return is only null' => [DocNullJsonProbe::class],
 ]);
 
 it('publishes a CarbonInterval as the DateInterval fields json_encode() writes', function () {
@@ -70,6 +76,7 @@ it('publishes every Carbon date as Date under timestamps_as_date, CarbonInterfac
     'Carbon\\CarbonInterface' => [CarbonInterface::class, 'Date'],
     'Illuminate\\Support\\Carbon' => [Carbon::class, 'Date'],
     'a Carbon date whose ?string jsonSerialize() can write null' => [NullableJsonCarbonProbe::class, 'Date | null'],
+    'a jsonSerialize(): mixed whose @return is a Carbon date' => [DocCarbonJsonProbe::class, 'Date'],
 ]);
 
 it('publishes a model date as Model::toArray() writes it', function () {
@@ -82,6 +89,13 @@ it('publishes a model date as Model::toArray() writes it', function () {
         ->and($mutators['locked_on']['type'])->toBe('string | number | null')
         ->and($mutators['clocked_at']['type'])->toBe(LaravelTsPublishService::DATE_TIME_OBJECT_TYPE);
 });
+
+it('answers no serialized date for a return that names no date', function (Closure $getter) {
+    expect(LaravelTsPublish::serializedDateReturnTypes(new ReflectionFunction($getter)))->toBeNull();
+})->with([
+    'a scalar union' => [fn (): int|string => 1],
+    'no return type' => [fn () => 1],
+]);
 
 it('types a resource key as json_encode() writes it on every path the engine reads', function () {
     $analysis = new ResourceAstAnalyzer(new ReflectionClass(SerializationProbeResource::class), Post::class)->analyze();
@@ -103,6 +117,111 @@ it('types a resource key as json_encode() writes it on every path the engine rea
         'default_note' => 'string | null',
     ]);
 });
+
+/**
+ * A `__toString()` value whose jsonSerialize() keeps the interface's `mixed`; only its `@return` says `string`.
+ */
+class DocStringJsonProbe implements JsonSerializable
+{
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return 'x';
+    }
+
+    /**
+     * The string json_encode() writes.
+     *
+     * @return string
+     */
+    public function jsonSerialize(): mixed
+    {
+        return 'x';
+    }
+}
+
+/**
+ * A model whose `mixed` jsonSerialize() says `string`, which publishing leaves to the model's own interface.
+ */
+class DocStringJsonModelProbe extends Model
+{
+    /**
+     * The string json_encode() writes.
+     *
+     * @return string
+     */
+    public function jsonSerialize(): mixed
+    {
+        return 'x';
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() says it writes only null, which no string rule covers.
+ */
+class DocNullJsonProbe implements JsonSerializable
+{
+    /**
+     * The null json_encode() writes.
+     *
+     * @return null
+     */
+    public function jsonSerialize(): mixed
+    {
+        return null;
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() says in its `@return` that it can write null.
+ */
+class DocNullableStringJsonProbe implements JsonSerializable
+{
+    /**
+     * The string or null json_encode() writes.
+     *
+     * @return ?string
+     */
+    public function jsonSerialize(): mixed
+    {
+        return null;
+    }
+}
+
+/**
+ * A value whose jsonSerialize() declares no return type at all, only an `@return`.
+ */
+class UntypedDocStringJsonProbe implements JsonSerializable
+{
+    /**
+     * The string json_encode() writes.
+     *
+     * @return string
+     */
+    #[ReturnTypeWillChange]
+    public function jsonSerialize()
+    {
+        return 'x';
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() returns a Carbon date, which json_encode() writes as Carbon's string.
+ */
+class DocCarbonJsonProbe implements JsonSerializable
+{
+    /**
+     * The date json_encode() writes.
+     *
+     * @return CarbonInterface
+     */
+    public function jsonSerialize(): mixed
+    {
+        return Carbon::now();
+    }
+}
 
 /**
  * A Carbon date whose jsonSerialize() narrows to `?string`, so json_encode() can write null.

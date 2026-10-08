@@ -63,6 +63,19 @@ To assert that a name is left out, use `isOmittedMutator()`, which reads the acc
 `LaravelTsPublish::toTsType()` numbers its resolution steps in its source comments, and this section uses those
 numbers.
 
+### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
+
+- **4b**: a `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes
+  `LaravelTsPublish::DATE_TIME_OBJECT_TYPE`. `DateTimeInterface` publishes the date type or that object.
+- **The date type** is the `Carbon\Carbon` map entry: `string`, or `Date` under `timestamps_as_date`.
+- **The `datetime` collision**: the `DateTime` class lowercases to the `datetime` column key, so step 1 skips that one
+  hit for it (`isPlainDateClass()`). A `custom_ts_mappings` entry for any other date class still applies.
+- **Model context**: a class cast's `get()` or a new-style accessor's getter publishes each date it declares as the date
+  type. That is what `Model::toArray()` writes, since it runs `serializeDate()` there; a resource reading the attribute
+  directly sends the object. An old-style `getXAttribute()` keeps the object.
+- **4c**: a `CarbonInterval` that is not `JsonSerializable` publishes `CARBON_INTERVAL_OBJECT_TYPE`.
+- **4d**: a `CarbonPeriod` that keeps its own `jsonSerialize()` publishes a list of the date type.
+
 ### Arrayable and JsonSerializable take their shape differently
 
 `arrayableShapeType()` first reads an `array{...}` shape from the `@return` of `toArray()` or `jsonSerialize()`. Only
@@ -76,6 +89,14 @@ nor defaulted, because `json_encode()` omits a typed property that was never ass
 enum degrades to `unknown`, since a shape string has no import channel. `$shapeExpansionStack` guards docblock shapes
 and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of
 exhausting memory.
+
+### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
+
+`json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
+`StringSerialization::jsonStringType()` reads one from `jsonSerialize()`, or where a `jsonSerialize()` declaring `mixed`
+or nothing says so in its `@return`. Step 5d publishes `TsTypeString::EMPTY_OBJECT` for a concrete `__toString()` class
+`serializesAsEmptyObject()` accepts, such as an exception or `HtmlString`. Only a `__toString()` class qualifies, so a
+sentinel such as `MissingValue` keeps its token. One with typed public properties publishes its step 5c shape first.
 
 ### Step 5c inlines a plain class's typed properties
 
@@ -97,24 +118,6 @@ Know these five points before you change it:
 - **Not a `Model`**: never decides anything, because `Model` implements `JsonSerializable`. It stays for symmetry with
   steps 5a, 5a-bis and 5b, where the same test does decide. Don't delete it, and don't cite it as the reason models
   never inline.
-
-### Step 4b publishes a plain date as the object `json_encode()` writes
-
-A `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes `LaravelTsPublish::DATE_TIME_OBJECT_TYPE`.
-`isPlainDateClass()` keeps step 1's `datetime` column key off the `DateTime` class, so the column type stays a date.
-`DateTimeInterface` publishes the date type or that object. The date type is the `Carbon\Carbon` map entry, which a
-Carbon date with no entry of its own, such as `CarbonInterface`, also takes at step 5b. A class cast's `get()` or a
-new-style accessor's getter publishes each date it declares as the date type, because `Model::toArray()` runs
-`serializeDate()` there, while an old-style `getXAttribute()` keeps the object. A `CarbonInterval` publishes
-`CARBON_INTERVAL_OBJECT_TYPE`, and a `CarbonPeriod` a list of the date type.
-
-### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
-
-`json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
-`StringSerialization::jsonStringType()` reads one from `jsonSerialize()`. Step 5d publishes `TsTypeString::EMPTY_OBJECT`
-for a concrete `__toString()` class `serializesAsEmptyObject()` accepts, such as an exception or `HtmlString`. Only a
-`__toString()` class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public properties
-publishes its step 5c shape first.
 
 ### Cast strings with arguments
 

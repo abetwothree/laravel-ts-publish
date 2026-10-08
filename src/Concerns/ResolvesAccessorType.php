@@ -53,6 +53,7 @@ trait ResolvesAccessorType
                     $getter = $attrInstance->get;
 
                     // Model::toArray() runs serializeDate() on a date a new-style getter returns, not an old-style one.
+                    // That is what toArray() writes; a resource reading the attribute directly sends the object.
                     $getterReturn = LaravelTsPublish::serializedDateReturnTypes(new ReflectionFunction($getter))
                         ?? LaravelTsPublish::closureReturnedTypes($getter);
 
