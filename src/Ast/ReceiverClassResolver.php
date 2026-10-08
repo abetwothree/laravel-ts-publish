@@ -56,6 +56,13 @@ final class ReceiverClassResolver
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
 
+    /** The class each value helper returns; KnownFunctionCallHandler types the helper by it too. */
+    public const array HELPER_CLASSES = [
+        'now' => Carbon::class,
+        'today' => Carbon::class,
+        'collect' => Collection::class,
+    ];
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -446,10 +453,11 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return match ($call->name->toLowerString()) {
-            'now', 'today' => ReceiverType::of(Carbon::class),
-            'collect' => ReceiverType::of(Collection::class),
-            'resolve', 'app' => $this->containerClass($call),
+        $name = $call->name->toLowerString();
+
+        return match (true) {
+            isset(self::HELPER_CLASSES[$name]) => ReceiverType::of(self::HELPER_CLASSES[$name]),
+            $name === 'resolve', $name === 'app' => $this->containerClass($call),
             default => null,
         };
     }

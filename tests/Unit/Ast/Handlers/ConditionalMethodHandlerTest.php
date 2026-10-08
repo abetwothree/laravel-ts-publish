@@ -1194,7 +1194,7 @@ it('types a first-class callable the conditional family calls as the call it sta
         ->and(AnalysisWarnings::all())->toBe([]);
 })->with([
     'when() value, a model method' => ['$this->when($this->title, $this->resource->getKey(...))', 'number'],
-    'when() value, a function' => ['$this->when($this->title, date_default_timezone_get(...))', 'string'],
+    'when() value, a function' => ['$this->when($this->title, now(...))', 'string'],
     'when() default, a model method' => ['$this->when($this->title, "x", $this->resource->getKey(...))', 'string | number'],
     'unless() value' => ['$this->unless($this->title, $this->resource->getKey(...))', 'number'],
     'whenNotNull() value' => ['$this->whenNotNull($this->resource->getKey(...))', 'number'],

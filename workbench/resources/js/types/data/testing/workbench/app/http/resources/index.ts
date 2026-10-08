@@ -205,6 +205,7 @@ export * from './user-except-resource';
 export * from './user-featured-posts-resource';
 export * from './user-only-hidden-resource';
 export * from './user-resource';
+export * from './value-helper-resource';
 export * from './var-return-spread-resource';
 export * from './venue-resource';
 export * from './viewer-permissions-resource';

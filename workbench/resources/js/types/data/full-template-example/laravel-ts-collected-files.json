@@ -300,6 +300,7 @@
     "app\/Http\/Resources\/UserFeaturedPostsResource.php",
     "app\/Http\/Resources\/UserOnlyHiddenResource.php",
     "app\/Http\/Resources\/UserResource.php",
+    "app\/Http\/Resources\/ValueHelperResource.php",
     "app\/Http\/Resources\/VarReturnSpreadResource.php",
     "app\/Http\/Resources\/VenueResource.php",
     "app\/Http\/Resources\/ViewerPermissionsResource.php",

@@ -16,7 +16,7 @@ class InertiaCallablePropsController
     public function show(Facility $facility): Response
     {
         return Inertia::render('Facility/Callables', [
-            'stamp' => date_default_timezone_get(...),
+            'stamp' => now(...),
             'label' => $this->label(...),
             'viewer' => auth()->user(...),
             'closure_label' => fn () => $this->label(),

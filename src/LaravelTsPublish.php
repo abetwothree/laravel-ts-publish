@@ -910,8 +910,8 @@ class LaravelTsPublish
     /**
      * Resolve a PHP function name (built-in or userland global) to its TypeScript return type.
      *
-     * Only all-builtin scalar return types are mapped: toTsType()'s partial matching would turn a class
-     * like `Carbon\CarbonInterface` into `number` here, with no import channel to attach to it.
+     * Only all-builtin scalar return types are mapped: a class return such as `Carbon\CarbonInterface` has no import
+     * channel to attach to here, so the handlers that know such a helper (`now()`, `collect()`) type it themselves.
      *
      * @return TypeScriptTypeInfo
      */

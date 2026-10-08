@@ -11,12 +11,20 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Config;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
@@ -31,7 +39,8 @@ use stdClass;
 /**
  * A call to a known PHP built-in function (`count(...)`, `strtoupper(...)`, etc.), typed from its
  * reflected return type, plus the Laravel helpers whose shape is knowable: `config('literal')`,
- * `config()->get()` and its typed accessors, and `auth()->user()`/`auth()->id()`. Declines anything else.
+ * `config()->get()` and its typed accessors, `auth()->user()`/`auth()->id()`, and the value helpers `now()`, `today()`,
+ * `str()`, `url()` and `collect()` as json_encode() writes what they return. Declines anything else.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -63,6 +72,12 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if ($name === 'data_get') {
                 return $this->dataGetRule(CallArguments::for($expr, new ReflectionFunction('data_get')), $scope, $engine);
+            }
+
+            $helper = $this->valueHelperRule($name, $expr, $scope, $engine);
+
+            if ($helper !== null) {
+                return $helper;
             }
 
             $tsType = $this->resolveKnownFunctionCallType($name);
@@ -216,6 +231,125 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         // The default stands in only for a MISSING key, never for a present-but-null value, so it
         // unions alongside the chain's own `null` arm rather than removing it.
         return ValueResult::unionResults([$result, $defaultResult]);
+    }
+
+    /**
+     * `now()` and `today()` as the string their Carbon serializes to, `str($s)` as its Stringable, `url($path)` as a
+     * string, and `collect($items)` as the list or object its items encode as; null for any other function.
+     *
+     * Each declares a return the reflection below cannot type: an interface, a conditional docblock or a collection.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function valueHelperRule(string $name, FuncCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (! in_array($name, ['now', 'today', 'str', 'url', 'collect'], true)) {
+            return null;
+        }
+
+        $args = CallArguments::for($call, new ReflectionFunction($name));
+
+        // A spread hides which arguments were passed, and every rule below depends on that.
+        if ($args->hasUnpack()) {
+            return null;
+        }
+
+        return match ($name) {
+            'now', 'today' => $this->dateHelperResult($name),
+            // With no argument at all str() returns an anonymous proxy that json_encode() writes as `{}`.
+            'str' => ['type' => $args->passedCount() === 0 ? TsTypeStringService::EMPTY_OBJECT : 'string', 'optional' => false],
+            'url' => $this->urlRule($args, $engine),
+            'collect' => $this->collectRule($args, $scope, $engine),
+        };
+    }
+
+    /**
+     * `now()` and `today()` through the one rule for a class that serializes as a string, so `timestamps_as_date` applies.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function dateHelperResult(string $name): ?array
+    {
+        $class = ReceiverClassResolver::HELPER_CLASSES[$name];
+
+        return StringSerialization::jsonStringType($class) === null
+            ? null
+            : ['type' => LaravelTsPublish::toTsType($class)['type'], 'optional' => false];
+    }
+
+    /**
+     * `url($path)` is a string for any path but null, which returns the UrlGenerator itself.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function urlRule(CallArguments $args, ExpressionEngine $engine): ?array
+    {
+        $path = $args->named('path')?->value;
+
+        if ($path === null || ValueResult::hasNullArm($engine->resolve($path)['type'])) {
+            return null;
+        }
+
+        return ['type' => 'string', 'optional' => false];
+    }
+
+    /**
+     * `collect($items)` encodes as its items do: none or null is `never[]`, a constant array is typed as a parameter
+     * default's value is, a list literal is a list of its elements, and an expression typed as a list or an object
+     * shape keeps that type.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function collectRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $items = $args->named('value')?->value;
+
+        if ($items === null) {
+            return ['type' => 'never[]', 'optional' => false];
+        }
+
+        $resolver = new ValueResolver;
+
+        try {
+            $value = $resolver->evaluateConstantExpression($items, $scope);
+
+            // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes.
+            return match (true) {
+                $value === null => ['type' => 'never[]', 'optional' => false],
+                is_array($value) => $resolver->resolveConstantValue($value, $engine),
+                default => null,
+            };
+        } catch (ConstExprEvaluationException) {
+        }
+
+        if ($items instanceof Array_ && array_all($items->items, fn (ArrayItem $item): bool => $item->key === null && ! $item->unpack)) {
+            return $this->listLiteralResult($items, $engine);
+        }
+
+        $result = $engine->resolve($items);
+
+        return count(TsTypeString::splitTopLevelUnion($result['type'])) === 1
+            && (str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{'))
+            ? [...$result, 'optional' => false]
+            : null;
+    }
+
+    /**
+     * A list literal as a list of its element types, or null when one of them does not type.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function listLiteralResult(Array_ $list, ExpressionEngine $engine): ?array
+    {
+        $elements = array_values(array_map(fn (ArrayItem $item): array => $engine->resolve($item->value), $list->items));
+
+        if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
+            return null;
+        }
+
+        $union = ValueResult::unionResults($elements);
+
+        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
     }
 
     /**

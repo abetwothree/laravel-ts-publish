@@ -33,6 +33,10 @@ export interface Release
     length_callable: Record<string, never>;
     /** The same for a first-class callable on the model's own method. */
     key_callable: Record<string, never>;
+    /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+    checked_at: string;
+    /** A getter that returns a collection returns what its items encode as. */
+    channel_ids: number[];
     trait_version: { major: number; label: string };
     /** Old-style accessor with a vague signature and a literal body. */
     summary: { major: number };

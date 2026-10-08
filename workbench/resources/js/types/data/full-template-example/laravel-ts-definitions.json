@@ -7999,6 +7999,14 @@
                     "type": "Record<string, never>"
                 },
                 {
+                    "name": "checked_at",
+                    "type": "string"
+                },
+                {
+                    "name": "channel_ids",
+                    "type": "number[]"
+                },
+                {
                     "name": "trait_version",
                     "type": "{ major: number; label: string }"
                 }
@@ -18824,6 +18832,61 @@
                     "name": "comments_count",
                     "type": "number",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\ValueHelperResource": {
+            "name": "ValueHelperResource",
+            "properties": [
+                {
+                    "name": "generated_at",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "day",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "link",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "empty_list",
+                    "type": "never[]",
+                    "optional": false
+                },
+                {
+                    "name": "list",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "record",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "names",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "count_or_since",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "translated",
+                    "type": "unknown",
+                    "optional": false
                 }
             ]
         },

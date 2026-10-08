@@ -139,4 +139,16 @@ class Release extends Model
     {
         return Attribute::get(fn () => $this->getKey(...));
     }
+
+    /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+    protected function checkedAt(): Attribute
+    {
+        return Attribute::get(fn () => now());
+    }
+
+    /** A getter that returns a collection returns what its items encode as. */
+    protected function channelIds(): Attribute
+    {
+        return Attribute::get(fn () => collect([self::CHANNEL_STABLE, self::CHANNEL_BETA]));
+    }
 }

@@ -31,6 +31,8 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
         ['dynamic_totals', 'unknown[]'],
         ['length_callable', 'Record<string, never>'],
         ['key_callable', 'Record<string, never>'],
+        ['checked_at', 'string'],
+        ['channel_ids', 'number[]'],
     ]);
 
     test('keys a constant-keyed getter body by the constant values', function () {

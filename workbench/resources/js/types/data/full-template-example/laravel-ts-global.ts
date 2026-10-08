@@ -1376,6 +1376,10 @@ declare global {
             length_callable: Record<string, never>;
             /** The same for a first-class callable on the model's own method. */
             key_callable: Record<string, never>;
+            /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+            checked_at: string;
+            /** A getter that returns a collection returns what its items encode as. */
+            channel_ids: number[];
             trait_version: { major: number; label: string };
             /** Old-style accessor with a vague signature and a literal body. */
             summary: { major: number };
@@ -5193,6 +5197,23 @@ declare global {
             avatar?: string;
             posts_count?: number;
             comments_count?: number;
+        }
+        /**
+         * Laravel's value helpers, typed as json_encode() writes what they return: a Carbon as its date string, a Stringable
+         * and a URL as strings, and a collection as the list or object its items encode as. `translated` stays unknown,
+         * since __() can return an array.
+         */
+        export interface ValueHelperResource {
+            generated_at: string;
+            day: string;
+            title: string;
+            link: string;
+            empty_list: never[];
+            list: number[];
+            record: { a: number };
+            names: string[];
+            count_or_since: number | string;
+            translated: unknown;
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {

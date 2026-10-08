@@ -102,11 +102,11 @@ it('tries InertiaResourcePropHandler before NewResourceHandler for new PostColle
 // Inertia calls every callable prop, at any depth, before it encodes it, so a first-class callable types its call.
 it('types a first-class-callable prop as the call it stands for', function () {
     $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
-    $props = $parse('["meta" => ["stamp" => date_default_timezone_get(...)]]');
+    $props = $parse('["meta" => ["stamp" => now(...)]]');
     assert($props instanceof Array_);
     $meta = collect(controllerProfileAnalyzer()->returnArrayAnalysis($props, topLevel: true)->properties)->firstWhere('name', 'meta');
 
-    expect(controllerProfileAnalyzer()->resolve($parse('date_default_timezone_get(...)'))['type'])->toBe('string')
+    expect(controllerProfileAnalyzer()->resolve($parse('now(...)'))['type'])->toBe('string')
         ->and(controllerProfileAnalyzer()->resolve($parse('auth()->user(...)'))['type'])->toBe('User | null')
         ->and($meta['type'])->toBe('{ stamp: string }')
         ->and(AnalysisWarnings::all())->toBe([]);
