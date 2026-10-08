@@ -54,6 +54,9 @@ Keep it extremely concise and focused on the key points with minimal elaboration
 
 The Tolki documentation provides user in-depth information. It should be detailed on what this package can do and how to use its various features effectively. It should not include any information about how this package implements its functionality internally. Keep it focused on usage and capabilities that matter to end users rather than internal implementation details. Use how Laravel's official documentation is structured as a guide for writing clear and effective Tolki documentation.
 
+Keep docs short, focused, and user-centric, avoiding unnecessary implementation details or long-winded explanations.
+
+
 If you find yourself writing links to source files of this package or explaining lines of code for how this package does things, that's a sign that you're venturing into implementation details, which should be avoided in the Tolki documentation. Focus on usage and capabilities instead.
 
 ## Skills
