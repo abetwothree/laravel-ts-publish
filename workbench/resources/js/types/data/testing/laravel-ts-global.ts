@@ -4830,6 +4830,7 @@ declare global {
             money_value: unknown;
             page_meta_ternary: PageMetaType | null;
             widget_config_coalesce: WidgetConfigType;
+            order_or_base: workbench.app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
         }

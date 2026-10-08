@@ -595,7 +595,7 @@ value degrades to `unknown`.
 | Primitives and their unions (`string`, `int \| null`) | yes | none needed |
 | One enum | yes | `directEnumFqcn` |
 | Several enums (`Status\|Priority`) | yes | `embeddedEnumFqcns` |
-| One `Model` subclass | yes | `modelFqcn` |
+| One `Model` subclass | yes; a method return then declines an abstract, `Illuminate\` or unpublished model | `modelFqcn` |
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |

@@ -26,6 +26,8 @@ return [
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],
+    // Deliberate: baseModel() declares the framework's Model, which no generated file exports.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 69, 'expression' => '\\Workbench\\App\\Services\\UrlService::baseModel()', 'site' => 'ternary-narrowed'],
     // Deliberate: one key per recording site, each dropping `$this->opaqueValue()`, a method whose
     // return type is deliberately absent. These six stay permanently — they prove each site fires.
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 28, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],

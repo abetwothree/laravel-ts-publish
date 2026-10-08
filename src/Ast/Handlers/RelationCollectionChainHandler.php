@@ -337,7 +337,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
             $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-            if ($accepted !== null) {
+            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
                 return $accepted;
             }
         } elseif ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
@@ -347,7 +347,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
             $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-            if ($accepted !== null) {
+            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
                 return $accepted;
             }
         }

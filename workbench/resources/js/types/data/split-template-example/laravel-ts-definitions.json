@@ -17698,6 +17698,11 @@
                     "optional": false
                 },
                 {
+                    "name": "order_or_base",
+                    "type": "Order",
+                    "optional": false
+                },
+                {
                     "name": "autocomplete",
                     "type": "{ value: number; label: string }",
                     "optional": false

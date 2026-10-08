@@ -149,7 +149,10 @@ final class MethodChainHandler implements ExpressionHandler
             $result = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
         } else {
             // The channels carry the token's import; a class with no published file, such as JsonResource, has none.
-            $result = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? ValueResult::unknown();
+            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
+            $result = $accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)
+                ? $accepted
+                : ValueResult::unknown();
         }
 
         if (TsTypeString::isUnknownOnly($result['type'])) {

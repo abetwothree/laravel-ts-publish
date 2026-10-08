@@ -65,6 +65,8 @@ class StaticCallResource extends JsonResource
             // import may end up in the emitted file. A third distinct #[TsType] class for the
             // same isolation reason as page_meta_ternary above.
             'widget_config_coalesce' => UrlService::moneyValue() ?? UrlService::widgetConfig(),
+            // A static call naming a model no generated file exports declines, so only the published arm is left.
+            'order_or_base' => $this->notes ? UrlService::locateOrder(1) : UrlService::baseModel(),
             // Proves methodOrDocblockReturnTypes() defers a vague `: array` signature to a precise
             // @return array{...} docblock shape instead of emitting unknown[] (Task 6).
             'autocomplete' => $this->resource->asAutoCompleteOption(),

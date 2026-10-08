@@ -10,8 +10,8 @@ use ReflectionClass;
 
 /**
  * Resolve a generic `$this->method()`/`$this::method()` call by reflecting its declared return
- * type: own methods, then the wrapped class, then the backing model, to cover calls delegated via
- * `__call`/`@mixin`.
+ * type: the subject's own declaration when it has one, else the wrapped class, then the backing
+ * model, to cover calls delegated via `__call`/`@mixin`.
  *
  * Shared because more than one guard reflects a subject method the same way: StaticCallHandler's
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
@@ -25,16 +25,15 @@ final class SubjectMethodTypeResolver
     use InspectsResourceSubject;
 
     /**
-     * @return ValueExpressionResult|null null when nothing in scope declares the method, or declares it
-     *                                    with a return type the acceptor rejects, so the handler
-     *                                    declines and dispatch reaches the next claimant
+     * @return ValueExpressionResult|null null when nothing in scope declares the method, or the declaration
+     *                                    PHP runs declines, so the handler declines and dispatch reaches the
+     *                                    next claimant
      */
     public function resolve(AnalysisScope $scope, string $methodName): ?array
     {
-        $own = $this->resolveOn($scope->subjectReflection, $methodName);
-
-        if ($own !== null) {
-            return $own;
+        // PHP runs the subject's own declaration, so a declined one never falls back to a forwarded namesake.
+        if ($scope->subjectReflection->hasMethod($methodName)) {
+            return $this->resolveOn($scope->subjectReflection, $methodName);
         }
 
         $wrappedClass = $this->resolveWrappedClass($scope);

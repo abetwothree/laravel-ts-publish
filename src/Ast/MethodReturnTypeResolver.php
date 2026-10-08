@@ -48,7 +48,7 @@ final class MethodReturnTypeResolver
     use BuildsInlineObjectTypes;
 
     /**
-     * Reflect a method's return type; when that is vague or rejected, analyze the method body once.
+     * Reflect a method's return type, else analyze its body once; declines one naming a model with no published file.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
@@ -61,7 +61,11 @@ final class MethodReturnTypeResolver
 
         return resolve(AnalysisMemo::class)->remember(
             'method-return:'.$class.'@'.$methodName,
-            fn (): ?array => $this->reflectOrReadBody($class, $methodName),
+            function () use ($class, $methodName): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName);
+
+                return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+            },
         );
     }
 
