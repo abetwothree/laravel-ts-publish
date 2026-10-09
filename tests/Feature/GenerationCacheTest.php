@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ThrowingResourcesCollector;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -572,3 +573,30 @@ test('a partial run that retains the models builds the morph map once', function
     'a run whose later phases read the published set' => [true],
     'a run that builds the published set only to retain the models' => [false],
 ]);
+
+test('a run that ends before it retains leaves no retained generators from the run before it on the same runner', function () {
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    Config::set('ts-publish.globals.enabled', true);
+    $runner = new Runner;
+    $runner->shouldPublishModels = false;
+    $runner->shouldPublishResources = false;
+    $runner->useCache(CacheBootstrap::manifest());
+    $runner->run();
+
+    expect($runner->retainedModelGenerators)->not->toBeEmpty()
+        ->and($runner->retainedResourceGenerators)->not->toBeEmpty();
+
+    // The collector throws before retainSkippedGenerators() runs, so only the run boundary can have emptied them.
+    Config::set('ts-publish.resources.collector_class', ThrowingResourcesCollector::class);
+    $runner->shouldPublishResources = true;
+    expect(fn () => $runner->run())->toThrow(RuntimeException::class);
+
+    expect($runner->retainedEnumGenerators)->toBeEmpty()
+        ->and($runner->retainedModelGenerators)->toBeEmpty()
+        ->and($runner->retainedResourceGenerators)->toBeEmpty()
+        ->and($runner->retainedFormRequestGenerators)->toBeEmpty()
+        ->and($runner->retainedBroadcastEventGenerators)->toBeEmpty();
+});

@@ -34,6 +34,15 @@ class TypeScriptMap
     protected static array $customKeys = [];
 
     /**
+     * Forget the cached map, so the next gather() reads `custom_ts_mappings` again.
+     */
+    public static function reset(): void
+    {
+        self::$map = null;
+        self::$customKeys = [];
+    }
+
+    /**
      * @return array<string, string|(callable(): string)>
      */
     public function gather(): array

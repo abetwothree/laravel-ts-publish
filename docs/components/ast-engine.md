@@ -329,7 +329,7 @@ dropped-arm count, and happens only where computing the answer again could not d
 cut it short, and reused whatever is on the stack.
 
 `AnalysisMemo::forget()` drops every unpinned answer, and `ModelAttributeResolver::buildMorphTargetMap()` calls it.
-`reset()` drops every answer, and `Runner::run()` and `RunnerForSource::run()` call it, so none outlives a run.
+`reset()` drops every answer, and `BaseRunner::resetRunState()` calls it when a run starts, so none outlives a run.
 
 ## MethodAnalysis
 

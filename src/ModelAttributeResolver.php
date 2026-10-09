@@ -115,6 +115,20 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
+     * Forget every cached model read, so the next run inspects the models and their tables afresh.
+     */
+    public function reset(): void
+    {
+        $this->contexts = [];
+        $this->relationContexts = [];
+        $this->contextFailures = [];
+        $this->morphTargetMap = [];
+        $this->dbColumnNamesCache = [];
+        $this->attributeClassCache = [];
+        $this->attributeClassPaths = [];
+    }
+
+    /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
      *
      * @param  class-string  $modelFqcn

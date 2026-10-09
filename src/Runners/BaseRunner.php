@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -20,9 +23,11 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Database\Eloquent\Model;
@@ -148,6 +153,24 @@ abstract class BaseRunner
     public function manifest(): ?GenerationManifest
     {
         return $this->manifest;
+    }
+
+    /**
+     * Clear everything a run reads that lives as long as the process, so each run starts from a clean slate.
+     */
+    protected function resetRunState(): void
+    {
+        // Process-static and only ever added to. Clearing at the run boundary, not next to register(),
+        // is what makes "this run publishes no resources" mean an empty registry, not the last run's set.
+        PublishedResourceRegistry::reset();
+        PublishedModelRegistry::reset();
+        AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
+        resolve(AnalysisMemo::class)->reset();
+        TsTypeString::forgetQualifiedTypes();
+        resolve(ModelAttributeResolver::class)->reset();
+        TypeScriptMap::reset();
+        RelationMap::reset();
     }
 
     /**

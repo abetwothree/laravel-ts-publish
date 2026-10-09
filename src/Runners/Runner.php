@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastEventsCollector;
@@ -17,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Collectors\FormRequestsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -76,37 +73,12 @@ class Runner extends BaseRunner
      */
     public function __construct()
     {
-        /** @var Collection<int, EnumGenerator> $enums */
-        $enums = collect();
-        $this->retainedEnumGenerators = $enums;
-
-        /** @var Collection<int, ModelGenerator> $models */
-        $models = collect();
-        $this->retainedModelGenerators = $models;
-
-        /** @var Collection<int, ResourceGenerator> $resources */
-        $resources = collect();
-        $this->retainedResourceGenerators = $resources;
-
-        /** @var Collection<int, FormRequestGenerator> $formRequests */
-        $formRequests = collect();
-        $this->retainedFormRequestGenerators = $formRequests;
-
-        /** @var Collection<int, BroadcastEventGenerator> $broadcastEvents */
-        $broadcastEvents = collect();
-        $this->retainedBroadcastEventGenerators = $broadcastEvents;
+        $this->forgetRetainedGenerators();
     }
 
     public function run(): void
     {
-        // Process-static and only ever added to. Clearing at the run boundary, not next to register(),
-        // is what makes "this run publishes no resources" mean an empty registry, not the last run's set.
-        PublishedResourceRegistry::reset();
-        PublishedModelRegistry::reset();
-        AnalysisWarnings::reset();
-        CoreCollector::flushClassMapCache();
-        resolve(AnalysisMemo::class)->reset();
-        TsTypeString::forgetQualifiedTypes();
+        $this->resetRunState();
 
         /** @var BarrelWriter $barrelWriter */
         $barrelWriter = resolve(Config::string('ts-publish.barrel_writer_class', BarrelWriter::class));
@@ -142,6 +114,17 @@ class Runner extends BaseRunner
             $this->keepSkippedFeatureEntries($manifest);
             $manifest->save();
         }
+    }
+
+    /**
+     * Clear the run state, including the generators an earlier run retained from skipped features.
+     */
+    protected function resetRunState(): void
+    {
+        parent::resetRunState();
+
+        $this->forgetRetainedGenerators();
+        $this->skippedModelSet = null;
     }
 
     /**
@@ -796,5 +779,31 @@ class Runner extends BaseRunner
         $collector = resolve(Config::string("ts-publish.{$feature}.collector_class", $defaultCollector));
 
         return $collector->collect();
+    }
+
+    /**
+     * Empty the five retained collections.
+     */
+    private function forgetRetainedGenerators(): void
+    {
+        /** @var Collection<int, EnumGenerator> $enums */
+        $enums = collect();
+        $this->retainedEnumGenerators = $enums;
+
+        /** @var Collection<int, ModelGenerator> $models */
+        $models = collect();
+        $this->retainedModelGenerators = $models;
+
+        /** @var Collection<int, ResourceGenerator> $resources */
+        $resources = collect();
+        $this->retainedResourceGenerators = $resources;
+
+        /** @var Collection<int, FormRequestGenerator> $formRequests */
+        $formRequests = collect();
+        $this->retainedFormRequestGenerators = $formRequests;
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEvents */
+        $broadcastEvents = collect();
+        $this->retainedBroadcastEventGenerators = $broadcastEvents;
     }
 }
