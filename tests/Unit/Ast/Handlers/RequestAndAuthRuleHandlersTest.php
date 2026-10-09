@@ -113,11 +113,15 @@ it('types a Request method call from the reflected signature', function (string 
     ['getLanguages', 'string[]'],
     // A class json_encode really does render as a string, unlike `interval()`'s CarbonInterval.
     ['date', 'string | null'],
-    // json_encode() ignores __toString(): an UploadedFile or Image writes `{}`, a CarbonInterval DateInterval's fields.
+    // json_encode() ignores __toString(): an UploadedFile writes `{}`, a CarbonInterval its DateInterval fields.
     ['allFiles', 'Record<string, Record<string, never> | Record<string, never>[]>'],
-    ['image', 'Record<string, never> | null'],
     ['interval', LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE.' | null'],
 ]);
+
+it('types Request::image() as the `{}` an Image writes', function () {
+    expect((new KnownMethodRuleHandler)->resolve(requestCall('image'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'Record<string, never> | null', 'optional' => false]);
+})->skip(! method_exists(Request::class, 'image'), 'Request::image() requires Laravel 13+');
 
 it('types $request->user() through the auth provider model', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
