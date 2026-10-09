@@ -331,7 +331,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`
   attribute, so a resource and its model agree on the flag.
 - **A `whenAggregated()` aggregate follows the driver, and takes `| null` unless the model's declaration rules it
-  out**: the model's own declaration of `{relation}_{function}_{column}` types it, else
+  out**: the model's own declaration of `{relation}_{function}_{column}` types it, else for `MIN()` and `MAX()` a
+  user's `custom_ts_mappings` entry for the related column's type, else
   [`AggregateValueType`](../../src/Ast/AggregateValueType.php) reads the related column's type and the connection's
   driver, so a decimal `SUM()` is `number` on SQLite and `string` on MySQL, else it is `number`. Any aggregate but a
   count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call

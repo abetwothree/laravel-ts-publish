@@ -202,9 +202,10 @@ These rules settle the cases the table leaves open:
   `ConditionalParamPrimitiveResource` and `ConditionalParamEnumResource`, so it stays, and `ts:publish` warns that the
   call throws.
 - **`whenAggregated()` types its aggregate as the model declares it**: the model's own accessor or `@property` on
-  `{relation}_{function}_{column}`, as declared, then its built-in cast, then what the connection's driver returns for
-  the related column ([`AggregateValueType`]), else `number`. Every aggregate but a count or one whose function the
-  call computes keeps `| null`, the SQL `NULL` over no rows, unless the model's declaration rules it out.
+  `{relation}_{function}_{column}`, as declared, then its built-in cast, then, for `MIN()` and `MAX()`, a user's
+  `custom_ts_mappings` entry for the related column's type, then what the connection's driver returns for the related
+  column ([`AggregateValueType`]), else `number`. Every aggregate but a count or one whose function the call computes
+  keeps `| null`, the SQL `NULL` over no rows, unless the model's declaration rules it out.
 
 `ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
 green with either mechanism alone, so it pins neither.
