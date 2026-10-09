@@ -183,26 +183,10 @@ abstract class BaseRunner
         $storedDeps = $this->manifest->deps($cacheKey);
 
         if ($storedDeps !== [] && $this->manifest->hit($cacheKey, $this->manifest->fingerprint($storedDeps, $signature))) {
-            $snapshot = $this->manifest->snapshot($cacheKey);
-            $filename = $this->manifest->filename($cacheKey);
+            $generator = $this->rehydrate($generatorClass, $fqcn);
 
-            if ($snapshot !== null && $filename !== null) {
-                $decoded = base64_decode($snapshot, true);
-
-                if ($decoded !== false) {
-                    try {
-                        $transformer = unserialize($decoded);
-                    } catch (Throwable) {
-                        $transformer = null;
-                    }
-
-                    if ($transformer instanceof CoreTransformer) {
-                        /** @var T $generator */
-                        $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
-
-                        return $generator;
-                    }
-                }
+            if ($generator !== null) {
+                return $generator;
             }
         }
 
@@ -243,6 +227,46 @@ abstract class BaseRunner
             $outputs,
             $snapshot,
         );
+
+        return $generator;
+    }
+
+    /**
+     * The cached generator for a class from its snapshot and filename, or null when it has no entry that rehydrates.
+     *
+     * @template T of CoreGenerator
+     *
+     * @param  class-string<T>  $generatorClass
+     * @return T|null
+     */
+    protected function rehydrate(string $generatorClass, string $fqcn): ?CoreGenerator
+    {
+        $cacheKey = $generatorClass.'::'.$fqcn;
+        $snapshot = $this->manifest?->snapshot($cacheKey);
+        $filename = $this->manifest?->filename($cacheKey);
+
+        if ($snapshot === null || $filename === null || ! method_exists($generatorClass, 'fromCache')) {
+            return null;
+        }
+
+        $decoded = base64_decode($snapshot, true);
+
+        if ($decoded === false) {
+            return null;
+        }
+
+        try {
+            $transformer = unserialize($decoded);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $transformer instanceof CoreTransformer) {
+            return null;
+        }
+
+        /** @var T $generator */
+        $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
 
         return $generator;
     }

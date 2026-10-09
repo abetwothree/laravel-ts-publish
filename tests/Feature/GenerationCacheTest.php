@@ -7,8 +7,11 @@ use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -462,3 +465,110 @@ test('a --source run and a preview leave the cache as they found it', function (
         ->and(storedCacheEntries())->toBe($index)
         ->and(Cache::store('array')->get('ts-publish:__meta__'))->toBe($meta);
 });
+
+test('a partial run lists the features it skipped in the globals and JSON files as the last full run did', function (string $flag) {
+    Config::set('ts-publish.globals.enabled', true);
+    Config::set('ts-publish.json.enabled', true);
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+    $json = $this->out.'/'.Config::string('ts-publish.json.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $fullGlobals = file_get_contents($globals);
+    $fullJson = file_get_contents($json);
+
+    expect(Artisan::call('ts:publish', [$flag => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toBe($fullGlobals)
+        ->and(file_get_contents($json))->toBe($fullJson);
+})->with(['--only-functional', '--only-enums', '--only-models']);
+
+test('with the cache off a partial run still writes the globals without the skipped features', function () {
+    Config::set('ts-publish.cache.enabled', false);
+    Config::set('ts-publish.globals.enabled', true);
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toContain('export interface User');
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))
+        ->toContain('export namespace workbench.app.enums')
+        ->not->toContain('export interface User');
+});
+
+test('a kept entry whose snapshot cannot be rehydrated drops only that class from the globals', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.globals.enabled', true);
+    Cache::store('array')->clear();
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $fullGlobals = (string) file_get_contents($globals);
+
+    // Written through the repository so the entry stays validly signed and loads; only its snapshot is unreadable.
+    $repository = CacheBootstrap::repository();
+    $key = cacheEntryKey(ResourceGenerator::class, UserResource::class);
+    $entry = $repository->get($key);
+    expect($entry)->toBeArray()->toHaveKey('snapshot');
+    $repository->put($key, [...(array) $entry, 'snapshot' => 'not-base64!']);
+
+    // The Crm module publishes a UserResource of its own, which must stay.
+    $userResources = fn (string $content): int => substr_count($content, 'export interface UserResource {');
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toContain('export interface PostResource {')
+        ->and($userResources((string) file_get_contents($globals)))->toBe($userResources($fullGlobals) - 1);
+});
+
+test('the generators a partial run retains stay apart from the ones it published', function () {
+    expect(new Runner)
+        ->retainedModelGenerators->toBeEmpty()
+        ->retainedResourceGenerators->toBeEmpty();
+
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    $partial = new Runner;
+    $partial->shouldPublishModels = false;
+    $partial->shouldPublishResources = false;
+    $partial->useCache(CacheBootstrap::manifest());
+    $partial->run();
+
+    // The console summary counts the published collections, so a retained class must not be counted as published.
+    expect($full->modelGenerators)->not->toBeEmpty()
+        ->and($full->resourceGenerators)->not->toBeEmpty()
+        ->and($partial->modelGenerators)->toBeEmpty()
+        ->and($partial->resourceGenerators)->toBeEmpty()
+        ->and($partial->retainedModelGenerators)->toHaveCount($full->modelGenerators->count())
+        ->and($partial->retainedResourceGenerators)->toHaveCount($full->resourceGenerators->count())
+        ->and($partial->enumGenerators)->toHaveCount($full->enumGenerators->count())
+        ->and($partial->retainedEnumGenerators)->toBeEmpty();
+});
+
+test('a partial run that retains the models builds the morph map once', function (bool $laterPhases) {
+    Config::set('ts-publish.inertia.enabled', $laterPhases);
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+
+    $resolver = new RecordingModelAttributeResolver;
+    app()->instance(ModelAttributeResolver::class, $resolver);
+
+    $runner = new Runner;
+    $runner->shouldPublishModels = false;
+
+    if (! $laterPhases) {
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishResources = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastEvents = false;
+    }
+
+    $runner->useCache(CacheBootstrap::manifest());
+    $runner->run();
+
+    expect($resolver->morphTargetMapBuilds)->toHaveCount(1)
+        ->and($runner->retainedModelGenerators)->not->toBeEmpty();
+})->with([
+    'a run whose later phases read the published set' => [true],
+    'a run that builds the published set only to retain the models' => [false],
+]);

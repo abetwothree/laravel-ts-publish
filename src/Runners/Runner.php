@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\RoutesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -47,6 +48,55 @@ use Throwable;
 
 class Runner extends BaseRunner
 {
+    /**
+     * Each feature a flag skipped while config enables it, rehydrated from its kept entries for the globals and JSON
+     * files only; empty unless the cache is on and one of those files is.
+     *
+     * @var Collection<int, EnumGenerator>
+     */
+    public protected(set) Collection $retainedEnumGenerators;
+
+    /** @var Collection<int, ModelGenerator> */
+    public protected(set) Collection $retainedModelGenerators;
+
+    /** @var Collection<int, ResourceGenerator> */
+    public protected(set) Collection $retainedResourceGenerators;
+
+    /** @var Collection<int, FormRequestGenerator> */
+    public protected(set) Collection $retainedFormRequestGenerators;
+
+    /** @var Collection<int, BroadcastEventGenerator> */
+    public protected(set) Collection $retainedBroadcastEventGenerators;
+
+    /** @var list<class-string>|null The published set a skipped model phase built, so retaining reuses it. */
+    private ?array $skippedModelSet = null;
+
+    /**
+     * Start with no retained generators, so a runner that never ran answers empty collections.
+     */
+    public function __construct()
+    {
+        /** @var Collection<int, EnumGenerator> $enums */
+        $enums = collect();
+        $this->retainedEnumGenerators = $enums;
+
+        /** @var Collection<int, ModelGenerator> $models */
+        $models = collect();
+        $this->retainedModelGenerators = $models;
+
+        /** @var Collection<int, ResourceGenerator> $resources */
+        $resources = collect();
+        $this->retainedResourceGenerators = $resources;
+
+        /** @var Collection<int, FormRequestGenerator> $formRequests */
+        $formRequests = collect();
+        $this->retainedFormRequestGenerators = $formRequests;
+
+        /** @var Collection<int, BroadcastEventGenerator> $broadcastEvents */
+        $broadcastEvents = collect();
+        $this->retainedBroadcastEventGenerators = $broadcastEvents;
+    }
+
     public function run(): void
     {
         // Process-static and only ever added to. Clearing at the run boundary, not next to register(),
@@ -80,6 +130,7 @@ class Runner extends BaseRunner
         $this->generateBroadcastEvents();
         $this->generateRoutes();
 
+        $this->retainSkippedGenerators();
         $this->generateGlobals();
         $this->generateViteEnv();
         $this->generateJson();
@@ -99,21 +150,53 @@ class Runner extends BaseRunner
      */
     protected function keepSkippedFeatureEntries(GenerationManifest $manifest): void
     {
-        $features = [
-            'enums' => [$this->shouldPublishEnums, EnumGenerator::class],
-            'models' => [$this->shouldPublishModels, ModelGenerator::class],
-            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class],
-            'resources' => [$this->shouldPublishResources, ResourceGenerator::class],
-            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class],
-            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class],
-            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class],
-        ];
-
-        foreach ($features as $feature => [$published, $defaultGenerator]) {
-            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", false)) {
-                $manifest->keepEntriesOf(Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator));
-            }
+        foreach ($this->skippedFeatureGenerators() as $generatorClass) {
+            $manifest->keepEntriesOf($generatorClass);
         }
+    }
+
+    /**
+     * Rehydrate each feature a flag skipped while config enables it from its kept entries, in collector order, so the
+     * globals and JSON files list it as the last run that published it left it. A class with no usable entry drops out.
+     */
+    protected function retainSkippedGenerators(): void
+    {
+        $skipped = $this->manifest !== null
+            && (Config::boolean('ts-publish.globals.enabled') || Config::boolean('ts-publish.json.enabled'))
+                ? $this->skippedFeatureGenerators()
+                : [];
+
+        /** @var class-string<EnumGenerator>|null $enums */
+        $enums = $skipped['enums'] ?? null;
+        /** @var class-string<ModelGenerator>|null $models */
+        $models = $skipped['models'] ?? null;
+        /** @var class-string<ResourceGenerator>|null $resources */
+        $resources = $skipped['resources'] ?? null;
+        /** @var class-string<FormRequestGenerator>|null $formRequests */
+        $formRequests = $skipped['form_requests'] ?? null;
+        /** @var class-string<BroadcastEventGenerator>|null $broadcastEvents */
+        $broadcastEvents = $skipped['broadcast_events'] ?? null;
+
+        $this->retainedEnumGenerators = $this->rehydrateAll(
+            $enums,
+            fn (): Collection => $this->collected('enums', EnumsCollector::class),
+        );
+        $this->retainedModelGenerators = $this->rehydrateAll(
+            $models,
+            fn (): array => $this->skippedModelSet ?? $this->buildModelMorphTargetMap(),
+        );
+        $this->retainedResourceGenerators = $this->rehydrateAll(
+            $resources,
+            fn (): Collection => $this->collected('resources', ResourcesCollector::class),
+        );
+        $this->retainedFormRequestGenerators = $this->rehydrateAll(
+            $formRequests,
+            fn (): Collection => $this->collected('form_requests', FormRequestsCollector::class),
+        );
+        $this->retainedBroadcastEventGenerators = $this->rehydrateAll(
+            $broadcastEvents,
+            fn (): Collection => $this->collected('broadcast_events', BroadcastEventsCollector::class),
+        );
     }
 
     protected function generateEnums(): void
@@ -192,9 +275,9 @@ class Runner extends BaseRunner
             $this->modelGenerators = $empty;
 
             // A flag skipped the phase, but the model files stay published, so a later phase reads the same set.
-            if (Config::boolean('ts-publish.models.enabled', false) && $this->publishesAfterModels()) {
-                $this->buildModelMorphTargetMap();
-            }
+            $this->skippedModelSet = Config::boolean('ts-publish.models.enabled', false) && $this->publishesAfterModels()
+                ? $this->buildModelMorphTargetMap()
+                : null;
 
             return;
         }
@@ -643,5 +726,75 @@ class Runner extends BaseRunner
         if ($this->watcherJsonContent !== '') {
             $this->logger?->success('Watcher JSON');
         }
+    }
+
+    /**
+     * The configured generator class of each cached feature a flag skipped while config enables it, keyed by feature.
+     *
+     * @return array<string, string>
+     */
+    private function skippedFeatureGenerators(): array
+    {
+        $features = [
+            'enums' => [$this->shouldPublishEnums, EnumGenerator::class],
+            'models' => [$this->shouldPublishModels, ModelGenerator::class],
+            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class],
+            'resources' => [$this->shouldPublishResources, ResourceGenerator::class],
+            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class],
+            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class],
+            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class],
+        ];
+
+        $skipped = [];
+
+        foreach ($features as $feature => [$published, $defaultGenerator]) {
+            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", false)) {
+                $skipped[$feature] = Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator);
+            }
+        }
+
+        return $skipped;
+    }
+
+    /**
+     * Each class's cached generator, in the order given; none when the feature was not skipped.
+     *
+     * @template T of CoreGenerator
+     *
+     * @param  class-string<T>|null  $generatorClass  null when this run did not skip the feature
+     * @param  Closure(): iterable<class-string>  $classes
+     * @return Collection<int, T>
+     */
+    private function rehydrateAll(?string $generatorClass, Closure $classes): Collection
+    {
+        /** @var Collection<int, T> $generators */
+        $generators = collect();
+
+        if ($generatorClass === null) {
+            return $generators;
+        }
+
+        foreach ($classes() as $fqcn) {
+            $generator = $this->rehydrate($generatorClass, $fqcn);
+
+            if ($generator !== null) {
+                $generators->push($generator);
+            }
+        }
+
+        return $generators;
+    }
+
+    /**
+     * The classes a feature's configured collector collects.
+     *
+     * @return Collection<int, class-string<object>>
+     */
+    private function collected(string $feature, string $defaultCollector): Collection
+    {
+        /** @var CoreCollector<object> $collector */
+        $collector = resolve(Config::string("ts-publish.{$feature}.collector_class", $defaultCollector));
+
+        return $collector->collect();
     }
 }

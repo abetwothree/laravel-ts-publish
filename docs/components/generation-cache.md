@@ -29,6 +29,9 @@ stored one and every output file it wrote still exists.
 A feature skipped by a flag but enabled in config keeps its entries (`Runner::keepSkippedFeatureEntries()`); one
 disabled in config is pruned, which only the interactive override can reach. `--fresh --only-*` still clears everything.
 
+A partial run rehydrates the features it skips from their kept entries, so the globals and JSON files still list them
+as the last run that published them left them; with the cache off they are left out.
+
 ## What is recorded
 
 See [AST engine § Dependency recording policy](ast-engine.md#dependency-recording-policy).

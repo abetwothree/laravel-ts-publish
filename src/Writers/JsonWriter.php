@@ -72,7 +72,8 @@ class JsonWriter
     /** @return array<class-string, array{name: string, properties: list<array{name: string, type: string}>}> */
     protected function createJsonForModels(Runner $runner): array
     {
-        $transformers = $runner->modelGenerators->map(fn (ModelGenerator $g) => $g->transformer);
+        $transformers = $runner->modelGenerators->concat($runner->retainedModelGenerators)
+            ->map(fn (ModelGenerator $g) => $g->transformer);
         $data = [];
 
         foreach ($transformers as $transformer) {
@@ -141,7 +142,9 @@ class JsonWriter
     protected function createJsonForEnums(Runner $runner): array
     {
         /** @var list<EnumTransformer> $transformers */
-        $transformers = $runner->enumGenerators->map(fn (EnumGenerator $g) => $g->transformer)->toArray();
+        $transformers = $runner->enumGenerators->concat($runner->retainedEnumGenerators)
+            ->map(fn (EnumGenerator $g) => $g->transformer)
+            ->toArray();
 
         $data = [];
 
@@ -167,7 +170,8 @@ class JsonWriter
      */
     protected function createJsonForResources(Runner $runner): array
     {
-        $transformers = $runner->resourceGenerators->map(fn (ResourceGenerator $g) => $g->transformer);
+        $transformers = $runner->resourceGenerators->concat($runner->retainedResourceGenerators)
+            ->map(fn (ResourceGenerator $g) => $g->transformer);
         $data = [];
 
         foreach ($transformers as $transformer) {
@@ -199,7 +203,7 @@ class JsonWriter
     {
         $data = [];
 
-        foreach ($runner->formRequestGenerators as $generator) {
+        foreach ($runner->formRequestGenerators->concat($runner->retainedFormRequestGenerators) as $generator) {
             /** @var FormRequestGenerator $generator */
             $transformer = $generator->transformer;
             $data[$transformer->fqcn()] = [
@@ -224,7 +228,7 @@ class JsonWriter
     {
         $data = [];
 
-        foreach ($runner->broadcastEventGenerators as $generator) {
+        foreach ($runner->broadcastEventGenerators->concat($runner->retainedBroadcastEventGenerators) as $generator) {
             /** @var BroadcastEventGenerator $generator */
             $transformer = $generator->transformer;
             $data[$transformer->fqcn()] = [
