@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\View;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Controllers\CacheBustController;
 use Workbench\App\Http\Resources\UserResource;
@@ -599,4 +600,51 @@ test('a run that ends before it retains leaves no retained generators from the r
         ->and($runner->retainedResourceGenerators)->toBeEmpty()
         ->and($runner->retainedFormRequestGenerators)->toBeEmpty()
         ->and($runner->retainedBroadcastEventGenerators)->toBeEmpty();
+});
+
+test('a template published and edited after the first run reaches the next run without --fresh', function () {
+    $enumFile = $this->out.'/workbench/app/enums/priority.ts';
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($enumFile))->not->toContain('// edited template');
+
+    // An edited enum template ahead of the package's views, as `vendor:publish` and an edit would leave them.
+    $views = $this->out.'-views';
+    mkdir($views);
+    file_put_contents($views.'/enum.blade.php', "// edited template\n".file_get_contents(__DIR__.'/../../resources/views/enum.blade.php'));
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// edited template\n");
+    } finally {
+        unlink($views.'/enum.blade.php');
+        rmdir($views);
+    }
+});
+
+test('a template edited in place between two runs in one process reaches the second', function () {
+    $enumFile = $this->out.'/workbench/app/enums/priority.ts';
+    $views = $this->out.'-views';
+    $template = $views.'/enum.blade.php';
+    $package = (string) file_get_contents(__DIR__.'/../../resources/views/enum.blade.php');
+    mkdir($views);
+    file_put_contents($template, "// v1\n".$package);
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// v1\n");
+
+        // Blade skips the expiry check for a view this process compiled already, so only a flush makes it read v2.
+        file_put_contents($template, "// v2\n".$package);
+        touch($template, time() + 5);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// v2\n");
+    } finally {
+        unlink($template);
+        rmdir($views);
+    }
 });

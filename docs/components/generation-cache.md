@@ -21,6 +21,11 @@ The header busts the whole cache when the package version or the `ConfigFingerpr
 fingerprint of its recorded dependencies, plus the class's signature and the published-model signature, matches the
 stored one and every output file it wrote still exists.
 
+A hit never renders, so the header also hashes the template each cached feature renders and every view it includes by
+a literal name: editing or deleting one rebuilds everything, publishing an unedited copy does not.
+`BaseRunner::resetRunState()` flushes Laravel's view lookups and compile checks, so a template edited between two runs
+in one process renders fresh.
+
 `GenerationManifest::fingerprint()` hashes each dependency file once per run, however many classes depend on it, and
 `save()` ends that run so the next one reads every file again.
 

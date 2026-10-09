@@ -33,6 +33,8 @@ use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\View;
+use Illuminate\View\Engines\CompilerEngine;
 use InvalidArgumentException;
 use Laravel\Prompts\Support\Logger;
 use Throwable;
@@ -171,6 +173,22 @@ abstract class BaseRunner
         resolve(ModelAttributeResolver::class)->reset();
         TypeScriptMap::reset();
         RelationMap::reset();
+        $this->forgetRenderedViews();
+    }
+
+    /**
+     * Drop Laravel's per-process view lookups and compile checks, so a template edited since an earlier run in this
+     * process renders as it is on disk, as the template fingerprint the cache header holds already reads it.
+     */
+    protected function forgetRenderedViews(): void
+    {
+        View::getFinder()->flush();
+
+        $blade = View::getEngineResolver()->resolve('blade');
+
+        if ($blade instanceof CompilerEngine) {
+            $blade->forgetCompiledOrNotExpired();
+        }
     }
 
     /**
