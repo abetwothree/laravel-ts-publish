@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AllowDynamicProperties;
+use ArrayObject;
 use Carbon\Carbon;
 use Carbon\CarbonInterval;
 use Carbon\CarbonPeriod;
@@ -343,7 +344,8 @@ class LaravelTsPublish
             && ! is_a($phpType, Model::class, true)
             && is_a($phpType, JsonSerializable::class, true)
         ) {
-            $shapeType = $this->arrayableShapeType($phpType, 'jsonSerialize', fallbackToProperties: false);
+            $shapeType = $this->arrayableShapeType($phpType, 'jsonSerialize', fallbackToProperties: false)
+                ?? $this->stringableArrayJsonType($phpType);
 
             if ($shapeType !== null) {
                 $result['type'] = $shapeType;
@@ -382,10 +384,13 @@ class LaravelTsPublish
             }
         }
 
-        // 5d. A __toString() class json_encode() writes as `{}`. Any other class keeps its token, since the same rule
-        //     would type a sentinel such as MissingValue, which a resource strips before it encodes.
-        if (class_exists($phpType) && $this->serializesAsEmptyObject($phpType)) {
-            $result['type'] = TsTypeStringService::EMPTY_OBJECT;
+        // 5d. A __toString() class json_encode() writes as its public properties, `{}` for none, or any keys where an
+        //     instance can gain some. Any other class keeps its token, since the same rule would type a sentinel such
+        //     as MissingValue, which a resource strips before it encodes.
+        $stringableObjectType = class_exists($phpType) ? $this->stringableObjectType($phpType) : null;
+
+        if ($stringableObjectType !== null) {
+            $result['type'] = $stringableObjectType;
 
             return $result;
         }
@@ -756,7 +761,8 @@ class LaravelTsPublish
     /**
      * Whether a class declares at least one public, non-static property and every one of them is typed.
      *
-     * Guards step 5c: an untyped property would inline as `unknown`, which is worse than the class token.
+     * Guards step 5c, so a class with an untyped property keeps its token; only step 5d, for a `__toString()` class,
+     * inlines one as `unknown`.
      *
      * @param  class-string  $fqcn
      */
@@ -780,43 +786,64 @@ class LaravelTsPublish
     }
 
     /**
-     * Whether json_encode() writes every instance of a concrete `__toString()` class as `{}`.
+     * The object json_encode() writes for a `__toString()` class: its public instance properties, `unknown` for an
+     * untyped one, `{}` for none, or any keys where an instance can gain some. Null for any other class.
      *
-     * The class is neither JsonSerializable nor Arrayable, has no public instance property and allows no dynamic one.
-     * The first internal class in its chain, if any, is a Throwable or an SplFileInfo, which write no properties of
-     * their own, unlike DateTime and ArrayObject.
+     * The class is neither JsonSerializable nor Arrayable. The first internal class in its chain, if any, is a
+     * Throwable or an SplFileInfo, which write no properties of their own, or an ArrayObject, which writes its items,
+     * unlike DateTime. An abstract class publishes its own properties, though a subclass instance can carry more.
      *
      * @param  class-string  $fqcn
      */
-    protected function serializesAsEmptyObject(string $fqcn): bool
+    protected function stringableObjectType(string $fqcn): ?string
     {
         $reflection = new ReflectionClass($fqcn);
 
         if (! $reflection->hasMethod('__toString')
-            || $reflection->isAbstract()
             || $reflection->implementsInterface(JsonSerializable::class)
             || $reflection->implementsInterface(Arrayable::class)) {
-            return false;
+            return null;
         }
 
         for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
-            if ($class->getAttributes(AllowDynamicProperties::class) !== []) {
-                return false;
+            if ($class->getAttributes(AllowDynamicProperties::class) !== [] || $class->getName() === ArrayObject::class) {
+                return 'Record<string, unknown>';
             }
 
             if ($class->isInternal()) {
                 if (! $class->implementsInterface(Throwable::class) && ! is_a($class->getName(), SplFileInfo::class, true)) {
-                    return false;
+                    return null;
                 }
 
                 break;
             }
         }
 
-        return array_all(
+        $hasPublicProperty = array_any(
             $reflection->getProperties(ReflectionProperty::IS_PUBLIC),
-            fn (ReflectionProperty $property): bool => $property->isStatic(),
+            fn (ReflectionProperty $property): bool => ! $property->isStatic(),
         );
+
+        return $hasPublicProperty ? $this->publicPropertyShapeType($fqcn) : TsTypeStringService::EMPTY_OBJECT;
+    }
+
+    /**
+     * The array of unknown shape json_encode() writes for a `__toString()` class, such as a money value, whose
+     * jsonSerialize() declares `array` and no `@return` shape says more. Null keeps any other class its token.
+     *
+     * @param  class-string  $fqcn
+     */
+    protected function stringableArrayJsonType(string $fqcn): ?string
+    {
+        $returnType = new ReflectionMethod($fqcn, 'jsonSerialize')->getReturnType();
+
+        if (! method_exists($fqcn, '__toString')
+            || ! $returnType instanceof ReflectionNamedType
+            || $returnType->getName() !== 'array') {
+            return null;
+        }
+
+        return 'unknown[] | Record<string, unknown>'.($returnType->allowsNull() ? ' | null' : '');
     }
 
     /**

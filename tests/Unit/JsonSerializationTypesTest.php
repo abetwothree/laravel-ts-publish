@@ -38,6 +38,15 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'an UploadedFile' => [UploadedFile::class, 'Record<string, never>'],
     'a __toString() class whose only public property is static' => [StaticOnlyStringableProbe::class, 'Record<string, never>'],
     'a __toString() class with typed public properties' => [PublicLabelStringable::class, '{ text: string; rank: number | null }'],
+    'a __toString() class with an untyped public property' => [UntypedPublicStringableProbe::class, '{ label: unknown }'],
+    'a __toString() class with typed and untyped public properties' => [PartlyTypedStringableProbe::class, '{ text: string; label: unknown }'],
+    'an abstract __toString() class with no public property' => [AbstractStringableProbe::class, 'Record<string, never>'],
+    'an abstract __toString() class with typed public properties' => [AbstractTypedStringableProbe::class, '{ text: string }'],
+    'a __toString() class that allows dynamic properties' => [DynamicStringableProbe::class, 'Record<string, unknown>'],
+    'a __toString() class whose parent allows dynamic properties' => [InheritedDynamicStringableProbe::class, 'Record<string, unknown>'],
+    'a __toString() ArrayObject, which writes its items as an object' => [ArrayObjectStringableProbe::class, 'Record<string, unknown>'],
+    'a __toString() class whose jsonSerialize() returns an array of no shape' => [ArrayJsonStringableProbe::class, 'unknown[] | Record<string, unknown>'],
+    'a __toString() class whose jsonSerialize() returns such an array or null' => [NullableArrayJsonStringableProbe::class, 'unknown[] | Record<string, unknown> | null'],
     'a plain DateTime' => [DateTime::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a plain DateTimeImmutable' => [DateTimeImmutable::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a DateTimeInterface, a Carbon string or a plain DateTime' => [DateTimeInterface::class, 'string | '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
@@ -51,17 +60,20 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'a class cast returning ?DateTime, which Model::toArray() runs through serializeDate()' => [DateTimeCast::class, 'string | null'],
 ]);
 
-it('keeps the class token of a __toString() class json_encode() can write properties for', function (string $class) {
+it('keeps the class token where only a method body or the runtime value says what json_encode() writes', function (string $class) {
     expect(LaravelTsPublish::toTsType($class)['type'])->toBe($class);
 })->with([
-    'an abstract class, whose subclass can declare public properties' => [AbstractStringableProbe::class],
-    'a class that allows dynamic properties' => [DynamicStringableProbe::class],
-    'a class whose parent allows dynamic properties' => [InheritedDynamicStringableProbe::class],
-    'an untyped public property' => [UntypedPublicStringableProbe::class],
     'a jsonSerialize() that declares mixed' => [MixedJsonStringableProbe::class],
     'an internal class that writes its own properties' => [SimpleXMLElement::class],
     'a model, whose mixed jsonSerialize() says string' => [DocStringJsonModelProbe::class],
     'a mixed jsonSerialize() whose @return is only null' => [DocNullJsonProbe::class],
+]);
+
+it('keeps the class token of a class with no __toString() whose properties or array have no type', function (string $class) {
+    expect(LaravelTsPublish::toTsType($class)['type'])->toBe($class);
+})->with([
+    'an untyped public property' => [UntypedPublicProbe::class],
+    'a jsonSerialize() that returns an array of no shape' => [ArrayJsonProbe::class],
 ]);
 
 it('publishes a CarbonInterval as the DateInterval fields json_encode() writes', function () {
@@ -353,5 +365,129 @@ class MixedJsonStringableProbe implements JsonSerializable
     public function jsonSerialize(): mixed
     {
         return ['a' => 1];
+    }
+}
+
+/**
+ * An abstract `__toString()` class with a typed public property, which every subclass instance writes.
+ */
+abstract class AbstractTypedStringableProbe
+{
+    public string $text = 'x';
+
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return $this->text;
+    }
+}
+
+/**
+ * A `__toString()` class with one typed and one untyped public property, both of which json_encode() writes.
+ */
+class PartlyTypedStringableProbe
+{
+    public string $text = 'x';
+
+    /** @var mixed */
+    public $label = 'y';
+
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return $this->text;
+    }
+}
+
+/**
+ * A `__toString()` ArrayObject, which json_encode() writes as an object of its items, whatever their keys.
+ *
+ * @extends ArrayObject<array-key, mixed>
+ */
+class ArrayObjectStringableProbe extends ArrayObject
+{
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return 'x';
+    }
+}
+
+/**
+ * A money-style `__toString()` value whose jsonSerialize() returns an array no `@return` shapes.
+ */
+class ArrayJsonStringableProbe implements JsonSerializable
+{
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return '1.00 USD';
+    }
+
+    /**
+     * The amount and currency json_encode() writes.
+     *
+     * @return array<string, mixed>
+     */
+    public function jsonSerialize(): array
+    {
+        return ['amount' => 100, 'currency' => 'USD'];
+    }
+}
+
+/**
+ * A `__toString()` value whose jsonSerialize() returns an array no `@return` shapes, or null.
+ */
+class NullableArrayJsonStringableProbe implements JsonSerializable
+{
+    /**
+     * The text a Blade echo writes.
+     */
+    public function __toString(): string
+    {
+        return '';
+    }
+
+    /**
+     * The amount json_encode() writes, or null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function jsonSerialize(): ?array
+    {
+        return null;
+    }
+}
+
+/**
+ * A class with no `__toString()` whose public property no type describes.
+ */
+class UntypedPublicProbe
+{
+    /** @var mixed */
+    public $label = 'x';
+}
+
+/**
+ * A class with no `__toString()` whose jsonSerialize() returns an array no `@return` shapes.
+ */
+class ArrayJsonProbe implements JsonSerializable
+{
+    /**
+     * The amount json_encode() writes.
+     *
+     * @return array<string, mixed>
+     */
+    public function jsonSerialize(): array
+    {
+        return ['amount' => 100];
     }
 }

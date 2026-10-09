@@ -119,9 +119,12 @@ exhausting memory.
 
 `json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
 `StringSerialization::jsonStringType()` reads one from `jsonSerialize()`, or where a `jsonSerialize()` declaring `mixed`
-or nothing says so in its `@return`. Step 5d publishes `TsTypeString::EMPTY_OBJECT` for a concrete `__toString()` class
-`serializesAsEmptyObject()` accepts, such as an exception or `HtmlString`. Only a `__toString()` class qualifies, so a
-sentinel such as `MissingValue` keeps its token. One with typed public properties publishes its step 5c shape first.
+or nothing says so in its `@return`. Step 5d publishes the object `stringableObjectType()` reads for a `__toString()`
+class: its public properties, an untyped one as `unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an
+exception or `HtmlString`, and `Record<string, unknown>` where an instance can gain keys, as an `ArrayObject` or a
+`#[AllowDynamicProperties]` class can. Only a `__toString()` class qualifies, so a sentinel such as `MissingValue` keeps
+its token. One with typed public properties publishes its step 5c shape first, and one whose `jsonSerialize()` declares
+`array` with no `@return` shape publishes `unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
 
 ### Step 5c inlines a plain class's typed properties
 

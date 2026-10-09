@@ -392,10 +392,13 @@ columns, appended accessors and relations. Laravel sends a JSON:API document ins
 
 ### A `__toString()` class with no public property publishes `Record<string, never>`; three others publish `unknown`
 
-`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties. A
-`jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a `SimpleXMLElement` and a plain
-`DateInterval` publish `unknown`, because only a method body or the runtime value says what they write. Declaring
-`jsonSerialize(): string`, or `@return string` on it, publishes `string`.
+`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties, and an
+abstract class publishes its own properties the same way. In another `__toString()` class, an untyped public property
+publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
+`Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
+`@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
+`SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says
+what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
