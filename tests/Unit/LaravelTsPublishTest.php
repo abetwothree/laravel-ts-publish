@@ -9,8 +9,12 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NullableSerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableLabelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
 use Carbon\CarbonInterface;
@@ -404,6 +408,22 @@ describe('custom cast get() docblock', function () {
 
     test('keeps a precise native get() over a @return date', function () {
         expect($this->service->toTsType(StaleDocblockDateCast::class)['type'])->toBe('number');
+    });
+});
+
+// Model::toArray() writes what a SerializesCastableAttributes caster's serialize() returns, never the get() value.
+describe('a cast whose caster serializes', function () {
+    test('publishes the type serialize() declares', function (string $cast, string $type) {
+        expect($this->service->castToTsType($cast)['type'])->toBe($type);
+    })->with([
+        'a string serialize() over a __toString() value object' => [SerializedLabelCast::class, 'string'],
+        'a ?string serialize()' => [NullableSerializedLabelCast::class, 'string | null'],
+        'a Castable whose castUsing() names a serializing caster' => [SerializedLabelCastable::class, 'string'],
+        'an untyped serialize(), which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
+    ]);
+
+    test('keeps the value type of a Castable, which a resource can send as itself', function () {
+        expect($this->service->toTsType(SerializedLabelCastable::class)['type'])->toBe(class_basename(SerializedLabelCastable::class));
     });
 });
 

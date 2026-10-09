@@ -70,7 +70,9 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
    goes to `toTsType()` under that name, so the user's entry wins.
 2. `decimal:N`, by the case-sensitive prefix `isDecimalCast()` reads, publishes `string`, as `asDecimal()` returns.
 3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
-4. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+4. A `Castable` whose `castUsing()` casters, read without calling it, all serialize publishes their `serialize()`
+   type, as step 4 below does for a caster. `toTsType()` never does, since a Castable is also a value a resource sends.
+5. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
 
 `isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
 where the call throws.
@@ -82,7 +84,8 @@ numbers.
 
 Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
 `@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
-import.
+import. A `SerializesCastableAttributes` caster publishes what its `serialize()` declares instead, since
+`Model::toArray()` writes that; one that declares nothing leaves `get()` to type it.
 
 ### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
 

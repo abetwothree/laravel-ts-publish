@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -20,7 +21,9 @@ use Carbon\CarbonInterval;
 use Carbon\CarbonPeriod;
 use Closure;
 use DateTimeInterface;
+use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\SerializesCastableAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
@@ -274,9 +277,11 @@ class LaravelTsPublish
         }
 
         // 4. Custom CastsAttributes class — infer from get()'s return type or `@return`, otherwise unknown.
-        //    Model::toArray() runs serializeDate() on a date a class cast returns, so a declared date is the date type.
+        //    Model::toArray() writes a serializing caster's serialize() value instead, and runs serializeDate() on a
+        //    date a class cast returns, so a declared date is the date type.
         if (class_exists($phpType) && is_a($phpType, CastsAttributes::class, true)) {
-            $castReturnType = $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
+            $castReturnType = $this->serializedCastTypes($phpType)
+                ?? $this->serializedDateReturnTypes(new ReflectionMethod($phpType, 'get'))
                 ?? $this->castGetReturnTypes(new ReflectionClass($phpType));
 
             if ($castReturnType['type'] !== 'unknown') {
@@ -448,7 +453,72 @@ class LaravelTsPublish
             default => null,
         };
 
-        return $type === null ? $this->toTsType($cast) : [...$this->emptyTypeScriptInfo(), 'type' => $type];
+        return $type === null
+            ? $this->castableSerializedTypes($cast) ?? $this->toTsType($cast)
+            : [...$this->emptyTypeScriptInfo(), 'type' => $type];
+    }
+
+    /**
+     * The type a `Castable` cast publishes when every caster its `castUsing()` names serializes, read without calling
+     * it: Model::toArray() writes serialize()'s value in place of the value. Null leaves the cast to toTsType(), which
+     * types the Castable as the value it also is wherever a resource sends one.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function castableSerializedTypes(string $cast): ?array
+    {
+        $castable = Str::before($cast, ':');
+
+        if (! is_a($castable, Castable::class, true)) {
+            return null;
+        }
+
+        $receivers = resolve(ReceiverClassResolver::class);
+        $infos = $this->serializedCastersTypes($receivers->returnClasses($castable, 'castUsing'))
+            ?? $this->serializedCastersTypes($receivers->bodyReturnClasses($castable, 'castUsing'));
+
+        return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
+    }
+
+    /**
+     * What serialize() declares for each caster, or null when there is none or one of them does not serialize.
+     *
+     * @param  list<class-string>|null  $casters
+     * @return non-empty-list<TypeScriptTypeInfo>|null
+     */
+    protected function serializedCastersTypes(?array $casters): ?array
+    {
+        $infos = [];
+
+        foreach ($casters ?? [] as $caster) {
+            $info = is_a($caster, CastsAttributes::class, true) ? $this->serializedCastTypes($caster) : null;
+
+            if ($info === null) {
+                return null;
+            }
+
+            $infos[] = $info;
+        }
+
+        return $infos === [] ? null : $infos;
+    }
+
+    /**
+     * The type a `SerializesCastableAttributes` caster's serialize() declares, which Model::toArray() writes for the
+     * attribute. Null for any other caster, or one whose serialize() declares nothing, which leaves get() to type it.
+     *
+     * @param  class-string  $caster
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function serializedCastTypes(string $caster): ?array
+    {
+        if (! is_a($caster, SerializesCastableAttributes::class, true)) {
+            return null;
+        }
+
+        $serialized = $this->methodOrDocblockReturnTypes(new ReflectionClass($caster), 'serialize');
+
+        return $serialized['type'] === 'unknown' ? null : $serialized;
     }
 
     /**

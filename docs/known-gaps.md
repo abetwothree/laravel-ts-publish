@@ -418,6 +418,12 @@ date object instead, yet publishes the same type. The reverse holds for a new-st
 body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
 in both places, so declare one, or type the key with `#[TsCasts]`.
 
+### A serializing class cast publishes what `serialize()` returns, in every context
+
+A class cast whose caster implements `SerializesCastableAttributes` publishes the type its `serialize()` declares,
+because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
+instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
+
 ### A closure nothing calls, and some first-class callables Laravel or Inertia call, publish the wrong type
 
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
