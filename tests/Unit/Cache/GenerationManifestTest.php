@@ -135,3 +135,38 @@ it('reads each dependency file once per run, and again after save()', function (
 
     expect($manifest->fingerprint([$file], 'sig'))->toBe(Fingerprinter::fromPaths([$file], 'sig'));
 });
+
+it('keeps every entry one generator class built through the prune on save, and no other', function () {
+    $manifest = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    $manifest->record('App\\EnumGenerator::App\\Enums\\Status', 'fp-1', 'status', [], [], 'S1');
+    $manifest->record('App\\EnumGeneratorX::App\\Enums\\Status', 'fp-2', 'status', [], [], 'S2');
+    $manifest->record('App\\ModelGenerator::App\\Models\\User', 'fp-3', 'user', [], [], 'S3');
+    $manifest->save();
+
+    $next = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    $next->keepEntriesOf('App\\EnumGenerator');
+    $next->save();
+
+    $reloaded = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+
+    expect($reloaded->snapshot('App\\EnumGenerator::App\\Enums\\Status'))->toBe('S1')
+        ->and($reloaded->snapshot('App\\EnumGeneratorX::App\\Enums\\Status'))->toBeNull()
+        ->and($reloaded->snapshot('App\\ModelGenerator::App\\Models\\User'))->toBeNull();
+});
+
+it('prunes a kept entry on the next run that neither sees nor keeps it', function () {
+    $manifest = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    $manifest->record('App\\EnumGenerator::App\\Enums\\Gone', 'fp-1', 'gone', [], [], 'S1');
+    $manifest->save();
+
+    $kept = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    $kept->keepEntriesOf('App\\EnumGenerator');
+    $kept->save();
+
+    $afterKeep = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    expect($afterKeep->snapshot('App\\EnumGenerator::App\\Enums\\Gone'))->toBe('S1');
+    $afterKeep->save();
+
+    $afterPrune = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    expect($afterPrune->snapshot('App\\EnumGenerator::App\\Enums\\Gone'))->toBeNull();
+});

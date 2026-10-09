@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\BroadcastChannelsCollector;
@@ -84,7 +85,35 @@ class Runner extends BaseRunner
         $this->generateJson();
         $this->generateWatcherJson();
 
-        $this->manifest?->save();
+        $manifest = $this->manifest;
+
+        if ($manifest !== null) {
+            $this->keepSkippedFeatureEntries($manifest);
+            $manifest->save();
+        }
+    }
+
+    /**
+     * Keep the cache entries of each feature a flag skipped while config enables it: its files stay published, so
+     * the next run that publishes it can still hit. A feature disabled in config keeps nothing, so it is pruned.
+     */
+    protected function keepSkippedFeatureEntries(GenerationManifest $manifest): void
+    {
+        $features = [
+            'enums' => [$this->shouldPublishEnums, EnumGenerator::class],
+            'models' => [$this->shouldPublishModels, ModelGenerator::class],
+            'model_metadata' => [$this->shouldPublishModelMetadata, ModelMetadataGenerator::class],
+            'resources' => [$this->shouldPublishResources, ResourceGenerator::class],
+            'routes' => [$this->shouldPublishRoutes, RouteGenerator::class],
+            'form_requests' => [$this->shouldPublishFormRequests, FormRequestGenerator::class],
+            'broadcast_events' => [$this->shouldPublishBroadcastEvents, BroadcastEventGenerator::class],
+        ];
+
+        foreach ($features as $feature => [$published, $defaultGenerator]) {
+            if (! $published && Config::boolean("ts-publish.{$feature}.enabled", false)) {
+                $manifest->keepEntriesOf(Config::string("ts-publish.{$feature}.generator_class", $defaultGenerator));
+            }
+        }
     }
 
     protected function generateEnums(): void

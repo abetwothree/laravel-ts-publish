@@ -24,6 +24,11 @@ stored one and every output file it wrote still exists.
 `GenerationManifest::fingerprint()` hashes each dependency file once per run, however many classes depend on it, and
 `save()` ends that run so the next one reads every file again.
 
+## Partial runs
+
+A feature skipped by a flag but enabled in config keeps its entries (`Runner::keepSkippedFeatureEntries()`); one
+disabled in config is pruned, which only the interactive override can reach. `--fresh --only-*` still clears everything.
+
 ## What is recorded
 
 See [AST engine § Dependency recording policy](ast-engine.md#dependency-recording-policy).

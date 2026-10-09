@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
+use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingModelGenerator;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -14,8 +16,29 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Controllers\CacheBustController;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
+
+/**
+ * The cache keys the array store holds for this run's repository.
+ *
+ * @return list<string>
+ */
+function storedCacheEntries(): array
+{
+    /** @var list<string> */
+    return Cache::store('array')->get('ts-publish:__index__', []);
+}
+
+/**
+ * The store key of one generator's entry for one class.
+ */
+function cacheEntryKey(string $generatorClass, string $fqcn): string
+{
+    return 'class:'.hash('xxh128', $generatorClass.'::'.$fqcn);
+}
 
 beforeEach(function () {
     $this->out = sys_get_temp_dir().'/ts-publish-out-'.uniqid();
@@ -355,4 +378,87 @@ test('editing a class a resource reaches only by reflection rebuilds the resourc
         array_map(unlink(...), glob($sources.'/*.php') ?: []);
         @rmdir($sources);
     }
+});
+
+test('a partial run keeps the cache entries of the features it skipped', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.generator_class', CountingModelGenerator::class);
+    Cache::store('array')->clear();
+    CountingModelGenerator::$built = 0;
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $models = CountingModelGenerator::$built;
+    expect($models)->toBeGreaterThan(0);
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(EnumGenerator::class, Priority::class))
+        ->toContain(cacheEntryKey(CountingModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(CountingModelGenerator::$built)->toBe($models);
+});
+
+test('the --only-functional run vite build makes keeps the model and resource cache entries', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    expect(Artisan::call('ts:publish', ['--only-functional' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class))
+        ->toContain(cacheEntryKey(EnumGenerator::class, Priority::class));
+});
+
+test('a feature published by an interactive override is pruned by the next run, which its config skips', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.enabled', false);
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+
+    $this->artisan('ts:publish', ['--only-models' => true])
+        ->expectsConfirmation('Config has models publishing disabled. Override and publish models anyway?', 'yes')
+        ->assertSuccessful();
+
+    expect(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->not->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+});
+
+test('a model metadata run keeps the model entries, and a model run keeps the metadata entries', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.included', [User::class]);
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    expect(Artisan::call('ts:publish', ['--only-model-metadata' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ModelMetadataGenerator::class, User::class));
+    expect(Artisan::call('ts:publish', ['--only-models' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ModelMetadataGenerator::class, User::class));
+});
+
+test('a --source run and a preview leave the cache as they found it', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $index = storedCacheEntries();
+    $meta = Cache::store('array')->get('ts-publish:__meta__');
+
+    expect(Artisan::call('ts:publish', ['--source' => User::class, '--quiet' => true]))->toBe(0)
+        ->and(Artisan::call('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())->toBe($index)
+        ->and(Cache::store('array')->get('ts-publish:__meta__'))->toBe($meta);
 });

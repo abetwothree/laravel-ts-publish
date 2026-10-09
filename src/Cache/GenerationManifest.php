@@ -152,6 +152,22 @@ class GenerationManifest
     }
 
     /**
+     * Mark every entry one generator class built as seen, so a feature this run skipped keeps its cache.
+     *
+     * Entry keys are `{generator class}::{class}`, as BaseRunner::cachedGenerate() builds them.
+     */
+    public function keepEntriesOf(string $generatorClass): void
+    {
+        $prefix = $generatorClass.'::';
+
+        foreach (array_keys($this->entries) as $key) {
+            if (str_starts_with($key, $prefix)) {
+                $this->seen[$key] = true;
+            }
+        }
+    }
+
+    /**
      * Persist all seen entries and the header, pruning any class not seen this
      * run (i.e. removed from the source tree).
      */
