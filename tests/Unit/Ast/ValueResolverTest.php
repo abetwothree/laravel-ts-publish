@@ -317,11 +317,10 @@ it('types a new default as string only when the class publishes and encodes as o
     'a ?string jsonSerialize()' => [NullableStringJson::class, 'string | null'],
 ]);
 
-// timestamps_as_date publishes a Carbon attribute as Date, but json_encode() still writes a Carbon value as a string.
-it('types a Carbon new default as string under timestamps_as_date', function (string $class) {
+it('types a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {
     config()->set('ts-publish.timestamps_as_date', true);
 
-    expect(new ValueResolver()->resolveStringSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('string');
+    expect(new ValueResolver()->resolveStringSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('Date');
 })->with([
     'Illuminate\\Support\\Carbon' => [Carbon::class],
     'Carbon\\Carbon' => [CarbonCarbon::class],

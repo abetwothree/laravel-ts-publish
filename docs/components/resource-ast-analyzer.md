@@ -331,14 +331,18 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`
   attribute, so a resource and its model agree on the flag.
 - **A `whenAggregated()` aggregate follows the driver, and takes `| null` unless the model's declaration rules it
-  out**: the model's own declaration of `{relation}_{function}_{column}` types it, else
+  out**: the model's own declaration of `{relation}_{function}_{column}` types it, else for `MIN()` and `MAX()` a
+  user's `custom_ts_mappings` entry for the related column's type, else
   [`AggregateValueType`](../../src/Ast/AggregateValueType.php) reads the related column's type and the connection's
   driver, so a decimal `SUM()` is `number` on SQLite and `string` on MySQL, else it is `number`. Any aggregate but a
   count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call
   computes takes no arm.
 - **`transform()` types from the callback**: the helper returns `$callback($value)` for a filled value, with the
   callback's first parameter bound to the value. Its default receives the value too, `null` arm included:
-  `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | number | null`.
+  `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | null`.
+- **A first-class callable types as the call it stands for in a `value()` position**: Laravel calls the `Closure`, so
+  `when($c, $this->label(...))` types as `$this->label()`. Anywhere else the key holds the `Closure`, which
+  `json_encode()` writes as `{}`, so it publishes `Record<string, never>` and `ts:publish` warns.
 
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
 conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
@@ -368,7 +372,9 @@ Two handlers type a chain of collection operations.
 rooted at `collect($arg)`, and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
 since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
-`SpellsKeyedCollections::keyedObjectArm()`.
+`SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
+[`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
+or list literal is its element types.
 
 The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
 a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:
@@ -595,7 +601,7 @@ value degrades to `unknown`.
 | Primitives and their unions (`string`, `int \| null`) | yes | none needed |
 | One enum | yes | `directEnumFqcn` |
 | Several enums (`Status\|Priority`) | yes | `embeddedEnumFqcns` |
-| One `Model` subclass | yes | `modelFqcn` |
+| One `Model` subclass | yes; a method return then declines an abstract, `Illuminate\` or unpublished model | `modelFqcn` |
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |

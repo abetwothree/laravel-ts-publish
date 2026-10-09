@@ -150,7 +150,7 @@ it('relation except() falls back to database columns only, matching Model::excep
 
     expect($result)->toBe([
         'type' => '{ id: number; title: string; content: string; user_id: number; status: StatusType; '
-            .'published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; '
+            .'published_at: string | null; metadata: unknown[] | null; rating: string | null; category: string; '
             .'options: Record<string, string> | null; deleted_at: string | null; updated_at: string | null; '
             .'category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; '
             .'word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; '

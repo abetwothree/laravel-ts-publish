@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
@@ -10,7 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -93,4 +97,17 @@ it('tries InertiaResourcePropHandler before NewResourceHandler for new PostColle
         'optional' => false,
         'resourceFqcn' => PostCollection::class,
     ]);
+});
+
+// Inertia calls every callable prop, at any depth, before it encodes it, so a first-class callable types its call.
+it('types a first-class-callable prop as the call it stands for', function () {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $props = $parse('["meta" => ["stamp" => now(...)]]');
+    assert($props instanceof Array_);
+    $meta = collect(controllerProfileAnalyzer()->returnArrayAnalysis($props, topLevel: true)->properties)->firstWhere('name', 'meta');
+
+    expect(controllerProfileAnalyzer()->resolve($parse('now(...)'))['type'])->toBe('string')
+        ->and(controllerProfileAnalyzer()->resolve($parse('auth()->user(...)'))['type'])->toBe('User | null')
+        ->and($meta['type'])->toBe('{ stamp: string }')
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

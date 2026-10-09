@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HookedPropertiesEnum;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
+use Workbench\App\Enums\FreightClass;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Season;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\PostResource;
@@ -177,6 +180,35 @@ describe('EnumResource with TsCase overrides', function () {
         expect($result)
             ->toHaveKey('name', 'Purple')
             ->toHaveKey('value', 'purple');
+    });
+});
+
+describe('EnumResource sends what the published enum holds', function () {
+    it('sends each object a method returns as json_encode() writes it', function () {
+        expect((new EnumResource(FreightClass::Express))->response()->getContent())->toBe(
+            '{"name":"Express","value":"express","backed":true,"rateCard":{"amount":250},'
+            .'"cutoff":"2026-01-01T20:00:00.000000Z","tracking":{"code":"EXPRESS","carrier":"ups"},"zones":["north"],'
+            .'"firstPickup":{"date":"2026-01-01 09:00:00.000000","timezone_type":3,"timezone":"UTC"},"manifest":{},'
+            .'"defaultRate":{"amount":50}}',
+        );
+    });
+
+    it('sends a hooked object and a lazy object as json_encode() reads them', function () {
+        expect((new EnumResource(HookedPropertiesEnum::Dock))->response()->getContent())->toBe(
+            '{"name":"Dock","value":"dock","backed":true,'
+            .'"label":{"code":"DOCK","label":"dock-DOCK"},"rate":{"amount":9}}',
+        );
+    });
+
+    it('sends null for a method that throws for the case', function () {
+        expect((new EnumResource(Season::Winter))->response()->getContent())->toBe(
+            '{"name":"Winter","value":"winter","backed":true,"avgTemp":-5,"warmGreeting":null,"broken":null}',
+        );
+    });
+
+    it('still sends a list for an array whose integer keys a resource re-indexes', function () {
+        expect((new EnumResource(Priority::High))->response()->getContent())
+            ->toContain('"filterByMinimum":[1,2,3]');
     });
 });
 

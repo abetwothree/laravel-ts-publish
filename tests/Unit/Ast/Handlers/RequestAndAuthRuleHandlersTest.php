@@ -10,15 +10,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -114,7 +113,15 @@ it('types a Request method call from the reflected signature', function (string 
     ['getLanguages', 'string[]'],
     // A class json_encode really does render as a string, unlike `interval()`'s CarbonInterval.
     ['date', 'string | null'],
+    // json_encode() ignores __toString(): an UploadedFile writes `{}`, a CarbonInterval its DateInterval fields.
+    ['allFiles', 'Record<string, Record<string, never> | Record<string, never>[]>'],
+    ['interval', LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE.' | null'],
 ]);
+
+it('types Request::image() as the `{}` an Image writes', function () {
+    expect((new KnownMethodRuleHandler)->resolve(requestCall('image'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'Record<string, never> | null', 'optional' => false]);
+})->skip(fn () => ! version_compare(app()->version(), '13.20.0', '>='), 'Request::image() requires Laravel 13.20+');
 
 it('types $request->user() through the auth provider model', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
@@ -155,10 +162,6 @@ it('declines a Request method whose reflected type is unusable', function (strin
     'bare @return array, encoded as a map' => ['only'],
     'bare @return array behind a union arm' => ['cookie'],
     'a union arm reflection could not type' => ['getContent'],
-    // json_encode ignores __toString: an UploadedFile or a CarbonInterval arrives as an object.
-    '@return class that encodes as an object' => ['interval'],
-    'a docblock class token laundered to string' => ['allFiles'],
-    'a signature class token laundered to string' => ['image'],
 ]);
 
 // `getUserResolver(): Closure` is the live case for the token gate: emitting `Closure` would compile
@@ -166,40 +169,6 @@ it('declines a Request method whose reflected type is unusable', function (strin
 it('declines a Request method returning a class token it cannot import', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('getUserResolver'), requestRuleScope(), requestRuleEngine()))
         ->toBeNull();
-});
-
-it('scans every arm of a union return type for a class that does not serialize', function () {
-    $subject = new class
-    {
-        public function upload(): UploadedFile|string
-        {
-            return 'x';
-        }
-
-        public function stamp(): Carbon|string
-        {
-            return 'x';
-        }
-
-        public function combo(): UploadedFile&Countable
-        {
-            return 'x';
-        }
-
-        // DNF: an intersection arm nested inside a union — the case a flat instanceof check drops.
-        public function dnf(): (UploadedFile&Countable)|string
-        {
-            return 'x';
-        }
-    };
-
-    $check = fn (string $method): bool => (fn () => $this->serializesAsReflected(new ReflectionMethod($subject, $method)))
-        ->call(new KnownMethodRuleHandler);
-
-    expect($check('upload'))->toBeFalse()   // UploadedFile is not JsonSerializable
-        ->and($check('stamp'))->toBeTrue()  // Carbon is
-        ->and($check('combo'))->toBeFalse() // intersection arm: UploadedFile is not JsonSerializable
-        ->and($check('dnf'))->toBeFalse();  // DNF arm: the intersection nested in the union
 });
 
 // The decline above is a fall-through, not a result: requestMethodRule() runs before knownMethodRule()

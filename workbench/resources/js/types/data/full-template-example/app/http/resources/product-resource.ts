@@ -14,9 +14,9 @@ export interface ProductResource
     slug: string;
     sku: string;
     description: string | null;
-    price: number;
-    compare_at_price?: number;
-    cost_price?: number | null;
+    price: string;
+    compare_at_price?: string;
+    cost_price?: string | null;
     quantity: number;
     is_active: boolean;
     is_featured: boolean;

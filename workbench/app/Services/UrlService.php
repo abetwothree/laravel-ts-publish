@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Workbench\App\Services;
 
+use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Priority;
@@ -109,5 +110,13 @@ class UrlService
     public static function widgetConfig(): WidgetConfig
     {
         return new WidgetConfig('default');
+    }
+
+    /**
+     * Declared as the framework's base model, which no generated file exports, so a union arm calling it is left out.
+     */
+    public static function baseModel(): Model
+    {
+        return Order::query()->firstOrFail();
     }
 }

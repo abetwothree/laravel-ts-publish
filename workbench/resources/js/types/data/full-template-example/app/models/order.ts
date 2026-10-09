@@ -15,10 +15,10 @@ export interface Order
     status: OrderStatusType;
     payment_method: PaymentMethodType | null;
     currency: CurrencyType;
-    subtotal: number;
-    tax: number;
-    discount: number;
-    total: number;
+    subtotal: string;
+    tax: string;
+    discount: string;
+    total: string;
     shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
     billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
     /** Trimmed notes — accessor on a nullable DB column */

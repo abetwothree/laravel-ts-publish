@@ -51,7 +51,7 @@ export interface ImageMutators
     uploaders_from_docblock_string: Record<string, WorkbenchUser>;
     tree_from_docblock: { label: string; child: unknown[] };
     price_from_docblock: { amount: number; currency: string };
-    label_from_docblock: string;
+    label_from_docblock: Record<string, never>;
     no_docblock_accessor: null;
     wrong_format_docblock: string | null;
     positive_int_accessor: number;

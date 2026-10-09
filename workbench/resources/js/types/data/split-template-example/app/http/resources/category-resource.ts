@@ -21,7 +21,7 @@ export interface CategoryResource
     posts_count?: number;
     children_self_collection: CategoryResource[];
     children_self_resource_collection: CategoryResource[];
-    children_self_collection_first_callable: CategoryResource[];
+    children_self_collection_first_callable: Record<string, never>;
     children_when_self_collection?: CategoryResource[];
     children_when_self_resource_collection?: CategoryResource[];
     children_when_self_collection_first_callable?: CategoryResource[];

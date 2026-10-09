@@ -42,7 +42,7 @@ guarantees.
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a public method |
 | `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent` |
 | `resolve(X::class)`, `app(X::class)` | `X` |
-| `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection` |
+| `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
 | A ternary, `?:` or `??` | The union of the non-`null` arms. See [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
 
 A type with a builtin arm names no class, such as `: string` or `@var UrlService|string`. Neither does a docblock part
@@ -162,17 +162,20 @@ Earlier claimants of these node classes decline a call they cannot type, as
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks three convention rules on each class before
+`ReceiverMethodReturnResolver` checks four convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all three loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
-`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, and `Model::except()` to the list `unknown[]`. Each
-rule answers only on the receiver it names:
+Laravel declares all four loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
+`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()` to the list `unknown[]`, and
+`resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
   and an abstract model get no rule, so reflection declines the inherited `mixed`. An override gets no rule either,
   because PHP holds every subclass to its declared return, which reflection types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list.
+- **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
+  the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
+  `resolveChildRouteBinding()` gets no rule, as it returns a related model.
 - **`only()`, `except()`**: a class that runs `Support\Collection`'s own filter publishes `Record<string, unknown>` for
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
@@ -185,9 +188,9 @@ return reflection types, such as `: string`, keeps that return wherever the call
 asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model agrees.
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
-even when the subject is backed by the integer-keyed `Post`. The filter rule names a model token, so it applies the
-published-model check of step 7 itself. When no model instance can be built, the key rules do not answer, so `getKey()`
-declines on `mixed` and `modelKeys()` keeps its reflected `(string | number)[]`.
+even when the subject is backed by the integer-keyed `Post`. The filter and route binding rules name a model token, so
+they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules do not
+answer, so `getKey()` declines on `mixed` and `modelKeys()` keeps its reflected `(string | number)[]`.
 
 ### The order for one class
 
@@ -198,18 +201,18 @@ step can decline:
    [visibility](#visibility) rule.
 2. `Model::toArray()` declines. Its output depends on which relations are loaded, and no declaration describes that
    runtime state. See [known gaps][gap-to-array].
-3. A declared return naming a class that `toTsType()` publishes as `string` but `json_encode()` does not declines, such
-   as a plain `DateTime` or `CarbonInterval`. `StringSerialization::methodReturnsFalseString()` decides, and
-   [Support helpers § `StringSerialization`][string-serialization] explains why.
-4. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,
+3. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,
    the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so `Model::fresh()` on a
    `User` is `User | null`.
-5. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
+4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
    signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel).
-6. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
+5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object.
-7. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
-   `Illuminate\`, or an abstract one, declines, so `User::resolveRouteBinding()`'s `Model | null` does too.
+6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
+   `Illuminate\`, or an abstract one, declines, so `User::resolveChildRouteBinding()`'s `Model | null` does too.
+   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the four
+   direct reflections in three classes (`RelationCollectionChainHandler`, `MethodChainHandler`,
+   `ResolvesRelatedModelTypes`) apply it themselves, so here it still guards step 3.
 
 ### The body fallback carries no FQCN channel
 
@@ -276,12 +279,8 @@ Each class types the property one of two ways:
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
   its import.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
-  three steps as subject mode. It must hold no false-string class and name only published models, for the reasons under
+  three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
-
-`ReceiverClassResolver::memberProperty()` is public so the false-string check can run one receiver class at a time. Take
-an `A|B` receiver whose `A::$p` is a raw `DateTime` and whose `B::$p` is a `string`. `resolve()` on the whole expression
-answers `null`, which reads as no false string, so `A`'s arm would publish as `string`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
@@ -319,4 +318,3 @@ These pages cover the neighbors of receiver resolution:
 [reader-no-import]: accessor-body-analyzer.md#a-reader-that-carries-no-import
 [resource-filter]: resource-ast-analyzer.md#this-resource-spells-the-same-filter
 [resource-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
-[string-serialization]: support-helpers.md#stringserialization

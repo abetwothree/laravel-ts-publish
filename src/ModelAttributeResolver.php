@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -145,7 +146,7 @@ class ModelAttributeResolver
         }
 
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::toTsType($cast);
+            $tsInfo = LaravelTsPublish::castToTsType($cast);
 
             $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
@@ -156,7 +157,7 @@ class ModelAttributeResolver
             return $empty;
         }
 
-        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
+        $tsInfo = $this->columnTsType($modelFqcn, $attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
             return $empty; // @codeCoverageIgnore
@@ -165,6 +166,26 @@ class ModelAttributeResolver
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
         return $this->appendNullable($tsInfo, $attr['nullable']);
+    }
+
+    /**
+     * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
+     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number. A user's `custom_ts_mappings` entry for the
+     * column type wins over the driver, as it does over the built-in map.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    protected function columnTsType(string $modelFqcn, string $columnType): array
+    {
+        $tsInfo = LaravelTsPublish::toTsType($columnType);
+        $driver = $tsInfo['type'] === 'number' && ! (new TypeScriptMap)->isCustomMapped($columnType)
+            ? $this->connectionDriver($modelFqcn)
+            : null;
+
+        return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
+            ? [...$tsInfo, 'type' => 'string']
+            : $tsInfo;
     }
 
     /**
@@ -428,13 +449,13 @@ class ModelAttributeResolver
     }
 
     /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     * Determine whether a resolved model cast holds a Carbon date, including immutable_* variants and the `:format`
+     * suffix on custom_datetime casts. A `timestamp` cast holds the Unix integer, so it is no date cast.
      */
     public function isDateFamilyCast(string $cast): bool
     {
         return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
+            'date', 'datetime', 'custom_datetime',
             'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
         ], true);
     }
@@ -460,16 +481,11 @@ class ModelAttributeResolver
             return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
         }
 
-        $head = Str::before($cast, ':');
-
-        // Laravel's timestamp cast returns the Unix integer, not a date object.
         if ($this->isDateFamilyCast($cast)) {
-            return match (true) {
-                $head === 'timestamp' => null,
-                str_starts_with($cast, 'immutable_') => CarbonImmutable::class,
-                default => Carbon::class,
-            };
+            return str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
         }
+
+        $head = Str::before($cast, ':');
 
         if (is_a($head, Castable::class, true)) {
             return $this->castableValueClass($head);

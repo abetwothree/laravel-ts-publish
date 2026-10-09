@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Dtos;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\JsEmitter;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
+ * @phpstan-import-type JsonData from JsEmitter
+ *
  * @phpstan-type CaseData = array{name: string, value: string|int, description: string}
  * @phpstan-type CasesList = list<CaseData>
- * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, mixed>}>
- * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: mixed}>
+ * @phpstan-type MethodsList = array<string, array{name: string, description: string, returns: array<string, JsonData>}>
+ * @phpstan-type StaticMethodsList = array<string, array{name: string, description: string, return: JsonData}>
  * @phpstan-type CaseKindsList = list<string>
  * @phpstan-type CaseTypesList = list<string|int>
  * @phpstan-type EnumData = array{

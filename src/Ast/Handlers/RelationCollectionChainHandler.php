@@ -23,7 +23,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -338,7 +337,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
             $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-            if ($accepted !== null) {
+            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
                 return $accepted;
             }
         } elseif ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
@@ -348,7 +347,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
             $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-            if ($accepted !== null) {
+            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
                 return $accepted;
             }
         }
@@ -368,17 +367,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                     ? CarbonImmutable::class
                     : Carbon::class;
 
-                if (! StringSerialization::methodReturnsFalseString($carbonClass, $methodName)) {
-                    $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(
-                        new ReflectionClass($carbonClass),
-                        $methodName,
-                    );
+                $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($carbonClass), $methodName);
+                $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-                    $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
-
-                    if ($accepted !== null) {
-                        return $accepted;
-                    }
+                if ($accepted !== null) {
+                    return $accepted;
                 }
             }
         }

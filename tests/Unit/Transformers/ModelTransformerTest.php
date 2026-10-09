@@ -1477,11 +1477,11 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
             ->and($data->mutators['price_from_docblock']['type'])->toBe('{ amount: number; currency: string }');
     });
 
-    test('labelFromDocblock resolves class with __toString to string', function () {
+    test('labelFromDocblock resolves a __toString class to the empty object json_encode() writes', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('label_from_docblock')
-            ->and($data->mutators['label_from_docblock']['type'])->toBe('string');
+            ->and($data->mutators['label_from_docblock']['type'])->toBe('Record<string, never>');
     });
 
     test('accessor with no docblock types from its getter body, which returns only null', function () {

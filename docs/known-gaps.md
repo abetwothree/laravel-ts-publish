@@ -330,13 +330,14 @@ sent. Until the package types `Conditionable::when()`, write the key as a ternar
 
 [`AggregateValueType`](../src/Ast/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
 model's connection on the machine that publishes, as column types follow that machine's schema. A `SUM()` of a decimal
-column publishes `number | null` from SQLite and `string | null` from MySQL, so publishing against SQLite for an app
-that runs MySQL keeps a `number` the response does not hold. Publish against the driver production runs; the
-generation cache rebuilds when `database.default` or a connection's driver changes, even through its `url`. Or give
-the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the parent model
-whose published type is the value Laravel returns, such as `integer` or `float` (a `decimal:2` cast publishes `number`
-for a string), or declare it with an accessor or `@property`, and that type publishes on every driver. A query-time
-`withCasts()` cannot be seen by a publish.
+column publishes `number | null` from SQLite and `string | null` from MySQL, and a DECIMAL column with no cast follows
+the same rule, so publishing against SQLite for an app that runs MySQL keeps a `number` the response does not hold.
+Publish against the driver production runs, or cast a plain DECIMAL column `decimal:N`, which publishes `string` on
+every driver; the generation cache rebuilds when `database.default` or a connection's driver changes, even through its
+`url`. Or give the alias `{relation}_{function}_{column}`, such as `order_items_sum_total_price`, a built-in cast on the
+parent model whose published type is the value Laravel returns, such as `integer`, `float` or `decimal:2`, or declare it
+with an accessor or `@property`, and that type publishes on every driver. A query-time `withCasts()` cannot be seen by a
+publish.
 
 ### On SQL Server a numeric aggregate and every count publish `number`, though pdo_sqlsrv returns numbers as strings by default
 
@@ -346,9 +347,9 @@ number, and `getDriverName()` is `sqlsrv` for both. So a numeric `whenAggregated
 `MAX()` publishes `string | null`. `PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE` makes pdo_sqlsrv return an integer or float
 as a number, but never a `decimal`, `numeric` or `money` value, so a decimal `SUM()` is a string either way. Give the
 alias `{relation}_{function}_{column}` a built-in cast on the parent model whose published type is the value Laravel
-returns, such as `integer` or `float` (a `decimal:2` cast publishes `number` for a string), or declare it with an
-accessor or `@property`, and that type publishes on every driver; a count publishes `number` whatever its declaration,
-so an `integer` cast on its alias makes the response hold one.
+returns, such as `integer`, `float` or `decimal:2`, or declare it with an accessor or `@property`, and that type
+publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
+the response hold one.
 
 ### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
 
@@ -388,6 +389,53 @@ columns, appended accessors and relations. Laravel sends a JSON:API document ins
 `data.attributes`, while the package publishes them as the whole response. No attribute replaces the whole type, since
 `#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
 `#[TsExclude]` or `resources.excluded`, and type the document by hand.
+
+### A `__toString()` class with no public property publishes `Record<string, never>`; three others publish `unknown`
+
+`json_encode()` writes such a class as `{}`, though an instance of a subclass can carry public properties, and an
+abstract class publishes its own properties the same way. In another `__toString()` class, an untyped public property
+publishes `unknown`, a class that allows dynamic properties or extends `ArrayObject` publishes
+`Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
+`@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
+`SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says
+what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`.
+
+### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
+
+A Carbon date, and a date a class cast or new-style accessor returns, publishes the `Carbon\Carbon` date-map entry:
+`string`, or `Date` under `timestamps_as_date`. `Carbon::serializeUsing()`, a factory's `toJsonFormat` and a model's
+`serializeDate()` override can write something else, such as a number, but they are application code the package
+does not run. Type such a property with `#[TsCasts]`.
+
+### A `DateTime` entry in `custom_ts_mappings` retypes the `datetime` column, never the class
+
+The map's keys are lowercased, so `DateTime` and the `datetime` column type share one key. The entry applies to the
+column type, and the `DateTime` class keeps the date object `json_encode()` writes. A `DateTime` that a class cast or
+new-style accessor returns takes the entry, since `Model::toArray()` writes it as a date column. An entry for
+`DateTimeImmutable` or a `DateTime` subclass does retype that class.
+
+### A plain date from a new-style accessor or class cast publishes what `Model::toArray()` writes, in every context
+
+A new-style accessor or class cast that declares a plain `DateTime` or `DateTimeImmutable` publishes the date type,
+because `Model::toArray()` runs `serializeDate()` on it. An API resource that reads the attribute directly sends PHP's
+date object instead, yet publishes the same type. The reverse holds for a new-style getter with no declared type whose
+body returns a plain date: it publishes the object, though `toArray()` writes a string. A Carbon date writes a string
+in both places, so declare one, or type the key with `#[TsCasts]`.
+
+### A serializing class cast publishes what `serialize()` returns, in every context
+
+A class cast whose caster implements `SerializesCastableAttributes` publishes the type its `serialize()` declares,
+because `Model::toArray()` writes that value. An API resource that reads the attribute directly sends the `get()` value
+instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
+
+### A closure nothing calls, and some first-class callables Laravel or Inertia call, publish the wrong type
+
+`'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
+as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
+helper method the action calls, are read as that method's own values, so a first-class callable there publishes
+`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
+to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
+read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
 
 ## Deliberate non-goals
 

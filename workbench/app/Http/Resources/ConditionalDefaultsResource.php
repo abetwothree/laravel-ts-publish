@@ -25,7 +25,7 @@ class ConditionalDefaultsResource extends JsonResource
         return [
             'not_null_no_default' => $this->whenNotNull($this->full_address),
             'not_null_with_default' => $this->whenNotNull($this->full_address, 0),
-            'not_null_same_type_default' => $this->whenNotNull($this->latitude, 0),
+            'not_null_same_type_default' => $this->whenNotNull($this->latitude, '0'),
             'null_with_default' => $this->whenNull($this->full_address, 'absent'),
 
             // hasExplicitDefaultArg() contract: an explicit `null` at the default position still counts —

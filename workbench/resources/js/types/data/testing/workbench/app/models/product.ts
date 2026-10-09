@@ -9,9 +9,9 @@ export interface Product
     slug: string;
     sku: string;
     description: string | null;
-    price: number;
-    compare_at_price: number | null;
-    cost_price: number | null;
+    price: string;
+    compare_at_price: string | null;
+    cost_price: string | null;
     quantity: number;
     weight: number | null;
     dimensions: { length: number; width: number; height: number; unit: "cm" | "in" };

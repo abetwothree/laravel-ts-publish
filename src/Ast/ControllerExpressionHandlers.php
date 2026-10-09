@@ -22,6 +22,7 @@ final class ControllerExpressionHandlers
      *
      * Both additions sit immediately before StaticCallHandler, whose final arm claims every
      * StaticCall on a named class and never declines one — after it they would be unreachable.
+     * Inertia calls every callable prop before it encodes it, so the profile invokes first-class callables.
      *
      * @return list<ExpressionHandler>
      */
@@ -29,7 +30,7 @@ final class ControllerExpressionHandlers
     {
         $handlers = [];
 
-        foreach (ResourceExpressionHandlers::withoutResourceHandlers() as $handler) {
+        foreach (ResourceExpressionHandlers::invokingCallables(ResourceExpressionHandlers::withoutResourceHandlers()) as $handler) {
             if ($handler instanceof StaticCallHandler) {
                 $handlers[] = new ModelFinderHandler;
                 $handlers[] = new InertiaResourcePropHandler;

@@ -44,6 +44,8 @@ final class ReceiverMethodResource extends JsonResource
             'resource_key' => $this->resource->getKey(),
             'bare_comments_count' => $this->commentsCount(),
             'resource_comments_count' => $this->resource->commentsCount(),
+            'author_bound' => $this->author?->resolveRouteBinding($this->user_id),
+            'resource_bound' => $this->resource->resolveRouteBinding($this->getKey()),
             'author_resource' => $this->when(true, fn () => new UserResource($this->author)->resolve($request)),
         ];
     }

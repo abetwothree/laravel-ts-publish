@@ -51,7 +51,8 @@ trait ResolvesRelatedModelTypes
      * Resolve a method call (instance or static) on a related model — an explicitly bound model, or
      * by default the ambient whenLoaded closure's related model.
      *
-     * Accepted only when its tokens can be imported; see ReflectedTypeAcceptor::accept().
+     * Accepted only when its tokens can be imported and every model it names is published; see
+     * ReflectedTypeAcceptor::accept() and ValueResult::namesOnlyPublishedModels().
      *
      * @param  class-string<Model>|null  $modelFqcn
      * @return ValueExpressionResult
@@ -65,7 +66,10 @@ trait ResolvesRelatedModelTypes
         }
 
         $tsInfo = resolve(ModelAttributeResolver::class)->resolveMethodReturnType($modelFqcn, $methodName);
+        $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
 
-        return resolve(ReflectedTypeAcceptor::class)->accept($tsInfo) ?? ValueResult::unknown();
+        return $accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)
+            ? $accepted
+            : ValueResult::unknown();
     }
 }

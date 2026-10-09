@@ -358,8 +358,8 @@ class ModelTransformer extends CoreTransformer
             // Fall back to the raw cast so enum and class metadata still propagates.
             if ($typings['type'] === 'unknown') {
                 $typings = match ($cast) {
-                    'attribute', 'accessor' => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
-                    default => LaravelTsPublish::toTsType($cast ?? $attribute['type'] ?? ''),
+                    'attribute', 'accessor', null => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
+                    default => LaravelTsPublish::castToTsType($cast),
                 };
             }
 

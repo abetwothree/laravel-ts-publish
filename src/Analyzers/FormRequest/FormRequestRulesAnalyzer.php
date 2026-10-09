@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use BackedEnum;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,6 +36,7 @@ use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationRuleParser;
 use ReflectionClass;
 use ReflectionException;
+use Stringable;
 use Throwable;
 use UnitEnum;
 
@@ -450,7 +452,7 @@ class FormRequestRulesAnalyzer
         }
 
         return [
-            'tsType' => $parts === [] ? 'Record<string, never>' : '{ '.implode('; ', $parts).' }',
+            'tsType' => $parts === [] ? TsTypeString::EMPTY_OBJECT : '{ '.implode('; ', $parts).' }',
             'isRequired' => $own !== null && $own['isRequired'],
             'isNullable' => $own !== null && $own['isNullable'],
             'isProhibited' => $own !== null && $own['isProhibited'],
@@ -679,8 +681,9 @@ class FormRequestRulesAnalyzer
             return 'string';
         }
 
+        // In::__toString() compares a Stringable value by its string, never by its properties.
         $literals = array_map(
-            fn (mixed $v): string => JsEmitter::toJsLiteral($v),
+            fn (mixed $v): string => JsEmitter::toJsLiteral($v instanceof Stringable ? (string) $v : $v),
             array_filter($values, fn (mixed $v): bool => $v !== null && $v !== ''),
         );
 

@@ -52,7 +52,7 @@ final class ReceiverMethodProbe extends JsonResource
         return [CarbonInterval::day()];
     }
 
-    /** A date union toTsType() publishes as `string`, which json_encode() writes as a date object. */
+    /** A date union json_encode() writes as a Carbon date's string or a plain date's object. */
     public function plainDate(): DateTimeInterface|DateTime
     {
         return new DateTime;

@@ -33,6 +33,14 @@ export interface ReleaseMutators
     column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
     /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
     dynamic_totals: unknown[];
+    /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+    length_callable: Record<string, never>;
+    /** The same for a first-class callable on the model's own method. */
+    key_callable: Record<string, never>;
+    /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+    checked_at: string;
+    /** A getter that returns a collection returns what its items encode as. */
+    channel_ids: number[];
     trait_version: { major: number; label: string };
 }
 

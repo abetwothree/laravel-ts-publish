@@ -11,7 +11,7 @@ export interface OrderOnlyResource
 {
     id: number;
     status: OrderStatusType;
-    total: number;
+    total: string;
     notes: string | null;
     item_count: number;
     search_index: unknown;

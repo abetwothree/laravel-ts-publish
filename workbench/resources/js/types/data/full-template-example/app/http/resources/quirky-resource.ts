@@ -11,13 +11,13 @@ export interface QuirkyResource
     flag?: unknown;
     extra: string;
     dynamic?: string;
-    normal_merge_key?: number;
+    normal_merge_key?: string;
     formatted: unknown;
     plain_user: UserResource;
     empty_user: UserResource;
     empty_enum: unknown;
-    fcc_enum: unknown;
-    fcc_enum_collection: unknown;
+    fcc_enum: Record<string, never>;
+    fcc_enum_collection: Record<string, never>;
     not_enum: unknown;
     uncast_enum: unknown;
     empty_new_enum: unknown;

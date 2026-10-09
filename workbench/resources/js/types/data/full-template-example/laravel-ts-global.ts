@@ -36,9 +36,9 @@ declare global {
             user_id: number;
             number: string;
             status: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at: string | null;
             paid_at: string | null;
@@ -62,7 +62,7 @@ declare global {
             status: accounting.enums.PaymentStatusType;
             method: app.enums.PaymentMethodType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             reference: string | null;
             paid_at: string | null;
             created_at: string | null;
@@ -566,6 +566,19 @@ declare global {
             commentable_count: number;
             commentable_exists: boolean;
         }
+        /**
+         * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer and a `decimal:2`
+         * cast a string on every driver, while the `created_at` and `updated_at` columns keep the date type.
+         */
+        export interface Consignment {
+            // Columns
+            id: number;
+            scanned_at: number | null;
+            declared_value: string;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+            created_at: string | null;
+            updated_at: string | null;
+        }
         /** One model a RosterSlot's assignee can be. */
         export interface Crew {
             // Columns
@@ -779,7 +792,7 @@ declare global {
             uploaders_from_docblock_string: Record<string, User>;
             tree_from_docblock: { label: string; child: unknown[] };
             price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
+            label_from_docblock: Record<string, never>;
             no_docblock_accessor: null;
             wrong_format_docblock: string | null;
             positive_int_accessor: number;
@@ -960,10 +973,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
@@ -1013,8 +1026,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             options: Record<string, string | number | boolean> | null;
             created_at: string | null;
             updated_at: string | null;
@@ -1073,7 +1086,7 @@ declare global {
             status: app.enums.StatusType;
             published_at: string | null;
             metadata: Record<string, {title: string, content: string}>;
-            rating: number | null;
+            rating: string | null;
             category: string;
             options: Record<string, string> | null;
             deleted_at: string | null;
@@ -1148,9 +1161,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price: number | null;
-            cost_price: number | null;
+            price: string;
+            compare_at_price: string | null;
+            cost_price: string | null;
             quantity: number;
             weight: number | null;
             dimensions: { length: number; width: number; height: number; unit: "cm" | "in" };
@@ -1372,6 +1385,14 @@ declare global {
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
             dynamic_totals: unknown[];
+            /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+            length_callable: Record<string, never>;
+            /** The same for a first-class callable on the model's own method. */
+            key_callable: Record<string, never>;
+            /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+            checked_at: string;
+            /** A getter that returns a collection returns what its items encode as. */
+            channel_ids: number[];
             trait_version: { major: number; label: string };
             /** Old-style accessor with a vague signature and a literal body. */
             summary: { major: number };
@@ -1435,6 +1456,19 @@ declare global {
             crm_agent: crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
+        }
+        /** A work shift, whose resource publishes each value as json_encode() writes it. */
+        export interface Shift {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** When the shift clocked in. Model::toArray() hands an old-style getter's DateTime to json_encode() as it is. */
+            clocked_at: { date: string; timezone_type: number; timezone: string };
+            /** The day the shift starts. Model::toArray() runs serializeDate() on a new-style getter's date. */
+            starts_on: string;
         }
         export interface SlugPost {
             // Columns
@@ -2011,7 +2045,7 @@ declare global {
             title: string;
             status: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
-            value: number;
+            value: string;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -2177,6 +2211,15 @@ declare global {
         }
         export type ExcludableEnumType = 'alpha' | 'beta';
         export type ExcludableEnumKind = 'Alpha' | 'Beta';
+
+        /** Freight classes whose methods return objects, each published as json_encode() writes it. */
+        export interface FreightClass
+        {
+            Standard: 'standard',
+            Express: 'express',
+        }
+        export type FreightClassType = 'standard' | 'express';
+        export type FreightClassKind = 'Standard' | 'Express';
 
         /** Shares its name with the Grade model, whose own file imports this enum's const. */
         export interface Grade
@@ -2405,9 +2448,9 @@ declare global {
             id: number;
             number: string;
             status?: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at?: string;
             paid_at?: string | null;
@@ -2426,7 +2469,7 @@ declare global {
             id: number;
             status: accounting.enums.PaymentStatusType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             method?: app.enums.PaymentMethodType;
             reference?: string;
             paid_at?: string;
@@ -2557,7 +2600,7 @@ declare global {
         export interface BodylessOrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
@@ -2713,6 +2756,22 @@ declare global {
             owned_by: app.models.User;
         }
         /**
+         * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
+         * when() or whenLoaded() value that holds one is called first, so the key sends that call's return.
+         */
+        export interface CallableValueResource {
+            length: Record<string, never>;
+            upper: Record<string, never>;
+            key: Record<string, never>;
+            label: Record<string, never>;
+            supervisor_resource: Record<string, never>;
+            nested: { length: Record<string, never> };
+            when_key?: number;
+            when_label?: string;
+            label_or_zero: number | string;
+            supervisor?: UserResource | null;
+        }
+        /**
          * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
          * reads after its assignment and before the variable is written again.
          */
@@ -2776,7 +2835,7 @@ declare global {
             posts_count?: number;
             children_self_collection: CategoryResource[];
             children_self_resource_collection: CategoryResource[];
-            children_self_collection_first_callable: CategoryResource[];
+            children_self_collection_first_callable: Record<string, never>;
             children_when_self_collection?: CategoryResource[];
             children_when_self_resource_collection?: CategoryResource[];
             children_when_self_collection_first_callable?: CategoryResource[];
@@ -3012,7 +3071,7 @@ declare global {
         export interface ConditionalDefaultsResource {
             not_null_no_default?: string;
             not_null_with_default: string | number;
-            not_null_same_type_default: number;
+            not_null_same_type_default: string;
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
@@ -3113,7 +3172,7 @@ declare global {
         export interface ConditionalParamMappedResource {
             id: number;
             items_mapped?: { id: number; name: string; quantity: number }[];
-            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            items_priced?: { id: number; sku: string; unit_price: string; total_price: string }[];
             item_names?: string[];
         }
         /**
@@ -3133,6 +3192,13 @@ declare global {
             notes_length_or_default: string | number;
             notes_length_variadic_default: string | number;
         }
+        /** Reads each cast through the model, so the resource publishes what the cast returns, as the model does. */
+        export interface ConsignmentResource {
+            id: number;
+            scanned_at: number | null;
+            declared_value: string;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+        }
         /**
          * Exercises collectDirectReturns elseif, else, and loop branches
          * in the main toArray() body (not inside closures).
@@ -3142,7 +3208,7 @@ declare global {
             archived?: boolean;
             inline_enum_branch?: { method: app.enums.PaymentMethodType | null };
             draft?: boolean;
-            total?: number;
+            total?: string;
             status?: app.enums.OrderStatusType;
         }
         /**
@@ -3364,7 +3430,7 @@ declare global {
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
         export interface FqcnMixinResource {
             id: number;
-            total: number;
+            total: string;
         }
         /**
          * Exercises the bug where resolveClosureReturnExpression() picks the first
@@ -3377,7 +3443,7 @@ declare global {
          */
         export interface GuardClauseClosureResource {
             id: number;
-            total: number;
+            total: string;
             buyer?: { name: string; email: string } | null;
         }
         /**
@@ -3450,15 +3516,12 @@ declare global {
          * receiver-method inference on a datetime-cast attribute, and the
          * can()/count() known-method rules (Task 11).
          *
-         * `diff_result` and `period_result` are a Task 12 regression: Carbon methods that
-         * return a Stringable-but-not-string value object (CarbonInterval, CarbonPeriod) must
-         * degrade to unknown rather than falsely resolve to `string` via toTsType()'s
-         * __toString fallback.
+         * `diff_result` and `period_result` are Carbon methods that return a Stringable value
+         * object json_encode() never writes as its __toString(): a CarbonInterval writes
+         * DateInterval's fields, and a CarbonPeriod the list of its dates.
          *
-         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: unlike CarbonInterval/
-         * CarbonPeriod, Carbon and CarbonImmutable themselves ARE correctly `string` via
-         * __toString() (their canonical ISO-ish datetime representation), so the Stringable
-         * guard must not over-degrade these two.
+         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: Carbon and
+         * CarbonImmutable themselves are `string`, the ISO string their jsonSerialize() writes.
          *
          * `user_key`: `getKey()`'s type depends on which model it's called on, unlike
          * can()/cannot()/canAny() which are bool regardless of receiver. A resource's
@@ -3470,8 +3533,8 @@ declare global {
             ship_date: string;
             can_edit: boolean;
             item_total: number;
-            diff_result: unknown;
-            period_result: unknown;
+            diff_result: { y: number; m: number; d: number; h: number; i: number; s: number; f: number; invert: number; days: number | false; from_string: false };
+            period_result: string[];
             to_mutable: string;
             to_immutable: string;
             user_key: unknown;
@@ -3650,7 +3713,7 @@ declare global {
         export interface LoopReturnResource {
             id: number;
             first_item_name?: string;
-            total?: number;
+            total?: string;
         }
         /**
          * Regression pin: `$this->map->only([...])` must route through the relation-filter guard, not
@@ -3745,7 +3808,7 @@ declare global {
             note_text: string | null;
             owner_id?: number;
             subtotal_label?: string;
-            k: number;
+            k: string;
             null_total: null;
         }
         /**
@@ -3756,7 +3819,7 @@ declare global {
         export interface MergeMultiBranchClosureResource {
             id: number;
             archived_at?: string | null;
-            total?: number;
+            total?: string;
             currency?: app.enums.CurrencyType;
         }
         export interface MiscCollection {
@@ -3916,7 +3979,7 @@ declare global {
             shipped_at?: string | null;
             tracking?: string | null;
             currency_label: app.enums.CurrencyType;
-            total_display: number;
+            total_display: string;
         }
         export interface OrderCollection {
             data: OrderResource[];
@@ -3953,10 +4016,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4002,8 +4065,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             product?: ProductResource;
             order?: app.models.Order;
             options?: Record<string, string | number | boolean> | null;
@@ -4014,7 +4077,7 @@ declare global {
         export interface OrderOnlyResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             item_count: number;
             search_index: unknown;
@@ -4024,7 +4087,7 @@ declare global {
         export interface OrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
@@ -4044,7 +4107,7 @@ declare global {
             formatted_total: string;
             user: app.models.User;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             search_index: unknown;
         }
@@ -4223,6 +4286,11 @@ declare global {
             members_count?: number;
             settings?: Record<string, unknown> | null;
         }
+        /** Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer. */
+        export interface ProductAggregateCastResource {
+            first_sold_ts?: number | null;
+            unit_price_total?: string | null;
+        }
         /**
          * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,
          * whenCounted, two mergeWhen blocks, Resource::collection x2.
@@ -4233,9 +4301,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price?: number;
-            cost_price?: number | null;
+            price: string;
+            compare_at_price?: string;
+            cost_price?: string | null;
             quantity: number;
             is_active: boolean;
             is_featured: boolean;
@@ -4358,13 +4426,13 @@ declare global {
             flag?: unknown;
             extra: string;
             dynamic?: string;
-            normal_merge_key?: number;
+            normal_merge_key?: string;
             formatted: unknown;
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
-            fcc_enum: unknown;
-            fcc_enum_collection: unknown;
+            fcc_enum: Record<string, never>;
+            fcc_enum_collection: Record<string, never>;
             not_enum: unknown;
             uncast_enum: unknown;
             empty_new_enum: unknown;
@@ -4398,6 +4466,8 @@ declare global {
             resource_key: number;
             bare_comments_count: number;
             resource_comments_count: number;
+            author_bound: app.models.User | null;
+            resource_bound: app.models.Post | null;
             author_resource?: UserResource;
         }
         /**
@@ -4645,6 +4715,15 @@ declare global {
             outer: string;
             shadowed?: unknown;
         }
+        /** Publishes each value as json_encode() writes it, not as `__toString()` reads it. */
+        export interface ShiftResource {
+            last_fault: Record<string, never>;
+            fault: Record<string, never>;
+            started_at: { date: string; timezone_type: number; timezone: string };
+            handover_note: string | null;
+            next_bell: string;
+            checked_at: string | null;
+        }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
             id: number;
@@ -4735,10 +4814,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4763,10 +4842,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4802,6 +4881,7 @@ declare global {
             money_value: unknown;
             page_meta_ternary: PageMetaType | null;
             widget_config_coalesce: WidgetConfigType;
+            order_or_base: app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
         }
@@ -5143,6 +5223,23 @@ declare global {
             posts_count?: number;
             comments_count?: number;
         }
+        /**
+         * Laravel's value helpers, typed as json_encode() writes what they return: a Carbon as its date string, a Stringable
+         * and a URL as strings, and a collection as the list or object its items encode as. `translated` stays unknown,
+         * since __() can return an array.
+         */
+        export interface ValueHelperResource {
+            generated_at: string;
+            day: string;
+            title: string;
+            link: string;
+            empty_list: never[];
+            list: number[];
+            record: { a: number };
+            names: string[];
+            count_or_since: number | string;
+            translated: unknown;
+        }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {
             id: number;
@@ -5340,7 +5437,7 @@ declare global {
         export interface DealResource {
             id: number;
             title: string;
-            value: number;
+            value: string;
             status: app.enums.StatusType;
             status_enum: app.enums.StatusType;
             crm_status: crm.enums.StatusType;

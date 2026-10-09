@@ -56,6 +56,13 @@ final class ReceiverClassResolver
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
 
+    /** The class each value helper returns; KnownFunctionCallHandler types the helper by it too. */
+    public const array HELPER_CLASSES = [
+        'now' => Carbon::class,
+        'today' => Carbon::class,
+        'collect' => Collection::class,
+    ];
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -201,30 +208,6 @@ final class ReceiverClassResolver
         $subject = $scope->subjectReflection;
 
         return $subject->isSubclassOf(Model::class) ? ReceiverType::of($subject->getName()) : null;
-    }
-
-    /**
-     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
-     *
-     * Public so ReceiverPropertyFetchHandler can decide its false-string rule one receiver class at a time. Asking
-     * `resolve()` about the whole expression instead answers `null` for a union as soon as one arm holds a builtin.
-     */
-    public function memberProperty(string $class, string $name): ?ReceiverType
-    {
-        if (is_a($class, Model::class, true)) {
-            return $this->modelMember($class, $name);
-        }
-
-        if (! class_exists($class) || ! property_exists($class, $name)) {
-            return null;
-        }
-
-        $property = new ReflectionProperty($class, $name);
-
-        // A non-public property read from outside goes to __get(), not to the declaration.
-        return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $class))
-            : null;
     }
 
     /**
@@ -470,10 +453,11 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return match ($call->name->toLowerString()) {
-            'now', 'today' => ReceiverType::of(Carbon::class),
-            'collect' => ReceiverType::of(Collection::class),
-            'resolve', 'app' => $this->containerClass($call),
+        $name = $call->name->toLowerString();
+
+        return match (true) {
+            isset(self::HELPER_CLASSES[$name]) => ReceiverType::of(self::HELPER_CLASSES[$name]),
+            $name === 'resolve', $name === 'app' => $this->containerClass($call),
             default => null,
         };
     }
@@ -603,6 +587,27 @@ final class ReceiverClassResolver
         }
 
         return $subclasses;
+    }
+
+    /**
+     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
+     */
+    private function memberProperty(string $class, string $name): ?ReceiverType
+    {
+        if (is_a($class, Model::class, true)) {
+            return $this->modelMember($class, $name);
+        }
+
+        if (! class_exists($class) || ! property_exists($class, $name)) {
+            return null;
+        }
+
+        $property = new ReflectionProperty($class, $name);
+
+        // A non-public property read from outside goes to __get(), not to the declaration.
+        return $property->isPublic() && ! $property->isStatic()
+            ? $this->typeOf($this->propertyClasses($property, $class))
+            : null;
     }
 
     /**

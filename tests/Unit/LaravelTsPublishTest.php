@@ -6,8 +6,22 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DateTimeListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NullableSerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StaleDocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableLabelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -26,6 +40,7 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Collection;
+use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -231,13 +246,50 @@ describe('toTsType', function () {
             ->and($result['classFqcns'])->toBeEmpty();
     });
 
-    test('toTsType resolves class with __toString to string', function () {
+    test('toTsType resolves a __toString class with no public property to the empty object json_encode() writes', function () {
         $result = $this->service->toTsType(StringableValueObject::class);
 
-        expect($result['type'])->toBe('string')
+        expect($result['type'])->toBe('Record<string, never>')
             ->and($result['classes'])->toBeEmpty()
             ->and($result['classFqcns'])->toBeEmpty();
     });
+
+    // The map is lowercased, so the `datetime` column entry and the DateTime class share one key.
+    test('a custom_ts_mappings entry keeps its key beside the date rules', function (array $mappings, string $phpType, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect($this->service->toTsType($phpType)['type'])->toBe($type);
+    })->with([
+        'the datetime column type takes the entry' => [['datetime' => 'Date'], 'datetime', 'Date'],
+        'the DateTime class keeps the object json_encode() writes' => [['datetime' => 'Date'], DateTime::class, LaravelTsPublish::DATE_TIME_OBJECT_TYPE],
+        'CarbonInterface follows the Carbon\\Carbon entry' => [['Carbon\\Carbon' => 'Date'], CarbonInterface::class, 'Date'],
+        'a DateTimeImmutable entry retypes the class as Date' => [['DateTimeImmutable' => 'Date'], DateTimeImmutable::class, 'Date'],
+        'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
+    ]);
+
+    // Model::toArray() writes the date a class cast or new-style accessor returns as it writes a date column, so the
+    // entry for the date's own class wins, and a DateTime reads the `datetime` entry.
+    test('a custom_ts_mappings entry for a date class types the date a class cast returns', function (array $mappings, string $cast, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect($this->service->toTsType($cast)['type'])->toBe($type);
+    })->with([
+        'a CarbonImmutable entry' => [['Carbon\\CarbonImmutable' => 'Date'], CarbonImmutableCast::class, 'Date | null'],
+        'the datetime entry, for a DateTime' => [['datetime' => 'Date'], DateTimeCast::class, 'Date | null'],
+        'no entry for the class' => [['Carbon\\Carbon' => 'Date'], CarbonImmutableCast::class, 'Date | null'],
+        'an entry for another date class' => [['datetime' => 'Date'], CarbonImmutableCast::class, 'string | null'],
+    ]);
+
+    test('a custom_ts_mappings entry for a date class types the date a new-style accessor returns', function (array $mappings, string $attribute, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect((new ModelTransformer(SerializedDateModel::class))->data()->mutators[$attribute]['type'])->toBe($type);
+    })->with([
+        'a CarbonImmutable entry' => [['Carbon\\CarbonImmutable' => 'Date'], 'settled_on', 'Date | null'],
+        'the datetime entry, for a DateTime only its docblock names' => [['datetime' => 'Date'], 'reviewed_on', 'Date'],
+        'the datetime entry, for a DateTime beside a number' => [['datetime' => 'Date'], 'locked_on', 'Date | number | null'],
+        'an entry for another date class' => [['datetime' => 'Date'], 'opened_on', 'string | null'],
+    ]);
 
     test('toTsType resolves numeric-string to string via exact map', function () {
         expect($this->service->toTsType('numeric-string')['type'])->toBe('string');
@@ -311,6 +363,98 @@ describe('castable-with-arguments cast strings', function () {
     });
 });
 
+describe('castToTsType', function () {
+    // HasAttributes::asDecimal() returns a string, and asTimestamp() the Unix integer, which toArray() never formats.
+    test('types a cast as Laravel serializes its value', function (string $cast, string $type) {
+        expect($this->service->castToTsType($cast)['type'])->toBe($type);
+    })->with([
+        'decimal:2' => ['decimal:2', 'string'],
+        'decimal:0' => ['decimal:0', 'string'],
+        'Decimal:2, which isDecimalCast() reads case-sensitively, so Laravel rejects it' => ['Decimal:2', 'unknown'],
+        'a bare decimal, which Laravel throws on, left to toTsType()' => ['decimal', 'number'],
+        'timestamp' => ['timestamp', 'number'],
+        'timestamp, trimmed and lowercased as getCastType() reads it' => [' Timestamp ', 'number'],
+        'datetime, which keeps the date type' => ['datetime', 'string'],
+        'integer, which falls through to toTsType()' => ['integer', 'number'],
+    ]);
+
+    test('keeps a timestamp cast a number under timestamps_as_date, while a timestamp column follows it', function () {
+        config()->set('ts-publish.timestamps_as_date', true);
+
+        expect($this->service->castToTsType('timestamp')['type'])->toBe('number')
+            ->and($this->service->toTsType('timestamp')['type'])->toBe('Date');
+    });
+
+    // The documented override surface: a user's entry takes precedence over the built-in map, a cast rule included.
+    test('lets a custom_ts_mappings entry for the cast win', function () {
+        config()->set('ts-publish.custom_ts_mappings', [
+            'Timestamp' => 'boolean',
+            'decimal:2' => 'number',
+            'decimal:3' => 'boolean',
+        ]);
+
+        expect($this->service->castToTsType('timestamp')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType(' Timestamp ')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType('decimal:2')['type'])->toBe('number')
+            ->and($this->service->castToTsType('decimal:3')['type'])->toBe('boolean')
+            ->and($this->service->castToTsType('decimal:4')['type'])->toBe('string');
+    });
+
+    // getCastType() reads every `decimal:N` cast as `decimal`, so a user's `decimal` entry types each one.
+    test('lets a custom_ts_mappings entry for the type getCastType() reads a cast as win', function () {
+        config()->set('ts-publish.custom_ts_mappings', ['decimal' => 'Money']);
+
+        expect($this->service->castToTsType('decimal:2')['type'])->toBe('Money')
+            ->and($this->service->castToTsType('decimal:0')['type'])->toBe('Money');
+    });
+});
+
+describe('custom cast get() docblock', function () {
+    test('reads a vague get()\'s @return list<Dto> as the element\'s public properties', function () {
+        expect($this->service->toTsType(ConsignmentLegsCast::class)['type'])
+            ->toBe('({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[]');
+    });
+
+    test('keeps the native type when the @return names a class no cast type can import', function () {
+        expect($this->service->toTsType(ModelListCast::class)['type'])->toBe('unknown[]');
+    });
+
+    // json_encode() never calls __toString(), and the label's only property is private, so each element is `{}`.
+    test('publishes a list of empty objects for a list of __toString() value objects', function () {
+        expect($this->service->toTsType(StringableLabelListCast::class)['type'])->toBe('Record<string, never>[]');
+    });
+
+    // Model::toArray() runs serializeDate() on the date a class cast returns, never on a date inside a list.
+    test('publishes a vague get()\'s @return date as the date type Model::toArray() writes', function () {
+        expect($this->service->toTsType(DocblockDateCast::class)['type'])->toBe('string');
+    });
+
+    test('keeps each date of a vague get()\'s @return list as the object json_encode() writes', function () {
+        expect($this->service->toTsType(DateTimeListCast::class)['type'])
+            ->toBe(LaravelTsPublish::DATE_TIME_OBJECT_TYPE.'[]');
+    });
+
+    test('keeps a precise native get() over a @return date', function () {
+        expect($this->service->toTsType(StaleDocblockDateCast::class)['type'])->toBe('number');
+    });
+});
+
+// Model::toArray() writes what a SerializesCastableAttributes caster's serialize() returns, never the get() value.
+describe('a cast whose caster serializes', function () {
+    test('publishes the type serialize() declares', function (string $cast, string $type) {
+        expect($this->service->castToTsType($cast)['type'])->toBe($type);
+    })->with([
+        'a string serialize() over a __toString() value object' => [SerializedLabelCast::class, 'string'],
+        'a ?string serialize()' => [NullableSerializedLabelCast::class, 'string | null'],
+        'a Castable whose castUsing() names a serializing caster' => [SerializedLabelCastable::class, 'string'],
+        'an untyped serialize(), which leaves the type to get()' => [UntypedSerializeCast::class, 'number'],
+    ]);
+
+    test('keeps the value type of a Castable, which a resource can send as itself', function () {
+        expect($this->service->toTsType(SerializedLabelCastable::class)['type'])->toBe(class_basename(SerializedLabelCastable::class));
+    });
+});
+
 describe('toTsType substring fallback restriction', function () {
     test('class-ish names degrade to unknown instead of partial-matching', function (string $name) {
         expect($this->service->toTsType($name)['type'])->toBe('unknown');
@@ -318,7 +462,7 @@ describe('toTsType substring fallback restriction', function () {
         'Point', 'Constraint', 'Blueprint', 'Endpoint', 'Waypoint', 'Realm',
         'Print', 'Integration', 'Maintenance', 'Interface',
         'Update', 'Candidate', 'Runtime', 'Chart',
-        'DateTimeInterface', 'App\\Casts\\NotARealCast', '\\Foo\\Bar',
+        'App\\Casts\\NotARealCast', '\\Foo\\Bar',
     ]);
 
     test('a class name that case-insensitively equals a literal DB type keyword is caught earlier, at the exact-match step, not here', function () {
@@ -1927,7 +2071,7 @@ class ArrayableValueObject implements Arrayable
 }
 
 /**
- * A value object with __toString for testing step 5b resolution.
+ * A value object with __toString and no public property, for testing step 5d resolution.
  */
 class StringableValueObject
 {

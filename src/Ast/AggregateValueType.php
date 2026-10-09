@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 /**
  * The type a relation aggregate (`withSum()`, `withAvg()`, `withMin()`, `withMax()`) reaches a payload with: what the
  * connection's PDO extension returns for an aggregate of the column's database type, under Laravel's default options.
+ * `column()` types a plain read of an uncast column, such as a DECIMAL, by the same table.
  *
  * @internal
  */
@@ -32,6 +33,15 @@ final class AggregateValueType
         $kind = self::resultKind($function, self::columnKind($columnType), $driver);
 
         return $kind === null ? null : self::RESULT_TYPES[$driver][$kind] ?? null;
+    }
+
+    /**
+     * The TypeScript type a plain read of the column reaches a payload with, which is what MIN() and MAX() return,
+     * since both keep the column's type; null when nothing proves one.
+     */
+    public static function column(string $columnType, string $driver): ?string
+    {
+        return self::of('max', $columnType, $driver);
     }
 
     /**

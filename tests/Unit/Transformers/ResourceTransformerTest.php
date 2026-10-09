@@ -774,7 +774,7 @@ describe('ResourceTransformer with a body-less subclass', function () {
         $data = (new ResourceTransformer(BodylessOrderResource::class))->data();
 
         expect($data->properties['id']['type'])->toBe('number')
-            ->and($data->properties['total']['type'])->toBe('number')
+            ->and($data->properties['total']['type'])->toBe('string')
             ->and($data->properties['paid_at']['type'])->toBe('string | null')
             ->and(array_column($data->properties, 'type'))->not->toContain('unknown');
     });
@@ -1019,7 +1019,7 @@ describe('ResourceTransformer with FqcnMixinResource', function () {
         $data = (new ResourceTransformer(FqcnMixinResource::class))->data();
 
         expect($data->properties['id']['type'])->toBe('number')
-            ->and($data->properties['total']['type'])->toContain('number');
+            ->and($data->properties['total']['type'])->toContain('string');
     });
 });
 
@@ -1172,10 +1172,10 @@ describe('ResourceTransformer self-referencing resources', function () {
         expect($data->properties['children_self_resource_collection']['optional'])->toBeFalse();
     });
 
-    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+    test('self::collection(...) first-class callable is a Closure, which json_encode() writes as {}', function () {
         $data = (new ResourceTransformer(CategoryResource::class))->data();
 
-        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('CategoryResource[]');
+        expect($data->properties['children_self_collection_first_callable']['type'])->toBe('Record<string, never>');
         expect($data->properties['children_self_collection_first_callable']['optional'])->toBeFalse();
     });
 

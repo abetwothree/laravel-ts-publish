@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
@@ -31,6 +30,9 @@ final class ReceiverMethodReturnResolver
 {
     use FiltersAttributeKeys;
     use ResolvesFilteredRelationTypes;
+
+    /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
+    private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
 
     /**
      * Type a method on every class the receiver holds, unioning the answers.
@@ -98,10 +100,17 @@ final class ReceiverMethodReturnResolver
     ): ?array {
         $resolver = resolve(ModelAttributeResolver::class);
 
-        if ($methodName === 'getKey' && $this->runsModelGetKey($class)) {
+        if ($methodName === 'getKey' && $this->runsModelMethod($class, $methodName)) {
             $keyType = $resolver->keyTsType($class);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
+        }
+
+        // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
+        if (in_array($methodName, self::ROUTE_BINDINGS, true) && $this->runsModelMethod($class, $methodName)) {
+            $bound = $this->selfType($class, nullable: true);
+
+            return $bound !== null && ValueResult::namesOnlyPublishedModels($bound) ? $bound : null;
         }
 
         if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
@@ -226,17 +235,17 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Whether a concrete model runs Model::getKey() itself, whose `mixed` only the key type narrows.
+     * Whether a concrete model runs Model's own declaration of a method, whose loose return only a rule narrows.
      *
      * An override declares its own return, which PHP's covariance holds every subclass to, so reflection answers it.
      *
      * @param  class-string  $class
      */
-    private function runsModelGetKey(string $class): bool
+    private function runsModelMethod(string $class, string $methodName): bool
     {
         return is_a($class, Model::class, true)
             && ! new ReflectionClass($class)->isAbstract()
-            && new ReflectionMethod($class, 'getKey')->getDeclaringClass()->getName() === Model::class;
+            && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
     }
 
     /**
@@ -260,10 +269,6 @@ final class ReceiverMethodReturnResolver
 
         // A model's toArray() serializes whichever relations are loaded, runtime state no declaration describes.
         if ($methodName === 'toArray' && is_a($class, Model::class, true)) {
-            return null;
-        }
-
-        if (StringSerialization::methodReturnsFalseString($class, $methodName)) {
             return null;
         }
 

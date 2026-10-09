@@ -14,7 +14,7 @@ export interface BodylessOrderResource
 {
     id: number;
     status: AsEnum<typeof OrderStatus>;
-    total: number;
+    total: string;
     currency: AsEnum<typeof Currency>;
     items?: OrderItem[];
     items_count?: number;

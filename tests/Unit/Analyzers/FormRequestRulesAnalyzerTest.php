@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableInRequest;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Support\Facades\Auth;
 use Workbench\App\Http\Requests\ArrayKeysObjectFormRequest;
@@ -89,6 +90,13 @@ describe('FormRequestRulesAnalyzer', function () {
             expect($status->tsType)->toContain('\'draft\'');
             expect($status->tsType)->toContain('\'published\'');
             expect($status->tsType)->toContain('\'archived\'');
+        });
+
+        it('resolves a Stringable Rule::in value to the string validation compares', function () {
+            $node = (new FormRequestRulesAnalyzer)->analyzeField(StringableInRequest::class, 'dock');
+
+            expect($node)->not->toBeNull()
+                ->and($node->tsType)->toBe("'D7' | 'abc'");
         });
 
         it('marks sometimes field as not required', function () {

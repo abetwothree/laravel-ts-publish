@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -130,8 +129,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // A prop is JSON, and a bare `@return array` carries no key evidence: the `unknown[]` it
         // derives claims a list for the string-keyed `all()`. Vagueness also covers a `| unknown` arm.
-        if (TsTypeString::isVagueTsType($tsInfo['type'])
-            || ! $this->serializesAsReflected($reflection->getMethod($method))) {
+        if (TsTypeString::isVagueTsType($tsInfo['type'])) {
             return null;
         }
 
@@ -202,16 +200,5 @@ final class KnownMethodRuleHandler implements ExpressionHandler
             'optional' => $casts['optionalOverrides'][$key] ?? ! $field->isRequired,
             ...($customImports !== [] ? ['customImports' => $customImports] : []),
         ];
-    }
-
-    /**
-     * Whether every class the declared return names reaches a page prop as the type reflection derived.
-     *
-     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings `toTsType()` promises;
-     * see StringSerialization.
-     */
-    private function serializesAsReflected(ReflectionMethod $method): bool
-    {
-        return ! StringSerialization::methodReturnsFalseString($method->class, $method->getName());
     }
 }

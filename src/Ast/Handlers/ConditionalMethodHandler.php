@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -227,7 +228,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
             $scope->bindUnpassedParameters($valueArg->value, 0, $engine);
 
-            $inner = $engine->resolve($valueArg->value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -432,7 +433,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $value = $engine->resolve($valueArg->value);
+        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
 
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
@@ -524,7 +525,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
                 $scope->bindUnpassedParameters($valueExpr, 1, $engine);
 
-                $inner = $engine->resolve($valueExpr);
+                $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueExpr));
             } finally {
                 $scope->closureRelationModelClass = $previousRelationModel;
                 $scope->restoreNameBindings($previousNameBindings);
@@ -589,7 +590,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             // transform() calls back only for a filled value, so the read it passes is not null in the callback.
             $this->proveNonNull([$value], $scope);
 
-            $inner = $engine->resolve($callbackArg->value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($callbackArg->value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -620,8 +621,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * The aggregate's type with its null arm, read as getAttribute() reads `{relation}_{function}_{column}`: the
-     * model's own accessor or `@property` as declared, then its built-in cast, then what the connection's driver
-     * returns for the related column. A count is `number`; null when nothing types the aggregate.
+     * model's own accessor or `@property` as declared, then its built-in cast, then a user's mapping of the related
+     * column's type for MIN() or MAX(), then what the driver returns. A count is `number`; null when nothing types it.
      *
      * @return ValueExpressionResult|null
      */
@@ -652,7 +653,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // A built-in cast hands the SQL NULL back untouched. Laravel reads its own cast names before any class, which
         // matters for `datetime`: PHP's class lookup ignores case and finds `DateTime`.
         $castType = is_string($cast) && ($resolver->isDateFamilyCast($cast) || ! class_exists(Str::before($cast, ':')))
-            ? LaravelTsPublish::toTsType($cast)['type']
+            ? LaravelTsPublish::castToTsType($cast)['type']
             : 'unknown';
 
         if ($castType !== 'unknown') {
@@ -669,6 +670,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         $columns = $relation === null ? null : $resolver->getAttributes($relation['related']);
         $columnType = $columns?->firstWhere('name', $column->value)['type'] ?? null;
+
+        // MIN() and MAX() keep the column's type, so a user's mapping for it wins here as it does for the column.
+        if ($columnType !== null && in_array($function, ['min', 'max'], true)
+            && (new TypeScriptMap)->isCustomMapped($columnType)
+        ) {
+            return ['type' => ValueResult::withNullArm(LaravelTsPublish::toTsType($columnType)['type']), 'optional' => false];
+        }
+
         $driver = $resolver->connectionDriver($scope->modelClass);
         $type = $columnType === null || $driver === null ? null : AggregateValueType::of($function, $columnType, $driver);
 
@@ -695,7 +704,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             $scope->bindUnpassedParameters($default, $passed === null ? 0 : 1, $engine);
 
-            return $engine->resolve($default);
+            return $engine->resolve(FirstClassCallableHandler::invokedCall($default));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -784,7 +793,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
             $scope->bindUnpassedParameters($value, $argument === null ? 0 : 1, $engine);
 
-            $inner = $engine->resolve($value);
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($value));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
@@ -24,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
@@ -1048,7 +1052,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         ['posts_with_default', 'PostResource[]'],
     ]);
 
-    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+    test('self::collection(...) first-class callable is a Closure, which json_encode() writes as {}', function () {
         $reflection = new ReflectionClass(CategoryResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
         $analysis = $analyzer->analyze();
@@ -1056,7 +1060,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'children_self_collection_first_callable');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['type'])->toBe('Record<string, never>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1622,7 +1626,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
 
         $total = collect($analysis->properties)->firstWhere('name', 'total');
 
-        expect($total['type'])->toContain('number');
+        expect($total['type'])->toContain('string');
     });
 
     test('resolves enum FQCN from EnumResource::make for model property', function () {
@@ -1891,17 +1895,17 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($emptyEnum['type'])->toBe('unknown');
     });
 
-    test('resolves EnumResource::make first-class callable as unknown', function () {
+    test('resolves EnumResource::make first-class callable as the Closure it is', function () {
         $fccEnum = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum');
 
-        expect($fccEnum['type'])->toBe('unknown')
+        expect($fccEnum['type'])->toBe('Record<string, never>')
             ->and($fccEnum['optional'])->toBeFalse();
     });
 
-    test('resolves EnumResource::collection first-class callable as unknown', function () {
+    test('resolves EnumResource::collection first-class callable as the Closure it is', function () {
         $fccEnumCollection = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum_collection');
 
-        expect($fccEnumCollection['type'])->toBe('unknown')
+        expect($fccEnumCollection['type'])->toBe('Record<string, never>')
             ->and($fccEnumCollection['optional'])->toBeFalse();
     });
 
@@ -2293,7 +2297,7 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         $total = collect($this->analysis->properties)->firstWhere('name', 'total');
 
         expect($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($total['optional'])->toBeFalse();
     });
 
@@ -2375,7 +2379,7 @@ describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function ()
         $status = collect($this->analysis->properties)->firstWhere('name', 'status');
 
         expect($id['type'])->toBe('number')
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status['type'])->toBe('OrderStatusType');
     });
 
@@ -2605,7 +2609,7 @@ describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', functio
         expect($id)->not->toBeNull()
             ->and($id['type'])->toBe('number')
             ->and($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status)->not->toBeNull()
             ->and($status['type'])->toBe('OrderStatusType');
     });
@@ -2748,7 +2752,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
         $totalDisplay = collect($this->analysis->properties)->firstWhere('name', 'total_display');
 
         expect($totalDisplay)->not->toBeNull()
-            ->and($totalDisplay['type'])->toBe('number')
+            ->and($totalDisplay['type'])->toBe('string')
             ->and($totalDisplay['optional'])->toBeFalse();
     });
 
@@ -3799,7 +3803,7 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
         'an array default' => ['state', 'string | number'],
         'a closure default' => ['cancelled', 'boolean'],
         'a named default' => ['note_text', 'string | null'],
-        'both sides set it, the default untypable' => ['k', 'number'],
+        'both sides set it, the default untypable' => ['k', 'string'],
         'both sides set it, the value null and the default untypable' => ['null_total', 'null'],
     ]);
 
@@ -3888,7 +3892,7 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'archived')['type'])->toBe('boolean')
             ->and($props->firstWhere('name', 'draft')['type'])->toBe('boolean')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string')
             ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
     });
 
@@ -3957,7 +3961,7 @@ describe('ResourceAstAnalyzer with LoopReturnResource (collectDirectReturns loop
 
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'first_item_name')['type'])->toBe('string')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number');
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string');
     });
 });
 
@@ -4711,7 +4715,7 @@ describe('ResourceAstAnalyzer with ConditionalParamMappedResource — issue #38 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'items_priced');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: number; total_price: number }[]')
+            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: string; total_price: string }[]')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -4858,7 +4862,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_same_type_default']['type'])->toBe('number')
+        expect($props['not_null_same_type_default']['type'])->toBe('string')
             ->and($props['not_null_same_type_default']['optional'])->toBeFalse();
     });
 
@@ -5542,16 +5546,16 @@ describe('helper and receiver method inference', function () {
             ->and($this->props['item_total']['optional'])->toBeFalse();
     });
 
-    // CarbonInterval/CarbonPeriod are Stringable but not strings — toTsType()'s __toString fallback must not fire.
-    test('Carbon diff() returning CarbonInterval degrades to unknown, not string', function () {
-        expect($this->props['diff_result']['type'])->toBe('unknown');
+    // CarbonInterval/CarbonPeriod are Stringable, but json_encode() never calls __toString().
+    test('Carbon diff() returning CarbonInterval publishes the DateInterval fields json_encode() writes', function () {
+        expect($this->props['diff_result']['type'])->toBe(LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE);
     });
 
-    test('Carbon toPeriod() returning CarbonPeriod degrades to unknown, not string', function () {
-        expect($this->props['period_result']['type'])->toBe('unknown');
+    test('Carbon toPeriod() returning CarbonPeriod publishes the list of date strings json_encode() writes', function () {
+        expect($this->props['period_result']['type'])->toBe('string[]');
     });
 
-    // Carbon/CarbonImmutable's __toString() IS their canonical form, so the Stringable guard must skip them.
+    // Carbon and CarbonImmutable keep Carbon's own jsonSerialize(), which writes the ISO string.
     test('Carbon toMutable() returning Carbon resolves to string, not unknown', function () {
         expect($this->props['to_mutable']['type'])->toBe('string');
     });
@@ -7009,3 +7013,16 @@ test('only a spread helper\'s branches and a merge call\'s sides drop an untypab
         ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('unknown')
         ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true, keepsLoneNull: true)->properties[0]['type'])->toBe('null');
 });
+
+// A `timestamp` cast holds the Unix integer, so a Carbon method on it is no Carbon call: Laravel throws on `format()`.
+it('reflects a Carbon method on a date cast, never on a timestamp cast', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'an immutable_datetime cast' => ['$this->published_at->format("Y")', 'string'],
+    'a timestamp cast' => ['$this->deleted_at->format("Y")', 'unknown'],
+    'the timestamp cast itself' => ['$this->deleted_at', 'number | null'],
+]);

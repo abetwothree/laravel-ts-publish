@@ -712,7 +712,7 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenAppended(), optional int' => ['$this->whenAppended("excerpt", fn ($e = 5) => $e)', 'number'],
     'whenLoaded() default, optional null' => ['$this->whenLoaded("author", fn ($a) => $a->email, fn ($local = null) => $local)', 'string | null'],
     'when() default, optional null' => ['$this->when($this->title, 1, fn ($local = null) => $local)', 'number | null'],
-    'transform() default, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn ($r) => $r)', 'string | number | null'],
+    'transform() default, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn ($r) => $r)', 'string | null'],
     'whenCounted() closure, passed the count' => ['$this->whenCounted("comments", fn ($n) => ["n" => $n])', '{ n: number }'],
     'whenCounted() closure, comparing the count' => ['$this->whenCounted("comments", fn ($n) => $n > 3)', 'boolean'],
     'whenCounted() closure, ignoring the count' => ['$this->whenCounted("comments", fn ($n) => "x")', 'string'],
@@ -723,7 +723,7 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenAggregated() count closure, passed the count' => ['$this->whenAggregated("comments", "id", "count", fn ($c) => ["c" => $c])', '{ c: number }'],
     'whenLoaded() second parameter, optional int' => ['$this->whenLoaded("author", fn ($a, $b = 5) => $b)', 'number'],
     'transform() callback second parameter, optional int' => ['$this->transform($this->title, fn ($t, $u = 5) => $u)', 'number'],
-    'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (number | null)[]'],
+    'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (string | null)[]'],
     'transform() default, passed a nullable model' => [
         '$this->transform($this->resource->author->profile, fn ($p) => 1, fn ($p) => $p)',
         'number | Profile | null',
@@ -782,11 +782,29 @@ it('reads a column aggregate through the model\'s own accessor, cast or @propert
     'a string cast' => ['$this->whenAggregated("comments", "post_id", "sum")', 'string | null'],
     'a datetime cast, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null', 'oracle'],
     'a datetime cast with a format, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "min")', 'string | null', 'oracle'],
+    'a timestamp cast, where the driver\'s MAX() of a date is a string' => ['$this->whenAggregated("comments", "updated_at", "max")', 'number | null'],
+    'a decimal cast, where SQLite\'s own AVG() is a number' => ['$this->whenAggregated("comments", "id", "avg")', 'string | null'],
     'an @property tag, where MySQL\'s own AVG() is a string' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null', 'mysql'],
     'an accessor that coalesces the null' => ['$this->whenAggregated("comments", "post_id", "max")', 'number'],
     'an accessor, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "max", fn ($m) => ["m" => $m])', '{ m: number }'],
     'a string cast, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "sum", fn ($s) => ["s" => $s])', '{ s: string } | null'],
     'no declaration, the driver\'s number' => ['$this->whenAggregated("comments", "post_id", "min")', 'number | null'],
+]);
+
+// MIN() and MAX() keep the column's type, so a user's mapping for it wins over the driver as it does for the column.
+// SUM() widens the column, so it keeps the driver's type. SQLite's schema reports a decimal column as `numeric`.
+it('publishes MIN() and MAX() of a column by a custom_ts_mappings entry for its type', function (string $php, string $type) {
+    config()->set('ts-publish.custom_ts_mappings', ['numeric' => 'number']);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'max()' => ['$this->whenAggregated("orderItems", "unit_price", "max")', 'number | null'],
+    'min()' => ['$this->whenAggregated("orderItems", "unit_price", "min")', 'number | null'],
+    'sum(), which widens the column' => ['$this->whenAggregated("orderItems", "total_price", "sum")', 'string | null'],
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
@@ -865,12 +883,11 @@ it('restores the outer binding after a conditional default binds its parameter',
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('{ a: number | null; b: string }');
 });
 
-// timestamps_as_date publishes a Carbon attribute as Date, but the value a default holds reaches JSON as an ISO string.
-it('binds a Carbon new default as string under timestamps_as_date', function (string $class) {
+it('binds a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {
     config()->set('ts-publish.timestamps_as_date', true);
 
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = new '.$class.'("2020-01-01")) => $t)')['type'])
-        ->toBe('string');
+        ->toBe('Date');
 })->with([
     'Illuminate\\Support\\Carbon' => ['\\Illuminate\\Support\\Carbon'],
     'Carbon\\Carbon' => ['\\Carbon\\Carbon'],
@@ -1187,3 +1204,19 @@ it('records no warning for a $this->when() whose subject is no API resource', fu
 
     expect(AnalysisWarnings::all())->toBe([]);
 });
+
+// Laravel's value() calls a Closure, and a first-class callable is one, so each conditional types the call it stands
+// for, and none warns.
+it('types a first-class callable the conditional family calls as the call it stands for', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type)
+        ->and(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'when() value, a model method' => ['$this->when($this->title, $this->resource->getKey(...))', 'number'],
+    'when() value, a function' => ['$this->when($this->title, now(...))', 'string'],
+    'when() default, a model method' => ['$this->when($this->title, "x", $this->resource->getKey(...))', 'string | number'],
+    'unless() value' => ['$this->unless($this->title, $this->resource->getKey(...))', 'number'],
+    'whenNotNull() value' => ['$this->whenNotNull($this->resource->getKey(...))', 'number'],
+    'whenHas() value' => ['$this->whenHas("title", $this->resource->getKey(...))', 'number'],
+    'whenLoaded() value, a static resource factory' => ['$this->whenLoaded("categoryRel", \\Workbench\\App\\Http\\Resources\\CategoryResource::make(...))', 'CategoryResource | null'],
+    'transform() callback' => ['$this->transform($this->title, strtoupper(...))', 'string'],
+]);

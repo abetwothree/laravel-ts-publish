@@ -3,15 +3,12 @@
  * receiver-method inference on a datetime-cast attribute, and the
  * can()/count() known-method rules (Task 11).
  *
- * `diff_result` and `period_result` are a Task 12 regression: Carbon methods that
- * return a Stringable-but-not-string value object (CarbonInterval, CarbonPeriod) must
- * degrade to unknown rather than falsely resolve to `string` via toTsType()'s
- * __toString fallback.
+ * `diff_result` and `period_result` are Carbon methods that return a Stringable value
+ * object json_encode() never writes as its __toString(): a CarbonInterval writes
+ * DateInterval's fields, and a CarbonPeriod the list of its dates.
  *
- * `to_mutable`/`to_immutable` are a Task 12 review follow-up: unlike CarbonInterval/
- * CarbonPeriod, Carbon and CarbonImmutable themselves ARE correctly `string` via
- * __toString() (their canonical ISO-ish datetime representation), so the Stringable
- * guard must not over-degrade these two.
+ * `to_mutable`/`to_immutable` are a Task 12 review follow-up: Carbon and
+ * CarbonImmutable themselves are `string`, the ISO string their jsonSerialize() writes.
  *
  * `user_key`: `getKey()`'s type depends on which model it's called on, unlike
  * can()/cannot()/canAny() which are bool regardless of receiver. A resource's
@@ -26,8 +23,8 @@ export interface HelperCallResource
     ship_date: string;
     can_edit: boolean;
     item_total: number;
-    diff_result: unknown;
-    period_result: unknown;
+    diff_result: { y: number; m: number; d: number; h: number; i: number; s: number; f: number; invert: number; days: number | false; from_string: false };
+    period_result: string[];
     to_mutable: string;
     to_immutable: string;
     user_key: unknown;

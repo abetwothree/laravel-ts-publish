@@ -247,12 +247,15 @@ class EnumTransformer extends CoreTransformer
                 $description = JsEmitter::parseDocBlockDescription($method->getDocComment());
             }
 
-            // get the returns, we need to call the method with each case instance and collect the return values to know which TS types to import
+            // Stored as JSON data for every consumer; a case whose method throws, or whose value json_encode() cannot
+            // write, publishes null.
             $returns = [];
             foreach ($this->reflectionEnum->getCases() as $case) {
                 try {
                     $caseInstance = $case->getValue();
-                    $returns[$case->getName()] = $method->invokeArgs($caseInstance, $attributeParams);
+                    $returns[$case->getName()] = JsEmitter::jsonValue(
+                        $method->invokeArgs($caseInstance, $attributeParams),
+                    );
                 } catch (Throwable) {
                     $returns[$case->getName()] = null;
                 }
@@ -309,13 +312,13 @@ class EnumTransformer extends CoreTransformer
                 $description = JsEmitter::parseDocBlockDescription($method->getDocComment());
             }
 
-            // For methods, we just call it once and get the return value. It should be a primitive or an array of primitives that can be transformed to JavaScript for functional use.
+            // A static method does not depend on the case, so one call on the first case gives its value.
             $return = null;
             try {
                 $case = $this->reflectionEnum->getCases()[0] ?? null;
                 if ($case) {
                     $caseInstance = $case->getValue();
-                    $return = $method->invokeArgs($caseInstance, $attributeParams);
+                    $return = JsEmitter::jsonValue($method->invokeArgs($caseInstance, $attributeParams));
                 }
             } catch (Throwable $e) {
                 // If the method requires parameters or something else goes wrong, we just ignore the return value

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -99,8 +100,9 @@ final class NewResourceHandler implements ExpressionHandler
             }
         }
 
+        // Any other class reaches JSON as whatever json_encode() writes, and only a string is typed in place.
         if (! $this->isResourceClass($className)) {
-            return $result; // @codeCoverageIgnore
+            return resolve(ValueResolver::class)->resolveStringSerializedNew($expr) ?? $result;
         }
 
         $resourceName = TsNaming::resourceTypeName($className);
