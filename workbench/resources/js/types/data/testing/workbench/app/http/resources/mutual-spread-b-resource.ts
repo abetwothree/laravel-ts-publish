@@ -6,6 +6,6 @@
  */
 export interface MutualSpreadBResource
 {
-    a_marker: boolean;
     b_marker: boolean;
+    a_marker: boolean;
 }

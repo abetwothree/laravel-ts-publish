@@ -16,7 +16,7 @@ use Closure;
  *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
- *     cut: bool,
+ *     held: array<string, true>,
  *     pathMark: int,
  *     recording: bool,
  *     dropped: int,
@@ -26,13 +26,12 @@ use Closure;
  * @phpstan-type MemoEntry = array{
  *     value: mixed,
  *     footprint: array<string, true>,
+ *     held: array<string, true>,
  *     paths: list<string>,
  *     recording: bool,
  *     dropped: int,
  *     resources: int,
  *     models: int,
- *     stamp: int,
- *     pinned: bool,
  * }
  *
  * @internal
@@ -45,17 +44,12 @@ final class AnalysisMemo
     /** @var list<MemoFrame> the answers being computed, innermost last */
     private array $frames = [];
 
-    /** @var array<string, MemoEntry> */
+    /** @var array<string, list<MemoEntry>> each key's answers, one per set of its guards held when it was computed */
     private array $entries = [];
 
-    /** @var array<string, int> the stamp at which a fresh computation first pinned each key */
-    private array $pinnedAt = [];
-
-    private int $clock = 0;
-
     /**
-     * Enter a guarded analysis. Entering one already on the stack returns false instead, and leaves every answer being
-     * computed cut short, so none of them is stored.
+     * Enter a guarded analysis. Entering one already on the stack returns false instead, which cuts every answer being
+     * computed short, so each is reused only while the same guards are held.
      */
     public function enter(string $key): bool
     {
@@ -66,10 +60,6 @@ final class AnalysisMemo
         }
 
         if (isset($this->active[$key])) {
-            foreach (array_keys($this->frames) as $index) {
-                $this->frames[$index]['cut'] = true;
-            }
-
             return false;
         }
 
@@ -87,34 +77,31 @@ final class AnalysisMemo
     }
 
     /**
-     * The stored answer for a key when computing it again could not differ, else a fresh one, stored unless cut short.
-     *
-     * A pinned answer is AstEngine's outermost analysis in its chain: stored even when cut short and then reused
-     * whatever is on the stack, as it always was. An unpinned answer reused by a pinned call is pinned from then on.
+     * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
+     * found held, since a cycle cuts it short only where one of them is.
      *
      * @template T
      *
      * @param  Closure(): T  $compute
      * @return T
      */
-    public function remember(string $key, Closure $compute, bool $pin = false): mixed
+    public function remember(string $key, Closure $compute): mixed
     {
-        $entry = $this->entries[$key] ?? null;
+        foreach ($this->entries[$key] ?? [] as $entry) {
+            if ($this->reproducible($entry)) {
+                $this->replay($entry);
 
-        if ($entry !== null && ($entry['pinned'] || $this->reproducible($entry))) {
-            $this->replay($entry);
-            $this->entries[$key]['pinned'] = $entry['pinned'] || $pin;
+                /** @var T $value */
+                $value = $entry['value'];
 
-            /** @var T $value */
-            $value = $entry['value'];
-
-            return $value;
+                return $value;
+            }
         }
 
         $depth = count($this->frames);
         $this->frames[] = [
             'footprint' => [],
-            'cut' => false,
+            'held' => $this->active,
             'pathMark' => DependencyRecorder::mark(),
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
@@ -128,33 +115,22 @@ final class AnalysisMemo
             $frame = $this->closeFrame($depth);
         }
 
-        if ($pin || ! $frame['cut']) {
-            $this->store($key, $value, $frame, $pin);
-        }
+        $this->store($key, $value, $frame);
 
         return $value;
     }
 
     /**
-     * Drop every answer not pinned, when an input they read changes.
-     */
-    public function forget(): void
-    {
-        $this->entries = array_filter($this->entries, fn (array $entry): bool => $entry['pinned']);
-    }
-
-    /**
-     * Drop every answer, pinned or not, when a run starts, since two runs in one process can publish different sets.
+     * Drop every answer, when a run starts or an input they read changes.
      */
     public function reset(): void
     {
         $this->entries = [];
-        $this->pinnedAt = [];
     }
 
     /**
-     * Whether computing an unpinned answer again now could only reproduce it: nothing it read has changed, and no guard
-     * it entered is on the stack to cut a fresh run short.
+     * Whether computing an answer again now could only reproduce it: nothing it read has changed, and each guard it
+     * entered is held now exactly where it was held then, so a fresh run is cut short at the same places.
      *
      * @param  MemoEntry  $entry
      */
@@ -168,7 +144,7 @@ final class AnalysisMemo
         }
 
         foreach (array_keys($entry['footprint']) as $key) {
-            if (isset($this->active[$key]) || ($this->pinnedAt[$key] ?? 0) > $entry['stamp']) {
+            if (isset($this->active[$key]) !== isset($entry['held'][$key])) {
                 return false;
             }
         }
@@ -177,8 +153,7 @@ final class AnalysisMemo
     }
 
     /**
-     * Record what a reused answer recorded when it was computed; a pinned one replays its dependencies only, as a
-     * pinned reuse never did more.
+     * Record what a reused answer recorded when it was computed, handing its guards to the answer around it.
      *
      * @param  MemoEntry  $entry
      */
@@ -186,10 +161,6 @@ final class AnalysisMemo
     {
         foreach ($entry['paths'] as $path) {
             DependencyRecorder::record($path);
-        }
-
-        if ($entry['pinned']) {
-            return;
         }
 
         DroppedUnionArms::replay($entry['dropped']);
@@ -220,28 +191,34 @@ final class AnalysisMemo
     }
 
     /**
-     * Store a computed answer with what it recorded.
+     * Store a computed answer with what it recorded, in place of one computed under the same held guards.
      *
      * @param  MemoFrame  $frame
      */
-    private function store(string $key, mixed $value, array $frame, bool $pin): void
+    private function store(string $key, mixed $value, array $frame): void
     {
         $paths = $frame['recording'] ? DependencyRecorder::since($frame['pathMark']) : [];
-
-        $this->entries[$key] = [
+        $held = array_intersect_key($frame['held'], $frame['footprint']);
+        $entry = [
             'value' => $value,
             'footprint' => $frame['footprint'],
+            'held' => $held,
             'paths' => array_values(array_unique($paths)),
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'resources' => $frame['resources'],
             'models' => $frame['models'],
-            'stamp' => ++$this->clock,
-            'pinned' => $pin,
         ];
 
-        if ($pin) {
-            $this->pinnedAt[$key] ??= $this->clock;
+        foreach ($this->entries[$key] ?? [] as $index => $stored) {
+            // Loose `==`: two held sets are the same whatever order their guards were entered in.
+            if ($stored['held'] == $held) {
+                $this->entries[$key][$index] = $entry;
+
+                return;
+            }
         }
+
+        $this->entries[$key][] = $entry;
     }
 }

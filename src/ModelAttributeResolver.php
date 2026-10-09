@@ -1194,7 +1194,7 @@ class ModelAttributeResolver
         $this->morphTargetMap = $map;
 
         // An analysis the old map typed a morph relation for would otherwise be reused under the new one.
-        resolve(AnalysisMemo::class)->forget();
+        resolve(AnalysisMemo::class)->reset();
     }
 
     /**

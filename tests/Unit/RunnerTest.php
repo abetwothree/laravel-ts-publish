@@ -1241,13 +1241,13 @@ describe('PublishedModelRegistry run boundary', function () {
             ->and($runner->modelGenerators->first()->filename())->toBe('facility');
     });
 
-    test('a run starts with an empty analysis memo, pinned answers included', function () use ($enumsOnly) {
+    test('a run starts with an empty analysis memo', function () use ($enumsOnly) {
         $memo = resolve(AnalysisMemo::class);
-        $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+        $memo->remember('an-earlier-run', fn (): string => 'stale');
 
         $enumsOnly()->run();
 
-        expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
+        expect($memo->remember('an-earlier-run', fn (): string => 'fresh'))->toBe('fresh');
     });
 
     test('a resource, an event and an Inertia page name an on-demand model and decline an unpublished one', function () {

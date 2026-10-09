@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Workbench\App\Models\BulletinArchive;
@@ -129,16 +130,46 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
 
     // The getter calls report(), whose body reads the getter back without imports: a guard shared by both modes would
     // cut that read short while the getter's own analysis runs, so the answer would depend on who asked first.
-    test('a getter being analyzed with imports does not cut short its own read without them', function (bool $getterFirst) {
-        $getter = fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'];
-        $method = fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null;
+    test('a getter being analyzed with imports does not cut short its own read without them', function (string $first) {
+        $reads = [
+            'getter' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'],
+            'method' => fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null,
+            'import-less' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report', false)['type'],
+        ];
         $report = '{ self: { v: { id: number }; report: unknown[] }; id: number }';
 
-        [$first, $second] = $getterFirst ? [$getter(), $method()] : [$method(), $getter()];
+        $types = [$first => $reads[$first]()];
 
-        expect($getterFirst ? $first : $second)->toBe("{ v: Pick<User, 'id'>; report: $report }")
-            ->and($getterFirst ? $second : $first)->toBe($report);
-    })->with(['getter first' => true, 'method first' => false]);
+        foreach ($reads as $name => $read) {
+            $types[$name] ??= $read();
+        }
+
+        expect($types['getter'])->toBe("{ v: Pick<User, 'id'>; report: $report }")
+            ->and($types['method'])->toBe($report)
+            ->and($types['import-less'])->toBe('{ v: { id: number }; report: { self: unknown; id: number } }');
+    })->with(['getter first' => 'getter', 'method first' => 'method', 'an import-less read first' => 'import-less']);
+
+    // listing() reads the accessor back without imports, and that read's tie-break needs the accessor's analysis with
+    // imports, which a model read is already running: the method's shape must not depend on which was read first.
+    test('a method reading back an accessor whose import-less spelling is vague publishes one shape in any read order', function (string $first) {
+        $reads = [
+            'model' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(ReadOrderAccessorModel::class, 'listed_comments')['type'],
+            'method' => fn () => resolve(MethodReturnTypeResolver::class)->resolve(ReadOrderAccessorModel::class, 'listing')['type'] ?? null,
+            'import-less' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(ReadOrderAccessorModel::class, 'listed_comments', false)['type'],
+        ];
+
+        $types = [$first => $reads[$first]()];
+
+        foreach ($reads as $name => $read) {
+            $types[$name] ??= $read();
+        }
+
+        expect($types)->toMatchArray([
+            'model' => 'Comment[]',
+            'method' => '{ v: unknown[]; id: number }',
+            'import-less' => 'unknown[]',
+        ]);
+    })->with(['model first' => 'model', 'method first' => 'method', 'an import-less read first' => 'import-less']);
 });
 
 describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', function () {

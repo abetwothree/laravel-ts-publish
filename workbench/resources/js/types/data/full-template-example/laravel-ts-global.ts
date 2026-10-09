@@ -3865,8 +3865,8 @@ declare global {
          * AstEngine::analyzeMethod()'s cycle guard must break the loop wherever it's first re-entered.
          */
         export interface MutualSpreadBResource {
-            a_marker: boolean;
             b_marker: boolean;
+            a_marker: boolean;
         }
         /**
          * Two methods that spread each other. Without a visited-method guard this recurses until the

@@ -30,7 +30,7 @@ test('reuses a stored answer instead of computing it again', function () use ($c
         ->and(count($runs))->toBe(1);
 });
 
-test('does not store an answer a cycle cut short, since it depends on the chain that reached it', function () {
+test('reuses an answer a cycle inside it cut short, since nothing outside it decided where', function () {
     $memo = new AnalysisMemo;
     $runs = 0;
     $compute = function () use ($memo, &$runs): int {
@@ -42,7 +42,25 @@ test('does not store an answer a cycle cut short, since it depends on the chain 
         return $runs;
     };
 
-    expect([$memo->remember('k', $compute), $memo->remember('k', $compute)])->toBe([1, 2]);
+    expect([$memo->remember('k', $compute), $memo->remember('k', $compute)])->toBe([1, 1]);
+});
+
+test('reuses an answer a held guard cut short only while the same guards are held', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $guarded = function () use ($memo, $counting, $runs): int {
+        if ($memo->enter('guard')) {
+            $memo->leave('guard');
+        }
+
+        return $counting($runs)();
+    };
+
+    $memo->enter('guard');
+    $whileHeld = [$memo->remember('k', $guarded), $memo->remember('k', $guarded)];
+    $memo->leave('guard');
+
+    expect([...$whileHeld, $memo->remember('k', $guarded), $memo->remember('k', $guarded)])->toBe([1, 1, 2, 2]);
 });
 
 test('does not reuse an answer while a guard it entered is on the stack', function () use ($counting) {
@@ -61,27 +79,34 @@ test('does not reuse an answer while a guard it entered is on the stack', functi
     $whileGuarded = $memo->remember('k', $guarded);
     $memo->leave('guard');
 
-    // The run made while the guard was held was cut short, so the first answer is still the stored one.
+    // The run made while the guard was held was cut short, so it is kept beside the first answer, not in its place.
     expect([$first, $whileGuarded, $memo->remember('k', $guarded)])->toBe([1, 2, 1]);
 });
 
-test('keeps a pinned answer a cycle cut short, and reuses it while its guard is on the stack', function () use ($counting) {
+test('an answer that reused another is not reused while a guard the other entered is on the stack', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;
-    $cut = function () use ($memo, $counting, $runs): int {
-        $memo->enter('guard');
-        $memo->enter('guard');
-        $memo->leave('guard');
+    $inner = function () use ($memo): string {
+        if ($memo->enter('guard')) {
+            $memo->leave('guard');
+        }
+
+        return 'inner';
+    };
+    $outer = function () use ($memo, $counting, $runs, $inner): int {
+        $memo->remember('inner', $inner);
 
         return $counting($runs)();
     };
 
-    $first = $memo->remember('k', $cut, pin: true);
+    $memo->remember('inner', $inner);
+    $first = $memo->remember('outer', $outer);
     $memo->enter('guard');
-    $whileGuarded = $memo->remember('k', $cut);
+    $whileGuarded = $memo->remember('outer', $outer);
     $memo->leave('guard');
 
-    expect([$first, $whileGuarded])->toBe([1, 1]);
+    // The reuse of `inner` handed its guard to `outer`, so the guarded read ran again and was cut short.
+    expect([$first, $whileGuarded, $memo->remember('outer', $outer)])->toBe([1, 2, 1]);
 });
 
 test('replays the dependencies and dropped union arms of a reused answer', function () {
@@ -137,84 +162,12 @@ test('computes an answer again when it was worked out without recording the depe
     expect([$unrecorded, $recorded, $memo->remember('k', $counting($runs))])->toBe([1, 2, 2]);
 });
 
-test('does not reuse an answer that read an analysis since pinned to a fresh result', function () use ($counting) {
-    $memo = new AnalysisMemo;
-    $outerRuns = new ArrayObject;
-    $innerRuns = new ArrayObject;
-    $inner = function () use ($memo, $counting, $innerRuns): int {
-        if ($memo->enter('inner')) {
-            $memo->leave('inner');
-        }
-
-        return $counting($innerRuns)();
-    };
-    $outer = function () use ($memo, $counting, $outerRuns, $inner): int {
-        $memo->remember('inner', $inner);
-
-        return $counting($outerRuns)();
-    };
-
-    $memo->remember('outer', $outer);
-    $memo->enter('inner');
-    $memo->remember('inner', $inner, pin: true);
-    $memo->leave('inner');
-
-    expect($memo->remember('outer', $outer))->toBe(2)
-        ->and(count($innerRuns))->toBe(2);
-});
-
-test('forget drops every answer but the pinned ones', function () use ($counting) {
+test('reset drops every answer', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;
 
-    $memo->remember('pinned', fn (): string => 'kept', pin: true);
-    $memo->remember('k', $counting($runs));
-    $memo->forget();
-
-    expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('kept')
-        ->and($memo->remember('k', $counting($runs)))->toBe(2);
-});
-
-test('reset drops every answer, the pinned ones too', function () use ($counting) {
-    $memo = new AnalysisMemo;
-    $runs = new ArrayObject;
-
-    $memo->remember('pinned', fn (): string => 'stale', pin: true);
     $memo->remember('k', $counting($runs));
     $memo->reset();
 
-    expect($memo->remember('pinned', fn (): string => 'recomputed'))->toBe('recomputed')
-        ->and($memo->remember('k', $counting($runs)))->toBe(2);
-});
-
-test('reset forgets which analyses were pinned, so a pin in the next run is measured from that run', function () use ($counting) {
-    $memo = new AnalysisMemo;
-    $outerRuns = new ArrayObject;
-    $innerRuns = new ArrayObject;
-    $inner = function () use ($memo, $counting, $innerRuns): int {
-        if ($memo->enter('inner')) {
-            $memo->leave('inner');
-        }
-
-        return $counting($innerRuns)();
-    };
-    $outer = function () use ($memo, $counting, $outerRuns, $inner): int {
-        $memo->remember('inner', $inner);
-
-        return $counting($outerRuns)();
-    };
-    $pinInner = function () use ($memo, $inner): void {
-        $memo->enter('inner');
-        $memo->remember('inner', $inner, pin: true);
-        $memo->leave('inner');
-    };
-
-    $pinInner();
-    $memo->reset();
-
-    // In the next run `outer` reads `inner`, and `inner` is pinned to a fresh result afterwards.
-    $memo->remember('outer', $outer);
-    $pinInner();
-
-    expect($memo->remember('outer', $outer))->toBe(2);
+    expect($memo->remember('k', $counting($runs)))->toBe(2);
 });

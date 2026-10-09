@@ -322,14 +322,15 @@ helper changes.
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
 import mode, gains an `@importless` suffix for an analysis that carries no imports.
 
-A stored answer keeps the dependency paths recorded while it was computed, and every reuse records them again. The
-generation cache therefore sees what a fresh computation would have shown it. An unpinned reuse also replays its
-dropped-arm count, and happens only where computing the answer again could not differ, by the conditions in
-`AnalysisMemo::reproducible()`. The outermost `analyzeMethod()` in a chain is pinned instead: stored even when a cycle
-cut it short, and reused whatever is on the stack.
+A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
+records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have
+shown them. A cycle can cut an answer short, so each answer is stored with the guards it found held, and
+`AnalysisMemo::reproducible()` reuses it only where nothing it read has changed and exactly those guards are held again.
+No answer depends on which entry point read it first.
 
-`AnalysisMemo::forget()` drops every unpinned answer, and `ModelAttributeResolver::buildMorphTargetMap()` calls it.
-`reset()` drops every answer, and `BaseRunner::resetRunState()` calls it when a run starts, so none outlives a run.
+`AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
+`ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard that
+lives outside `AnalysisMemo` must never span a memoized call, or the reuse rule cannot see it.
 
 ## MethodAnalysis
 
