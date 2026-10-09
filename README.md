@@ -127,6 +127,7 @@ Status.from('active').label;  // 'Active User', a PHP-like enum "instance"
 Key capabilities include:
 
 - **Your own methods**: publish them with `#[TsEnumMethod]` and `#[TsEnumStaticMethod]`, or auto-include public ones.
+- **Values as sent**: a method's value publishes as `json_encode()` writes it, objects and dates included.
 - **Renames and descriptions**: `#[TsEnum]` and `#[TsCase]` rename an enum or a case, or add a JSDoc description.
 - **Type aliases**: `{Name}Type` types a raw case value, and a backed enum's `{Name}Kind` types a case name.
 - **PHPDoc carried over**: class, case, and method doc blocks become JSDoc comments.
@@ -173,6 +174,7 @@ Key capabilities include:
 - **Accessor getter bodies**: an accessor with a vague signature is typed from the value its getter returns.
 - **Nullable relations**: singular relations get `| null` from their type and foreign key, configurable per type.
 - **Related models**: a model outside your configured directories publishes when a published model relates to it.
+- **Serialized casts**: a cast publishes what Laravel serializes, so `decimal:2` is a `string` and `timestamp` a `number`.
 - **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types every column that uses a custom cast class.
 - **Enum columns**: a parallel `{Model}Resource` interface types each enum column as a resolved `AsEnum<>` instance.
 - **Hidden columns**: `$hidden` attributes publish unless you turn on `models.exclude_hidden`.
