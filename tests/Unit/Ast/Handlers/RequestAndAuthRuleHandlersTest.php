@@ -121,7 +121,7 @@ it('types a Request method call from the reflected signature', function (string 
 it('types Request::image() as the `{}` an Image writes', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('image'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'Record<string, never> | null', 'optional' => false]);
-})->skip(! method_exists(Request::class, 'image'), 'Request::image() requires Laravel 13+');
+})->skip(fn () => ! version_compare(app()->version(), '13.20.0', '>='), 'Request::image() requires Laravel 13.20+');
 
 it('types $request->user() through the auth provider model', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
