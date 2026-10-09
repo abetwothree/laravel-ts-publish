@@ -166,7 +166,8 @@ it('records a class again on every call, so a memo frame marked after the first 
         $mark = DependencyRecorder::mark();
         DependencyRecorder::recordClass(ShiftClock::class);
 
-        expect(DependencyRecorder::since($mark))->toBe($first);
+        expect($first)->toContain(fileOf(ShiftClock::class))
+            ->and(DependencyRecorder::since($mark))->toBe($first);
     } finally {
         DependencyRecorder::stop();
     }
