@@ -342,10 +342,15 @@ abstract class BaseRunner
         }
     }
 
-    protected function warnOfReindexedEnumValue(string $subject, string $methodName): void
+    /**
+     * Warn once that one enum method's value is an array an EnumResource response re-indexes into a list.
+     */
+    private function warnOfReindexedEnumValue(string $subject, string $methodName): void
     {
         AnalysisWarnings::addOnce($subject, sprintf(
-            'Method [%s] returns an array whose numeric keys are not 0 to n-1 in order, so the published enum writes it as an object while an EnumResource response re-indexes it into a list. Wrap it in array_values() for a list, or use non-numeric keys for an object.',
+            'Method [%s] returns an array whose numeric keys are not 0 to n-1 in order, so the published enum '
+            .'writes it as an object while an EnumResource response re-indexes it into a list. Wrap it in '
+            .'array_values() for a list, or use non-numeric keys for an object.',
             $methodName,
         ));
     }
