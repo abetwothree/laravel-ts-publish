@@ -43,6 +43,17 @@ enum ReindexedValueEnum: string
     }
 
     /**
+     * The same object inside an array, which the response walks into only as far as the object.
+     *
+     * @return array{codes: stdClass}
+     */
+    #[TsEnumMethod]
+    public function nestedObjectCodes(): array
+    {
+        return ['codes' => (object) [10 => 'Ten', 20 => [2 => 'silver']]];
+    }
+
+    /**
      * Keys that mix numbers and names, which the response keeps.
      *
      * @return array<int|string, string>
