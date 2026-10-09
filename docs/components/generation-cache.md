@@ -35,7 +35,8 @@ A feature skipped by a flag but enabled in config keeps its entries (`Runner::ke
 disabled in config is pruned, which only the interactive override can reach. `--fresh --only-*` still clears everything.
 
 A partial run rehydrates the features it skips from their kept entries, so the globals and JSON files still list them
-as the last run that published them left them; with the cache off they are left out.
+as the last run that published them left them. With the cache off, or with nothing cached for them (the first
+publish, `--fresh`, or a config, template or package change), they are left out.
 
 ## What is recorded
 

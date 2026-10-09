@@ -18,8 +18,8 @@ The attribute waterfall spans these classes:
 
 - [`ModelAttributeResolver`](../../src/ModelAttributeResolver.php): the attribute waterfall, relation and `morphTo`
   types, the column-name lists, and `@property` refinement. It is a singleton, so each model's context is cached until
-  `reset()`, which `BaseRunner::resetRunState()` calls when a run starts. Every context read records the model as a cache dependency before that cache, and `resolveAttributeClass()`
-  replays the files its cached answer read.
+  `reset()`, which `BaseRunner::resetRunState()` calls when a run starts. Every context read records the model as a
+  cache dependency before that cache, and `resolveAttributeClass()` replays the files its cached answer read.
 - [`Concerns\ResolvesAccessorType`](../../src/Concerns/ResolvesAccessorType.php): the accessor step, shared with
   `ModelTransformer`.
 - [`AccessorBodyAnalyzer`](../../src/Analyzers/Model/AccessorBodyAnalyzer.php): types an accessor from its getter

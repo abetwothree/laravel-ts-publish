@@ -442,5 +442,6 @@ test('a --source run starts with an empty analysis memo', function () {
 
     (new RunnerForSource('Workbench\\App\\Enums\\Status'))->run();
 
-    expect($memo->remember('an-earlier-run', fn (): string => 'fresh'))->toBe('fresh');
+    // The registry versions alone reject a stale answer, so only a dropped entry proves reset().
+    expect((fn (): array => $this->entries)->call($memo))->not->toHaveKey('an-earlier-run');
 });

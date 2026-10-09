@@ -1242,12 +1242,15 @@ describe('PublishedModelRegistry run boundary', function () {
     });
 
     test('a run starts with an empty analysis memo', function () use ($enumsOnly) {
+        // Inertia off, so no morph map is built: buildMorphTargetMap() drops every answer too.
+        config()->set('ts-publish.inertia.enabled', false);
         $memo = resolve(AnalysisMemo::class);
         $memo->remember('an-earlier-run', fn (): string => 'stale');
 
         $enumsOnly()->run();
 
-        expect($memo->remember('an-earlier-run', fn (): string => 'fresh'))->toBe('fresh');
+        // The registry versions alone reject a stale answer, so only a dropped entry proves reset().
+        expect((fn (): array => $this->entries)->call($memo))->not->toHaveKey('an-earlier-run');
     });
 
     test('a resource, an event and an Inertia page name an on-demand model and decline an unpublished one', function () {

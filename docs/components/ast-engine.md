@@ -329,8 +329,10 @@ shown them. A cycle can cut an answer short, so each answer is stored with the g
 No answer depends on which entry point read it first.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
-`ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard that
-lives outside `AnalysisMemo` must never span a memoized call, or the reuse rule cannot see it.
+`ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard
+outside `AnalysisMemo`, such as an `AnalysisScope`'s `visitedSpreadMethods` or `resolvingLocalVars`, may span a
+memoized call, since that call builds its own scope, but a memoized analysis must never read one, or the reuse rule
+cannot see it.
 
 ## MethodAnalysis
 

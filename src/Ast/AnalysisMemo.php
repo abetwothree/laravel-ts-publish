@@ -78,7 +78,7 @@ final class AnalysisMemo
 
     /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
-     * found held, since a cycle cuts it short only where one of them is.
+     * found held, since only those can cut a fresh computation short somewhere else.
      *
      * @template T
      *
