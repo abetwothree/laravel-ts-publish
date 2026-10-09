@@ -18,6 +18,8 @@ The helpers and the test that pins them live in these files:
   for a class. Static, with no facade.
 - [`Support\ClassTokenQueue`](../../src/Support/ClassTokenQueue.php): which class each token of a type string names,
   for aliasing. No facade, and `@internal` like `StringSerialization`.
+- [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
+  re-indexes an array into a list. Static and `@internal`, read by `ValueResolver` and the enum-value warning.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -31,6 +33,7 @@ Ask what the helper's input domain is, not what calls it:
 | What is true of this TypeScript type string, or what does it become? | `TsTypeString` |
 | What is this FQCN, file path or array key called, and where does it live? | `TsNaming` |
 | Does `json_encode()` write a string for this class? | `StringSerialization` |
+| Does an API resource response re-index this array into a list? | `ResourceReindexing` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
@@ -63,10 +66,10 @@ broadcast-event and Inertia paths call them before any cast lookup.
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
-never prints as `[]`. An array with out-of-order integer keys keeps them, and the runner warns because an `EnumResource`
-response re-indexes it into a list. A pure enum keeps its name, where `json_encode()` fails. A value `json_encode()`
-cannot write throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model metadata keeps
-`normalizeMetadataValue()`.
+never prints as `[]`. An array whose numeric keys are out of order keeps them, and the runner warns because an
+`EnumResource` response re-indexes it into a list. A pure enum keeps its name, where `json_encode()` fails. A value
+`json_encode()` cannot write throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model
+metadata keeps `normalizeMetadataValue()`.
 
 ### `TsTypeString`
 

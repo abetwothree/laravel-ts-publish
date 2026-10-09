@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
@@ -30,7 +31,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
 use Laravel\Prompts\Support\Logger;
-use stdClass;
 use Throwable;
 
 /**
@@ -327,7 +327,7 @@ abstract class BaseRunner
 
         foreach ($transformer->methods as $methodName => $method) {
             foreach ($method['returns'] as $value) {
-                if ($this->holdsReindexedList($value)) {
+                if (is_array($value) && ResourceReindexing::reindexesAsList($value)) {
                     $this->warnOfReindexedEnumValue($transformer->fqcn(), $methodName);
 
                     break;
@@ -336,7 +336,7 @@ abstract class BaseRunner
         }
 
         foreach ($transformer->staticMethods as $methodName => $method) {
-            if ($this->holdsReindexedList($method['return'])) {
+            if (is_array($method['return']) && ResourceReindexing::reindexesAsList($method['return'])) {
                 $this->warnOfReindexedEnumValue($transformer->fqcn(), $methodName);
             }
         }
@@ -345,26 +345,8 @@ abstract class BaseRunner
     protected function warnOfReindexedEnumValue(string $subject, string $methodName): void
     {
         AnalysisWarnings::addOnce($subject, sprintf(
-            'Method [%s] returns an array whose integer keys are not 0 to n-1 in order, so the published enum writes it as an object while an EnumResource response writes it as a list. Wrap the array in array_values() to publish and send a list.',
+            'Method [%s] returns an array whose numeric keys are not 0 to n-1 in order, so the published enum writes it as an object while an EnumResource response re-indexes it into a list. Wrap it in array_values() for a list, or use non-numeric keys for an object.',
             $methodName,
         ));
-    }
-
-    /**
-     * Whether the value, or an array or stdClass member at any depth, is an all-integer-key array that is not a list.
-     */
-    private function holdsReindexedList(mixed $value): bool
-    {
-        if ($value instanceof stdClass) {
-            $value = get_object_vars($value);
-        } elseif (! is_array($value)) {
-            return false;
-        }
-
-        if ($value !== [] && ! array_is_list($value) && array_all(array_keys($value), fn (mixed $key): bool => is_int($key))) {
-            return true;
-        }
-
-        return array_any($value, $this->holdsReindexedList(...));
     }
 }

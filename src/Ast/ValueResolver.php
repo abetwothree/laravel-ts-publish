@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use BackedEnum;
 use DateTimeInterface;
@@ -137,7 +138,9 @@ final class ValueResolver
      */
     public function resolveConstantValue(mixed $value, ExpressionEngine $engine): ?array
     {
-        return $this->holdsNumericKeyedRecord($value) ? null : $this->analyzeConstantValue($value, $engine);
+        return is_array($value) && ResourceReindexing::reindexesAsList($value)
+            ? null
+            : $this->analyzeConstantValue($value, $engine);
     }
 
     /**
@@ -476,22 +479,5 @@ final class ValueResolver
             $case instanceof BackedEnum && $property === 'value' => $case->value,
             default => throw new ConstExprEvaluationException("Property {$property} of an enum case cannot be read"),
         };
-    }
-
-    /**
-     * Whether a value holds, at any depth, an array whose keys all pass is_numeric() yet which is not a list: the rule
-     * a resource's removeMissingValues() re-indexes by.
-     */
-    private function holdsNumericKeyedRecord(mixed $value): bool
-    {
-        if (! is_array($value)) {
-            return false;
-        }
-
-        if (! array_is_list($value) && array_all(array_keys($value), fn (int|string $key): bool => is_numeric($key))) {
-            return true;
-        }
-
-        return array_any($value, fn (mixed $item): bool => $this->holdsNumericKeyedRecord($item));
     }
 }

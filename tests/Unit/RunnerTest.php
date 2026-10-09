@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MagicCallModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReindexedValueEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnreadableRelationFacility;
@@ -1307,15 +1308,14 @@ describe('enum names that collide inside one namespace', function () {
 });
 
 describe('enum method values an EnumResource response re-indexes', function () {
-    test('warns of an enum method value whose integer keys an EnumResource response re-indexes', function () {
+    $reindexWarning = fn (string $method): string => 'Method ['.$method.'] returns an array whose numeric keys are not '
+        .'0 to n-1 in order, so the published enum writes it as an object while an EnumResource response re-indexes it '
+        .'into a list. Wrap it in array_values() for a list, or use non-numeric keys for an object.';
+
+    test('warns of an enum method value whose integer keys an EnumResource response re-indexes', function () use ($reindexWarning) {
         (new Runner)->run();
 
-        $warning = [
-            'subject' => Priority::class,
-            'message' => 'Method [filterByMinimum] returns an array whose integer keys are not 0 to n-1 in order, '
-                .'so the published enum writes it as an object while an EnumResource response writes it as a list. '
-                .'Wrap the array in array_values() to publish and send a list.',
-        ];
+        $warning = ['subject' => Priority::class, 'message' => $reindexWarning('filterByMinimum')];
 
         expect(array_keys(AnalysisWarnings::all(), $warning, true))->toHaveCount(1);
     });
@@ -1324,6 +1324,25 @@ describe('enum method values an EnumResource response re-indexes', function () {
         (new Runner)->run();
 
         expect(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(FreightClass::class);
+    });
+
+    // ConditionallyLoadsAttributes::filter() recurses into arrays only, and re-indexes one whose keys are all numeric.
+    test('warns of each value the response re-indexes, and of no other', function () use ($reindexWarning) {
+        config()->set('ts-publish.enums.additional_directories', [ReindexedValueEnum::class]);
+        config()->set('ts-publish.enums.included', [ReindexedValueEnum::class]);
+
+        (new Runner)->run();
+
+        $messages = array_column(array_filter(
+            AnalysisWarnings::all(),
+            fn (array $warning): bool => $warning['subject'] === ReindexedValueEnum::class,
+        ), 'message');
+
+        expect($messages)->toEqualCanonicalizing([
+            $reindexWarning('nestedTiers'),
+            $reindexWarning('months'),
+            $reindexWarning('sparse'),
+        ]);
     });
 });
 
