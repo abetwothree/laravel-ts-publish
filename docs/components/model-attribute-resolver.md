@@ -96,7 +96,8 @@ import. A `SerializesCastableAttributes` caster publishes what its `serialize()`
   hit for it (`isPlainDateClass()`). A `custom_ts_mappings` entry for any other date class still applies.
 - **Model context**: a class cast's `get()` or a new-style accessor's getter publishes each date it declares as the date
   type. That is what `Model::toArray()` writes, since it runs `serializeDate()` there; a resource reading the attribute
-  directly sends the object. An old-style `getXAttribute()` keeps the object.
+  directly sends the object. An old-style `getXAttribute()` keeps the object. A user's entry for the date's own class,
+  read by its lowercased name, wins, so a `DateTime` takes the `datetime` entry a date column does.
 - **4c**: a `CarbonInterval` that is not `JsonSerializable` publishes `CARBON_INTERVAL_OBJECT_TYPE`.
 - **4d**: a `CarbonPeriod` that keeps its own `jsonSerialize()` publishes a list of the date type.
 

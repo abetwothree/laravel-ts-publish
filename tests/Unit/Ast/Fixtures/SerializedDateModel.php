@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use Carbon\CarbonImmutable;
 use DateTime;
 use DateTimeImmutable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -34,6 +35,16 @@ final class SerializedDateModel extends Model
     protected function openedOn(): Attribute
     {
         return Attribute::get(fn (): ?DateTimeImmutable => null);
+    }
+
+    /**
+     * A new-style getter whose closure declares a nullable CarbonImmutable.
+     *
+     * @return Attribute<CarbonImmutable|null, never>
+     */
+    protected function settledOn(): Attribute
+    {
+        return Attribute::get(fn (): ?CarbonImmutable => null);
     }
 
     /**

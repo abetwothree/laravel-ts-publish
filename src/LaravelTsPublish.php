@@ -67,6 +67,7 @@ use UnitEnum;
  *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
  * }
+ * @phpstan-type DateArm = array{class: string, nullable: bool}
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -1027,9 +1028,11 @@ class LaravelTsPublish
 
         return $this->serializedDateArms(
             $type instanceof ReflectionUnionType ? $type->getTypes() : [$type],
-            fn (?ReflectionType $arm): ?bool => $arm instanceof ReflectionNamedType
+            fn (?ReflectionType $arm): ?array => $arm instanceof ReflectionNamedType
                 && ! $arm->isBuiltin()
-                && is_a($arm->getName(), DateTimeInterface::class, true) ? $arm->allowsNull() : null,
+                && is_a($arm->getName(), DateTimeInterface::class, true)
+                    ? ['class' => $arm->getName(), 'nullable' => $arm->allowsNull()]
+                    : null,
             $this->resolveReflectionType(...),
         );
     }
@@ -1268,13 +1271,17 @@ class LaravelTsPublish
         $useMap = $this->parseFileUseStatements($context);
         $namespace = $context->getNamespaceName();
 
+        $dateArm = function (string $arm) use ($useMap, $namespace): ?array {
+            $class = $this->resolveDocblockTypeName(ltrim($arm, '?'), $useMap, $namespace);
+
+            return is_a($class, DateTimeInterface::class, true)
+                ? ['class' => $class, 'nullable' => str_starts_with($arm, '?')]
+                : null;
+        };
+
         return $this->serializedDateArms(
             $this->splitPhpDocUnionType($this->bindTraitTemplates($typeString, $method)),
-            fn (string $arm): ?bool => is_a(
-                $this->resolveDocblockTypeName(ltrim($arm, '?'), $useMap, $namespace),
-                DateTimeInterface::class,
-                true,
-            ) ? str_starts_with($arm, '?') : null,
+            $dateArm,
             fn (string $arm): array => $this->resolveDocblockTypePartOrAlias($arm, $useMap, $namespace, $context),
         );
     }
@@ -2373,33 +2380,48 @@ class LaravelTsPublish
     }
 
     /**
-     * The arms of a date-declaring return as Model::toArray() writes them: a date arm is the date type, any other arm
-     * what `$resolve` types it as. Null, resolving nothing, when no arm names a date.
+     * The arms of a date-declaring return as Model::toArray() writes them: a date arm is the type serializedDateType()
+     * gives it, any other arm what `$resolve` types it as. Null, resolving nothing, when no arm names a date.
      *
      * @template TArm
      *
      * @param  array<TArm>  $arms
-     * @param  Closure(TArm): ?bool  $nullableDate  whether a date arm admits null, or null for an arm naming no date
+     * @param  Closure(TArm): ?DateArm  $dateArm  the date an arm names, or null for an arm naming no date
      * @param  Closure(TArm): TypeScriptTypeInfo  $resolve
      * @return TypeScriptTypeInfo|null
      */
-    private function serializedDateArms(array $arms, Closure $nullableDate, Closure $resolve): ?array
+    private function serializedDateArms(array $arms, Closure $dateArm, Closure $resolve): ?array
     {
-        $nullables = array_map($nullableDate, $arms);
+        $dates = array_map($dateArm, $arms);
 
-        if (array_all($nullables, fn (?bool $nullable): bool => $nullable === null)) {
+        if (array_all($dates, fn (?array $date): bool => $date === null)) {
             return null;
         }
 
         $infos = [];
 
         foreach ($arms as $i => $arm) {
-            $infos[] = $nullables[$i] === null
-                ? $resolve($arm)
-                : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType().($nullables[$i] ? ' | null' : '')];
+            $infos[] = $dates[$i] === null ? $resolve($arm) : $this->serializedDateType($dates[$i]);
         }
 
         return $this->mergeTypeScriptInfos($infos);
+    }
+
+    /**
+     * The type Model::toArray() writes a date arm as: a user's `custom_ts_mappings` entry for its class, read by the
+     * lowercased name a date column's type shares, so a DateTime reads the `datetime` entry; else the date type.
+     *
+     * @param  DateArm  $date
+     * @return TypeScriptTypeInfo
+     */
+    private function serializedDateType(array $date): array
+    {
+        $lower = strtolower(ltrim($date['class'], '\\'));
+        $info = (new TypeScriptMap)->isCustomMapped($lower)
+            ? $this->toTsType($lower)
+            : [...$this->emptyTypeScriptInfo(), 'type' => $this->carbonDateType()];
+
+        return [...$info, 'type' => $info['type'].($date['nullable'] ? ' | null' : '')];
     }
 
     /**

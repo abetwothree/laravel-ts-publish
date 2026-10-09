@@ -407,8 +407,9 @@ does not run. Type such a property with `#[TsCasts]`.
 ### A `DateTime` entry in `custom_ts_mappings` retypes the `datetime` column, never the class
 
 The map's keys are lowercased, so `DateTime` and the `datetime` column type share one key. The entry applies to the
-column type, and the `DateTime` class keeps the date object `json_encode()` writes. An entry for `DateTimeImmutable` or
-a `DateTime` subclass does retype that class.
+column type, and the `DateTime` class keeps the date object `json_encode()` writes. A `DateTime` that a class cast or
+new-style accessor returns takes the entry, since `Model::toArray()` writes it as a date column. An entry for
+`DateTimeImmutable` or a `DateTime` subclass does retype that class.
 
 ### A plain date from a new-style accessor or class cast publishes what `Model::toArray()` writes, in every context
 

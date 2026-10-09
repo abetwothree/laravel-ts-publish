@@ -15,8 +15,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TraitTemplateDecoyConsumer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -261,6 +265,30 @@ describe('toTsType', function () {
         'CarbonInterface follows the Carbon\\Carbon entry' => [['Carbon\\Carbon' => 'Date'], CarbonInterface::class, 'Date'],
         'a DateTimeImmutable entry retypes the class as Date' => [['DateTimeImmutable' => 'Date'], DateTimeImmutable::class, 'Date'],
         'a DateTimeImmutable entry retypes the class as string' => [['DateTimeImmutable' => 'string'], DateTimeImmutable::class, 'string'],
+    ]);
+
+    // Model::toArray() writes the date a class cast or new-style accessor returns as it writes a date column, so the
+    // entry for the date's own class wins, and a DateTime reads the `datetime` entry.
+    test('a custom_ts_mappings entry for a date class types the date a class cast returns', function (array $mappings, string $cast, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect($this->service->toTsType($cast)['type'])->toBe($type);
+    })->with([
+        'a CarbonImmutable entry' => [['Carbon\\CarbonImmutable' => 'Date'], CarbonImmutableCast::class, 'Date | null'],
+        'the datetime entry, for a DateTime' => [['datetime' => 'Date'], DateTimeCast::class, 'Date | null'],
+        'no entry for the class' => [['Carbon\\Carbon' => 'Date'], CarbonImmutableCast::class, 'Date | null'],
+        'an entry for another date class' => [['datetime' => 'Date'], CarbonImmutableCast::class, 'string | null'],
+    ]);
+
+    test('a custom_ts_mappings entry for a date class types the date a new-style accessor returns', function (array $mappings, string $attribute, string $type) {
+        config()->set('ts-publish.custom_ts_mappings', $mappings);
+
+        expect((new ModelTransformer(SerializedDateModel::class))->data()->mutators[$attribute]['type'])->toBe($type);
+    })->with([
+        'a CarbonImmutable entry' => [['Carbon\\CarbonImmutable' => 'Date'], 'settled_on', 'Date | null'],
+        'the datetime entry, for a DateTime only its docblock names' => [['datetime' => 'Date'], 'reviewed_on', 'Date'],
+        'the datetime entry, for a DateTime beside a number' => [['datetime' => 'Date'], 'locked_on', 'Date | number | null'],
+        'an entry for another date class' => [['datetime' => 'Date'], 'opened_on', 'string | null'],
     ]);
 
     test('toTsType resolves numeric-string to string via exact map', function () {
