@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Carbon\CarbonInterface;
@@ -155,6 +156,12 @@ it('records an interface whose jsonSerialize() decides the type', function () {
     $paths = recordedWhile(fn () => expect(LaravelTsPublish::toTsType(CarbonInterface::class)['type'])->toBe('string'));
 
     expect($paths)->toContain(fileOf(CarbonInterface::class));
+});
+
+it('records a class that does not implement JsonSerializable yet, since gaining it changes the type', function () {
+    $paths = recordedWhile(fn () => expect(StringSerialization::jsonStringType(ShiftClock::class))->toBeNull());
+
+    expect($paths)->toContain(fileOf(ShiftClock::class));
 });
 
 it('records a class again on every call, so a memo frame marked after the first still holds its files', function () {

@@ -29,14 +29,15 @@ final class StringSerialization
      */
     public static function jsonStringType(string $class): ?string
     {
+        // Before the guards: a class or interface that later gains a string jsonSerialize() changes the answer.
+        DependencyRecorder::recordClass($class);
+
         if ((! class_exists($class) && ! interface_exists($class))
             || ! is_a($class, JsonSerializable::class, true)
             || is_a($class, Model::class, true)) {
             return null;
         }
 
-        // An interface reaches here without toTsType() recording it, and its jsonSerialize() decides the answer.
-        DependencyRecorder::recordClass($class);
         $method = new ReflectionMethod($class, 'jsonSerialize');
         $type = $method->getReturnType();
 
