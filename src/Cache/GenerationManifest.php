@@ -16,6 +16,7 @@ class GenerationManifest
     /**
      * @param  array<string, Entry>  $entries
      * @param  array<string, true>  $seen
+     * @param  array<string, string>  $fileHashes
      */
     private function __construct(
         protected CacheRepository $repository,
@@ -23,6 +24,7 @@ class GenerationManifest
         protected string $configHash,
         protected array $entries = [],
         protected array $seen = [],
+        protected array $fileHashes = [],
     ) {}
 
     /**
@@ -57,6 +59,20 @@ class GenerationManifest
         }
 
         return new self($repository, $version, $configHash, $entries);
+    }
+
+    /**
+     * Fingerprint a file set, hashing each file once until save() ends the run.
+     *
+     * @param  list<string>  $paths
+     */
+    public function fingerprint(array $paths, string $extra = ''): string
+    {
+        return Fingerprinter::fromPaths(
+            $paths,
+            $extra,
+            fn (string $path): string => $this->fileHashes[$path] ??= Fingerprinter::hashFile($path),
+        );
     }
 
     /**
@@ -164,6 +180,8 @@ class GenerationManifest
         // Persist the backend's buffered bookkeeping (e.g. the store key index)
         // once, after all per-entry writes — no-op for the file backend.
         $this->repository->commit();
+
+        $this->fileHashes = [];
     }
 
     /**

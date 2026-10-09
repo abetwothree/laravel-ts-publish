@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\FileCacheRepository;
+use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\StoreCacheRepository;
 use Illuminate\Support\Facades\Cache;
@@ -116,4 +117,21 @@ test('entry keys are hashed so store backends never see a long class pair', func
     expect($keys)->not->toBeEmpty()
         ->and($keys->every(fn (string $key): bool => strlen($key) < 250))->toBeTrue()
         ->and($keys->contains(fn (string $key): bool => preg_match('/^'.preg_quote($prefix, '/').'class:[0-9a-f]{32}$/', $key) === 1))->toBeTrue();
+});
+
+it('reads each dependency file once per run, and again after save()', function () {
+    $file = $this->dir.'/dep.php';
+    file_put_contents($file, 'one');
+
+    $manifest = GenerationManifest::load($this->repo, 'v1', 'cfg1');
+    $first = $manifest->fingerprint([$file], 'sig');
+
+    file_put_contents($file, 'two');
+
+    expect($manifest->fingerprint([$file], 'sig'))->toBe($first)
+        ->and(Fingerprinter::fromPaths([$file], 'sig'))->not->toBe($first);
+
+    $manifest->save();
+
+    expect($manifest->fingerprint([$file], 'sig'))->toBe(Fingerprinter::fromPaths([$file], 'sig'));
 });

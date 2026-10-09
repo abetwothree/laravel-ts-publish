@@ -467,6 +467,7 @@ These pages cover the engine's neighbors:
 - [ImportNameRegistry](import-name-registry.md): aliasing two same-basename imports.
 - [Known gaps § Handler ordering is pinned pairwise][gap-ordering]: why a green ordering suite is narrower than it
   looks.
+- [Generation cache](generation-cache.md): how recorded dependencies decide a hit.
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that read the generated types.
 - [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
   inference feature moved onto this engine.

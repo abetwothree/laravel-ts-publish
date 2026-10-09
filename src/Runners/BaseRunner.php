@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -183,7 +182,7 @@ abstract class BaseRunner
         // Recomputed over the deps recorded on the last build, so editing any of them flips the fingerprint.
         $storedDeps = $this->manifest->deps($cacheKey);
 
-        if ($storedDeps !== [] && $this->manifest->hit($cacheKey, Fingerprinter::fromPaths($storedDeps, $signature))) {
+        if ($storedDeps !== [] && $this->manifest->hit($cacheKey, $this->manifest->fingerprint($storedDeps, $signature))) {
             $snapshot = $this->manifest->snapshot($cacheKey);
             $filename = $this->manifest->filename($cacheKey);
 
@@ -238,7 +237,7 @@ abstract class BaseRunner
 
         $this->manifest->record(
             $cacheKey,
-            Fingerprinter::fromPaths($deps, $signature),
+            $this->manifest->fingerprint($deps, $signature),
             $generator->filename(),
             $deps,
             $outputs,
