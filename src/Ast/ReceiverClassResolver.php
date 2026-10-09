@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -135,6 +136,8 @@ final class ReceiverClassResolver
      */
     public function returnClasses(string $class, string $method): ?array
     {
+        DependencyRecorder::recordClass($class);
+
         if (! method_exists($class, $method)) {
             return null;
         }
@@ -597,6 +600,8 @@ final class ReceiverClassResolver
         if (is_a($class, Model::class, true)) {
             return $this->modelMember($class, $name);
         }
+
+        DependencyRecorder::recordClass($class);
 
         if (! class_exists($class) || ! property_exists($class, $name)) {
             return null;

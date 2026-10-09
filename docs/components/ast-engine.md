@@ -291,10 +291,19 @@ no backing model, only a `Model` root hands off to the relation walk. On a model
 
 ## Dependency recording policy
 
-Every analyzer file read goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records the
-file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too. A
-read that bypasses it leaves the generation cache serving stale output when that file changes.
+Every file an analyzer parses goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records
+the file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too.
+A read that bypasses it leaves the generation cache serving stale output when that file changes.
 `AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
+
+A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
+interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
+member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
+`ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
+`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`, and
+`ModelAttributeResolver`'s contexts and caster reads. A cache in front of such a read records before its lookup, or
+replays what it recorded, as `resolveAttributeClass()` does. Recording never deduplicates, because a memo frame keeps
+the paths recorded after its mark.
 
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A

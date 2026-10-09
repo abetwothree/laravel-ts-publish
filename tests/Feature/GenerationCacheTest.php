@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
@@ -308,4 +310,49 @@ test('a model that becomes publishable between runs is named by a resource that 
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($published())->toContain('archive: AuditArchive');
+});
+
+test('editing a class a resource reaches only by reflection rebuilds the resource', function () {
+    // PHP cannot reload a class, so the scorer lives in a temp copy the test can edit; the fingerprint hashes content.
+    $suffix = bin2hex(random_bytes(4));
+    $sources = "$this->cacheDir-src";
+    mkdir($sources);
+
+    foreach (['Scorer', 'ScoreResource'] as $name) {
+        $stub = (string) file_get_contents(__DIR__.'/../Fixtures/ReflectedReceiver/'.$name.'.php.stub');
+        file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
+        require_once $sources.'/'.$name.'.php';
+    }
+
+    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ReflectedReceiver\\';
+    $resource = $namespace.'ScoreResource'.$suffix;
+    $scorerFile = (string) new ReflectionClass($namespace.'Scorer'.$suffix)->getFileName();
+    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/reflected-receiver/score-resource'.$suffix.'.ts';
+    Config::set('ts-publish.resources.additional_directories', [$resource]);
+    Config::set('ts-publish.resources.included', [$resource]);
+
+    // A cache hit rehydrates without the container, so each resolution here is a rebuild.
+    $builds = 0;
+    $this->app->resolving(ResourceGenerator::class, function () use (&$builds): void {
+        $builds++;
+    });
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($published))->toContain('score: number;')
+            ->and(CacheBootstrap::manifest(CacheBootstrap::repository())->deps(ResourceGenerator::class.'::'.$resource))
+            ->toContain($scorerFile)
+            ->and($builds)->toBe(1);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(1);
+
+        file_put_contents($scorerFile, "\n// edited\n", FILE_APPEND);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2);
+    } finally {
+        array_map(unlink(...), glob($sources.'/*.php') ?: []);
+        @rmdir($sources);
+    }
 });

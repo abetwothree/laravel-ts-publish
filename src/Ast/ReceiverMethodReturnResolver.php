@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -52,6 +53,8 @@ final class ReceiverMethodReturnResolver
         $results = [];
 
         foreach ($receiver->classes as $class) {
+            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
+            DependencyRecorder::recordClass($class);
             $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.

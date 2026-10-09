@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -61,6 +62,8 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         $results = [];
 
         foreach ($receiver->classes as $class) {
+            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
+            DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
                 ? $this->modelMember($class, $name, $scope->carriesImports)
                 : $this->reflectedProperty($class, $name);

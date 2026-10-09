@@ -241,6 +241,9 @@ class LaravelTsPublish
 
         // 2. #[TsType] explicit override, ahead of every automatic resolution
         if (class_exists($phpType)) {
+            // This step and every later one read the class's own declarations, so its files decide the type.
+            DependencyRecorder::recordClass($phpType);
+
             $attrs = (new ReflectionClass($phpType))->getAttributes(TsType::class);
             if ($attrs) {
                 $tsType = $attrs[0]->newInstance()->type;
@@ -974,6 +977,8 @@ class LaravelTsPublish
      */
     public function propertyTypes(ReflectionClass $class, string $property): array
     {
+        DependencyRecorder::recordClass($class->getName());
+
         if (! $class->hasProperty($property)) {
             return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
         }
@@ -989,6 +994,8 @@ class LaravelTsPublish
      */
     public function methodReturnedTypes(ReflectionClass $class, string $method): array
     {
+        DependencyRecorder::recordClass($class->getName());
+
         if (! $class->hasMethod($method)) {
             return $this->emptyTypeScriptInfo();
         }
@@ -1007,6 +1014,8 @@ class LaravelTsPublish
      */
     public function methodOrDocblockReturnTypes(ReflectionClass $class, string $method): array
     {
+        DependencyRecorder::recordClass($class->getName());
+
         if (! $class->hasMethod($method)) {
             return $this->emptyTypeScriptInfo();
         }
@@ -1077,6 +1086,12 @@ class LaravelTsPublish
         /** @var array<string, TypeScriptTypeInfo> $cache */
         static $cache = [];
 
+        /** @var array<string, string> $files */
+        static $files = [];
+
+        // Recorded on every read, as the cache below would otherwise hide a userland helper's file from later classes.
+        DependencyRecorder::record($files[$name] ?? '');
+
         if (array_key_exists($name, $cache)) {
             return $cache[$name];
         }
@@ -1088,6 +1103,9 @@ class LaravelTsPublish
         } catch (ReflectionException) {
             return $cache[$name] = $result;
         }
+
+        $files[$name] = (string) $rf->getFileName();
+        DependencyRecorder::record($files[$name]);
 
         $returnType = $rf->getReturnType();
 

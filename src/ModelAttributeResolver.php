@@ -104,6 +104,13 @@ class ModelAttributeResolver
      */
     protected array $attributeClassCache = [];
 
+    /**
+     * The paths each resolveAttributeClass() answer recorded, replayed on reuse; null when computed unrecorded.
+     *
+     * @var array<string, list<string>|null>
+     */
+    protected array $attributeClassPaths = [];
+
     /** Whether the morph target map being built reads each model's relations without its table. */
     private bool $buildsWithoutTables = false;
 
@@ -441,8 +448,20 @@ class ModelAttributeResolver
     {
         $key = $modelFqcn.'::'.$attributeName;
 
-        if (! array_key_exists($key, $this->attributeClassCache)) {
+        // A reuse replays the cast and model files the answer read, so a later class's cache entry still names them.
+        if (! array_key_exists($key, $this->attributeClassCache)
+            || (($this->attributeClassPaths[$key] ?? null) === null && DependencyRecorder::isRecording())) {
+            $mark = DependencyRecorder::mark();
             $this->attributeClassCache[$key] = $this->findAttributeClass($modelFqcn, $attributeName);
+            $this->attributeClassPaths[$key] = DependencyRecorder::isRecording()
+                ? DependencyRecorder::since($mark)
+                : null;
+
+            return $this->attributeClassCache[$key];
+        }
+
+        foreach ($this->attributeClassPaths[$key] ?? [] as $path) {
+            DependencyRecorder::record($path);
         }
 
         return $this->attributeClassCache[$key];
@@ -610,6 +629,7 @@ class ModelAttributeResolver
      */
     protected function methodReturnClass(string $class, string $method): ?string
     {
+        DependencyRecorder::recordClass($class);
         $reflection = new ReflectionMethod($class, $method);
 
         return $this->singleClass($reflection->getReturnType(), $class, $reflection->getDeclaringClass()->getName());
@@ -1459,6 +1479,9 @@ class ModelAttributeResolver
      */
     protected function resolveContext(string $modelFqcn): ?array
     {
+        // Recorded before the cache, since every caller types something from the model's declarations.
+        DependencyRecorder::recordClass($modelFqcn);
+
         if (isset($this->contexts[$modelFqcn])) {
             return $this->contexts[$modelFqcn];
         }
@@ -1511,6 +1534,8 @@ class ModelAttributeResolver
      */
     protected function resolveRelationContext(string $modelFqcn): ?array
     {
+        DependencyRecorder::recordClass($modelFqcn);
+
         if (isset($this->contexts[$modelFqcn])) {
             return [
                 'instance' => $this->contexts[$modelFqcn]['instance'],

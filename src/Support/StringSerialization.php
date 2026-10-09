@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use JsonSerializable;
@@ -34,6 +35,8 @@ final class StringSerialization
             return null;
         }
 
+        // An interface reaches here without toTsType() recording it, and its jsonSerialize() decides the answer.
+        DependencyRecorder::recordClass($class);
         $method = new ReflectionMethod($class, 'jsonSerialize');
         $type = $method->getReturnType();
 
