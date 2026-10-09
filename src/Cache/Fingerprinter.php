@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Cache;
 
+use Closure;
+
 class Fingerprinter
 {
     /**
@@ -12,17 +14,19 @@ class Fingerprinter
      * Missing files contribute a 'missing' marker so their later appearance or removal still moves the hash.
      *
      * @param  list<string>  $paths
+     * @param  (Closure(string): string)|null  $hash  Reads one file's hash; hashFile() when null.
      */
-    public static function fromPaths(array $paths, string $extra = ''): string
+    public static function fromPaths(array $paths, string $extra = '', ?Closure $hash = null): string
     {
+        $hash ??= self::hashFile(...);
+
         $paths = array_values(array_unique($paths));
         sort($paths);
 
         $parts = [];
 
         foreach ($paths as $path) {
-            $hash = is_file($path) ? hash_file('xxh128', $path) : 'missing';
-            $parts[] = $path.'@'.$hash;
+            $parts[] = $path.'@'.$hash($path);
         }
 
         if ($extra !== '') {
@@ -30,5 +34,13 @@ class Fingerprinter
         }
 
         return hash('xxh128', implode("\n", $parts));
+    }
+
+    /**
+     * Hash one file's content, or 'missing' when it does not exist.
+     */
+    public static function hashFile(string $path): string
+    {
+        return is_file($path) ? (string) hash_file('xxh128', $path) : 'missing';
     }
 }

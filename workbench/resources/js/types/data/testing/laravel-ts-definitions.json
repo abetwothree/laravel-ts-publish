@@ -14503,12 +14503,12 @@
             "name": "MutualSpreadBResource",
             "properties": [
                 {
-                    "name": "a_marker",
+                    "name": "b_marker",
                     "type": "boolean",
                     "optional": false
                 },
                 {
-                    "name": "b_marker",
+                    "name": "a_marker",
                     "type": "boolean",
                     "optional": false
                 }

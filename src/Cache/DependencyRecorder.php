@@ -14,6 +14,13 @@ class DependencyRecorder
     protected static bool $recording = false;
 
     /**
+     * Each class's own, trait, interface and parent files, read once: a process cannot redeclare a class.
+     *
+     * @var array<class-string, list<string>>
+     */
+    protected static array $classFiles = [];
+
+    /**
      * Begin recording dependency file paths, clearing any previous capture.
      */
     public static function start(): void
@@ -49,16 +56,24 @@ class DependencyRecorder
     }
 
     /**
-     * Record a class's own file plus every parent class, trait (recursively), and interface file.
+     * Record a class's or interface's own file plus every parent class, trait (recursively), and interface file.
      *
-     * class_exists() guards reflection: this is a cache side-channel and must stay silent on a bad class name.
+     * The existence checks guard reflection: this is a cache side-channel and must stay silent on a bad class name.
+     * A repeat appends the files again, never skipped: a memo frame keeps only the paths recorded after its mark.
      */
     public static function recordClass(string $class): void
     {
-        if (! static::$recording || ! class_exists($class)) {
+        if (! static::$recording || (! class_exists($class) && ! interface_exists($class))) {
             return;
         }
 
+        if (isset(static::$classFiles[$class])) {
+            array_push(static::$paths, ...static::$classFiles[$class]);
+
+            return;
+        }
+
+        $mark = count(static::$paths);
         $reflection = new ReflectionClass($class);
 
         static::recordReflection($reflection);
@@ -73,6 +88,8 @@ class DependencyRecorder
             static::recordReflection($parent);
             $parent = $parent->getParentClass();
         }
+
+        static::$classFiles[$class] = array_slice(static::$paths, $mark);
     }
 
     /**

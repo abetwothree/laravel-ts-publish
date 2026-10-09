@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
@@ -19,6 +20,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostDigestResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryDetail;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryResource;
+use Workbench\App\Http\Resources\MutualSpreadAResource;
+use Workbench\App\Http\Resources\MutualSpreadBResource;
+use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Comment;
 
 /**
@@ -143,3 +147,29 @@ test('a reused body analysis still records every file it read as a cache depende
     expect(array_column($properties, 'type', 'name'))->toBe(['summary' => '{ detail: { views: number } }'])
         ->and($paths)->toContain((new ReflectionClass(PostSummaryDetail::class))->getFileName());
 });
+
+test('an analysis reused at the top of a chain counts the union arms it dropped again', function () use ($countLookups) {
+    $lookups = $countLookups();
+    $engine = resolve(AstEngine::class);
+
+    $before = DroppedUnionArms::dropped();
+    $engine->analyzeMethod(UnionHonestyResource::class);
+    $computed = DroppedUnionArms::dropped() - $before;
+    $engine->analyzeMethod(UnionHonestyResource::class);
+
+    expect($computed)->toBeGreaterThan(0)
+        ->and(DroppedUnionArms::dropped() - $before)->toBe(2 * $computed)
+        ->and($lookups['own:'.UnionHonestyResource::class.'::toArray'] ?? 0)->toBe(1);
+});
+
+// Each spreads the other, so an analysis of one is cut short where it re-enters itself, wherever the chain began.
+test('a resource in a spread cycle publishes one shape whichever resource of the cycle is analyzed first', function (bool $otherFirst) {
+    if ($otherFirst) {
+        new ResourceAstAnalyzer(new ReflectionClass(MutualSpreadAResource::class))->analyze();
+    }
+
+    $properties = new ResourceAstAnalyzer(new ReflectionClass(MutualSpreadBResource::class))->analyze()->properties;
+
+    // A key spread twice is published once, at its first position.
+    expect(array_values(array_unique(array_column($properties, 'name'))))->toBe(['b_marker', 'a_marker']);
+})->with(['alone' => false, 'after the other resource' => true]);

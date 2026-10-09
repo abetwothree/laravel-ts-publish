@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReflectedReceiver;
+
+/**
+ * Copied to a temp file under a unique name, so a test can edit the file a resource reaches only by reflection.
+ */
+final class Scorer__SUFFIX__
+{
+    /**
+     * The score the resource publishes.
+     */
+    public function score(): int
+    {
+        return 1;
+    }
+}

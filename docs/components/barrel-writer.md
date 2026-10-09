@@ -60,7 +60,7 @@ run on the default config takes that path, which is how deleting a model drops i
 "Skipped by a flag" is derived, not tracked. A phase is preserved when its `should*` flag is false and its `*.enabled`
 config is true. `--only-models`, `--only-model-metadata`, `--only-functional` and the interactive config-override
 prompt all follow from that one rule. The prompt's inverse, a phase that runs while its config says disabled, preserves
-nothing.
+nothing. `Runner::keepSkippedFeatureEntries()` applies the same rule to the generation cache's entries.
 
 The predicate asks the configured `model_metadata.transformer_class`, not the base class, because a custom transformer
 names its own companions. Its `filenameFor()` and `isMetadataFilename()` must agree, and `filename()` dispatches

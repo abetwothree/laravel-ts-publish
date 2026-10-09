@@ -114,7 +114,7 @@ reading method its shape. `FilteringAccessorModel` in the unit fixtures pins eac
 Two accessors that read each other would recurse forever. `analyze()` enters an `AnalysisMemo` guard keyed
 `accessor-body:{model}@{attribute}`, with `@importless` appended for a read without imports, and returns null on
 re-entry. The inner read is `unknown` and the outer one terminates, as `Release::loopA()` and `loopB()` pin. The same
-key memoizes the answer for the run, and a cut-short answer is never stored.
+key memoizes the answer for the run, a cut-short one with the guards that cut it.
 
 `AccessorBodyAnalyzer` keys its own guard because `analyzeModelClosure()` guards and memoizes nothing, unlike
 `AstEngine::analyzeMethod()` with its `analysis:` key. The two keys are not interchangeable, so don't merge them. Each

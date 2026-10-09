@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Cache\Fingerprinter;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\CoreGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
@@ -21,14 +23,18 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\View;
+use Illuminate\View\Engines\CompilerEngine;
 use InvalidArgumentException;
 use Laravel\Prompts\Support\Logger;
 use Throwable;
@@ -152,6 +158,40 @@ abstract class BaseRunner
     }
 
     /**
+     * Clear everything a run reads that lives as long as the process, so each run starts from a clean slate.
+     */
+    protected function resetRunState(): void
+    {
+        // Process-static and only ever added to. Clearing at the run boundary, not next to register(),
+        // is what makes "this run publishes no resources" mean an empty registry, not the last run's set.
+        PublishedResourceRegistry::reset();
+        PublishedModelRegistry::reset();
+        AnalysisWarnings::reset();
+        CoreCollector::flushClassMapCache();
+        resolve(AnalysisMemo::class)->reset();
+        TsTypeString::forgetQualifiedTypes();
+        resolve(ModelAttributeResolver::class)->reset();
+        TypeScriptMap::reset();
+        RelationMap::reset();
+        $this->forgetRenderedViews();
+    }
+
+    /**
+     * Drop Laravel's per-process view lookups and compile checks, so a template edited since an earlier run in this
+     * process renders as it is on disk, as the template fingerprint the cache header holds already reads it.
+     */
+    protected function forgetRenderedViews(): void
+    {
+        View::getFinder()->flush();
+
+        $blade = View::getEngineResolver()->resolve('blade');
+
+        if ($blade instanceof CompilerEngine) {
+            $blade->forgetCompiledOrNotExpired();
+        }
+    }
+
+    /**
      * Build a generator for $fqcn, reusing the cached snapshot when its recorded dependencies are unchanged.
      *
      * @template T of CoreGenerator
@@ -183,27 +223,11 @@ abstract class BaseRunner
         // Recomputed over the deps recorded on the last build, so editing any of them flips the fingerprint.
         $storedDeps = $this->manifest->deps($cacheKey);
 
-        if ($storedDeps !== [] && $this->manifest->hit($cacheKey, Fingerprinter::fromPaths($storedDeps, $signature))) {
-            $snapshot = $this->manifest->snapshot($cacheKey);
-            $filename = $this->manifest->filename($cacheKey);
+        if ($storedDeps !== [] && $this->manifest->hit($cacheKey, $this->manifest->fingerprint($storedDeps, $signature))) {
+            $generator = $this->rehydrate($generatorClass, $fqcn);
 
-            if ($snapshot !== null && $filename !== null) {
-                $decoded = base64_decode($snapshot, true);
-
-                if ($decoded !== false) {
-                    try {
-                        $transformer = unserialize($decoded);
-                    } catch (Throwable) {
-                        $transformer = null;
-                    }
-
-                    if ($transformer instanceof CoreTransformer) {
-                        /** @var T $generator */
-                        $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
-
-                        return $generator;
-                    }
-                }
+            if ($generator !== null) {
+                return $generator;
             }
         }
 
@@ -238,12 +262,52 @@ abstract class BaseRunner
 
         $this->manifest->record(
             $cacheKey,
-            Fingerprinter::fromPaths($deps, $signature),
+            $this->manifest->fingerprint($deps, $signature),
             $generator->filename(),
             $deps,
             $outputs,
             $snapshot,
         );
+
+        return $generator;
+    }
+
+    /**
+     * The cached generator for a class from its snapshot and filename, or null when it has no entry that rehydrates.
+     *
+     * @template T of CoreGenerator
+     *
+     * @param  class-string<T>  $generatorClass
+     * @return T|null
+     */
+    protected function rehydrate(string $generatorClass, string $fqcn): ?CoreGenerator
+    {
+        $cacheKey = $generatorClass.'::'.$fqcn;
+        $snapshot = $this->manifest?->snapshot($cacheKey);
+        $filename = $this->manifest?->filename($cacheKey);
+
+        if ($snapshot === null || $filename === null || ! method_exists($generatorClass, 'fromCache')) {
+            return null;
+        }
+
+        $decoded = base64_decode($snapshot, true);
+
+        if ($decoded === false) {
+            return null;
+        }
+
+        try {
+            $transformer = unserialize($decoded);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $transformer instanceof CoreTransformer) {
+            return null;
+        }
+
+        /** @var T $generator */
+        $generator = $generatorClass::fromCache($fqcn, $transformer, $filename);
 
         return $generator;
     }

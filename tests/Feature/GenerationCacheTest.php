@@ -2,9 +2,17 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
+use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ThrowingResourcesCollector;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -12,8 +20,30 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\View;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Controllers\CacheBustController;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
+
+/**
+ * The cache keys the array store holds for this run's repository.
+ *
+ * @return list<string>
+ */
+function storedCacheEntries(): array
+{
+    /** @var list<string> */
+    return Cache::store('array')->get('ts-publish:__index__', []);
+}
+
+/**
+ * The store key of one generator's entry for one class.
+ */
+function cacheEntryKey(string $generatorClass, string $fqcn): string
+{
+    return 'class:'.hash('xxh128', $generatorClass.'::'.$fqcn);
+}
 
 beforeEach(function () {
     $this->out = sys_get_temp_dir().'/ts-publish-out-'.uniqid();
@@ -308,4 +338,315 @@ test('a model that becomes publishable between runs is named by a resource that 
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($published())->toContain('archive: AuditArchive');
+});
+
+test('editing a class a resource reaches only by reflection rebuilds the resource', function () {
+    // PHP cannot reload a class, so the scorer lives in a temp copy the test can edit; the fingerprint hashes content.
+    $suffix = bin2hex(random_bytes(4));
+    $sources = "$this->cacheDir-src";
+
+    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ReflectedReceiver\\';
+    $resource = $namespace.'ScoreResource'.$suffix;
+    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/reflected-receiver/score-resource'.$suffix.'.ts';
+    Config::set('ts-publish.resources.additional_directories', [$resource]);
+    Config::set('ts-publish.resources.included', [$resource]);
+
+    // A cache hit rehydrates without the container, so each resolution here is a rebuild.
+    $builds = 0;
+    $this->app->resolving(ResourceGenerator::class, function () use (&$builds): void {
+        $builds++;
+    });
+
+    try {
+        mkdir($sources);
+
+        foreach (['Scorer', 'ScoreResource'] as $name) {
+            $stub = (string) file_get_contents(__DIR__.'/../Fixtures/ReflectedReceiver/'.$name.'.php.stub');
+            file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
+            require_once $sources.'/'.$name.'.php';
+        }
+
+        $scorerFile = (string) new ReflectionClass($namespace.'Scorer'.$suffix)->getFileName();
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($published))->toContain('score: number;')
+            ->and(CacheBootstrap::manifest(CacheBootstrap::repository())->deps(ResourceGenerator::class.'::'.$resource))
+            ->toContain($scorerFile)
+            ->and($builds)->toBe(1);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(1);
+
+        file_put_contents($scorerFile, "\n// edited\n", FILE_APPEND);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2);
+    } finally {
+        array_map(unlink(...), glob($sources.'/*.php') ?: []);
+        @rmdir($sources);
+    }
+});
+
+test('a partial run keeps the cache entries of the features it skipped', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.generator_class', CountingModelGenerator::class);
+    Cache::store('array')->clear();
+    CountingModelGenerator::$built = 0;
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $models = CountingModelGenerator::$built;
+    expect($models)->toBeGreaterThan(0);
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(EnumGenerator::class, Priority::class))
+        ->toContain(cacheEntryKey(CountingModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(CountingModelGenerator::$built)->toBe($models);
+});
+
+test('the --only-functional run vite build makes keeps the model and resource cache entries', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    expect(Artisan::call('ts:publish', ['--only-functional' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class))
+        ->toContain(cacheEntryKey(EnumGenerator::class, Priority::class));
+});
+
+test('a feature published by an interactive override is pruned by the next run, which its config skips', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.enabled', false);
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+
+    $this->artisan('ts:publish', ['--only-models' => true])
+        ->expectsConfirmation('Config has models publishing disabled. Override and publish models anyway?', 'yes')
+        ->assertSuccessful();
+
+    expect(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->not->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ResourceGenerator::class, UserResource::class));
+});
+
+test('a model metadata run keeps the model entries, and a model run keeps the metadata entries', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.models.included', [User::class]);
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    expect(Artisan::call('ts:publish', ['--only-model-metadata' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ModelMetadataGenerator::class, User::class));
+    expect(Artisan::call('ts:publish', ['--only-models' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())
+        ->toContain(cacheEntryKey(ModelGenerator::class, User::class))
+        ->toContain(cacheEntryKey(ModelMetadataGenerator::class, User::class));
+});
+
+test('a --source run and a preview leave the cache as they found it', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Cache::store('array')->clear();
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $index = storedCacheEntries();
+    $meta = Cache::store('array')->get('ts-publish:__meta__');
+
+    expect(Artisan::call('ts:publish', ['--source' => User::class, '--quiet' => true]))->toBe(0)
+        ->and(Artisan::call('ts:publish', ['--preview' => 'true', '--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(storedCacheEntries())->toBe($index)
+        ->and(Cache::store('array')->get('ts-publish:__meta__'))->toBe($meta);
+});
+
+test('a partial run lists the features it skipped in the globals and JSON files as the last full run did', function (string $flag) {
+    Config::set('ts-publish.globals.enabled', true);
+    Config::set('ts-publish.json.enabled', true);
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+    $json = $this->out.'/'.Config::string('ts-publish.json.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $fullGlobals = file_get_contents($globals);
+    $fullJson = file_get_contents($json);
+
+    expect(Artisan::call('ts:publish', [$flag => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toBe($fullGlobals)
+        ->and(file_get_contents($json))->toBe($fullJson);
+})->with(['--only-functional', '--only-enums', '--only-models']);
+
+test('with the cache off a partial run still writes the globals without the skipped features', function () {
+    Config::set('ts-publish.cache.enabled', false);
+    Config::set('ts-publish.globals.enabled', true);
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toContain('export interface User');
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))
+        ->toContain('export namespace workbench.app.enums')
+        ->not->toContain('export interface User');
+});
+
+test('a kept entry whose snapshot cannot be rehydrated drops only that class from the globals', function () {
+    Config::set('ts-publish.cache.store', 'array');
+    Config::set('ts-publish.globals.enabled', true);
+    Cache::store('array')->clear();
+    $globals = $this->out.'/'.Config::string('ts-publish.globals.filename');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+    $fullGlobals = (string) file_get_contents($globals);
+
+    // Written through the repository so the entry stays validly signed and loads; only its snapshot is unreadable.
+    $repository = CacheBootstrap::repository();
+    $key = cacheEntryKey(ResourceGenerator::class, UserResource::class);
+    $entry = $repository->get($key);
+    expect($entry)->toBeArray()->toHaveKey('snapshot');
+    $repository->put($key, [...(array) $entry, 'snapshot' => 'not-base64!']);
+
+    // The Crm module publishes a UserResource of its own, which must stay.
+    $userResources = fn (string $content): int => substr_count($content, 'export interface UserResource {');
+
+    expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($globals))->toContain('export interface PostResource {')
+        ->and($userResources((string) file_get_contents($globals)))->toBe($userResources($fullGlobals) - 1);
+});
+
+test('the generators a partial run retains stay apart from the ones it published', function () {
+    expect(new Runner)
+        ->retainedModelGenerators->toBeEmpty()
+        ->retainedResourceGenerators->toBeEmpty();
+
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    $partial = new Runner;
+    $partial->shouldPublishModels = false;
+    $partial->shouldPublishResources = false;
+    $partial->useCache(CacheBootstrap::manifest());
+    $partial->run();
+
+    // The console summary counts the published collections, so a retained class must not be counted as published.
+    expect($full->modelGenerators)->not->toBeEmpty()
+        ->and($full->resourceGenerators)->not->toBeEmpty()
+        ->and($partial->modelGenerators)->toBeEmpty()
+        ->and($partial->resourceGenerators)->toBeEmpty()
+        ->and($partial->retainedModelGenerators)->toHaveCount($full->modelGenerators->count())
+        ->and($partial->retainedResourceGenerators)->toHaveCount($full->resourceGenerators->count())
+        ->and($partial->enumGenerators)->toHaveCount($full->enumGenerators->count())
+        ->and($partial->retainedEnumGenerators)->toBeEmpty();
+});
+
+test('a partial run that retains the models builds the morph map once', function (bool $laterPhases) {
+    Config::set('ts-publish.inertia.enabled', $laterPhases);
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
+
+    $resolver = new RecordingModelAttributeResolver;
+    app()->instance(ModelAttributeResolver::class, $resolver);
+
+    $runner = new Runner;
+    $runner->shouldPublishModels = false;
+
+    if (! $laterPhases) {
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishResources = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastEvents = false;
+    }
+
+    $runner->useCache(CacheBootstrap::manifest());
+    $runner->run();
+
+    expect($resolver->morphTargetMapBuilds)->toHaveCount(1)
+        ->and($runner->retainedModelGenerators)->not->toBeEmpty();
+})->with([
+    'a run whose later phases read the published set' => [true],
+    'a run that builds the published set only to retain the models' => [false],
+]);
+
+test('a run that ends before it retains leaves no retained generators from the run before it on the same runner', function () {
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    Config::set('ts-publish.globals.enabled', true);
+    $runner = new Runner;
+    $runner->shouldPublishModels = false;
+    $runner->shouldPublishResources = false;
+    $runner->useCache(CacheBootstrap::manifest());
+    $runner->run();
+
+    expect($runner->retainedModelGenerators)->not->toBeEmpty()
+        ->and($runner->retainedResourceGenerators)->not->toBeEmpty();
+
+    // The collector throws before retainSkippedGenerators() runs, so only the run boundary can have emptied them.
+    Config::set('ts-publish.resources.collector_class', ThrowingResourcesCollector::class);
+    $runner->shouldPublishResources = true;
+    expect(fn () => $runner->run())->toThrow(RuntimeException::class);
+
+    expect($runner->retainedEnumGenerators)->toBeEmpty()
+        ->and($runner->retainedModelGenerators)->toBeEmpty()
+        ->and($runner->retainedResourceGenerators)->toBeEmpty()
+        ->and($runner->retainedFormRequestGenerators)->toBeEmpty()
+        ->and($runner->retainedBroadcastEventGenerators)->toBeEmpty();
+});
+
+test('a template published and edited after the first run reaches the next run without --fresh', function () {
+    $enumFile = $this->out.'/workbench/app/enums/priority.ts';
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and(file_get_contents($enumFile))->not->toContain('// edited template');
+
+    // An edited enum template ahead of the package's views, as `vendor:publish` and an edit would leave them.
+    $views = $this->out.'-views';
+    mkdir($views);
+    file_put_contents($views.'/enum.blade.php', "// edited template\n".file_get_contents(__DIR__.'/../../resources/views/enum.blade.php'));
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// edited template\n");
+    } finally {
+        unlink($views.'/enum.blade.php');
+        rmdir($views);
+    }
+});
+
+test('a template edited in place between two runs in one process reaches the second', function () {
+    $enumFile = $this->out.'/workbench/app/enums/priority.ts';
+    $views = $this->out.'-views';
+    $template = $views.'/enum.blade.php';
+    $package = (string) file_get_contents(__DIR__.'/../../resources/views/enum.blade.php');
+    mkdir($views);
+    file_put_contents($template, "// v1\n".$package);
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// v1\n");
+
+        // Blade skips the expiry check for a view this process compiled already, so only a flush makes it read v2.
+        file_put_contents($template, "// v2\n".$package);
+        touch($template, time() + 5);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($enumFile))->toStartWith("// v2\n");
+    } finally {
+        unlink($template);
+        rmdir($views);
+    }
 });

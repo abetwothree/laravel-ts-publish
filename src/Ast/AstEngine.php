@@ -31,13 +31,10 @@ final class AstEngine
     use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
-    /** How many analyses are in progress, so the outermost one in a chain can be told apart. */
-    private int $depth = 0;
-
     /**
      * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
      * class runs the same engine without the `when*()` family. Cycle-guarded, and memoized for the run through
-     * AnalysisMemo: the outermost call in its chain always, any other call once nothing cut it short.
+     * AnalysisMemo.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
@@ -62,7 +59,6 @@ final class AstEngine
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
             fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
-            pin: $this->depth === 0,
         );
 
         return clone $analysis;
@@ -238,12 +234,9 @@ final class AstEngine
             return new MethodAnalysis;
         }
 
-        $this->depth++;
-
         try {
             return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
         } finally {
-            $this->depth--;
             $memo->leave($key);
         }
     }

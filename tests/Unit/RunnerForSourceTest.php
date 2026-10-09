@@ -436,11 +436,12 @@ test('a --source run publishes a model on a database view when a collected model
         ->and($runner->modelGenerators->first()->content)->toContain('entries: RosterEntry[];');
 });
 
-test('a --source run starts with an empty analysis memo, pinned answers included', function () {
+test('a --source run starts with an empty analysis memo', function () {
     $memo = resolve(AnalysisMemo::class);
-    $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+    $memo->remember('an-earlier-run', fn (): string => 'stale');
 
     (new RunnerForSource('Workbench\\App\\Enums\\Status'))->run();
 
-    expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
+    // The registry versions alone reject a stale answer, so only a dropped entry proves reset().
+    expect((fn (): array => $this->entries)->call($memo))->not->toHaveKey('an-earlier-run');
 });

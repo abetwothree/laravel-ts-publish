@@ -34,12 +34,18 @@ class GlobalsWriter
         /** @var view-string $template */
         $template = Config::string('ts-publish.globals.template');
 
+        $enums = $runner->enumGenerators->concat($runner->retainedEnumGenerators);
+        $models = $runner->modelGenerators->concat($runner->retainedModelGenerators);
+        $resources = $runner->resourceGenerators->concat($runner->retainedResourceGenerators);
+        $formRequests = $runner->formRequestGenerators->concat($runner->retainedFormRequestGenerators);
+        $broadcastEvents = $runner->broadcastEventGenerators->concat($runner->retainedBroadcastEventGenerators);
+
         // Build a map of global namespace → type names it owns, used for cross-namespace qualification.
         // Each key is a dot-separated namespace path, e.g. 'app.enums' => [...], 'app.models' => [...].
         /** @var array<string, list<string>> $globalTypesByNamespace */
         $globalTypesByNamespace = [];
 
-        foreach ($runner->enumGenerators as $gen) {
+        foreach ($enums as $gen) {
             $t = $gen->transformer;
             $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->enumName;
@@ -49,25 +55,25 @@ class GlobalsWriter
             }
         }
 
-        foreach ($runner->modelGenerators as $gen) {
+        foreach ($models as $gen) {
             $t = $gen->transformer;
             $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->modelName;
         }
 
-        foreach ($runner->resourceGenerators as $gen) {
+        foreach ($resources as $gen) {
             $t = $gen->transformer;
             $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->resourceName;
         }
 
-        foreach ($runner->formRequestGenerators as $gen) {
+        foreach ($formRequests as $gen) {
             $t = $gen->transformer;
             $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->typeName;
         }
 
-        foreach ($runner->broadcastEventGenerators as $gen) {
+        foreach ($broadcastEvents as $gen) {
             $t = $gen->transformer;
             $ns = $t->globalNamespace();
             $globalTypesByNamespace[$ns][] = $t->eventName;
@@ -79,7 +85,7 @@ class GlobalsWriter
         /** @var array<string, list<string>> $externalTypeImports */
         $externalTypeImports = [];
 
-        foreach ($runner->modelGenerators as $gen) {
+        foreach ($models as $gen) {
             foreach ($gen->transformer->combinedCustomImports() as $path => $types) {
                 foreach ($types as $type) {
                     if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
@@ -89,7 +95,7 @@ class GlobalsWriter
             }
         }
 
-        foreach ($runner->resourceGenerators as $gen) {
+        foreach ($resources as $gen) {
             foreach ($gen->transformer->typeImports as $path => $types) {
                 if (str_starts_with($path, '.')) {
                     continue;
@@ -102,7 +108,7 @@ class GlobalsWriter
             }
         }
 
-        foreach ($runner->broadcastEventGenerators as $gen) {
+        foreach ($broadcastEvents as $gen) {
             foreach ($gen->transformer->typeImports as $path => $types) {
                 if (str_starts_with($path, '.')) {
                     continue;
@@ -115,7 +121,7 @@ class GlobalsWriter
             }
         }
 
-        foreach ($runner->formRequestGenerators as $gen) {
+        foreach ($formRequests as $gen) {
             foreach ($gen->transformer->typeImports as $path => $types) {
                 if (str_starts_with($path, '.')) {
                     continue;
@@ -141,15 +147,15 @@ class GlobalsWriter
         /** @var array<string, string> $globalAliasMap */
         $globalAliasMap = [];
 
-        foreach ($runner->modelGenerators as $gen) {
+        foreach ($models as $gen) {
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
-        foreach ($runner->resourceGenerators as $gen) {
+        foreach ($resources as $gen) {
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
-        foreach ($runner->broadcastEventGenerators as $gen) {
+        foreach ($broadcastEvents as $gen) {
             $globalAliasMap = array_merge($globalAliasMap, $gen->transformer->globalAliasMap());
         }
 
@@ -159,27 +165,27 @@ class GlobalsWriter
             'externalTypeImports' => $externalTypeImports,
         ];
 
-        $viewData['groupedModels'] = $runner->modelGenerators
+        $viewData['groupedModels'] = $models
             ->groupBy(fn (ModelGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (ModelGenerator $g) => $g->transformer))
             ->sortKeys();
 
-        $viewData['groupedEnums'] = $runner->enumGenerators
+        $viewData['groupedEnums'] = $enums
             ->groupBy(fn (EnumGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (EnumGenerator $g) => $g->transformer))
             ->sortKeys();
 
-        $viewData['groupedResources'] = $runner->resourceGenerators
+        $viewData['groupedResources'] = $resources
             ->groupBy(fn (ResourceGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (ResourceGenerator $g) => $g->transformer))
             ->sortKeys();
 
-        $viewData['groupedFormRequests'] = $runner->formRequestGenerators
+        $viewData['groupedFormRequests'] = $formRequests
             ->groupBy(fn (FormRequestGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (FormRequestGenerator $g) => $g->transformer))
             ->sortKeys();
 
-        $viewData['groupedBroadcastEvents'] = $runner->broadcastEventGenerators
+        $viewData['groupedBroadcastEvents'] = $broadcastEvents
             ->groupBy(fn (BroadcastEventGenerator $g) => $g->transformer->globalNamespace())
             ->map(fn ($group) => $group->map(fn (BroadcastEventGenerator $g) => $g->transformer))
             ->sortKeys();

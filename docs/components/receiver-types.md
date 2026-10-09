@@ -24,7 +24,8 @@ These classes carry receiver inference:
 `ReceiverClassResolver::resolve()` dispatches on the node class, and its class docblock points here for the rules. Any
 part it cannot name makes the whole answer `null`, never a partial one. A handler reflects the next member on every
 class the receiver names, so dropping one arm of `User|<unknown>` would publish a type that claims more than the code
-guarantees.
+guarantees. Every class a receiver or chain link names is recorded as a generation-cache dependency before a rule or
+reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |

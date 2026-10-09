@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use JsonSerializable;
@@ -28,6 +29,9 @@ final class StringSerialization
      */
     public static function jsonStringType(string $class): ?string
     {
+        // Before the guards: a class or interface that later gains a string jsonSerialize() changes the answer.
+        DependencyRecorder::recordClass($class);
+
         if ((! class_exists($class) && ! interface_exists($class))
             || ! is_a($class, JsonSerializable::class, true)
             || is_a($class, Model::class, true)) {

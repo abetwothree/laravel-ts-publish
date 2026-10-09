@@ -291,10 +291,19 @@ no backing model, only a `Model` root hands off to the relation walk. On a model
 
 ## Dependency recording policy
 
-Every analyzer file read goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records the
-file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too. A
-read that bypasses it leaves the generation cache serving stale output when that file changes.
+Every file an analyzer parses goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records
+the file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too.
+A read that bypasses it leaves the generation cache serving stale output when that file changes.
 `AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
+
+A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
+interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
+member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
+`ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
+`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`, and
+`ModelAttributeResolver`'s contexts and caster reads. A cache in front of such a read records before its lookup, or
+replays what it recorded, as `resolveAttributeClass()` does. Recording never deduplicates, because a memo frame keeps
+the paths recorded after its mark.
 
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
@@ -313,14 +322,17 @@ helper changes.
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
 import mode, gains an `@importless` suffix for an analysis that carries no imports.
 
-A stored answer keeps the dependency paths recorded while it was computed, and every reuse records them again. The
-generation cache therefore sees what a fresh computation would have shown it. An unpinned reuse also replays its
-dropped-arm count, and happens only where computing the answer again could not differ, by the conditions in
-`AnalysisMemo::reproducible()`. The outermost `analyzeMethod()` in a chain is pinned instead: stored even when a cycle
-cut it short, and reused whatever is on the stack.
+A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
+records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have
+shown them. A cycle can cut an answer short, so each answer is stored with the guards it found held, and
+`AnalysisMemo::reproducible()` reuses it only where nothing it read has changed and exactly those guards are held again.
+No answer depends on which entry point read it first.
 
-`AnalysisMemo::forget()` drops every unpinned answer, and `ModelAttributeResolver::buildMorphTargetMap()` calls it.
-`reset()` drops every answer, and `Runner::run()` and `RunnerForSource::run()` call it, so none outlives a run.
+`AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
+`ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard
+outside `AnalysisMemo`, such as an `AnalysisScope`'s `visitedSpreadMethods` or `resolvingLocalVars`, may span a
+memoized call, since that call builds its own scope, but a memoized analysis must never read one, or the reuse rule
+cannot see it.
 
 ## MethodAnalysis
 
@@ -458,6 +470,7 @@ These pages cover the engine's neighbors:
 - [ImportNameRegistry](import-name-registry.md): aliasing two same-basename imports.
 - [Known gaps § Handler ordering is pinned pairwise][gap-ordering]: why a green ordering suite is narrower than it
   looks.
+- [Generation cache](generation-cache.md): how recorded dependencies decide a hit.
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that read the generated types.
 - [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
   inference feature moved onto this engine.
