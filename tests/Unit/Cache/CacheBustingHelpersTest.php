@@ -130,6 +130,23 @@ it('changes the config fingerprint when a view a cached template includes by nam
     expect(ConfigFingerprint::compute())->not->toBe($before);
 });
 
+it('changes the config fingerprint when a view named among nested or variant directive arguments is edited', function (string $directive) {
+    $directory = publishedViewsDirectory($this->views);
+    file_put_contents($directory.'/enum.blade.php', $directive."\n");
+    file_put_contents($directory.'/partials/banner.blade.php', "// v1\n");
+
+    $before = ConfigFingerprint::compute();
+
+    file_put_contents($directory.'/partials/banner.blade.php', "// v2\n");
+
+    expect(ConfigFingerprint::compute())->not->toBe($before);
+})->with([
+    'a condition that calls a method' => ["@includeWhen(\$data->hasRoutes(), 'laravel-ts-publish::partials.banner')"],
+    'an isolated include' => ["@includeIsolated('laravel-ts-publish::partials.banner')"],
+    'the first layout that exists' => ["@extendsFirst(['laravel-ts-publish::missing', 'laravel-ts-publish::partials.banner'])"],
+    'the first component that exists' => ["@componentFirst(['laravel-ts-publish::partials.banner'])"],
+]);
+
 it('keeps the config fingerprint stable when a template that renders on every run is edited', function () {
     $before = ConfigFingerprint::compute();
 

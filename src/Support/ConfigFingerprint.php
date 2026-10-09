@@ -27,8 +27,11 @@ class ConfigFingerprint
         'broadcast_events.template' => null,
     ];
 
-    /** A Blade directive that renders another view, which may be named by a string literal among its arguments. */
-    private const string VIEW_DIRECTIVE = '/@(?:include(?:If|When|Unless|First)?|extends|each|component)\s*\(([^)]*)\)/';
+    /**
+     * A Blade directive that renders another view, which may be named by a string literal among its arguments. The
+     * arguments run to the balancing parenthesis, so a call among them does not cut them short.
+     */
+    private const string VIEW_DIRECTIVE = '/@(?:include(?:If|When|Unless|First|Isolated)?|extends(?:First)?|each|component(?:First)?)\s*(\((?:[^()]++|(?1))*\))/';
 
     /**
      * Hash the output-affecting `ts-publish` config, each database connection's driver, and the templates the cached
