@@ -11,6 +11,7 @@ export * from './MultiModelEvent';
 export * from './OrderShipped';
 export * from './PayloadDiffersEvent';
 export * from './PostPublishedEvent';
+export * from './PostStatusBroadcast';
 export * from './PureEnumEvent';
 export * from './ReportSynced';
 export * from './ReviewerCastEvent';

@@ -104,6 +104,7 @@ use Workbench\App\Http\Resources\MixedEnumReturnBranchesResource;
 use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
@@ -3464,4 +3465,26 @@ test('a class-level cast on a numeric key adds that key to an API resource', fun
 
     expect($transformer->properties[42])->toBe(['type' => 'boolean', 'optional' => false, 'description' => ''])
         ->and(new ResourceWriter(new Filesystem)->write($transformer))->toContain('    "42": boolean;');
+});
+
+// A backed case sends its value, so it publishes its enum's alias wherever a key reads it, beside a same-named one too.
+test('a bare enum case publishes its enum in every resource position', function () {
+    $properties = new ResourceTransformer(PostEnumCaseResource::class)->properties;
+
+    expect(array_map(fn (array $property): string => $property['type'], $properties))->toBe([
+        'status' => 'WorkbenchStatusType',
+        'crm_status' => 'CrmStatusType',
+        'kept_status' => 'WorkbenchStatusType',
+        'priority_or_low' => 'PriorityType',
+        'flagged' => 'WorkbenchStatusType | null',
+        'either' => 'WorkbenchStatusType | CrmStatusType',
+        'when_published' => 'WorkbenchStatusType',
+        'when_default' => 'string | WorkbenchStatusType',
+        'matched' => 'WorkbenchStatusType',
+        'pair' => '{ app: WorkbenchStatusType; crm: CrmStatusType }',
+        'cases' => 'WorkbenchStatusType[]',
+        'case_list' => 'WorkbenchStatusType[]',
+        'wrapped' => 'AsEnum<typeof WorkbenchStatus>',
+        'wrapped_kept' => 'AsEnum<typeof WorkbenchStatus>',
+    ])->and(array_keys(array_filter($properties, fn (array $property): bool => $property['optional'])))->toBe(['when_published']);
 });

@@ -63,9 +63,9 @@ final class ValueResolver
     }
 
     /**
-     * Resolve `SomeClass::CONSTANT` as a value expression. Reads the constant via reflection and
-     * feeds its PHP value through resolveConstantValue(), which types a scalar leaf itself. Returns null for
-     * anything not a resolvable plain constant.
+     * Resolve `SomeClass::CONSTANT` or `SomeEnum::Case` as a value expression. Reads the constant via reflection and
+     * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
+     * Returns null for anything not a resolvable constant.
      *
      * @return ValueExpressionResult|null
      */
@@ -97,10 +97,8 @@ final class ValueResolver
 
         $constantReflection = $classReflection->getReflectionConstant($constName);
 
-        // Enum cases resolve through resolveEnumFromPropertyArg()'s dedicated branch instead
-        // (EnumResource::make(Status::Active) etc.) — a bare case fetch here must not be
-        // reinterpreted as a plain constant's literal value.
-        if ($constantReflection === false || $constantReflection->isEnumCase()) {
+        // A scope that carries no import cannot import the enum, and the body fallback would drop the shape holding it.
+        if ($constantReflection === false || ($constantReflection->isEnumCase() && ! $scope->carriesImports)) {
             return null;
         }
 
@@ -278,6 +276,7 @@ final class ValueResolver
      */
     private function analyzeConstantListValue(array $value): ?array
     {
+        /** @var array<string, string> $types identity => type */
         $types = [];
         $embeddedEnumFqcns = [];
 
@@ -288,15 +287,23 @@ final class ValueResolver
                 return null;
             }
 
-            $types[] = $itemResult['type'];
-            $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
+            // An element repeats another only when the enums behind its tokens match too: two enums share a type name.
+            $itemFqcns = $this->collectConstantEnumFqcns($itemResult);
+            $identity = implode("\0", [$itemResult['type'], ...$itemFqcns]);
+
+            if (isset($types[$identity])) {
+                continue;
+            }
+
+            $types[$identity] = $itemResult['type'];
+            $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$itemFqcns];
         }
 
-        $result = ['type' => TsTypeShape::listType($types), 'optional' => false];
+        // Joined first, since listType() would keep one of two elements that print alike.
+        $result = ['type' => TsTypeShape::listType([implode(' | ', $types)]), 'optional' => false];
 
         if ($embeddedEnumFqcns !== []) {
-            // Never deduped: an element can itself be a record whose rendered type carries several
-            // enum occurrences, so aliasPropertyType() must still walk this list positionally.
+            // One entry per token of the kept elements, in order: aliasPropertyType() walks this list positionally.
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 

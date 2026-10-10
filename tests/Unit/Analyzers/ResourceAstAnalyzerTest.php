@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
@@ -179,6 +180,7 @@ use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PermissionsSpreadResource;
 use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
+use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostUnwrappedCollection;
@@ -247,6 +249,7 @@ use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Blog\Http\Resources\ReactionResource;
 use Workbench\Blog\Models\Article;
 use Workbench\Blog\Models\Reaction;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\Deal;
@@ -7186,6 +7189,33 @@ test('a keyless list literal publishes the list it encodes as, with the imports 
         'flags' => 'string[]',
         'opaque' => 'unknown[]',
         'collected' => '(number | string | null)[]',
-    ])->and($analysis->inlineEnumFqcns['statuses'] ?? [])->toBe([OrderStatus::class, OrderStatus::class])
+    ])->and($analysis->inlineEnumFqcns['statuses'] ?? [])->toBe([OrderStatus::class])
         ->and($analysis->inlineResourceFqcns['senders'] ?? [])->toBe([UserResource::class]);
+});
+
+// #76: a member per enum where two share a name, each queued in the order the type spells them.
+test('a union of two same-named enums keeps a member and a queue entry per enum, in token order', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(WarehouseResource::class), Warehouse::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class])
+        ->and($result)->not->toHaveKey('directEnumFqcn');
+})->with([
+    'a shape beside a read' => ['$this->id > 0 ? ["s" => $this->status] : $this->current_crm_status', '{ s: StatusType | null } | StatusType | null'],
+    'two reads' => ['$this->id > 0 ? $this->status : $this->current_crm_status', 'StatusType | StatusType | null'],
+]);
+
+// The body fallback flattens a helper's shape with no import, so the case declines and leaves its siblings their types.
+test('an enum case in a vague helper\'s body fallback leaves its siblings typed', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ s: unknown; n: number }']);
+});
+
+test('a list of an enum case beside a read of the same enum publishes one element type, queued once per token', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostEnumCaseResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all()['case_list'])->toBe('StatusType[]')
+        ->and($analysis->inlineEnumFqcns['case_list'] ?? [])->toBe([Status::class]);
 });

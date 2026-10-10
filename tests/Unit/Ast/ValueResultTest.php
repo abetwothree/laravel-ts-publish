@@ -16,6 +16,7 @@ use Workbench\App\ValueObjects\OpaqueHandle;
 use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
+use Workbench\Shipping\Enums\Status as ShipmentStatus;
 
 describe('ValueResult::withAttributeChannels()', function () {
     test('carries each FQCN kind on the channel its count picks', function (array $attribute, array $channels) {
@@ -138,6 +139,31 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
         ]);
     });
 
+    test('two enums read directly that share a name are two members, queued per token in place of the direct one', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ s: StatusType | null }', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]],
+            ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]);
+
+        expect($result)->toBe([
+            'type' => '{ s: StatusType | null } | StatusType | StatusType | null',
+            'optional' => false,
+            'embeddedEnumFqcns' => [Status::class, CrmStatus::class, Status::class],
+        ]);
+    });
+
+    // The AsEnum rewrite spells an enum resource's token by its own import channel, so it keeps that path (#76, #108).
+    test('two enum resource arms that share a name stay merged by their text', function () {
+        $result = ValueResult::unionResults([
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => CrmStatus::class],
+        ]);
+
+        expect($result['type'])->toBe('StatusType')
+            ->and($result['multiEnumResourceFqcns'] ?? null)->toBeNull();
+    });
+
     test('arms whose classes each have a name of their own are merged by their text, as before', function () {
         $result = ValueResult::unionResults([
             ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class],
@@ -155,6 +181,14 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
 
 // A union is one of enum resources when its enum resources are as many as the types it counts: its arms' types, or its
 // members where the caller says so, as a conditional default does.
+describe('ValueResult::enumTypeName()', function () {
+    test('names an enum by the type its file exports', function () {
+        expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
+    });
+});
+
 describe('ValueResult::unionResults() over enum-resource branches', function () {
     $nullableSecond = [
         ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],

@@ -4278,6 +4278,26 @@ declare global {
             authors: ({ id: number; who: string | null; who_or: string | null })[];
             loaded?: ({ who: string | null })[];
         }
+        /**
+         * A bare enum case in every position a resource key reads one, with two enums that share a basename. A backed case
+         * sends its value; a pure case would make the response throw, so none is here.
+         */
+        export interface PostEnumCaseResource {
+            status: workbench.app.enums.StatusType;
+            crm_status: workbench.crm.enums.StatusType;
+            kept_status: workbench.app.enums.StatusType;
+            priority_or_low: workbench.app.enums.PriorityType;
+            flagged: workbench.app.enums.StatusType | null;
+            either: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            when_published?: workbench.app.enums.StatusType;
+            when_default: string | workbench.app.enums.StatusType;
+            matched: workbench.app.enums.StatusType;
+            pair: { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType };
+            cases: workbench.app.enums.StatusType[];
+            case_list: workbench.app.enums.StatusType[];
+            wrapped: workbench.app.enums.StatusType;
+            wrapped_kept: workbench.app.enums.StatusType;
+        }
         /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
         export interface PostEnumTrioResource {
             id: number;
@@ -5264,9 +5284,9 @@ declare global {
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site; the audit proves each fires and pins these lines: the plain ternary and the Elvis go
-         * through analyzeClosureUnion(), 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through
-         * KnownFunctionCallHandler, 'conditional_default' through ConditionalMethodHandler, 'match_arm' through MatchHandler.
+         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
+         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
+         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -5276,6 +5296,7 @@ declare global {
             data_get_default: string | null;
             conditional_default: string;
             match_arm: string;
+            coalesce_right: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
@@ -5958,6 +5979,11 @@ declare global {
         export interface PostPublishedEvent {
             post: Partial<workbench.app.models.Post>;
             message: string;
+        }
+        export interface PostStatusBroadcast {
+            status: workbench.app.enums.StatusType;
+            crm_status: workbench.crm.enums.StatusType;
+            kept: workbench.app.enums.StatusType;
         }
         export interface PureEnumEvent {
             role: workbench.app.enums.RoleType;

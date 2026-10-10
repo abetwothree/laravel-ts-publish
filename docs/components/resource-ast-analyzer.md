@@ -720,9 +720,11 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`, which
-reads it by class through [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
-[Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
+`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`: one name
+spells two models, two resources or two enums read directly. `withMembersByClass()` reads it by class through
+[`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references). An `EnumResource` arm stays merged
+by text, since the `AsEnum` rewrite spells its token by its own import channel. `CoalesceHandler`,
 `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
 `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and default alike.
 `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
@@ -799,10 +801,10 @@ stands for two different things, so it stays two references.
 ### An enum reached through a local or a helper
 
 `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
-parameter, so `$case = Status::Draft` wraps a case the engine alone reads as `unknown`. Any other payload, such as a
-coalesce or a method's return, goes to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that
-holds one enum and nothing else, or a list of it for `::collection()`. Two enums, even two that share a name, stay
-`unknown`. The payload's own `| null` stays in every subject: an enum branch returns before `wrapsNullablePayload()`.
+parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
+to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
+list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
+in every subject: an enum branch returns before `wrapsNullablePayload()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a

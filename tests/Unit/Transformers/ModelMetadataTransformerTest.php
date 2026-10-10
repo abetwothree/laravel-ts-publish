@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InlineEnumCaseMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetadataPayloadProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
@@ -88,6 +89,17 @@ test('imports the enum a body-inferred value names', function () {
     expect($data->propertyTypes)->toBe(['role' => 'RoleType'])
         ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
         ->and($data->properties)->toBe(['role' => 'Admin']);
+});
+
+// JsEmitter writes a pure case's name, which the enum's alias spells; a backed case writes its value.
+test('types an enum case a provider writes inline', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InlineEnumCaseMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['visibility' => 'Public', 'status' => 1])
+        ->and($data->propertyTypes)->toBe(['visibility' => 'VisibilityType', 'status' => 'StatusType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType', 'VisibilityType']]);
 });
 
 test('does not import a model for a model-typed value', function () {

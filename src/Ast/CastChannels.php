@@ -121,7 +121,7 @@ final class CastChannels
                 $analysis->casts[$name] = $cast;
             }
 
-            [$kept, $carriedEnums] = $this->divide($enums, $type, $brought, $this->enumTypeName(...), $broughtOver);
+            [$kept, $carriedEnums] = $this->divide($enums, $type, $brought, ValueResult::enumTypeName(...), $broughtOver);
             $this->queue($analysis->inlineEnumFqcns, $analysis->directEnumFqcns, $name, $kept);
 
             [$kept, $carriedModels] = $this->divide($models, $type, $brought, class_basename(...), $broughtOver);
@@ -337,12 +337,6 @@ final class CastChannels
                 $analysis->carried[$kind] = $left;
             }
         }
-    }
-
-    /** The name an enum's type is spelled with. */
-    private function enumTypeName(string $fqcn): string
-    {
-        return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
     }
 
     /** The name an enum's const is spelled with. */

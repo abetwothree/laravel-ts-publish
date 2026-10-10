@@ -16,6 +16,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use Workbench\App\Enums\Status;
+use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
@@ -610,6 +612,14 @@ test('a prop typed from a request\'s import-aware cast carries the import', func
 it('quotes a page prop key that is not an identifier', function () {
     expect(pageData(InertiaKeyEdgesController::class.'@show')['pageType'])
         ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
+});
+
+it('types a bare enum case prop as its enum, and imports it once', function () {
+    $data = pageData(InertiaEnumCaseController::class.'@show');
+
+    expect($data['pageType'])
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[] }')
+        ->and($data['classFqcns'])->toBe([Status::class]);
 });
 
 test('the page type prints no ? after a signature, whatever flag reaches it', function () {

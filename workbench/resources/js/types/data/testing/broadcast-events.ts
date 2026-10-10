@@ -11,6 +11,7 @@ import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
 import type { OrderShipped } from './workbench/app/events/OrderShipped';
 import type { PayloadDiffersEvent } from './workbench/app/events/PayloadDiffersEvent';
 import type { PostPublishedEvent } from './workbench/app/events/PostPublishedEvent';
+import type { PostStatusBroadcast } from './workbench/app/events/PostStatusBroadcast';
 import type { PureEnumEvent } from './workbench/app/events/PureEnumEvent';
 import type { ReportSynced } from './workbench/app/events/ReportSynced';
 import type { ReviewerCastEvent } from './workbench/app/events/ReviewerCastEvent';
@@ -39,6 +40,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.OrderShipped'
     | '.Workbench.App.Events.PayloadDiffersEvent'
     | '.Workbench.App.Events.PostPublishedEvent'
+    | '.Workbench.App.Events.PostStatusBroadcast'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
     | '.Workbench.App.Events.ReviewerCastEvent'
@@ -67,6 +69,7 @@ export const BroadcastEvents = Object.freeze({
     OrderShipped: '.Workbench.App.Events.OrderShipped',
     PayloadDiffersEvent: '.Workbench.App.Events.PayloadDiffersEvent',
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
+    PostStatusBroadcast: '.Workbench.App.Events.PostStatusBroadcast',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
     ReviewerCastEvent: '.Workbench.App.Events.ReviewerCastEvent',
@@ -96,6 +99,7 @@ export type {
     OrderShipped,
     PayloadDiffersEvent,
     PostPublishedEvent,
+    PostStatusBroadcast,
     PureEnumEvent,
     ReportSynced,
     ReviewerCastEvent,

@@ -34,6 +34,7 @@ use Workbench\App\Events\MultiModelEvent;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Events\PostPublishedEvent;
+use Workbench\App\Events\PostStatusBroadcast;
 use Workbench\App\Events\PureEnumEvent;
 use Workbench\App\Events\ReportSynced;
 use Workbench\App\Events\SameBasenameModelEvent;
@@ -335,6 +336,18 @@ describe('StatusSynced (two Status enums from different namespaces — import al
         $allTypes = array_merge(...array_values($transformer->typeImports));
         expect(array_filter($allTypes, fn ($t) => $t === 'StatusType'))->toBeEmpty();
     });
+});
+
+test('a bare enum case in a payload publishes its enum, aliased beside a same-named one', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => PostStatusBroadcast::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'status' => 'AppStatusType',
+        'crm_status' => 'CrmStatusType',
+        'kept' => 'AppStatusType',
+    ])->and(array_merge(...array_values($transformer->typeImports)))
+        ->toContain('StatusType as AppStatusType')
+        ->toContain('StatusType as CrmStatusType');
 });
 
 describe('TsCasts overrides', function () {

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -50,6 +51,7 @@ class HandleInertiaRequests extends Middleware
             // Absent from the docblock on purpose: an inferred EnumResource prop is what the
             // AsEnum rewrite and its value import are published from.
             'role' => EnumResource::make(Role::Admin),
+            'defaultStatus' => Status::Draft,
             // Optional docblock key: the '?' rides on the parsed map key, so the override lookup has
             // to strip it or the prop is emitted twice (TS2300).
             'filters' => (array) $request->query('filters', []),

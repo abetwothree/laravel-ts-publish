@@ -34,11 +34,12 @@ test('a union records the arm it leaves out, and its published type is unchanged
 
     // One line per recording site: 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed instanceof path,
     // 32 is KnownFunctionCallHandler's data_get default, 33 is ConditionalMethodHandler's when() default, 35 is
-    // MatchHandler's arm. The last four resolve their arms themselves, so analyzeClosureUnion() alone would miss them.
+    // MatchHandler's arm, 37 is CoalesceHandler's right operand. The last five resolve their arms themselves.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35])
-        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm'])
+        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35, 37])
+        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm', 'coalesce-right'])
+        ->and($props['coalesce_right']['type'])->toBe('string')
         ->and($props['elvis']['type'])->toBe('null')
         ->and($props['ternary']['type'])->toBe('null')
         ->and($props['narrowed']['type'])->toBe('null')

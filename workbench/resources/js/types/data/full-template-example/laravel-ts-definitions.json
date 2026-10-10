@@ -256,6 +256,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\PostStatusBroadcast": {
+            "name": "PostStatusBroadcast",
+            "eventName": "PostStatusBroadcast",
+            "broadcastName": ".Workbench.App.Events.PostStatusBroadcast",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "AppStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "crm_status",
+                    "type": "CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "kept",
+                    "type": "AppStatusType",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\PureEnumEvent": {
             "name": "PureEnumEvent",
             "eventName": "PureEnumEvent",
@@ -15909,6 +15931,81 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostEnumCaseResource": {
+            "name": "PostEnumCaseResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "crm_status",
+                    "type": "CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "kept_status",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "priority_or_low",
+                    "type": "PriorityType",
+                    "optional": false
+                },
+                {
+                    "name": "flagged",
+                    "type": "EnumsStatusType | null",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "EnumsStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "when_published",
+                    "type": "EnumsStatusType",
+                    "optional": true
+                },
+                {
+                    "name": "when_default",
+                    "type": "string | EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "matched",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "pair",
+                    "type": "{ app: EnumsStatusType; crm: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "cases",
+                    "type": "EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "case_list",
+                    "type": "EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped",
+                    "type": "AsEnum<typeof EnumsStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_kept",
+                    "type": "AsEnum<typeof EnumsStatus>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostEnumTrioResource": {
             "name": "PostEnumTrioResource",
             "properties": [
@@ -19165,6 +19262,11 @@
                 },
                 {
                     "name": "match_arm",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "coalesce_right",
                     "type": "string",
                     "optional": false
                 }

@@ -21,9 +21,11 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Models\User;
 use Workbench\App\Services\ChannelDefaults;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
  * A throwaway scope carrying ClassConstantResource, so self/static/parent constants resolve too.
@@ -140,7 +142,7 @@ it('declines an over-depth constant array', function () {
     expect($result)->toBeNull();
 });
 
-// resolveClassConstant() — the exclusions that keep EnumResource::make()/toResource() paths intact
+// resolveClassConstant() — `Foo::class` and enum cases
 
 it('resolves Foo::class to a plain string, not a decline', function () {
     // This is the "New behaviour" pinned in ResourceAstAnalyzerTest's resource_marker case: the four
@@ -153,13 +155,29 @@ it('resolves Foo::class to a plain string, not a decline', function () {
     expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
 
-it('declines a bare enum-case fetch, leaving it to resolveEnumFromPropertyArg()', function () {
+it('types a bare enum-case fetch as its enum, on the enum import channel', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(Status::class, 'Draft');
 
     $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
-    expect($result)->toBeNull();
+    expect($result)->toBe(['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+});
+
+it('types a pure enum case as its enum too, the names a model or a metadata file writes it as', function () {
+    $resolver = new ValueResolver;
+    $expr = valueResolverClassConstFetch(Visibility::class, 'Public');
+
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
+
+    expect($result)->toBe(['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class]);
+});
+
+it('declines an enum case in a scope that carries no import', function () {
+    $scope = valueResolverTestScope();
+    $scope->carriesImports = false;
+
+    expect(new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch(Status::class, 'Draft'), $scope))->toBeNull();
 });
 
 it('declines a constant whose lazily-evaluated initializer throws, instead of aborting', function () {
@@ -246,6 +264,15 @@ it('types an evaluated value as json_encode() writes it, every key kept as writt
 it('names the enum an evaluated enum case belongs to, for its import', function () {
     expect(new ValueResolver()->resolveConstantValue(Status::Draft))
         ->toBe(['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+});
+
+it('keeps one element per enum in a constant list of two enums that share a name', function () {
+    $resolver = new ValueResolver;
+
+    expect($resolver->resolveConstantValue([Status::Draft, CrmStatus::Lead]))
+        ->toBe(['type' => '(StatusType | StatusType)[]', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]])
+        ->and($resolver->resolveConstantValue([Status::Draft, Status::Published]))
+        ->toBe(['type' => 'StatusType[]', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]);
 });
 
 it('types a new default as string only when the class publishes and encodes as one', function (string $class, ?string $type) {

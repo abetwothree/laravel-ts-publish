@@ -136,6 +136,7 @@ export * from './permissions-spread-resource';
 export * from './post-attachment-filter-resource';
 export * from './post-collection';
 export * from './post-comment-authors-resource';
+export * from './post-enum-case-resource';
 export * from './post-enum-trio-resource';
 export * from './post-flat-collection';
 export * from './post-pinned-comments-resource';

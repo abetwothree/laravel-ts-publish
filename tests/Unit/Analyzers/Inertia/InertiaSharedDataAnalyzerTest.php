@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 
 /**
  * Analyze one fixture middleware without touching the filesystem discovery pass.
@@ -336,6 +337,15 @@ test('an enum read both wrapped and bare keeps its type import alongside the val
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ role: AsEnum<typeof Role>, bareRole: RoleType }')
         ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType']])
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
+});
+
+test('a bare enum case shared prop publishes its enum and imports its type', function () {
+    $result = analyzeSharedDataFor(HandleInertiaRequests::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toContain(', role: AsEnum<typeof Role>, defaultStatus: StatusType, ')
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['StatusType']])
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
 });
 
