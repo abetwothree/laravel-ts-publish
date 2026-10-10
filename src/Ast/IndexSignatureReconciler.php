@@ -91,7 +91,7 @@ final class IndexSignatureReconciler
             if ($arms === null) {
                 $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
             } else {
-                $dropped += $this->union($analysis, $indexes, $arms);
+                $dropped += $this->union($analysis, $name, $indexes, $arms);
             }
         }
 
@@ -101,17 +101,23 @@ final class IndexSignatureReconciler
     }
 
     /**
-     * Collapse a signature's entries into the first, typed with every arm, keeping the value a name-keyed publish
-     * of the body types would give it so an outer conflict can still put that back.
+     * Collapse a signature's entries into the first, typed with every arm.
+     *
+     * Their body values stay as its `bodyType`, joined, or the last entry's where they cannot join, so an outer
+     * conflict can still put them back.
      *
      * @param  non-empty-list<int>  $indexes
      * @param  list<string>  $arms
      * @return array<int, true> the later entries, now folded into the first
      */
-    private function union(MethodAnalysis $analysis, array $indexes, array $arms): array
+    private function union(MethodAnalysis $analysis, string $name, array $indexes, array $arms): array
     {
-        $last = $analysis->properties[$indexes[count($indexes) - 1]];
-        $bodyType = $last['bodyType'] ?? $last['type'];
+        $bodies = array_map(
+            fn (int $index): string => $analysis->properties[$index]['bodyType'] ?? $analysis->properties[$index]['type'],
+            $indexes,
+        );
+        $last = $bodies[count($bodies) - 1];
+        $bodyType = count($bodies) > 1 ? ($this->joinedValue($analysis, $name, $bodies) ?? $last) : $last;
         $entry = $analysis->properties[$indexes[0]];
 
         $entry['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
@@ -193,15 +199,27 @@ final class IndexSignatureReconciler
             $types[] = $analysis->properties[$index]['type'];
         }
 
-        $arms = count($indexes) > 1 ? $this->unionArms($analysis, [$name], $types, []) : null;
+        $joined = count($indexes) > 1 ? $this->joinedValue($analysis, $name, $types) : null;
 
-        if ($arms === null) {
+        if ($joined === null) {
             return [];
         }
 
-        $analysis->properties[$indexes[0]]['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
+        $analysis->properties[$indexes[0]]['type'] = $joined;
 
         return array_fill_keys(array_slice($indexes, 1), true);
+    }
+
+    /**
+     * One signature's entry values as the single value that covers them all, or null where one of them cannot join.
+     *
+     * @param  list<string>  $types
+     */
+    private function joinedValue(MethodAnalysis $analysis, string $name, array $types): ?string
+    {
+        $arms = $this->unionArms($analysis, [$name], $types, []);
+
+        return $arms === null ? null : TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
     }
 
     /**

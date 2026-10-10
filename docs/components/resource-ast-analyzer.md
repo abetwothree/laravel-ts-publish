@@ -319,11 +319,12 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
   included, a returned variable the walk reads completely, and any other value `mergedValueAnalysis()` reads are
-  branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()` reads,
-  such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges `value($value)`.
-  A side read as no array is an empty branch; one the analysis cannot read also counts as a lenient read, so a variable
-  holding the merge is not read completely. A key set before a merge keeps its value and presence, as `mergeData()`
-  unions the merged keys after it.
+  branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()`
+  reads, such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges
+  `value($value)`. A side read as no array is an empty branch; one the analysis cannot read also counts as a lenient
+  read, so a variable holding the merge is not read completely. A key set before a merge keeps its value and presence,
+  as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+`
+  alike, keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`.
@@ -584,8 +585,8 @@ then gets one outcome:
 - **Union**: when its entries and every key its pattern matches can join, the entries fold into the first, typed with
   every arm plus `| undefined`. The named keys keep their own types.
 - **Put back**: when an entry or a matched key cannot join, when another signature's pattern may overlap its own, or
-  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`, then the
-  entries fold into the first where those values can join.
+  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`, which
+  for a union holds every folded entry's body value; then the entries fold into the first where those values can join.
 - **Left alone**: a signature with no other entry, no matching key and no overlapping pattern, unless the interface
   has an extends clause.
 
@@ -599,9 +600,9 @@ A key cannot join a union when any of these holds:
 
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
 one key. `bodyType` is how a later conflict finds the body value. The refiner sets it on a fill, and a union sets it
-to the last entry's body value. `mergeReturnBranches()` unions it across branches, and a method's `#[TsCasts]` clears
-it, since that type is the app's own. `SamePatternKeysResource` pins the unions, and the test-only
-`IndexSignatureConflictResource` and `SamePatternDeclinedResource` pin the conflicts.
+to its entries' body values joined, or to the last entry's where they cannot join. `mergeReturnBranches()` unions it
+across branches, and a method's `#[TsCasts]` clears it, since that type is the app's own. `SamePatternKeysResource`
+pins the unions, and the test-only `IndexSignatureConflictResource` and `SamePatternDeclinedResource` pin the conflicts.
 
 ## Import dispatch rules
 

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -226,5 +227,28 @@ class MethodAnalysis
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
             $this->enumResourceArmShapes[$name], $this->casts[$name],
         );
+    }
+
+    /**
+     * Drop each named key another analysis already holds, with its import channels and cast; signature entries stay.
+     *
+     * PHP's `+` and Laravel's mergeData() keep a key already set, while a signature entry is one more runtime key.
+     */
+    public function dropKeysHeldBy(self $held): void
+    {
+        $names = array_flip(array_column($held->properties, 'name'));
+        $kept = [];
+
+        foreach ($this->properties as $property) {
+            if (isset($names[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $this->forgetChannels($property['name']);
+
+                continue;
+            }
+
+            $kept[] = $property;
+        }
+
+        $this->properties = $kept;
     }
 }

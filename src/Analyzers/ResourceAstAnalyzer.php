@@ -563,7 +563,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($item->key === null && $item->value instanceof MethodCall) {
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
-                $this->dropKeysSetBefore($mergeResult, $analysis);
+                // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
+                $mergeResult->dropKeysHeldBy($analysis);
                 $analysis->merge($mergeResult);
 
                 continue;
@@ -597,30 +598,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
-    }
-
-    /**
-     * Drop each named key a merge sets that the array already holds, a signature excepted.
-     *
-     * Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key keeps its value and
-     * its presence.
-     */
-    private function dropKeysSetBefore(ResourceAnalysis $merged, ResourceAnalysis $before): void
-    {
-        $held = array_flip(array_column($before->properties, 'name'));
-        $kept = [];
-
-        foreach ($merged->properties as $property) {
-            if (isset($held[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
-                $merged->forgetChannels($property['name']);
-
-                continue;
-            }
-
-            $kept[] = $property;
-        }
-
-        $merged->properties = $kept;
     }
 
     /**

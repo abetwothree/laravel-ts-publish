@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedNotesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedAddressResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedHeldEnumKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -84,6 +86,20 @@ describe('a runtime key a signature covers reaches the reconcile wherever it is 
         expect(signatureShape(MergedValueReadsResource::class, 'keyBeforeMerge'))->toBe(['id' => 'string']);
     });
 
+    test('a key set before a merge keeps none of the merged key\'s import channels', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(MergedHeldEnumKeyResource::class), Post::class)->analyze();
+        $transformer = new ResourceTransformer(MergedHeldEnumKeyResource::class);
+
+        expect($analysis->directEnumFqcns)->not->toHaveKey('status')
+            ->and($transformer->properties['status']['type'])->toBe('string')
+            ->and(implode(' ', array_merge(...array_values($transformer->typeImports))))->not->toContain('StatusType');
+    });
+
+    test('a += keeps each signature entry beside the ones the variable holds', function () {
+        expect(signatureShape(MergedValueReadsResource::class, 'plusNotes'))
+            ->toBe(['[key: `${string}_note`]' => 'string | number | undefined']);
+    });
+
     test('a collection merging its own resource merges no model keys', function () {
         expect(signatureShape(MergedResourceCollection::class, 'toArray'))->toBe(['meta' => 'number']);
     });
@@ -93,6 +109,12 @@ describe('a runtime key a signature covers reaches the reconcile wherever it is 
             '[key: `${string}_note`]' => 'string | number | undefined',
             'main_note' => 'PostResource',
         ]);
+    });
+
+    it('keeps every entry a union folded when an extends clause puts the signature back', function () {
+        $properties = new ResourceTransformer(ExtendedNotesResource::class)->properties;
+
+        expect($properties['[key: `${string}_note`]'])->toMatchArray(['type' => 'string | number | undefined', 'optional' => false]);
     });
 
     it('applies the model\'s #[TsCasts] to a key a merged model brings', function () {

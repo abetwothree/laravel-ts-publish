@@ -192,8 +192,8 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            // $var += [...] — PHP's union keeps every key already set, so only the new keys join, and a key the left
-            // side keeps drops the right side's channels along with its value.
+            // $var += [...] — PHP's union keeps every key already set, so only the new keys and each signature entry
+            // join, and a key the left side keeps drops the right side's channels along with its value.
             if ($stmt instanceof ExpressionStmt
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
@@ -206,18 +206,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $present = array_column($into->properties, 'name');
-                $added = [];
-
-                foreach ($addedAnalysis->properties as $prop) {
-                    if (in_array($prop['name'], $present, true)) {
-                        $addedAnalysis->forgetChannels($prop['name']);
-                    } else {
-                        $added[] = $prop;
-                    }
-                }
-
-                $addedAnalysis->properties = $added;
+                $addedAnalysis->dropKeysHeldBy($into);
                 $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
 
                 continue;
@@ -439,9 +428,11 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Merge a whole-array write into the keys a variable already holds. A new key is optional when the write is
-     * conditional or its value can vanish; a key set again keeps its first position and takes the last value, optional
-     * when that value can vanish or a conditional write leaves an optional old one.
+     * Merge a whole-array write into the keys a variable already holds.
+     *
+     * A new key or a signature entry is appended, optional when the write is conditional or its value can vanish; a
+     * named key set again keeps its first position and takes the last value, optional when that value can vanish or a
+     * conditional write leaves an optional old one.
      */
     private function mergeWholeArrayWrite(MethodAnalysis $into, MethodAnalysis $write, bool $isConditional): void
     {
@@ -455,7 +446,8 @@ trait ReadsReturnedVariables
         }
 
         foreach ($written as $prop) {
-            $index = array_search($prop['name'], $names, true);
+            // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
+            $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);
 
             if ($index === false) {
                 $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];

@@ -50,6 +50,15 @@ final class MergedValueReadsResource extends JsonResource
         return [...$this->colorNotes(), "{$this->id}_note" => $this->id, 'main_note' => new PostResource($this->resource)];
     }
 
+    /** A `+=` of a `_note` entry onto a variable that already holds `_note` entries of another type. */
+    public function plusNotes(): array
+    {
+        $data = $this->colorNotes();
+        $data += ["{$this->id}_note" => $this->id];
+
+        return $data;
+    }
+
     /** The issue's shape: the pinned branch is a literal, the other merges the model behind a condition. */
     public function pinnedModel(): array
     {

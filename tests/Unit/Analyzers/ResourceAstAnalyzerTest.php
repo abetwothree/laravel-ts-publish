@@ -3828,12 +3828,12 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
     ]);
 });
 
-// A side the analysis cannot read as an array merges no key it knows, as the MissingValue an omitted default leaves.
-it('reads a merge side it cannot read as an array as an empty branch', function () {
+// A side read as no array merges no key it knows, as the MissingValue an omitted default leaves; the model and a
+// helper call merge their keys, as a closure returning them would.
+it('reads the model and a helper call as merge sides, and a side read as no array as an empty branch', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeUnreadableDefaultResource::class), Post::class);
     $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-    // The model and the helper call are read, since each merges as a closure returning it would.
     expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toMatchArray([
         'id' => 'number',
         'null_default' => '?string',
