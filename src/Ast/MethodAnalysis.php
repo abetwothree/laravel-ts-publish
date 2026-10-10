@@ -140,9 +140,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` spread-merge with the source winning, and a key the
-     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
-     * consumes each as a positional queue against the rendered type. `carried` unions per kind.
+     * `properties` appends; the single-value class maps spread-merge and `casts` replace-merges, the source winning,
+     * and a key the source sets without a cast loses its entry. The four inline maps append WITHOUT deduping:
+     * aliasPropertyType() consumes each as a positional queue against the rendered type. `carried` unions per kind.
      */
     public function merge(self $source): void
     {
@@ -160,7 +160,8 @@ class MethodAnalysis
             }
         }
 
-        $this->casts = [...$this->casts, ...$source->casts];
+        // A spread would renumber a numeric cast key.
+        $this->casts = array_replace($this->casts, $source->casts);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {

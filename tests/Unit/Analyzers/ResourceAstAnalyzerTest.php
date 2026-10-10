@@ -28,10 +28,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpellingsAcrossLocationsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedAttributeDigestCollection;
@@ -7047,4 +7049,31 @@ it('a literal key whose text reads as an index signature is left out with a warn
         ->and(array_unique(array_column(AnalysisWarnings::all(), 'subject')))->toBe([SignatureTextKeyResource::class]);
 
     AnalysisWarnings::reset();
+});
+
+describe('a cast across its locations', function () {
+    test('a casts() spelling of a signature outranks the class\'s exact name', function () {
+        expect(new ResourceTransformer(SpellingsAcrossLocationsResource::class)->properties['[key: `${string}\\\\_x`]']['type'])
+            ->toBe('number');
+    });
+
+    // The fit joins the toArray() cast and the class casts on the key, so each must reach it under the published name.
+    test('a method cast and the class casts for one signature reach the fit as one entry, under its published key', function () {
+        $transformer = new class(SpellingsAcrossLocationsResource::class) extends ResourceTransformer
+        {
+            /** @return array<string, array{type: string, import: string|null}> */
+            public function exposedCastsInForce(): array
+            {
+                return $this->castsInForce;
+            }
+        };
+
+        expect($transformer->exposedCastsInForce())->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null]]);
+    });
+
+    test('a numeric cast key from a spread helper reaches the parent analysis on its own key', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericCastSpreadResource::class), Post::class)->analyze();
+
+        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
+    });
 });

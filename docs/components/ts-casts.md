@@ -18,7 +18,7 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 
 ## Sources and precedence
 
-Each row lists a publisher's sources, lowest first. A later source wins the key.
+Each row lists a publisher's sources, lowest first. A later source wins the key, whatever spelling either gives it.
 
 | Publisher | Sources |
 | --- | --- |
@@ -30,6 +30,22 @@ Each row lists a publisher's sources, lowest first. A later source wins the key.
 | Model metadata `provide()` | inference < docblock < `#[TsCasts]` |
 
 An API resource's method casts outrank its model's, so `modelCastsOver()` skips every key a method casts.
+
+## Matching a key
+
+`JsEmitter::castTargets()` decides which published key each cast key of one location retypes
+([support helpers § `JsEmitter`](support-helpers.md#jsemitter)). `TsCastsReader::castTargets()` runs it on each
+`#[TsCasts]` location alone, in the order above, and a later location's claim on a key nulls every earlier cast key
+that took it, so the later location outranks the earlier whatever either spells.
+`ResourceTransformer::castsOverAnalysisKeys()` (the resource and its model apart),
+`BroadcastEventTransformer::transformProperties()` and `InertiaSharedDataAnalyzer::buildResult()` call it once the keys
+are known, then re-key the merged maps with `JsEmitter::retargetCasts()`. A key no attribute names, such as one a
+transformer subclass injects, keeps its own spelling. An Inertia page has one location and decides per rendered
+component. A page's and shared data's imports follow the surviving casts, so a losing spelling brings none.
+
+A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merge()` or a spread renumbers, so every
+merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method
+cast does.
 
 ## A cast is final for its key
 

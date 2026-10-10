@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
@@ -249,7 +250,7 @@ it('applies #[TsCasts] overrides and their imports', function () {
 test('parseTsCastsFromMethod returns empty arrays for a non-existent class', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -259,13 +260,13 @@ test('parseTsCastsFromMethod returns empty arrays for a non-existent class', fun
     $result = $analyzer->expose('NonExistent\\Controller', 'index');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
 test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts attribute', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -275,13 +276,13 @@ test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts
     $result = $analyzer->expose(InertiaPageAnalyzer::class, '__construct');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
-test('parseTsCastsFromMethod extracts both the overrides and the import map', function () {
+test('parseTsCastsFromMethod extracts both the overrides and each one\'s import path', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -292,7 +293,7 @@ test('parseTsCastsFromMethod extracts both the overrides and the import map', fu
 
     expect($result['overrides'])->toHaveKey('count', 'string')
         ->and($result['overrides'])->toHaveKey('meta', 'PageMeta')
-        ->and($result['importMap'])->toBe(['@workbench/types' => ['PageMeta']]);
+        ->and($result['importPaths'])->toBe(['meta' => '@workbench/types']);
 });
 
 // ─── analyze() paginated Resource::collection() ───────────────────
@@ -509,4 +510,26 @@ test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted
 test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
+});
+
+// ─── #[TsCasts] key edges ────────────────────────────────────────
+
+test('a page cast on a numeric key lands on that key', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numeric')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, 42: boolean }');
+});
+
+test('a losing page cast spelling brings no import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@losing');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }')
+        ->and($data['externalImports'])->toBe([]);
+});
+
+it('keeps a page cast\'s import once when only one rendered component returns its key', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@twoComponents');
+
+    expect($data['component'])->toBe(['Edges/WithMeta', 'Edges/WithoutMeta'])
+        ->and($data['pageType'][0])->toBe('Inertia.SharedData & { meta: PageMeta, id: number }')
+        ->and($data['externalImports'])->toBe(['@/types/meta' => ['PageMeta']]);
 });

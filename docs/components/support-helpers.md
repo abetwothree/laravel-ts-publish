@@ -59,12 +59,15 @@ only in a type position, so every value-position caller must leave the default a
 - Failing that, a cast key equal to another spelling of an index signature's name retypes that signature. The other
   spellings are the name with each `\\` read as `\` (a single-quoted paste), with each `\r` read as a raw CR (a
   double-quoted paste), or with both, read escape by escape from the left.
-- Where two cast keys name one signature, the exact spelling wins, else the first. The loser's target is null.
+- Where two cast keys name one signature, the exact spelling wins, else the first, inside one `#[TsCasts]` location;
+  across locations see [`#[TsCasts]` overrides](ts-casts.md#matching-a-key). The loser's target is null.
 - A spelling two signatures share retypes neither.
 
 `retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
-broadcast-event and Inertia paths call them before any cast lookup. What a matched cast then does to the key is in
+broadcast-event and Inertia shared-data paths reach `castTargets()` through `TsCastsReader::castTargets()`, one location
+at a time, and an Inertia page calls it per rendered component; each then calls `retargetCasts()`. A method's own casts
+and shared data's docblock-and-cast merge go through `castsByKey()`. What a matched cast then does to the key is in
 [`#[TsCasts]` overrides](ts-casts.md).
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but

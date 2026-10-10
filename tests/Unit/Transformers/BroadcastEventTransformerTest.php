@@ -11,8 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadca
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
@@ -631,4 +633,19 @@ it('imports nothing for an event cast that retypes no payload key', function () 
     $transformer = app(BroadcastEventTransformer::class, ['findable' => AmbiguousSpellingBroadcastEvent::class]);
 
     expect($transformer->typeImports)->toBe([]);
+});
+
+test('an event cast on a numeric key lands on that key', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => NumericCastKeyBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe([
+        'name' => ['type' => "'a' | 'b'", 'optional' => false],
+        42 => ['type' => 'boolean', 'optional' => false],
+    ]);
+});
+
+test('an event\'s casts() spelling of a signature outranks the class\'s exact name', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => SpellingsAcrossLocationsBroadcastEvent::class])->properties;
+
+    expect($properties['[key: `${string}\\\\_x`]']['type'])->toBe('number');
 });

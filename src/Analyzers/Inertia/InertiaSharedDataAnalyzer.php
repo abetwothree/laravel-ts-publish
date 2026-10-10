@@ -103,16 +103,23 @@ class InertiaSharedDataAnalyzer
     protected function buildResult(string $middlewareClass): array
     {
         $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share');
+        $keys = array_column($analysis->properties, 'name');
 
+        // Each location decides alone, so share() outranks the class whatever the spelling; a loser imports nothing.
+        $targets = resolve(TsCastsReader::class)
+            ->castTargets($this->tsCastsAttributesFromMiddleware($middlewareClass), $keys);
         $tsCasts = $this->parseTsCastsFromMiddleware($middlewareClass);
         $docblockOverrides = $this->parseDocblockFromMiddleware($middlewareClass);
 
         $resolver = new TsCastsImportResolver;
-        $resolvedTsCasts = $resolver->resolve($tsCasts['overrides'], $tsCasts['importPaths']);
+        $resolvedTsCasts = $resolver->resolve(
+            JsEmitter::retargetCasts($tsCasts['overrides'], $targets),
+            JsEmitter::retargetCasts($tsCasts['importPaths'], $targets),
+        );
 
         $mergedOverrides = JsEmitter::castsByKey(
-            $this->normalizeOverrideKeys(array_merge($docblockOverrides, $resolvedTsCasts['overrides'])),
-            array_column($analysis->properties, 'name'),
+            $this->normalizeOverrideKeys(array_replace($docblockOverrides, $resolvedTsCasts['overrides'])),
+            $keys,
         );
 
         // The overrides are laid over the props below, so they can add or retype a key a signature covers.
@@ -291,6 +298,20 @@ class InertiaSharedDataAnalyzer
      */
     protected function parseTsCastsFromMiddleware(string $className): array
     {
+        /** @var TsCastsUnpacked $unpacked */
+        $unpacked = resolve(TsCastsReader::class)->unpack($this->tsCastsAttributesFromMiddleware($className));
+
+        return ['overrides' => $unpacked['overrides'], 'importPaths' => $unpacked['importPaths']];
+    }
+
+    /**
+     * The middleware's #[TsCasts] instances in precedence order: the class, then its share() method.
+     *
+     * @param  class-string  $className
+     * @return list<TsCasts>
+     */
+    protected function tsCastsAttributesFromMiddleware(string $className): array
+    {
         /** @var ReflectionClass<object> $reflection */
         $reflection = new ReflectionClass($className);
 
@@ -306,10 +327,7 @@ class InertiaSharedDataAnalyzer
             }
         }
 
-        /** @var TsCastsUnpacked $unpacked */
-        $unpacked = resolve(TsCastsReader::class)->unpack($attributes);
-
-        return ['overrides' => $unpacked['overrides'], 'importPaths' => $unpacked['importPaths']];
+        return $attributes;
     }
 
     /**
@@ -374,6 +392,7 @@ class InertiaSharedDataAnalyzer
         // Insertion order carries priority: #[TsCasts] entries are merged after docblock ones, so an
         // attribute-supplied `filters` still wins over a docblock-supplied `filters?`.
         foreach ($overrides as $key => $type) {
+            $key = (string) $key; // PHP stores a numeric key such as '42' as an int.
             $optional = str_ends_with($key, '?');
             $name = $optional ? substr($key, 0, -1) : $key;
 

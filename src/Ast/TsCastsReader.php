@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 
 /**
@@ -32,8 +33,9 @@ class TsCastsReader
     {
         $merged = [];
 
+        // array_merge() would renumber a numeric key, which PHP stores as an int even when written '42'.
         foreach ($attributes as $attribute) {
-            $merged = array_merge($merged, $attribute->types);
+            $merged = array_replace($merged, $attribute->types);
         }
 
         $overrides = [];
@@ -68,5 +70,32 @@ class TsCastsReader
             'importMap' => $importMap,
             'optionalOverrides' => $optionalOverrides,
         ];
+    }
+
+    /**
+     * The published key each cast key of these instances retypes, as JsEmitter::castTargets() decides it for each
+     * instance alone; a later instance's claim on a key then outranks an earlier one's, whatever either spelling.
+     *
+     * @param  list<TsCasts>  $attributes  in the precedence order unpack() takes
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @return array<string, string|null>
+     */
+    public function castTargets(array $attributes, array $keys): array
+    {
+        $targets = [];
+
+        foreach ($attributes as $attribute) {
+            foreach (JsEmitter::castTargets(array_keys($attribute->types), $keys) as $castKey => $target) {
+                if ($target !== null) {
+                    foreach (array_keys($targets, $target, true) as $earlier) {
+                        $targets[$earlier] = null;
+                    }
+                }
+
+                $targets[$castKey] = $target;
+            }
+        }
+
+        return $targets;
     }
 }

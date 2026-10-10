@@ -14,12 +14,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithLosingSpellingImport;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
@@ -372,4 +375,24 @@ test('the union keeps its undefined arm beside a cast that names undefined only 
 test('a #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
     expect(analyzeSharedDataFor(MiddlewareWithSignatureCastSpelling::class)['sharedPageProps'])
         ->toBe('{ [key: `${string}\\\\_cast`]: number }');
+});
+
+// ─── #[TsCasts] key edges ────────────────────────────────────────
+
+// PHP stores '42' as an int; the optional-suffix check used to receive it under strict types and throw a TypeError.
+test('a numeric cast key lands on its own key instead of stopping the run', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithNumericCastKey::class)['sharedPageProps'])
+        ->toBe('{ appName: string, 42: boolean }');
+});
+
+test('share()\'s spelling of a signature outranks the class\'s exact name', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithSpellingsAcrossLocations::class)['sharedPageProps'])
+        ->toBe('{ id: number, [key: `${string}\\\\_x`]: number }');
+});
+
+test('a losing cast spelling brings no import', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithLosingSpellingImport::class);
+
+    expect($result['sharedPageProps'])->toBe('{ id: number, [key: `${string}\\\\_cast`]: number }')
+        ->and($result['typeImports'])->toBe([]);
 });

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
@@ -212,7 +213,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $analysis = $this->runAnalysis();
         $keys = array_column($analysis->properties, 'name');
 
-        $targets = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+        $targets = resolve(TsCastsReader::class)->castTargets($this->tsCastsAttributes($this->reflection), $keys);
 
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $targets);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);

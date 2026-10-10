@@ -78,3 +78,36 @@ it('flows optional into optionalOverrides only when the key is present', functio
     expect($result['optionalOverrides'])->toBe(['deleted_at' => true])
         ->and($result['optionalOverrides'])->not->toHaveKey('created_at');
 });
+
+// PHP stores '42' as the int 42, and array_merge() would renumber it to 0 even for one attribute.
+it('keeps a numeric cast key on its own key, for one attribute and across two', function () {
+    $one = new TsCastsReader()->unpack([new TsCasts(['title' => 'string', '42' => 'boolean'])]);
+    $two = new TsCastsReader()->unpack([new TsCasts(['42' => 'string']), new TsCasts(['7' => 'number', '42' => 'boolean'])]);
+
+    expect($one['overrides'])->toBe(['title' => 'string', 42 => 'boolean'])
+        ->and($two['overrides'])->toBe([42 => 'boolean', 7 => 'number']);
+});
+
+describe('castTargets', function () {
+    $exact = '[key: `${string}\\\\_x`]';
+    $paste = '[key: `${string}\\_x`]';
+
+    test('a later attribute\'s spelling of a signature outranks an earlier attribute\'s, whatever either is', function () use ($exact, $paste) {
+        $reader = new TsCastsReader;
+
+        expect($reader->castTargets([new TsCasts([$exact => 'string']), new TsCasts([$paste => 'number'])], [$exact]))
+            ->toBe([$exact => null, $paste => $exact])
+            ->and($reader->castTargets([new TsCasts([$paste => 'string']), new TsCasts([$exact => 'number'])], [$exact]))
+            ->toBe([$paste => null, $exact => $exact]);
+    });
+
+    test('inside one attribute the exact spelling still wins', function () use ($exact, $paste) {
+        expect(new TsCastsReader()->castTargets([new TsCasts([$exact => 'string', $paste => 'number'])], [$exact]))
+            ->toBe([$exact => $exact, $paste => null]);
+    });
+
+    test('a key no signature answers to keeps its own spelling', function () use ($exact) {
+        expect(new TsCastsReader()->castTargets([new TsCasts(['title' => 'string'])], [$exact, 'title']))
+            ->toBe(['title' => 'title']);
+    });
+});

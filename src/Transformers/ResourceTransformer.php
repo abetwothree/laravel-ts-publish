@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
@@ -487,19 +488,25 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, then import what the resource's
-     * own surviving casts name. One decision per source moves its type, optional and import entries together.
+     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, each location deciding alone
+     * so a later one outranks an earlier one, then import what the resource's own surviving casts name. One decision
+     * per source moves its type, optional and import entries together; a key no attribute names keeps its spelling.
      *
      * @param  list<string>  $keys
      */
     protected function castsOverAnalysisKeys(array $keys): void
     {
-        $resource = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+        $reader = resolve(TsCastsReader::class);
+
+        $resource = $reader->castTargets($this->tsCastsAttributes($this->reflectionResource), $keys);
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
         $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);
 
-        $model = JsEmitter::castTargets(array_keys($this->modelTsCastsOverrides), $keys);
+        $modelAttributes = $this->modelClass !== null && class_exists($this->modelClass)
+            ? $this->tsCastsAttributes(new ReflectionClass($this->modelClass))
+            : [];
+        $model = $reader->castTargets($modelAttributes, $keys);
         $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
         $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
         $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);

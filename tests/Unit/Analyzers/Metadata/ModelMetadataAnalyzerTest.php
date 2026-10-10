@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockOverridesEnumMetadataPro
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumAndScalarMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnionEnumMetadataProvider;
@@ -199,4 +200,9 @@ test('the default provider still infers its cast morph class', function () {
 
     expect($analysis->types)->toBe(['morphClass' => 'string'])
         ->and($analysis->sources)->toBe(['morphClass' => 'docblock']);
+});
+
+test('keeps a numeric provide() cast key on its own key', function () {
+    expect(analyzeMetadataTypesFor(NumericCastKeyMetadataProvider::class, ['label', '42'])->types)
+        ->toBe(['label' => 'string', 42 => 'boolean']);
 });

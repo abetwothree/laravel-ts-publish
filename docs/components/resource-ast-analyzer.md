@@ -532,8 +532,7 @@ A literal key whose text reads as a signature, `'[key: string]'`, is left out by
 warning, because printed bare it would type other keys.
 
 A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::castTargets()` decides which signature
-it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes. An Inertia page and Inertia
-shared data still emit the losing spelling's import, unused.
+it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes.
 
 The key is never optional, since `[key: T]?:` is a syntax error. Its value gains `| undefined` instead, through
 `TsTypeString::orUndefined()`, for two reasons:

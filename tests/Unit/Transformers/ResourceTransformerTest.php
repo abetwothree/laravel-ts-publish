@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -3329,4 +3330,12 @@ describe('ResourceTransformer with ProductSalesResource', function () {
             'has_items' => ['boolean', true],
         ]);
     });
+});
+
+// Spelling targets are re-decided from the #[TsCasts] attributes, so a cast with none behind it must keep its own key.
+it('publishes a cast a transformer subclass injects with no attribute behind it', function () {
+    $properties = new InjectedCastResourceTransformer(AddressResource::class)->properties;
+
+    expect($properties['injected'])->toBe(['type' => 'string', 'optional' => false, 'description' => ''])
+        ->and($properties['coordinates']['type'])->toBe('GeoPoint');
 });
