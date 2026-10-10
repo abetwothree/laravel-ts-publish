@@ -24,8 +24,7 @@ final class TopLevelRenumbering
         $renumbered = [];
 
         foreach ($names as $name) {
-            // PHP stores a string key as an int only when it is the canonical decimal spelling of one.
-            $renumbered[$name] = (string) (int) $name === $name ? (string) $next++ : $name;
+            $renumbered[$name] = PhpArrayKey::storedInt($name) === null ? $name : (string) $next++;
         }
 
         return $renumbered;

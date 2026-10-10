@@ -26,6 +26,8 @@ The helpers and the test that pins them live in these files:
   payload. Static and `@internal`.
 - [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
+- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
+  `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 

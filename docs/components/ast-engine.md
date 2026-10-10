@@ -346,6 +346,9 @@ the result carries. Every collector goes through it, so a channel added to `Valu
 at once. A collector that built rows by hand would miss a new channel silently. Nothing throws, the property still
 types, and only the generated TypeScript shows the missing import or alias.
 
+The row also keeps the result's `keepsKeys`: the value is a `Collection`, whose keys `json_encode()` writes as they are,
+so a resource's re-index skips it.
+
 Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
 `inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
 branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `aliasTypeofConst()` for

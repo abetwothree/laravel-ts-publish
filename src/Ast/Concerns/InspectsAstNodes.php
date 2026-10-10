@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -51,12 +52,11 @@ trait InspectsAstNodes
      */
     protected static function storedIntKey(Expr $key): ?int
     {
-        if ($key instanceof Int_) {
-            return $key->value;
-        }
-
-        // PHP stores a string key as an int only when it is the canonical decimal spelling of one.
-        return $key instanceof String_ && (string) (int) $key->value === $key->value ? (int) $key->value : null;
+        return match (true) {
+            $key instanceof Int_ => $key->value,
+            $key instanceof String_ => PhpArrayKey::storedInt($key->value),
+            default => null,
+        };
     }
 
     /**

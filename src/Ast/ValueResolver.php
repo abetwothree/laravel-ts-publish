@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
@@ -24,6 +24,8 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use Throwable;
 use UnitEnum;
@@ -38,8 +40,6 @@ use UnitEnum;
  */
 final class ValueResolver
 {
-    use InspectsAstNodes;
-
     /** Total-element cap for a class constant's array before it bails to unknown; see constantArrayWithinLimits(). */
     private const int MAX_CONSTANT_ARRAY_ELEMENTS = 200;
 
@@ -292,10 +292,7 @@ final class ValueResolver
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
         }
 
-        $types = array_values(array_unique($types));
-        $elementType = count($types) === 1 ? $types[0] : '('.implode(' | ', $types).')';
-
-        $result = ['type' => $elementType.'[]', 'optional' => false];
+        $result = ['type' => TsTypeShape::listType($types), 'optional' => false];
 
         if ($embeddedEnumFqcns !== []) {
             // Never deduped: an element can itself be a record whose rendered type carries several
@@ -383,7 +380,12 @@ final class ValueResolver
         $next = 0;
 
         foreach ($items as $item) {
-            $key = $item->key === null ? $next : self::storedIntKey($item->key);
+            $key = match (true) {
+                $item->key === null => $next,
+                $item->key instanceof Int_ => $item->key->value,
+                $item->key instanceof String_ => PhpArrayKey::storedInt($item->key->value),
+                default => null,
+            };
 
             if ($key === null || $item->unpack) {
                 return null;

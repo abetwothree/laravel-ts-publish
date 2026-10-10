@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
@@ -63,6 +64,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
     $alsoInternal = [
         ClassTokenQueue::class,
         IndexSignatureKey::class,
+        PhpArrayKey::class,
         ResourceReindexing::class,
         StringSerialization::class,
         TopLevelRenumbering::class,
