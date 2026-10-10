@@ -13089,6 +13089,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DuplicateKeyCastResource": {
+            "name": "DuplicateKeyCastResource",
+            "properties": [
+                {
+                    "name": "state",
+                    "type": "'draft' | 'published'",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EmptyResource": {
             "name": "EmptyResource",
             "properties": []

@@ -489,9 +489,10 @@ describe('a docblock-filled index signature in page props merged from several br
         );
     });
 
+    // The cast says nothing about optional, so the key only one arm sets keeps its `?`.
     test('a ternary arm\'s key the controller method\'s #[TsCasts] retypes joins with its cast type', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternaryCast')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag: number }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag?: number }',
         );
     });
 
@@ -533,6 +534,20 @@ it('keeps a page cast\'s import once when only one rendered component returns it
     expect($data['component'])->toBe(['Edges/WithMeta', 'Edges/WithoutMeta'])
         ->and($data['pageType'][0])->toBe('Inertia.SharedData & { meta: PageMeta, id: number }')
         ->and($data['externalImports'])->toBe(['@/types/meta' => ['PageMeta']]);
+});
+
+it('honors a page cast\'s optional flag, and keeps a prop\'s own ? under a type-only cast', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@optionalCast')['pageType'])
+        ->toBe('Inertia.SharedData & { heading?: Heading, id: number, [key: `${string}_note`]: number | undefined }')
+        ->and(pageData(ControllerWithCastKeyEdges::class.'@typeOnlyCast')['pageType'])
+        ->toBe('Inertia.SharedData & { meta?: PageMeta, note: Note, id: number }');
+});
+
+test('a prop typed from a request\'s import-aware cast carries the import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@validated');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { attributes?: PostAttributes }')
+        ->and($data['externalImports'])->toBe(['@js/types/posts' => ['PostAttributes']]);
 });
 
 it('quotes a page prop key that is not an identifier', function () {

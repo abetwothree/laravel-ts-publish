@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
@@ -21,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
@@ -242,17 +245,18 @@ test('docblock optional key is emitted once, with its marker', function () {
     // used to miss — the prop was emitted from both loops, which TypeScript rejects (TS2300).
     $result = analyzeSharedDataFor(MiddlewareWithOptionalDocblockKey::class);
 
-    // appName is also declared optional in the docblock, but its #[TsCasts] entry wins outright —
-    // proving normalization did not let the docblock entry survive as a second key.
+    // appName is also declared optional in the docblock: its #[TsCasts] entry wins the type and, saying nothing about
+    // optional, keeps the `?` — once, so normalization did not let the docblock entry survive as a second key.
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
+        ->and($result['sharedPageProps'])->toBe('{ appName?: AppName, filters?: Record<string, string> }');
 });
 
+// The class cast says nothing about `optional`, so `appName` keeps the docblock's `?`.
 test('docblock optional key absent from the shared props keeps its marker', function () {
     $result = analyzeSharedDataFor(MiddlewareWithUnsharedOptionalKey::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
+        ->and($result['sharedPageProps'])->toBe('{ appName?: AppName, filters?: Record<string, string> }');
 });
 
 test('TsCasts overrides win over docblock for same key', function () {
@@ -422,4 +426,25 @@ test('the shared-data type prints no ? after a signature, whatever flag reaches 
         ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
         ['[key: number]' => ['type' => 'string', 'optional' => true]],
     ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, [key: number]: string }');
+});
+
+// Applied once: a second pass by the engine would leave `filters?` a key of its own beside `filters` (TS2300).
+test('a share() cast marks a key optional by its `?` suffix or its optional flag, once', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithOptionalShareCast::class)['sharedPageProps'])
+        ->toBe("{ filters?: Record<string, string>, locale?: 'en' | 'es', id: number }");
+});
+
+test('the engine leaves share()\'s own casts to the shared-data analyzer', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(MiddlewareWithOptionalShareCast::class, 'share');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'filters' => 'unknown[]',
+        'locale' => 'string',
+        'id' => 'number',
+    ]);
+});
+
+test('a cast that says nothing about optional keeps the docblock\'s flag, else the prop\'s own', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithCastsOverOptionalProps::class)['sharedPageProps'])
+        ->toBe('{ flash?: Flash, notice: Notice, banner: Banner, held?: HeldShare, id: number, [key: `${string}_note`]: number | undefined }');
 });

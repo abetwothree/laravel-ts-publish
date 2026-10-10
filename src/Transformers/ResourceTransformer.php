@@ -99,8 +99,8 @@ class ResourceTransformer extends CoreTransformer
     /** @var CastMap property name => the cast in force for a key any #[TsCasts] retypes */
     protected array $castsInForce = [];
 
-    /** @var array<string, true> property name => true, for a key one of the resource's own methods casts */
-    protected array $methodCastKeys = [];
+    /** @var CastMap property name => the cast one of the resource's own methods declares for the key */
+    protected array $methodCasts = [];
 
     /** @var CarriedMap the classes the casts displaced and no import channel holds, registered only while spelled */
     protected array $carried = [];
@@ -317,7 +317,7 @@ class ResourceTransformer extends CoreTransformer
         $analysis = $analyzer->analyze();
 
         $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
-        $this->methodCastKeys = array_fill_keys(array_keys($analysis->casts), true);
+        $this->methodCasts = $analysis->casts;
 
         $castKeys = $this->castKeys($analysis);
         $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
@@ -535,7 +535,7 @@ class ResourceTransformer extends CoreTransformer
             $this->modelTsCastsOverrides,
             fn (int|string $property): bool => isset($keys[$property])
                 && ! isset($this->tsTypeOverrides[$property])
-                && ! isset($this->methodCastKeys[$property]),
+                && ! isset($this->methodCasts[$property]),
             ARRAY_FILTER_USE_KEY,
         );
     }
@@ -545,6 +545,13 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function applyOverrides(): self
     {
+        // A resource cast that says nothing about optional keeps the model cast's flag, on a key the analysis has.
+        $modelOptional = array_filter(
+            array_intersect_key($this->modelTsCastsOptionalOverrides, $this->properties),
+            fn (int|string $property): bool => ! isset($this->methodCasts[$property]['optional']),
+            ARRAY_FILTER_USE_KEY,
+        );
+
         foreach ($this->modelCastsOver($this->properties) as $property => $type) {
             $this->properties[$property] = [...$this->properties[$property], 'type' => $type];
 
@@ -552,14 +559,6 @@ class ResourceTransformer extends CoreTransformer
                 foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                 }
-            }
-
-            if (isset($this->modelTsCastsOptionalOverrides[$property])) {
-                $optional = $this->modelTsCastsOptionalOverrides[$property];
-                $this->properties[$property] = [
-                    ...$this->properties[$property],
-                    ...JsEmitter::signatureSafeMember((string) $property, $type, $optional),
-                ];
             }
         }
 
@@ -575,7 +574,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        foreach ($this->optionalOverrides as $property => $optional) {
+        foreach (array_replace($modelOptional, $this->optionalOverrides) as $property => $optional) {
             if (isset($this->properties[$property])) {
                 $this->properties[$property] = [
                     ...$this->properties[$property],

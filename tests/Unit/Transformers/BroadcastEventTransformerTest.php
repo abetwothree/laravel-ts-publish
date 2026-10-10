@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UncastEscapedKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UninitializedCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -671,4 +672,14 @@ it('prints an event\'s index signature bare', function () {
 
     expect($content)->toContain("    id: number;\n    [key: `\${string}_tag`]: string | undefined;")
         ->not->toContain('"[key:');
+});
+
+test('a type-only cast keeps an uninitialized property optional, and `optional => false` clears it', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => UninitializedCastBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe([
+        'id' => ['type' => 'number', 'optional' => false],
+        'note' => ['type' => "'a' | 'b'", 'optional' => true],
+        'label' => ['type' => "'c' | 'd'", 'optional' => false],
+    ]);
 });

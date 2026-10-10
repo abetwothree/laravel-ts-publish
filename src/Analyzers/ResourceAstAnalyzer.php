@@ -295,7 +295,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
                 resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod, keepsUnresolvedNames: false);
-                $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
+
+                // InertiaSharedDataAnalyzer lays share()'s casts over the props itself, with the docblock and `key?`.
+                if (! $this->isInertiaShare()) {
+                    $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
+                }
+
                 resolve(IndexSignatureReconciler::class)->reconcile($branchAnalysis);
             }
 
@@ -997,6 +1002,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether the analyzed method is an Inertia middleware's share(), whose casts its own analyzer applies.
+     */
+    private function isInertiaShare(): bool
+    {
+        return $this->methodName === 'share' && is_subclass_of($this->scope->subjectReflection->getName(), 'Inertia\\Middleware');
+    }
+
+    /**
      * Apply #[TsCasts] overrides declared on a reflection method, updating or injecting properties.
      *
      * Accepted on trait/helper methods and on toArray() itself, as a lightweight override mechanism.
@@ -1017,6 +1030,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
                 $found = false;
 
+                // Every entry of a key written twice: the last one publishes, and the reconciler reads them all.
                 foreach ($analysis->properties as &$prop) {
                     if ($prop['name'] === $property) {
                         $prop['type'] = $type;
@@ -1027,8 +1041,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
                         }
 
                         $found = true;
-
-                        break;
                     }
                 }
 
@@ -1044,7 +1056,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 }
 
                 // The publisher fits the key's import channels to this text once it knows which cast is in force.
-                $analysis->casts[$property] = ['type' => $type, 'import' => $import];
+                $analysis->casts[$property] = $optional === null
+                    ? ['type' => $type, 'import' => $import]
+                    : ['type' => $type, 'import' => $import, 'optional' => $optional];
 
                 if ($import !== null) {
                     foreach (TsTypeString::extractImportableTypes($type) as $importName) {

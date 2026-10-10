@@ -149,6 +149,7 @@
     "app\/Http\/Resources\/DeclaredReadingResource.php",
     "app\/Http\/Resources\/DelegatingResource.php",
     "app\/Http\/Resources\/DelegatingWithMixinResource.php",
+    "app\/Http\/Resources\/DuplicateKeyCastResource.php",
     "app\/Http\/Resources\/EmptyResource.php",
     "app\/Http\/Resources\/EmptyWithMixinResource.php",
     "app\/Http\/Resources\/EnumCollectionResource.php",

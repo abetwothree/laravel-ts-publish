@@ -52,6 +52,7 @@ export * from './declared-precedence-resource';
 export * from './declared-reading-resource';
 export * from './delegating-resource';
 export * from './delegating-with-mixin-resource';
+export * from './duplicate-key-cast-resource';
 export * from './empty-resource';
 export * from './empty-with-mixin-resource';
 export * from './enum-collection-resource';

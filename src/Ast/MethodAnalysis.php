@@ -23,7 +23,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
- * @phpstan-type CastInForce = array{type: string, import: string|null}
+ * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
  * @phpstan-type CastMap = array<string, CastInForce>
  * @phpstan-type CarriedMap = array{
  *     enums?: list<class-string>,
@@ -61,8 +61,9 @@ class MethodAnalysis
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
      *                                                          for a mixed EnumResource/direct-access ternary or match
-     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, and the path of
-     *                          its own import, if any; a publisher fits the key's import channels to that text
+     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
+     *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
+     *                          to that text
      * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: in no import
      *                               channel, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface

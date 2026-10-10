@@ -31,6 +31,10 @@ Each row lists a publisher's sources, lowest first. A later source wins the key,
 
 An API resource's method casts outrank its model's, so `modelCastsOver()` skips every key a method casts.
 
+`optional` follows the same order on every publisher: a cast's own flag wins, even over shared data's `key?`, and a cast
+that says nothing about it keeps the next source's flag (a resource's model cast, shared data's docblock `?`, else the
+inferred one).
+
 ## Matching a key
 
 `JsEmitter::castTargets()` decides which published key each cast key of one location retypes

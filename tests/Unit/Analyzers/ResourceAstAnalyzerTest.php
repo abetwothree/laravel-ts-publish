@@ -120,6 +120,7 @@ use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\CustomImportChannelResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
+use Workbench\App\Http\Resources\DuplicateKeyCastResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
@@ -7064,6 +7065,14 @@ it('leaves out a nested literal key that reads as an index signature', function 
         ]);
 
     AnalysisWarnings::reset();
+});
+
+// Every reader of a key the array names twice reads its last entry, so the method's cast must retype each one.
+test('a toArray() cast retypes every entry of a key the returned array names twice', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(DuplicateKeyCastResource::class), Post::class)->analyze();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['state' => "'draft' | 'published'", 'title' => 'string'])
+        ->and(new ResourceTransformer(DuplicateKeyCastResource::class)->properties['state']['type'])->toBe("'draft' | 'published'");
 });
 
 describe('a cast across its locations', function () {

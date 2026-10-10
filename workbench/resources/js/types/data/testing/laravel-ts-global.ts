@@ -3317,6 +3317,14 @@ declare global {
             images?: workbench.app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
         }
+        /**
+         * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
+         * must retype the entry that publishes, not only the first.
+         */
+        export interface DuplicateKeyCastResource {
+            state: 'draft' | 'published';
+            title: string;
+        }
         /** Resource with no toArray override — tests guard clause. */
         export interface EmptyResource {
         }

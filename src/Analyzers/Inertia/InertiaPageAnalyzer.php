@@ -43,6 +43,7 @@ use Throwable;
  * Detects Inertia::render() calls in controller actions and types their page props with the AST engine.
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
+ * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
  *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
@@ -159,7 +160,13 @@ class InertiaPageAnalyzer
 
         $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
 
-        return $this->buildPageData($branches, $analyzer, $parsed['overrides'], $parsed['importPaths']);
+        return $this->buildPageData(
+            $branches,
+            $analyzer,
+            $parsed['overrides'],
+            $parsed['importPaths'],
+            $parsed['optionalOverrides'] ?? [],
+        );
     }
 
     /**
@@ -332,6 +339,7 @@ class InertiaPageAnalyzer
      * @param  array<string, list<ResourceAnalysis>>  $branches
      * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
      * @param  array<string, string>  $importPaths  each override's `import` path, by its key
+     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      * @return InertiaPageData
      */
     protected function buildPageData(
@@ -339,6 +347,7 @@ class InertiaPageAnalyzer
         ResourceAstAnalyzer $analyzer,
         array $overrides,
         array $importPaths,
+        array $optionalOverrides = [],
     ): array {
         $components = array_keys($branches);
         /** @var list<string> $pageTypes */
@@ -370,7 +379,11 @@ class InertiaPageAnalyzer
             $props = $this->collectProps($analysis);
             $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
-                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides($props, $casts);
+                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides(
+                    $props,
+                    $casts,
+                    JsEmitter::retargetCasts($optionalOverrides, $targets),
+                );
 
             $pageTypes[] = $pageType;
 
@@ -418,14 +431,22 @@ class InertiaPageAnalyzer
      *
      * @param  PagePropMap  $props
      * @param  array<string, string>  $overrides
+     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      */
-    protected function buildTypeStringWithOverrides(array $props, array $overrides): string
+    protected function buildTypeStringWithOverrides(array $props, array $overrides, array $optionalOverrides = []): string
     {
         if ($props === [] && $overrides === []) {
             return TsTypeStringService::EMPTY_OBJECT; // @codeCoverageIgnore
         }
 
-        $casts = array_map(fn (string $type): array => ['type' => $type, 'optional' => false], $overrides);
+        $casts = [];
+
+        // A cast that says nothing about optional keeps the prop's own flag.
+        foreach ($overrides as $key => $type) {
+            $optional = $optionalOverrides[$key] ?? $props[$key]['optional'] ?? false;
+            $casts[$key] = JsEmitter::signatureSafeMember((string) $key, $type, $optional);
+        }
+
         $parts = [];
 
         // A cast keeps its prop's place, and one no prop has goes after them.
@@ -496,7 +517,7 @@ class InertiaPageAnalyzer
     /**
      * Parse the `#[TsCasts]` attribute from a controller method.
      *
-     * @return array{overrides: array<string, string>, importPaths: array<string, string>}
+     * @return TsCastsParseResult
      */
     protected function parseTsCastsFromMethod(string $controllerClass, string $methodName): array
     {
@@ -519,6 +540,10 @@ class InertiaPageAnalyzer
         /** @var TsCastsUnpacked $unpacked */
         $unpacked = resolve(TsCastsReader::class)->unpack([$attrs[0]->newInstance()]);
 
-        return ['overrides' => $unpacked['overrides'], 'importPaths' => $unpacked['importPaths']];
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
     }
 }

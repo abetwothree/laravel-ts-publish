@@ -7,8 +7,12 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Inertia\Inertia;
 use Inertia\Response;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 
-/** Page casts on a numeric key, under a losing spelling, and over two components only one of which returns the key. */
+/**
+ * Page casts on a numeric key, under a losing spelling, over two components only one of which returns the key, and
+ * with or without an `optional` flag; and a prop typed from a request's import-aware cast.
+ */
 class ControllerWithCastKeyEdges
 {
     /** Casts the numeric key `42`, which PHP stores as an int. */
@@ -37,6 +41,29 @@ class ControllerWithCastKeyEdges
         }
 
         return Inertia::render('Edges/WithoutMeta', ['id' => 2]);
+    }
+
+    /** Marks a prop and an added signature optional by the cast's own flag. */
+    #[TsCasts([
+        'heading' => ['type' => 'Heading', 'optional' => true],
+        '[key: `${string}_note`]' => ['type' => 'number', 'optional' => true],
+    ])]
+    public function optionalCast(): Response
+    {
+        return Inertia::render('Edges/OptionalCast', ['heading' => 'x', 'id' => 1]);
+    }
+
+    /** Casts two props only one ternary arm sets: one says nothing about `optional`, the other clears it. */
+    #[TsCasts(['meta' => 'PageMeta', 'note' => ['type' => 'Note', 'optional' => false]])]
+    public function typeOnlyCast(): Response
+    {
+        return Inertia::render('Edges/TypeOnlyCast', request()->has('a') ? ['meta' => [], 'note' => 'x', 'id' => 1] : ['id' => 2]);
+    }
+
+    /** UpdatePostRequest casts `attributes` to an imported type. */
+    public function validated(UpdatePostRequest $request): Response
+    {
+        return Inertia::render('Edges/Validated', ['attributes' => $request->validated('attributes')]);
     }
 
     /**

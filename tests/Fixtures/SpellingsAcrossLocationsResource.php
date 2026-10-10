@@ -10,8 +10,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * A test-only resource that casts its `\_x` signature on toArray() and on the class by the exact name, and on casts()
- * by the single-backslash paste. casts() outranks the class, and the class outranks toArray(), whatever the spellings.
+ * A test-only resource that casts its `\_x` signature on the class by the exact name, and on toArray() and casts() by
+ * the single-backslash paste. casts() outranks the class, and the class outranks toArray(), whatever the spellings.
  *
  * @mixin Post
  */
@@ -26,7 +26,7 @@ class SpellingsAcrossLocationsResource extends JsonResource
     }
 
     /** @return array<string, mixed> */
-    #[TsCasts(['[key: `${string}\\\\_x`]' => 'boolean'])]
+    #[TsCasts(['[key: `${string}\\_x`]' => 'boolean'])]
     public function toArray(Request $request): array
     {
         $data = ['id' => $this->id];

@@ -27,6 +27,7 @@ use ReflectionClass;
  * @phpstan-type TsCastsParseResult = array{
  *     overrides: array<string, string>,
  *     importPaths: array<string, string>,
+ *     optionalOverrides?: array<string, bool>,
  * }
  * @phpstan-type SharedDataResult = array{
  *     sharedPageProps: string,
@@ -118,7 +119,11 @@ class InertiaSharedDataAnalyzer
         );
 
         $mergedOverrides = JsEmitter::castsByKey(
-            $this->normalizeOverrideKeys(array_replace($docblockOverrides, $resolvedTsCasts['overrides'])),
+            $this->normalizeOverrideKeys(
+                array_replace($docblockOverrides, $resolvedTsCasts['overrides']),
+                JsEmitter::retargetCasts($tsCasts['optionalOverrides'] ?? [], $targets),
+                $this->propFlagsOutsideDocblock($analysis, $docblockOverrides),
+            ),
             $keys,
         );
 
@@ -301,7 +306,11 @@ class InertiaSharedDataAnalyzer
         /** @var TsCastsUnpacked $unpacked */
         $unpacked = resolve(TsCastsReader::class)->unpack($this->tsCastsAttributesFromMiddleware($className));
 
-        return ['overrides' => $unpacked['overrides'], 'importPaths' => $unpacked['importPaths']];
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
     }
 
     /**
@@ -375,25 +384,42 @@ class InertiaSharedDataAnalyzer
     /**
      * Split the docblock parser's key-embedded optional marker back out, so overrides can be matched
      * against the inferred plain property names — otherwise `filters?` misses `filters` and the entry
-     * is emitted twice, which TypeScript rejects as a duplicate identifier.
+     * is emitted twice, which TypeScript rejects as a duplicate identifier. Also settles an optional signature.
      *
      * @param  array<string, string>  $overrides
+     * @param  array<string, bool>  $optionalOverrides  a #[TsCasts] entry's own `optional` flag, which outranks a `?`
+     * @param  array<string, bool>  $propFlags  each prop's own flag, which a cast that says nothing keeps unless an
+     *                                          earlier entry decides
      * @return SharedPropMap
      */
-    protected function normalizeOverrideKeys(array $overrides): array
+    protected function normalizeOverrideKeys(array $overrides, array $optionalOverrides = [], array $propFlags = []): array
     {
         $normalized = [];
 
         // Insertion order carries priority: #[TsCasts] entries are merged after docblock ones, so an
-        // attribute-supplied `filters` still wins over a docblock-supplied `filters?`.
+        // attribute-supplied `filters` still wins over a docblock-supplied `filters?`, and keeps its `?`.
         foreach ($overrides as $key => $type) {
             $key = (string) $key; // PHP stores a numeric key such as '42' as an int.
-            $optional = str_ends_with($key, '?');
-            $name = $optional ? substr($key, 0, -1) : $key;
+            $suffixed = str_ends_with($key, '?');
+            $name = $suffixed ? substr($key, 0, -1) : $key;
+            $optional = $optionalOverrides[$key] ?? ($suffixed || ($normalized[$name]['optional'] ?? $propFlags[$name] ?? false));
 
             $normalized[$name] = JsEmitter::signatureSafeMember($name, $type, $optional);
         }
 
         return $normalized;
+    }
+
+    /**
+     * Each prop's own optional flag on a key the docblock leaves alone, which a cast that says nothing about it keeps.
+     *
+     * @param  array<string, string>  $docblockOverrides
+     * @return array<string, bool>
+     */
+    protected function propFlagsOutsideDocblock(MethodAnalysis $analysis, array $docblockOverrides): array
+    {
+        $docblockNames = array_map(fn (int|string $key): string => rtrim((string) $key, '?'), array_keys($docblockOverrides));
+
+        return array_diff_key(array_column($analysis->properties, 'optional', 'name'), array_flip($docblockNames));
     }
 }

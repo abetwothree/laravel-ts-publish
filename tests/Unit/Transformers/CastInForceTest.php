@@ -47,6 +47,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumAccessorOnlyRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastWrapTypeImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodSameBasenameOverrideResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsClassCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsRequiredMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelVsMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NonPayloadCastImportEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OneBranchCastSpreadResource;
@@ -558,6 +561,14 @@ describe('a cast the resource and its model both declare', function () {
     it('lets a resource\'s own toArray() cast win over its model\'s cast', function () {
         expect(castInForceLines(ModelVsMethodCastResource::class))->toContain('    longitude: MethodLongitude;');
     });
+
+    it('keeps the model cast\'s optional flag under a resource cast that says nothing about it', function (string $resource, string $line) {
+        expect(castInForceLines($resource))->toContain($line);
+    })->with([
+        'a type-only toArray() cast' => [ModelOptionalVsMethodCastResource::class, '    latitude?: MethodLatitude;'],
+        'a toArray() cast with optional => false' => [ModelOptionalVsRequiredMethodCastResource::class, '    latitude: MethodLatitude;'],
+        'a type-only class cast' => [ModelOptionalVsClassCastResource::class, '    latitude?: ClassLatitude;'],
+    ]);
 });
 
 // #81: a model that no key reads any more is neither imported nor a reason to alias the one a key still reads.
