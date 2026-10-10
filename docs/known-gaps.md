@@ -522,6 +522,12 @@ adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
 resource drops `label`, finds only numeric keys left, and sends `["y"]`. Keep numeric keys apart from a conditional
 named key.
 
+### A list holding a `when*()` value publishes a list, where a resource that preserves keys or a `collect()` keeps the gap
+
+In an API resource that preserves keys, `[$this->when($c, 'x'), 'y']` publishes `string[]`, though a false `$c` sends
+`{"1":"y"}`. `collect([[$this->when($c, 'x')]])` publishes `string[][]` in any resource, though the filter never enters
+a `Collection`, so the missing value encodes as `{}`. Keep conditional values out of lists there.
+
 ### An untyped property's default ignores writes the scan cannot see
 
 An untyped property publishes its default's type while nothing in the class, its ancestors or its traits writes it. A

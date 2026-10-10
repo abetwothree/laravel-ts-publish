@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
@@ -3522,6 +3523,13 @@ it('re-indexes an object\'s own JSON under an array key or beside an array the r
 
     expect($properties['by_week']['type'])->toBe('{ week: string[] }')
         ->and($properties['schedule_or_listed']['type'])->toBe('string[]');
+});
+
+// docs/known-gaps.md: a false when() element is removed and the rest keep their keys, so a resource that preserves keys
+// sends `{"1":"y"}`; inside a collect(), which no filter enters, the missing value encodes as `{}`.
+it('publishes a list holding a when() element as a list, in a preserve-keys resource and inside a collect()', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(KeptConditionalListResource::class)->properties))
+        ->toBe(['items' => 'string[]', 'collected' => 'string[][]']);
 });
 
 // docs/components/ts-casts.md: an API resource's class-level cast on `42` adds `"42": T`, as a method cast does.
