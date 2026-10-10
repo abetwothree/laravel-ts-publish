@@ -227,19 +227,19 @@ trait ResolvesModelTypes
     }
 
     /**
-     * The value Model::toArray() writes for an attribute, which is its read but for an Arrayable value, written as its
-     * toArray() array: one an API resource's filter enters.
+     * The value Model::toArray() writes for an attribute: its read, except that an Arrayable value is written as its
+     * toArray() array, which an API resource's filter enters.
      *
      * @return ValueExpressionResult
      */
     private function serializedModelAttributeResult(string $name): array
     {
         $result = $this->modelAttributeResult($name);
-
-        /** @var class-string $modelClass a model attribute resolves only with one */
         $modelClass = $this->scope->modelClass;
 
-        if (($result['keepsKeys'] ?? false) && resolve(ModelAttributeResolver::class)->serializesAsArray($modelClass, $name)) {
+        if (($result['keepsKeys'] ?? false)
+            && $modelClass !== null
+            && resolve(ModelAttributeResolver::class)->serializesAsArray($modelClass, $name)) {
             unset($result['keepsKeys']);
         }
 

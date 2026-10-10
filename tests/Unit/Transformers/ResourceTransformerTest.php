@@ -3493,7 +3493,7 @@ it('keeps the numeric keys of a collect() value, on every branch that sets it an
 // ConditionallyLoadsAttributes::filter() enters arrays only, so an object's JSON keeps the keys its class declares,
 // whether a method returns it, a property or a cast holds it, a `new` builds it or the model's toArray() keeps it; that
 // toArray() writes an Arrayable value as its own array, which the filter re-indexes.
-it('keeps the numeric keys of a value object\'s own JSON, in every position a resource reads one', function () {
+it('keeps the numeric keys of a value object\'s own JSON wherever a key holds the object itself', function () {
     $types = fn (string $resource): array => array_map(
         fn (array $property): string => $property['type'],
         new ResourceTransformer($resource)->properties,
