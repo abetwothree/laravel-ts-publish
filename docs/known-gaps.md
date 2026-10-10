@@ -471,9 +471,15 @@ them keyed. Give the collection `$preserveKeys` too, or collect through the elem
 ### A `$wrap = null` API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
 
 `toArray()` returning `['id' => 1, 42 => 'a']` on a resource with `public static $wrap = null` publishes
-`{ id: number; "42": string }`. Returned unwrapped as the response, `ResourceResponse::wrap()` `array_merge_recursive()`s
-it and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
+`{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or `additional` data;
+otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is `array_merge_recursive()`d
+and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
 known statically. Use a string key.
+
+### An Inertia page or `broadcastWith()` payload whose top-level keys are all int publishes an object
+
+The page or payload is sent as a JSON list where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) and as an
+object on Redis and Ably, yet publishes `{ "0": … }`.
 
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 

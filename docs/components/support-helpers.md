@@ -21,6 +21,9 @@ The helpers and the test that pins them live in these files:
 - [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
   re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
   resource publisher, `KnownFunctionCallHandler`'s `collect()` rule and the enum-value warning.
+- [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
+  `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
+  payload. Static and `@internal`.
 - [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
   grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
@@ -38,6 +41,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does `json_encode()` write a string for this class? | `StringSerialization` |
 | Does an API resource response re-index this array into a list? | `ResourceReindexing` |
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
+| Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
