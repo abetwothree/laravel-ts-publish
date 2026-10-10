@@ -153,7 +153,18 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
         ]);
     });
 
-    // The AsEnum rewrite spells an enum resource's token by its own import channel, so it keeps that path (#76, #108).
+    // An enum resource's token holds no queue entry, since the AsEnum rewrite spells it (#76, #108).
+    test('two enums read directly beside an enum resource arm stay merged by their text', function () {
+        $result = ValueResult::unionResults([
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
+        ]);
+
+        expect($result['type'])->toBe('StatusType | null')
+            ->and($result['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class]);
+    });
+
     test('two enum resource arms that share a name stay merged by their text', function () {
         $result = ValueResult::unionResults([
             ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
@@ -181,39 +192,6 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
 
 // A union is one of enum resources when its enum resources are as many as the types it counts: its arms' types, or its
 // members where the caller says so, as a conditional default does.
-// A Collection reaches JSON with its keys, so a union keeps them only when no arm is an array the filter re-indexes.
-describe('ValueResult::unionResults() over arms that keep their keys', function () {
-    test('keeps the keys when every arm that is not null keeps them', function () {
-        $result = ValueResult::unionResults([
-            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
-            ['type' => 'null', 'optional' => false],
-        ]);
-
-        expect($result)->toBe(['type' => '{ "200": string } | null', 'optional' => false, 'keepsKeys' => true]);
-    });
-
-    test('drops the keys when an arm that is not null does not keep them', function () {
-        $result = ValueResult::unionResults([
-            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
-            ['type' => '{ "404": string }', 'optional' => false],
-        ]);
-
-        expect($result)->not->toHaveKey('keepsKeys');
-    });
-
-    test('keeps no keys for a union of null alone', function () {
-        expect(ValueResult::unionResults([['type' => 'null', 'optional' => false]]))->not->toHaveKey('keepsKeys');
-    });
-});
-
-describe('ValueResult::enumTypeName()', function () {
-    test('names an enum by the type its file exports', function () {
-        expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
-            ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
-            ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
-    });
-});
-
 describe('ValueResult::unionResults() over enum-resource branches', function () {
     $nullableSecond = [
         ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
@@ -295,6 +273,39 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
             ['type' => 'StatusType | VisibilityType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, Visibility::class]],
         ],
     ]);
+});
+
+// A Collection reaches JSON with its keys, so a union keeps them only when no arm is an array the filter re-indexes.
+describe('ValueResult::unionResults() over arms that keep their keys', function () {
+    test('keeps the keys when every arm that is not null keeps them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => 'null', 'optional' => false],
+        ]);
+
+        expect($result)->toBe(['type' => '{ "200": string } | null', 'optional' => false, 'keepsKeys' => true]);
+    });
+
+    test('drops the keys when an arm that is not null does not keep them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => '{ "404": string }', 'optional' => false],
+        ]);
+
+        expect($result)->not->toHaveKey('keepsKeys');
+    });
+
+    test('keeps no keys for a union of null alone', function () {
+        expect(ValueResult::unionResults([['type' => 'null', 'optional' => false]]))->not->toHaveKey('keepsKeys');
+    });
+});
+
+describe('ValueResult::enumTypeName()', function () {
+    test('names an enum by the type its file exports', function () {
+        expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
+    });
 });
 
 describe('ValueResult::unionResults() over model, resource and class-less arms', function () {

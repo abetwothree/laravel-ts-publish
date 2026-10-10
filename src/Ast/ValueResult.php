@@ -348,7 +348,7 @@ final class ValueResult
 
         return self::sharesAName($models, class_basename(...))
             || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn))
-            || self::sharesAName($enums, self::enumTypeName(...));
+            || (! self::wrapsAnEnum($results) && self::sharesAName($enums, self::enumTypeName(...)));
     }
 
     /**
@@ -372,19 +372,25 @@ final class ValueResult
     }
 
     /**
-     * The FQCNs a result carries on its direct and embedded enum channels; none for an arm that wraps an enum resource,
-     * whose token the AsEnum rewrite spells by its own import channel.
+     * The FQCNs a result carries on its direct and embedded enum channels.
      *
      * @param  ValueExpressionResult  $result
      * @return list<class-string>
      */
     private static function directEnumChannelFqcns(array $result): array
     {
-        if (isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns'])) {
-            return [];
-        }
-
         return [...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...($result['embeddedEnumFqcns'] ?? [])];
+    }
+
+    /**
+     * Whether an arm wraps an enum resource. Its token holds no queue entry, since the AsEnum rewrite spells it by its
+     * own import channel, so the union's enums cannot be read by class.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     */
+    private static function wrapsAnEnum(array $results): bool
+    {
+        return array_any($results, fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']));
     }
 
     /**
@@ -557,6 +563,8 @@ final class ValueResult
         $resourceFqcns = [];
         /** @var list<class-string> $enumFqcns */
         $enumFqcns = [];
+        // A union wrapping an enum resource keeps the enum queue mergeUnion() built for the AsEnum rewrite.
+        $wraps = self::wrapsAnEnum($arms);
 
         foreach ($arms as $arm) {
             $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
@@ -564,7 +572,7 @@ final class ValueResult
                 self::resourceChannelFqcns($arm),
                 static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
             );
-            $enums = new ClassTokenQueue(self::directEnumChannelFqcns($arm), self::enumTypeName(...));
+            $enums = new ClassTokenQueue($wraps ? [] : self::directEnumChannelFqcns($arm), self::enumTypeName(...));
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
                 if ($member === 'null') {
@@ -597,8 +605,7 @@ final class ValueResult
 
         unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
 
-        // A union wrapping an enum resource keeps the queue mergeUnion() built for the AsEnum rewrite.
-        if ($enumFqcns !== [] && ! isset($union['enumFqcn']) && ! isset($union['multiEnumResourceFqcns'])) {
+        if ($enumFqcns !== []) {
             $union['embeddedEnumFqcns'] = $enumFqcns;
         }
 

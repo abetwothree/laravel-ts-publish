@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCast
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
@@ -7205,6 +7206,17 @@ test('a union of two same-named enums keeps a member and a queue entry per enum,
     'a shape beside a read' => ['$this->id > 0 ? ["s" => $this->status] : $this->current_crm_status', '{ s: StatusType | null } | StatusType | null'],
     'two reads' => ['$this->id > 0 ? $this->status : $this->current_crm_status', 'StatusType | StatusType | null'],
 ]);
+
+// An enum resource's token holds no queue entry, so a union holding one keeps the merge by text it had (#76, #108):
+// nested_mixed's `o` keeps that merge's CRM alias. With no enum resource, the nested union reads its enums by class.
+test('a union holding an enum resource beside two same-named enums keeps the merge by text it had', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(EnumWrapBesideSharedNameResource::class)->properties))
+        ->toBe([
+            'mixed' => 'WorkbenchStatusType | null',
+            'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
+            'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
+        ]);
+});
 
 // The body fallback flattens a helper's shape with no import, so the case declines and leaves its siblings their types.
 test('an enum case in a vague helper\'s body fallback leaves its siblings typed', function () {

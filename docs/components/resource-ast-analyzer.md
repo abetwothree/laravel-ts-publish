@@ -723,12 +723,12 @@ swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed
 `ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`: one name
 spells two models, two resources or two enums read directly. `withMembersByClass()` reads it by class through
 [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
-[Import name registry](import-name-registry.md#rewriting-aliased-type-references). An `EnumResource` arm stays merged
-by text, since the `AsEnum` rewrite spells its token by its own import channel. `CoalesceHandler`,
-`ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
-`mergeReturnBranches()` still merges by text, for return branches and a merge call's value and default alike.
-`HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
-and `whenNull()` ones.
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references). A union holding an `EnumResource`
+arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
+`CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
+`unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
+default alike. `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource`
+the `when()` and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
