@@ -24,7 +24,14 @@ use ReflectionClass;
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type ValueExpressionResult from \AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler
  *
- * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, classTokenFqcns?: list<class-string>, customImports: array<string, list<string>>, keepsKeys?: bool}
+ * @phpstan-type ModelAttributeTypeResult = array{
+ *      type: string,
+ *      enumFqcn: class-string|null,
+ *      classFqcns: list<class-string>,
+ *      classTokenFqcns?: list<class-string>,
+ *      customImports: array<string, list<string>>,
+ *      keepsKeys?: bool
+ * }
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
 trait ResolvesModelTypes

@@ -32,10 +32,9 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 
 /**
- * An inline array literal, e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
- * becomes `{ name: string; value: number }`, and a list such as `[$a, $b]` a list type. Also folds spreads that resolve
- * to a bare named resource, a bound model's or collection's toArray(), or any other value typed as one object into
- * intersection arms.
+ * An inline array literal: `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]` becomes
+ * `{ name: string; value: number }`, a list such as `[$a, $b]` a list type. Spreads of a bare named resource, a bound
+ * model's or collection's toArray(), or any other value typed as one object fold into intersection arms.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
