@@ -204,6 +204,7 @@ trait InspectsAstNodes
         }
 
         $items = [];
+        $keyless = [];
         $next = 0;
 
         foreach ($call->getArgs() as $arg) {
@@ -219,6 +220,10 @@ trait InspectsAstNodes
                         $items[] = new ArrayItem($item->value, new Int_($next++), $item->byRef, $item->getAttributes());
 
                         continue;
+                    }
+
+                    if ($next !== null && $item->key === null && ! $item->unpack) {
+                        $keyless[count($items)] = new ArrayItem($item->value, new Int_($next), $item->byRef, $item->getAttributes());
                     }
 
                     $next = match (true) {
@@ -238,6 +243,11 @@ trait InspectsAstNodes
 
             $items[] = new ArrayItem($value, byRef: false, unpack: true);
             $next = null;
+        }
+
+        // A keyless item keeps the key it gets at runtime only beside a keyed one; an all-keyless literal stays a list.
+        if ($keyless !== [] && array_filter($items, fn (ArrayItem $item): bool => $item->key !== null) !== []) {
+            $items = array_values(array_replace($items, $keyless));
         }
 
         return new Array_($items);

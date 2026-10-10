@@ -71,7 +71,9 @@ it('renumbers each int key as array_merge() does', function (string $php, string
     'the same int key in two arguments' => ['array_merge([0 => "a"], [0 => 1])', '(string | number)[]'],
     'an int-like string key' => ['array_merge(["a" => 1], ["7" => "x"])', '{ a: number; "0": string }'],
     'a numeric string PHP keeps as a string' => ['array_merge(["a" => 1], ["06" => "x"])', '{ a: number; "06": string }'],
-    'an int key after a keyless item' => ['array_merge(["x"], [9 => "y", "b" => 2])', '{ "1": string; b: number }'],
+    'an int key after a keyless item' => ['array_merge(["x"], [9 => "y", "b" => 2])', '{ "0": string; "1": string; b: number }'],
+    'keyless items and int keys that renumber into a run from 0' => ['array_merge(["x"], [9 => "y"])', 'string[]'],
+    'a keyless item before a named key' => ['array_merge(["a" => 1], ["x"])', '{ a: number; "0": string }'],
 ]);
 
 it('declines when an argument is not an array literal or a parent call', function () {
