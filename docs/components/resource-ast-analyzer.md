@@ -538,7 +538,7 @@ A numeric key goes through two layers:
   `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()`
   and a spread `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a
   key whose result carries `keepsKeys`, set by `collect()` because the filter never enters a `Collection`, keeps its
-  keys.
+  keys. A union carries it when every arm but `null` does.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 

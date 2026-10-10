@@ -527,6 +527,13 @@ final class ValueResult
             $result['carriedFqcns'] = $carried;
         }
 
+        // A resource's re-index skips the union only when no arm is an array its filter enters; `null` has no keys.
+        $keyed = array_filter($branchResults, fn (array $inner): bool => $inner['type'] !== 'null');
+
+        if ($keyed !== [] && array_all($keyed, fn (array $inner): bool => $inner['keepsKeys'] ?? false)) {
+            $result['keepsKeys'] = true;
+        }
+
         return $result;
     }
 

@@ -9,8 +9,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Depot;
 
 /**
- * A test-only resource holding collections keyed by numbers, which its filter never enters, beside an array it lists
- * and the array a collection's all() hands back.
+ * A test-only resource holding collections keyed by numbers, which its filter never enters, alone or beside null,
+ * beside an array it lists and the array a collection's all() hands back.
  *
  * @mixin Depot
  */
@@ -28,6 +28,7 @@ class CollectedNumericKeysResource extends JsonResource
             'kept_int' => collect([42 => $this->name]),
             'listed' => ['6' => $this->name],
             'codes' => collect([200 => 'OK', 404 => 'Not Found']),
+            'codes_or_none' => $this->id > 1 ? collect([200 => 'OK', 404 => 'Not Found']) : null,
             'rows' => collect([['1' => $this->name]]),
             'rows_listed' => collect([['1' => $this->name]])->all(),
             'order_codes' => $this->whenLoaded(

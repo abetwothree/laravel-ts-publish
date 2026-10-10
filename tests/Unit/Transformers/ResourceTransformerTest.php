@@ -3444,13 +3444,14 @@ it('retypes a numeric key the body writes with the method cast on it, in one ent
 
 // ConditionallyLoadsAttributes::filter() never enters a Collection, so its numeric keys reach JSON as written; it does
 // enter the array all() hands back, but not a Collection that array holds.
-it('keeps the numeric keys of a collect() value, on every branch that sets it, and lists the array beside it', function () {
+it('keeps the numeric keys of a collect() value, on every branch that sets it and beside null, and lists the array beside it', function () {
     expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(CollectedNumericKeysResource::class)->properties))
         ->toBe([
             'kept' => '{ "6": string }',
             'kept_int' => '{ "42": string }',
             'listed' => 'string[]',
             'codes' => '{ "200": string; "404": string }',
+            'codes_or_none' => '{ "200": string; "404": string } | null',
             'rows' => '{ "1": string }[]',
             'rows_listed' => 'string[][]',
             'order_codes' => '{ "5": CurrencyType }[]',
