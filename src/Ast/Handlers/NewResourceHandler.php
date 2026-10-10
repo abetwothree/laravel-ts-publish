@@ -16,10 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Support\Collection;
-use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
 use ReflectionClass;
@@ -39,23 +36,6 @@ final class NewResourceHandler implements ExpressionHandler
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
-
-    /**
-     * The `collect($items)` call `new Collection($items)` encodes as, or null for any other `new`.
-     */
-    public static function collectCall(New_ $new): ?FuncCall
-    {
-        if (! $new->class instanceof Name || $new->class->toString() !== Collection::class || count($new->args) !== 1) {
-            return null;
-        }
-
-        $arg = $new->args[0];
-
-        // Passed by position: a named argument is `items:` here, but `value:` to collect().
-        return $arg instanceof Arg && ! $arg->unpack
-            ? new FuncCall(new Name('collect'), [new Arg($arg->value)], $new->getAttributes())
-            : null;
-    }
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -122,7 +102,7 @@ final class NewResourceHandler implements ExpressionHandler
             }
         }
 
-        $collect = self::collectCall($expr);
+        $collect = resolve(ValueResolver::class)->collectCall($expr);
 
         if ($collect !== null) {
             return $engine->resolve($collect);

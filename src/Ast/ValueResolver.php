@@ -16,13 +16,16 @@ use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
@@ -235,6 +238,23 @@ final class ValueResolver
         $result = $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
 
         return $result === null ? null : [...$result, 'keepsKeys' => true];
+    }
+
+    /**
+     * The `collect($items)` call `new Collection($items)` encodes as, or null for any other `new`.
+     */
+    public function collectCall(New_ $new): ?FuncCall
+    {
+        if (! $new->class instanceof Name || $new->class->toString() !== Collection::class || count($new->args) !== 1) {
+            return null;
+        }
+
+        $arg = $new->args[0];
+
+        // Passed by position: a named argument is `items:` here, but `value:` to collect().
+        return $arg instanceof Arg && ! $arg->unpack
+            ? new FuncCall(new Name('collect'), [new Arg($arg->value)], $new->getAttributes())
+            : null;
     }
 
     /**

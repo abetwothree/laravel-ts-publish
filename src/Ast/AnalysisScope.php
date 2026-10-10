@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -440,7 +439,7 @@ final class AnalysisScope
             }
 
             // collect() reads the list of a `new Collection([...])` itself, so the list clause below lets it through.
-            $readsOwnList = $default instanceof New_ && NewResourceHandler::collectCall($default) !== null;
+            $readsOwnList = $default instanceof New_ && $resolver->collectCall($default) !== null;
 
             // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`.
             // A list of values the evaluator failed on is left unbound, but a keyed one, whose keys the engine types,
