@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -162,7 +163,8 @@ class BroadcastEventTransformer extends CoreTransformer
             ->transformBroadcastName()
             ->transformProperties()
             ->resolveImportConflicts()
-            ->buildTypeImports();
+            ->buildTypeImports()
+            ->renumberTopLevelKeys();
 
         return $this;
     }
@@ -602,6 +604,20 @@ class BroadcastEventTransformer extends CoreTransformer
         }
 
         $this->typeImports = TsNaming::sortImportPaths($imports);
+
+        return $this;
+    }
+
+    /**
+     * Publish each payload key on the key Laravel sends it on, as the merge with the socket renumbers int keys.
+     *
+     * Last, since every earlier step looks a key's casts and import channels up by its own name.
+     */
+    protected function renumberTopLevelKeys(): self
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys($this->properties)));
+        TopLevelRenumbering::warnRenumbered($this->findable, 'a broadcast payload', $renumbered);
+        $this->properties = TopLevelRenumbering::rekey($this->properties, $renumbered);
 
         return $this;
     }

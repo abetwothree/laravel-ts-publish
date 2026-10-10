@@ -468,6 +468,13 @@ them keyed. Give the collection `$preserveKeys` too, or collect through the elem
 
 `toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.
 
+### A `$wrap = null` API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
+
+`toArray()` returning `['id' => 1, 42 => 'a']` on a resource with `public static $wrap = null` publishes
+`{ id: number; "42": string }`. Returned unwrapped as the response, `ResourceResponse::wrap()` `array_merge_recursive()`s
+it and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
+known statically. Use a string key.
+
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the

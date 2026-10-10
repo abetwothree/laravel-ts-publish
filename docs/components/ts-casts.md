@@ -54,7 +54,9 @@ key; an event adds nothing.
 
 A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merge()` or a spread renumbers, so every
 merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method
-cast does.
+cast does. At the top level of an Inertia page, shared data or an event payload, Laravel's own `array_merge()`
+renumbers int keys from 0, so a numeric cast key there publishes on the key Laravel renumbers it to, with a warning
+([`TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php)).
 
 ## A cast is final for its key
 

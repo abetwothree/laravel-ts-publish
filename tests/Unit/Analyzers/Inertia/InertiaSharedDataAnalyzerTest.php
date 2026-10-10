@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
@@ -403,9 +404,23 @@ test('a #[TsCasts] key that spells more than one index signature warns', functio
 // ─── #[TsCasts] key edges ────────────────────────────────────────
 
 // PHP stores '42' as an int; the optional-suffix check used to receive it under strict types and throw a TypeError.
-test('a numeric cast key lands on its own key instead of stopping the run', function () {
+// PropsResolver::resolve() array_merge()s shared data with the page's props, which renumbers its int keys from 0.
+test('a numeric cast key lands on the key Laravel renumbers it to instead of stopping the run, and warns', function () {
     expect(analyzeSharedDataFor(MiddlewareWithNumericCastKey::class)['sharedPageProps'])
-        ->toBe('{ appName: string, "42": boolean }');
+        ->toBe('{ appName: string, "0": boolean }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => MiddlewareWithNumericCastKey::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of shared data; use a string key.',
+        ]]);
+});
+
+test('a top-level int key of shared data publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithNumericBodyKey::class)['sharedPageProps'])
+        ->toBe('{ appName: string, "0": boolean, codes: { "7": string } }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => MiddlewareWithNumericBodyKey::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of shared data; use a string key.',
+        ]]);
 });
 
 test('share()\'s spelling of a signature outranks the class\'s exact name', function () {

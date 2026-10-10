@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBro
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FlaggedClassCastUnderCastsMethodBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MethodMissingKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericPayloadKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
@@ -666,13 +667,30 @@ test('a broadcastWith() cast on a key the payload lacks adds the key and imports
         ->and($transformer->typeImports)->toBe(['@/types/voucher' => ['Voucher']]);
 });
 
-test('an event cast on a numeric key lands on that key', function () {
+// BroadcastEvent::getPayloadFromEvent() array_merge()s the payload with the socket, renumbering its int keys from 0.
+test('an event cast on a numeric key lands on the key Laravel renumbers it to, and warns', function () {
     $properties = app(BroadcastEventTransformer::class, ['findable' => NumericCastKeyBroadcastEvent::class])->properties;
 
     expect($properties)->toBe([
         'name' => ['type' => "'a' | 'b'", 'optional' => false],
-        42 => ['type' => 'boolean', 'optional' => false],
-    ]);
+        0 => ['type' => 'boolean', 'optional' => false],
+    ])->and(AnalysisWarnings::all())->toBe([[
+        'subject' => NumericCastKeyBroadcastEvent::class,
+        'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a broadcast payload; use a string key.',
+    ]]);
+});
+
+test('a top-level int key of a payload publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NumericPayloadKeyBroadcastEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain("    id: number;\n    \"0\": string;\n    codes: { \"7\": string };")
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => NumericPayloadKeyBroadcastEvent::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a broadcast payload; use a string key.',
+        ]]);
 });
 
 // No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.

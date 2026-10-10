@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -382,12 +383,13 @@ class InertiaPageAnalyzer
             $this->forgetOverriddenChannels($analysis, $casts);
 
             $props = $this->collectProps($analysis);
+            $renumbered = $this->renumberTopLevel($props, $casts, $subject);
             $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
                 : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides(
-                    $props,
-                    $casts,
-                    JsEmitter::retargetCasts($optionalOverrides, $targets),
+                    TopLevelRenumbering::rekey($props, $renumbered),
+                    TopLevelRenumbering::rekey($casts, $renumbered),
+                    TopLevelRenumbering::rekey(JsEmitter::retargetCasts($optionalOverrides, $targets), $renumbered),
                 );
 
             $pageTypes[] = $pageType;
@@ -429,6 +431,21 @@ class InertiaPageAnalyzer
         }
 
         return $props;
+    }
+
+    /**
+     * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
+     *
+     * @param  PagePropMap  $props
+     * @param  array<string, string>  $casts
+     * @return array<string, string>
+     */
+    protected function renumberTopLevel(array $props, array $casts, string $subject): array
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys(array_replace($props, $casts))));
+        TopLevelRenumbering::warnRenumbered($subject, 'a page', $renumbered);
+
+        return $renumbered;
     }
 
     /**

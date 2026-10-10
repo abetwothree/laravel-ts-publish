@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
@@ -137,9 +138,12 @@ class InertiaSharedDataAnalyzer
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
 
+        $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+        $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
+
         $propsType = $this->buildTypeStringWithOverrides(
-            $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis),
-            $mergedOverrides,
+            TopLevelRenumbering::rekey($props, $renumbered),
+            TopLevelRenumbering::rekey($mergedOverrides, $renumbered),
         );
 
         $inferredImports = $this->buildInferredImports($analysis, $propsType);
@@ -359,6 +363,21 @@ class InertiaSharedDataAnalyzer
         }
 
         return LaravelTsPublish::parseDocblockReturnArrayShape($reflection->getMethod('share'));
+    }
+
+    /**
+     * The key Laravel sends each top-level prop on, as the page merge renumbers shared data's int keys; warns for each.
+     *
+     * @param  SharedPropMap  $props
+     * @param  SharedPropMap  $overrides
+     * @return array<string, string>
+     */
+    protected function renumberTopLevel(array $props, array $overrides, string $middlewareClass): array
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys(array_replace($props, $overrides))));
+        TopLevelRenumbering::warnRenumbered($middlewareClass, 'shared data', $renumbered);
+
+        return $renumbered;
     }
 
     /**
