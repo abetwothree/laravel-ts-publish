@@ -166,6 +166,7 @@ class InertiaPageAnalyzer
             $parsed['overrides'],
             $parsed['importPaths'],
             $parsed['optionalOverrides'] ?? [],
+            $controllerClass.'@'.$methodName,
         );
     }
 
@@ -340,6 +341,7 @@ class InertiaPageAnalyzer
      * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
      * @param  array<string, string>  $importPaths  each override's `import` path, by its key
      * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  string  $subject  the `Controller@method` action a warning names
      * @return InertiaPageData
      */
     protected function buildPageData(
@@ -348,6 +350,7 @@ class InertiaPageAnalyzer
         array $overrides,
         array $importPaths,
         array $optionalOverrides = [],
+        string $subject = '',
     ): array {
         $components = array_keys($branches);
         /** @var list<string> $pageTypes */
@@ -359,7 +362,9 @@ class InertiaPageAnalyzer
 
         foreach ($branches as $analyses) {
             $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
-            $targets = JsEmitter::castTargets(array_keys($overrides), array_column($analysis->properties, 'name'));
+            $keys = array_column($analysis->properties, 'name');
+            $targets = JsEmitter::castTargets(array_keys($overrides), $keys);
+            JsEmitter::warnAmbiguousCasts($subject, array_keys($overrides), $keys);
             $casts = JsEmitter::retargetCasts($overrides, $targets);
 
             // A losing spelling's import goes with its type.

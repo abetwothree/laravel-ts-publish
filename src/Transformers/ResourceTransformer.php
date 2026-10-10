@@ -503,6 +503,7 @@ class ResourceTransformer extends CoreTransformer
             $keys,
             array_keys($this->tsTypeOverrides),
         );
+        JsEmitter::warnAmbiguousCasts($this->findable, array_keys($this->tsTypeOverrides), $keys);
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
         $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);

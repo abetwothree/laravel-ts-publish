@@ -110,6 +110,7 @@ class InertiaSharedDataAnalyzer
         $targets = resolve(TsCastsReader::class)
             ->castTargets($this->tsCastsAttributesFromMiddleware($middlewareClass), $keys);
         $tsCasts = $this->parseTsCastsFromMiddleware($middlewareClass);
+        JsEmitter::warnAmbiguousCasts($middlewareClass, array_keys($tsCasts['overrides']), $keys);
         $docblockOverrides = $this->parseDocblockFromMiddleware($middlewareClass);
 
         $resolver = new TsCastsImportResolver;

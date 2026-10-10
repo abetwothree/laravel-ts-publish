@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastAliasedEnumResource;
@@ -7073,6 +7074,20 @@ test('a toArray() cast retypes every entry of a key the returned array names twi
 
     expect(array_column($analysis->properties, 'type', 'name'))->toBe(['state' => "'draft' | 'published'", 'title' => 'string'])
         ->and(new ResourceTransformer(DuplicateKeyCastResource::class)->properties['state']['type'])->toBe("'draft' | 'published'");
+});
+
+test('a cast key that spells more than one index signature warns, retypes none and adds the key as it does any other', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(AmbiguousSpellingResource::class)->properties;
+
+    expect(array_column($properties, 'type'))->toBe(['number', 'number | undefined', 'number | undefined', 'string'])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => AmbiguousSpellingResource::class,
+            'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+        ]]);
+
+    AnalysisWarnings::reset();
 });
 
 describe('a cast across its locations', function () {

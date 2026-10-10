@@ -67,7 +67,7 @@ value that admits `undefined`.
   double-quoted paste), or with both, read escape by escape from the left.
 - Where two cast keys name one signature, the exact spelling wins, else the first, inside one `#[TsCasts]` location;
   across locations see [`#[TsCasts]` overrides](ts-casts.md#matching-a-key). The loser's target is null.
-- A spelling two signatures share retypes neither.
+- A spelling two signatures share retypes neither; `ambiguousCastKeys()` names it, and every publisher warns.
 
 `retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,

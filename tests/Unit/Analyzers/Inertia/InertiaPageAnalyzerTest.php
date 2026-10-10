@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
@@ -507,6 +508,19 @@ describe('a docblock-filled index signature in page props merged from several br
 test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the signature', function () {
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@show')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
+});
+
+test('a controller method\'s cast key that spells more than one signature warns', function () {
+    AnalysisWarnings::reset();
+
+    pageData(ControllerWithAmbiguousCastSpelling::class.'@show');
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => ControllerWithAmbiguousCastSpelling::class.'@show',
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
 });
 
 test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {

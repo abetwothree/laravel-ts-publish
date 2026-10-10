@@ -218,6 +218,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $keys,
             array_keys($this->tsTypeOverrides),
         );
+        JsEmitter::warnAmbiguousCasts($this->findable, array_keys($this->tsTypeOverrides), $keys);
 
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $targets);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);

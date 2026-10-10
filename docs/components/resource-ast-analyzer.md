@@ -72,7 +72,7 @@ every profile, the order handlers run in decides which one answers; see
   recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts to every entry of a key, except on an Inertia middleware's `share()`. Both can change a key after the
+  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key after the
   merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch

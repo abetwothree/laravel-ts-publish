@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
@@ -3346,6 +3347,14 @@ it('publishes a cast a transformer subclass injects with no attribute behind it'
 // No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
 it('lets a cast a transformer subclass injects under another spelling of a signature retype it', function () {
     $properties = new InjectedSignatureCastResourceTransformer(EscapedKeyResource::class)->properties;
+
+    expect($properties['[key: `${string}\\\\unit`]']['type'])->toBe('number')
+        ->and($properties)->not->toHaveKey('[key: `${string}\\unit`]');
+});
+
+// The model's casts are re-decided over the analysis keys too, so an injected model cast finds the signature it spells.
+it('lets a model cast a transformer subclass injects under another spelling of a signature retype it', function () {
+    $properties = new InjectedModelSignatureCastResourceTransformer(EscapedKeyResource::class)->properties;
 
     expect($properties['[key: `${string}\\\\unit`]']['type'])->toBe('number')
         ->and($properties)->not->toHaveKey('[key: `${string}\\unit`]');

@@ -10,7 +10,7 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 | [`TsCastsReader`](../../src/Ast/TsCastsReader.php) | Unpacks `#[TsCasts]` instances into types, import paths and optional flags, a later one winning. |
 | [`ParsesTsCasts`](../../src/Concerns/ParsesTsCasts.php) | Reads a class's three locations: the class, `$casts` and `casts()`. |
 | [`ResourceAstAnalyzer::applyTsCastsFromMethod()`](../../src/Analyzers/ResourceAstAnalyzer.php) | Applies a method's own casts during analysis and records each one. |
-| [`MethodAnalysis::$casts`](../../src/Ast/MethodAnalysis.php) | Each method cast's text and its import path, if any; `merge()` lets the later one win. |
+| [`MethodAnalysis::$casts`](../../src/Ast/MethodAnalysis.php) | Each method cast's text, its import path and its `optional` flag, if any; `merge()` lets the later one win. |
 | [`MethodAnalysis::$carried`](../../src/Ast/MethodAnalysis.php) | The classes a cast displaced and its text does not spell, outside every import channel. |
 | [`CastChannels`](../../src/Ast/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
 | [`ResourceTransformer::collectCastsInForce()`](../../src/Transformers/ResourceTransformer.php) | Picks the cast in force per key from the method, model and resource casts. |
@@ -47,6 +47,10 @@ are known, then re-key the merged maps with `JsEmitter::retargetCasts()`. On a r
 attribute names, such as one a transformer subclass injects, decides last, as one more location. An Inertia page has
 one location and decides per rendered component. A page's and shared data's imports follow the surviving casts, so a
 losing spelling brings none.
+
+A cast key that spells more than one index signature retypes none, and each publisher warns, naming the key
+(`JsEmitter::warnAmbiguousCasts()`). A resource, a page and shared data still add the key as they add any other cast
+key; an event adds nothing.
 
 A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merge()` or a spread renumbers, so every
 merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method

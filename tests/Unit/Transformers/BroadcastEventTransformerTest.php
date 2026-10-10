@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
@@ -17,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadEscapedKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UncastEscapedKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UninitializedCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -642,6 +644,20 @@ it('imports nothing for an event cast that retypes no payload key', function () 
     expect($transformer->typeImports)->toBe([]);
 });
 
+test('an ambiguous spelling warns, retypes none and adds no key', function () {
+    AnalysisWarnings::reset();
+
+    $properties = app(BroadcastEventTransformer::class, ['findable' => AmbiguousSpellingBroadcastEvent::class])->properties;
+
+    expect(array_column($properties, 'type'))->toBe(['number', 'number | undefined', 'number | undefined'])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => AmbiguousSpellingBroadcastEvent::class,
+            'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+        ]]);
+
+    AnalysisWarnings::reset();
+});
+
 test('an event cast on a numeric key lands on that key', function () {
     $properties = app(BroadcastEventTransformer::class, ['findable' => NumericCastKeyBroadcastEvent::class])->properties;
 
@@ -672,6 +688,16 @@ it('prints an event\'s index signature bare', function () {
     $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
 
     expect($content)->toContain("    id: number;\n    [key: `\${string}_tag`]: string | undefined;")
+        ->not->toContain('"[key:');
+});
+
+it('prints an event signature holding a backslash bare, with two backslashes before the literal text', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => SpreadEscapedKeyBroadcastEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain('[key: `${string}\\\\unit`]: string | undefined;')
         ->not->toContain('"[key:');
 });
 

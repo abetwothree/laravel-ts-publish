@@ -70,6 +70,15 @@ describe('isIndexSignatureKey', function () {
     ]);
 });
 
+describe('ambiguousCastKeys', function () {
+    test('only a spelling two signatures share is ambiguous', function () {
+        $keys = ['[key: `${string}\\\\\\r`]', '[key: `${string}\\\\\\\\r`]', 'id'];
+
+        expect($this->service->ambiguousCastKeys(['[key: `${string}\\\\r`]', $keys[0], 'id', 'other'], $keys))
+            ->toBe(['[key: `${string}\\\\r`]']);
+    });
+});
+
 describe('castsByKey', function () {
     test('a cast key takes the key it names, or the backslash signature whose single-quoted paste it is', function (array $casts, array $expected) {
         expect($this->service->castsByKey($casts, ['[key: `${string}\\\\_x`]', 'main\\_x', 'id']))->toBe($expected);
