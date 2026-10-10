@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InertiaPropertyLabel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ResponsableLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
@@ -305,6 +307,8 @@ it('types a new of a class that is not a resource as json_encode() writes it', f
     'a Collection, an Arrayable' => [Collection::class, null],
     'a Fluent, an Arrayable' => [Fluent::class, null],
     'a class toTsType() leaves as its token' => [OpaqueHandle::class, null],
+    'an Inertia property provider, which Inertia sends as its toInertiaProperty()' => [InertiaPropertyLabel::class, null],
+    'a Responsable, which Inertia sends as its toResponse() data' => [ResponsableLabel::class, null],
 ]);
 
 it('types a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {

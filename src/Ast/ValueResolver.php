@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
@@ -223,8 +224,8 @@ final class ValueResolver
     /**
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
-     * A model and an Arrayable decline: a fresh model holds no attributes yet, and an Arrayable sends its public
-     * properties from a resource but its toArray() from Inertia.
+     * A model declines, since its JSON depends on its runtime attributes, casts and hidden fields. So does a class
+     * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls.
      *
      * @return ValueExpressionResult|null
      */
@@ -238,7 +239,12 @@ final class ValueResolver
 
         $class = $new->class->toString();
 
-        if (! class_exists($class) || is_a($class, Model::class, true) || is_a($class, Arrayable::class, true)) {
+        if (! class_exists($class)
+            || is_a($class, Model::class, true)
+            || is_a($class, Arrayable::class, true)
+            || is_a($class, Responsable::class, true)
+            || is_a($class, 'Inertia\\ProvidesInertiaProperty', true)
+        ) {
             return null;
         }
 
