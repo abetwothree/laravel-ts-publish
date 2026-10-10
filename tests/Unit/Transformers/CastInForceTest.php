@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchCastsOptionalApartResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CarriedSpelledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastBareBesideWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastCarriedModelEvent;
@@ -569,6 +570,11 @@ describe('a cast the resource and its model both declare', function () {
         'a toArray() cast with optional => false' => [ModelOptionalVsRequiredMethodCastResource::class, '    latitude: MethodLatitude;'],
         'a type-only class cast' => [ModelOptionalVsClassCastResource::class, '    latitude?: ClassLatitude;'],
     ]);
+
+    // Both branches cast the key to one type, so the union publishes that cast over the model's, whatever each flag.
+    it('lets two return branches\' casts of one type win over the model\'s cast when only one marks it optional', function () {
+        expect(castInForceLines(BranchCastsOptionalApartResource::class))->toContain('    longitude?: BranchLongitude;');
+    });
 });
 
 // #81: a model that no key reads any more is neither imported nor a reason to alias the one a key still reads.

@@ -545,7 +545,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function applyOverrides(): self
     {
-        // A resource cast that says nothing about optional keeps the model cast's flag, on a key the analysis has.
+        // The model cast's flag holds on each key the analysis has, unless one of the resource's own casts sets a flag.
         $modelOptional = array_filter(
             array_intersect_key($this->modelTsCastsOptionalOverrides, $this->properties),
             fn (int|string $property): bool => ! isset($this->methodCasts[$property]['optional']),

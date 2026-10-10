@@ -106,6 +106,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /** Built once per instance by dispatcher(), so the handler-candidate memo survives across dispatches. */
     protected ?ExpressionDispatcher $dispatcher = null;
 
+    /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
+    protected ?string $sharedDataShareClass = null;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -296,8 +299,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
                 resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod, keepsUnresolvedNames: false);
 
-                // InertiaSharedDataAnalyzer lays share()'s casts over the props itself, with the docblock and `key?`.
-                if (! $this->isInertiaShare()) {
+                // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+                if (! $this->isInertiaShare($ownMethod)) {
                     $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
                 }
 
@@ -875,6 +878,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
         );
+        $parentAnalyzer->sharedDataShareClass = $this->sharedDataShareClass();
 
         $analysis = $parentAnalyzer->analyze();
         $this->lenientReads += $parentAnalyzer->lenientReads;
@@ -1002,11 +1006,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether the analyzed method is an Inertia middleware's share(), whose casts its own analyzer applies.
+     * The class declaring the share() InertiaSharedDataAnalyzer reads the casts of, own or inherited by the analyzed
+     * middleware; an empty string for any other subject.
      */
-    private function isInertiaShare(): bool
+    private function sharedDataShareClass(): string
     {
-        return $this->methodName === 'share' && is_subclass_of($this->scope->subjectReflection->getName(), 'Inertia\\Middleware');
+        return $this->sharedDataShareClass ??= $this->methodName === 'share'
+            && is_subclass_of($this->scope->subjectReflection->getName(), 'Inertia\\Middleware')
+                ? $this->scope->subjectReflection->getMethod('share')->getDeclaringClass()->getName()
+                : '';
+    }
+
+    /**
+     * Whether the method is the share() whose casts InertiaSharedDataAnalyzer applies, never a parent's one that the
+     * middleware's own share() spreads.
+     */
+    private function isInertiaShare(ReflectionMethod $method): bool
+    {
+        return $method->getDeclaringClass()->getName() === $this->sharedDataShareClass();
     }
 
     /**
@@ -1293,7 +1310,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The cast entry of each key every branch that sets it casts alike, as only then does the union publish that cast.
+     * The cast entry of each key every branch that sets it casts to one text and import, as only then does the union
+     * publish that cast; it keeps an `optional` flag only where every branch's cast sets the same one.
      *
      * @param  list<MethodAnalysis>  $analyses
      * @param  list<array-key>  $names
@@ -1314,9 +1332,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $cast = $branchCasts[0] ?? null;
 
-            if ($cast !== null && array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast)) {
-                $casts[(string) $name] = $cast;
+            if ($cast === null || ! array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast !== null
+                && $branchCast['type'] === $cast['type'] && $branchCast['import'] === $cast['import'])) {
+                continue;
             }
+
+            $casts[(string) $name] = array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast)
+                ? $cast
+                : ['type' => $cast['type'], 'import' => $cast['import']];
         }
 
         return $casts;

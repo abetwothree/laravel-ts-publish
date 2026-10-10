@@ -32,16 +32,23 @@ class TsCastsReader
     public function unpack(array $attributes): array
     {
         $merged = [];
+        $optionalOverrides = [];
 
         // array_merge() would renumber a numeric key, which PHP stores as an int even when written '42'.
         foreach ($attributes as $attribute) {
             $merged = array_replace($merged, $attribute->types);
+
+            // A later entry that says nothing about optional keeps an earlier attribute's flag.
+            foreach ($attribute->types as $key => $value) {
+                if (is_array($value) && isset($value['optional'])) {
+                    $optionalOverrides[$key] = $value['optional'];
+                }
+            }
         }
 
         $overrides = [];
         $importPaths = [];
         $importMap = [];
-        $optionalOverrides = [];
 
         foreach ($merged as $key => $value) {
             if (is_array($value)) {
@@ -54,10 +61,6 @@ class TsCastsReader
                     foreach (TsTypeString::extractImportableTypes($value['type']) as $typeName) {
                         $importMap[$value['import']][] = $typeName;
                     }
-                }
-
-                if (isset($value['optional'])) {
-                    $optionalOverrides[$key] = $value['optional'];
                 }
             } else {
                 $overrides[$key] = $value;

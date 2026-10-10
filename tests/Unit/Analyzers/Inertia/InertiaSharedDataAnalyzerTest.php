@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithFlaggedClassCastUnderShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithKeyEdges;
@@ -32,6 +33,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastChildMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
 
@@ -447,4 +450,20 @@ test('the engine leaves share()\'s own casts to the shared-data analyzer', funct
 test('a cast that says nothing about optional keeps the docblock\'s flag, else the prop\'s own', function () {
     expect(analyzeSharedDataFor(MiddlewareWithCastsOverOptionalProps::class)['sharedPageProps'])
         ->toBe('{ flash?: Flash, notice: Notice, banner: Banner, held?: HeldShare, id: number, [key: `${string}_note`]: number | undefined }');
+});
+
+// The shared-data analyzer reads only the subclass's share(), so the engine still applies the parent's own cast.
+test('a parent middleware\'s share() cast reaches a subclass that spreads parent::share()', function () {
+    expect(analyzeSharedDataFor(ShareCastChildMiddleware::class)['sharedPageProps'])
+        ->toBe("{ locale: 'en' | 'es', id: number }");
+});
+
+test('a subclass that inherits share() whole gets its casts once', function () {
+    expect(analyzeSharedDataFor(ShareCastInheritingMiddleware::class)['sharedPageProps'])
+        ->toBe("{ filters?: Record<string, string>, locale?: 'en' | 'es', id: number }");
+});
+
+test('a share() cast that says nothing about optional keeps the class cast\'s flag', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithFlaggedClassCastUnderShareCast::class)['sharedPageProps'])
+        ->toBe('{ held?: HeldShare, id: number }');
 });

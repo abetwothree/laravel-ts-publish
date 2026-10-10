@@ -79,6 +79,16 @@ it('flows optional into optionalOverrides only when the key is present', functio
         ->and($result['optionalOverrides'])->not->toHaveKey('created_at');
 });
 
+it('keeps an earlier attribute\'s optional flag under a later entry that says nothing about it', function () {
+    $result = new TsCastsReader()->unpack([
+        new TsCasts(['held' => ['type' => 'Held', 'optional' => true], 'gone' => ['type' => 'Gone', 'optional' => true]]),
+        new TsCasts(['held' => 'HeldLater', 'gone' => ['type' => 'GoneLater', 'optional' => false]]),
+    ]);
+
+    expect($result['overrides'])->toBe(['held' => 'HeldLater', 'gone' => 'GoneLater'])
+        ->and($result['optionalOverrides'])->toBe(['held' => true, 'gone' => false]);
+});
+
 // PHP stores '42' as the int 42, and array_merge() would renumber it to 0 even for one attribute.
 it('keeps a numeric cast key on its own key, for one attribute and across two', function () {
     $one = new TsCastsReader()->unpack([new TsCasts(['title' => 'string', '42' => 'boolean'])]);

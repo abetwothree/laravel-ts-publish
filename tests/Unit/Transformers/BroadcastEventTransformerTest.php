@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadca
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FlaggedClassCastUnderCastsMethodBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
@@ -682,4 +683,10 @@ test('a type-only cast keeps an uninitialized property optional, and `optional =
         'note' => ['type' => "'a' | 'b'", 'optional' => true],
         'label' => ['type' => "'c' | 'd'", 'optional' => false],
     ]);
+});
+
+test('an event\'s casts() entry that says nothing about optional keeps the class cast\'s flag', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => FlaggedClassCastUnderCastsMethodBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe(['note' => ['type' => "'c' | 'd'", 'optional' => true]]);
 });
