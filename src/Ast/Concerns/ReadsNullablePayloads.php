@@ -13,6 +13,7 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 
 /**
  * The type of a resource built around a payload that can serialize as null. Only JsonResource::filter() turns a
@@ -28,6 +29,11 @@ trait ReadsNullablePayloads
      * A resource construction call's arguments mapped against the signature its payload lands in.
      */
     abstract protected function resourcePayloadArguments(StaticCall|New_ $call, string $className): CallArguments;
+
+    /**
+     * Whether a class exists and is a JsonResource subclass.
+     */
+    abstract protected function isResourceClass(string $fqcn): bool;
 
     /**
      * The type `new X(…)` or `X::make(…)` publishes: `null` for a payload that is only ever null in a JsonResource
@@ -66,11 +72,34 @@ trait ReadsNullablePayloads
             || ($payload instanceof StaticCall
                 && $payload->name instanceof Identifier
                 && $payload->name->toString() === 'make'
-                && (isset($resolved['resourceFqcn']) || $resolved['type'] === 'null'))
+                && (isset($resolved['resourceFqcn'])
+                    || ($resolved['type'] === 'null' && $this->callsResourceClass($payload, $scope))))
         ) {
             return null;
         }
 
-        return ValueResult::hasNullArm($resolved['type']) && ! $this->isProvenNonNull($payload, $scope) ? $resolved['type'] : null;
+        if (! ValueResult::hasNullArm($resolved['type']) || $this->isProvenNonNull($payload, $scope)) {
+            return null;
+        }
+
+        return $resolved['type'];
+    }
+
+    /**
+     * Whether a static call's class is a resource, `self` and `static` reading as the subject.
+     */
+    private function callsResourceClass(StaticCall $call, AnalysisScope $scope): bool
+    {
+        if (! $call->class instanceof Name) {
+            return false;
+        }
+
+        $className = $call->class->toString();
+
+        if ($className === 'self' || $className === 'static') {
+            $className = $scope->subjectReflection->getName();
+        }
+
+        return $this->isResourceClass($className);
     }
 }

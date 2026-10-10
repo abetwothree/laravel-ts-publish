@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -714,6 +715,7 @@ it('types a wrap\'s null arm: kept through a fluent self-returning call, dropped
     'a key holding new around null' => ['["p" => new self(null)]', '{ p: null }'],
     'a default parameter holding new around null' => ['$this->when($this->name, fn ($p = new self(null)) => $p)', 'null'],
     'make() around a make() around null' => ['self::make(self::make(null))', 'FluentSelfResource'],
+    'new around a make() that is not a resource\'s and returns only null' => ['new self(\\'.NullOnlyMaker::class.'::make())', 'null'],
     'resolve() on make()' => ['self::make($this->parent)->resolve()', 'FluentSelfResource'],
     'resolve() on new' => ['new self($this->parent)->resolve()', 'FluentSelfResource'],
     'collection() over a to-many' => ['self::collection($this->children)', 'FluentSelfResource[]'],
