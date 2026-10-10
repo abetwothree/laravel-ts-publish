@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FlaggedClassCastUnderCastsMethodBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MethodMissingKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullWrapBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericPayloadKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
@@ -760,4 +761,11 @@ test('an event\'s casts() entry that says nothing about optional keeps the class
     $properties = app(BroadcastEventTransformer::class, ['findable' => FlaggedClassCastUnderCastsMethodBroadcastEvent::class])->properties;
 
     expect($properties)->toBe(['note' => ['type' => "'c' | 'd'", 'optional' => true]]);
+});
+
+// Only JsonResource::filter() nulls a wrapper; new TagResource(null) throws at runtime.
+test('an event keeps a resource built around null as the resource', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NullWrapBroadcastEvent::class]);
+
+    expect($transformer->properties['tag']['type'])->toBe('TagResource');
 });

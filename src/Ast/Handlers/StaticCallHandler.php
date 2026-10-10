@@ -226,15 +226,15 @@ final class StaticCallHandler implements ExpressionHandler
 
         // SomeResource::make($this->prop) — nested resource
         if ($this->isResourceClass($className) && $methodName === 'make') {
-            $resourceName = TsNaming::resourceTypeName($className);
+            $type = $this->resourceWrapType($call, $className, TsNaming::resourceTypeName($className), $scope, $engine);
             $optional = $this->hasConditionalArgument($call, $className);
 
             /** @var class-string $className */
             return [
                 ...$result,
-                'type' => $this->wrapsNullablePayload($call, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
+                'type' => $type,
                 'optional' => $optional,
-                'resourceFqcn' => $className,
+                ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
             ];
         }
 

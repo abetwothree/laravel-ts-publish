@@ -107,6 +107,7 @@ use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
+use Workbench\App\Http\Resources\PostNullWrapResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostSpotlightResource;
 use Workbench\App\Http\Resources\PostStateCastResource;
@@ -3488,4 +3489,19 @@ test('a bare enum case publishes its enum in every resource position', function 
         'wrapped' => 'AsEnum<typeof WorkbenchStatus>',
         'wrapped_kept' => 'AsEnum<typeof WorkbenchStatus>',
     ])->and(array_keys(array_filter($properties, fn (array $property): bool => $property['optional'])))->toBe(['when_published']);
+});
+
+// JsonResource::filter() replaces a resource built around null with null at every depth.
+test('a resource built around a payload that is only null publishes null', function () {
+    $transformer = new ResourceTransformer(PostNullWrapResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'null_new' => 'null',
+        'null_make' => 'null',
+        'null_default' => 'null',
+        'null_local' => 'null',
+        'author_new' => 'UserResource',
+        'nested' => '{ author: null }',
+    ])->and($transformer->properties['null_default']['optional'])->toBeTrue()
+        ->and($transformer->typeImports)->toBe(['.' => ['UserResource']]);
 });

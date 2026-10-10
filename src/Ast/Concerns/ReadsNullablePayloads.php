@@ -15,8 +15,8 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 
 /**
- * Whether a resource built around a payload serializes as null. Only JsonResource::filter() turns a nested resource
- * whose payload is null into null, so only a JsonResource subject's own output carries that null.
+ * The type of a resource built around a payload that can serialize as null. Only JsonResource::filter() turns a
+ * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null.
  *
  * @internal
  */
@@ -30,20 +30,33 @@ trait ReadsNullablePayloads
     abstract protected function resourcePayloadArguments(StaticCall|New_ $call, string $className): CallArguments;
 
     /**
-     * Whether `new X(…)` or `X::make(…)` in a JsonResource subject wraps a payload that can be null. A
-     * ResourceCollection never does: it throws on a null payload. Neither does a payload that is `new` or a resource's
+     * The type `new X(…)` or `X::make(…)` publishes: `null` for a payload that is only ever null in a JsonResource
+     * subject, the resource or null for one that can be null, else the resource.
+     */
+    protected function resourceWrapType(StaticCall|New_ $call, string $className, string $resourceName, AnalysisScope $scope, ExpressionEngine $engine): string
+    {
+        return match ($this->nullablePayloadType($call, $className, $scope, $engine)) {
+            null => $resourceName,
+            'null' => 'null',
+            default => ValueResult::withNullArm($resourceName),
+        };
+    }
+
+    /**
+     * The resolved payload type of `new X(…)` or `X::make(…)` in a JsonResource subject when the payload can be null,
+     * else null. A ResourceCollection never wraps null: it throws. Neither does a payload that is `new` or a resource's
      * `make()`, since PHP builds an object and only that inner resource serializes as null, nor a read a guard proves.
      */
-    protected function wrapsNullablePayload(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): bool
+    private function nullablePayloadType(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): ?string
     {
         if (! $scope->subjectReflection->isSubclassOf(JsonResource::class) || is_a($className, ResourceCollection::class, true)) {
-            return false;
+            return null;
         }
 
         $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
         if ($payload === null) {
-            return false;
+            return null;
         }
 
         // Resolved even for `new`: resolving a payload also records the warnings of the expressions it nests.
@@ -53,11 +66,11 @@ trait ReadsNullablePayloads
             || ($payload instanceof StaticCall
                 && $payload->name instanceof Identifier
                 && $payload->name->toString() === 'make'
-                && isset($resolved['resourceFqcn']))
+                && (isset($resolved['resourceFqcn']) || $resolved['type'] === 'null'))
         ) {
-            return false;
+            return null;
         }
 
-        return ValueResult::hasNullArm($resolved['type']) && ! $this->isProvenNonNull($payload, $scope);
+        return ValueResult::hasNullArm($resolved['type']) && ! $this->isProvenNonNull($payload, $scope) ? $resolved['type'] : null;
     }
 }

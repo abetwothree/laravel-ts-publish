@@ -16080,6 +16080,41 @@
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
         },
+        "Workbench\\App\\Http\\Resources\\PostNullWrapResource": {
+            "name": "PostNullWrapResource",
+            "properties": [
+                {
+                    "name": "null_new",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "null_make",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "null_default",
+                    "type": "null",
+                    "optional": true
+                },
+                {
+                    "name": "null_local",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "author_new",
+                    "type": "UserResource",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ author: null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostPinnedCommentsResource": {
             "name": "PostPinnedCommentsResource",
             "properties": [

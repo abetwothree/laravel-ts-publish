@@ -105,15 +105,15 @@ final class NewResourceHandler implements ExpressionHandler
             return resolve(ValueResolver::class)->resolveStringSerializedNew($expr) ?? $result;
         }
 
-        $resourceName = TsNaming::resourceTypeName($className);
+        $type = $this->resourceWrapType($expr, $className, TsNaming::resourceTypeName($className), $scope, $engine);
         $optional = $this->hasConditionalNewArgument($expr, $className);
 
         /** @var class-string $className */
         return [
             ...$result,
-            'type' => $this->wrapsNullablePayload($expr, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
+            'type' => $type,
             'optional' => $optional,
-            'resourceFqcn' => $className,
+            ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
         ];
     }
 }

@@ -354,9 +354,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
 conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
-`ReadsNullablePayloads::wrapsNullablePayload()` adds `| null` to a resource built around a payload that can be `null`,
-such as `Resource::make($this->parent)`, inside a resource only; a collection never takes it, and neither does a payload
-a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
+`ReadsNullablePayloads::resourceWrapType()` adds `| null` to a resource built around a payload that can be `null`,
+such as `Resource::make($this->parent)`, and publishes `null` alone for a payload that is only ever `null`, such as
+`new Resource(null)` or a parameter holding a `null` default, inside a resource only; a collection never takes either,
+and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -816,7 +817,7 @@ stands for two different things, so it stays two references.
 parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
 to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
 list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
-in every subject: an enum branch returns before `wrapsNullablePayload()`.
+in every subject: an enum branch returns before `resourceWrapType()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a

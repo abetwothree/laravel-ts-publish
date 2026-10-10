@@ -4328,6 +4328,15 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /** Resources built around a payload that is only null, which JsonResource::filter() sends as null. */
+        export interface PostNullWrapResource {
+            null_new: null;
+            null_make: null;
+            null_default?: null;
+            null_local: null;
+            author_new: UserResource;
+            nested: { author: null };
+        }
         /**
          * A relation loaded under a name the model does not declare, so only the local's inline `@var` names the collection
          * it holds.
