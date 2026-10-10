@@ -831,6 +831,7 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', '{ "1.5": unknown }'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
+    'when(), a keyed list whose evaluation errors' => ['$this->when($this->title, fn ($t = [0 => 1 / 0]) => $t)', 'number[]'],
     'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'Record<string, never>'],
     'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'Record<string, never>'],
     'when(), a static method first-class callable' => ['$this->when($this->title, fn ($t = \\Workbench\\App\\Enums\\Status::from(...)) => $t)', 'Record<string, never>'],

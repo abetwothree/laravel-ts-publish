@@ -442,9 +442,9 @@ final class AnalysisScope
             // collect() reads the list of a `new Collection([...])` itself, so the list clause below lets it through.
             $readsOwnList = $default instanceof New_ && NewResourceHandler::collectCall($default) !== null;
 
-            // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`,
-            // and a list the evaluator failed on may hold an operation that throws, such as `1 / 0`; a default that
-            // reads a variable is no constant expression at all.
+            // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`.
+            // A list of values the evaluator failed on is left unbound, but a keyed one, whose keys the engine types,
+            // still binds even when a value throws, such as `[0 => 1 / 0]`; a variable is no constant expression.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
                 || $node instanceof Closure
                 || $node instanceof ArrowFunction
