@@ -3588,7 +3588,7 @@ declare global {
             with_defaults: { note: string; id: number; sender_id: number | null };
             override: { code: string; lane: number };
             lanes: number[];
-            chained: { c: boolean; b: string; a: number };
+            chained: { a: number; b: string; c: boolean };
             total: number;
         }
         /**

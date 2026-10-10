@@ -255,30 +255,27 @@ trait InspectsAstNodes
     }
 
     /**
-     * Re-express PHP's array union `$left + $right` as the literal `[...$right, ...$left]`, whose later spread wins a
-     * key as the left operand does. A literal operand, or a local holding one, gives its items; a nested `+` its own.
+     * Re-express PHP's array union `$left + $right` as one literal. A literal operand, or a local holding one, gives
+     * its items; a nested `+` its own; anything else one spread.
      *
-     * Unlike array_merge(), `+` keeps every int key, so nothing is renumbered.
+     * With every key a literal, the items run as PHP builds them: the left's, then each right one under a key the left
+     * lacks, a keyless item under the int key PHP gives it.
+     *
+     * A spread hides its keys, so the literal is then `[...$right, ...$left]`, whose later spread wins a key as the
+     * left operand does, though an int key can land out of PHP's order.
      *
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable operand
      */
     protected function arrayUnionLiteral(Plus $union, array $localVarBindings = []): Array_
     {
-        $items = [];
+        $left = $this->unionOperandItems($union->left, $localVarBindings);
+        $right = $this->unionOperandItems($union->right, $localVarBindings);
+        $storedLeft = $this->itemsByStoredKey($left);
+        $storedRight = $this->itemsByStoredKey($right);
 
-        foreach ([$union->right, $union->left] as $operand) {
-            if ($operand instanceof Variable && is_string($operand->name)) {
-                $operand = $localVarBindings[$operand->name] ?? $operand;
-            }
-
-            array_push($items, ...match (true) {
-                $operand instanceof Array_ => $operand->items,
-                $operand instanceof Plus => $this->arrayUnionLiteral($operand, $localVarBindings)->items,
-                default => [new ArrayItem($operand, byRef: false, unpack: true)],
-            });
-        }
-
-        return new Array_($items);
+        return new Array_($storedLeft === null || $storedRight === null
+            ? [...$right, ...$left]
+            : array_values($storedLeft + $storedRight));
     }
 
     /**
@@ -413,5 +410,60 @@ trait InspectsAstNodes
         }
 
         return $returns;
+    }
+
+    /**
+     * The items one operand of `+` gives the union literal.
+     *
+     * @param  array<string, Expr>  $localVarBindings
+     * @return list<ArrayItem>
+     */
+    private function unionOperandItems(Expr $operand, array $localVarBindings): array
+    {
+        if ($operand instanceof Variable && is_string($operand->name)) {
+            $operand = $localVarBindings[$operand->name] ?? $operand;
+        }
+
+        return match (true) {
+            $operand instanceof Array_ => array_values($operand->items),
+            $operand instanceof Plus => array_values($this->arrayUnionLiteral($operand, $localVarBindings)->items),
+            default => [new ArrayItem($operand, byRef: false, unpack: true)],
+        };
+    }
+
+    /**
+     * A literal's items as PHP stores them: a key written twice keeps its first place and its last value, and a keyless
+     * item takes its int key; null when an item is a spread or its key is no literal.
+     *
+     * @param  list<ArrayItem>  $items
+     * @return array<array-key, ArrayItem>|null
+     */
+    private function itemsByStoredKey(array $items): ?array
+    {
+        $stored = [];
+        $next = null;
+
+        foreach ($items as $item) {
+            $key = match (true) {
+                $item->key === null => $next ?? 0,
+                $item->key instanceof Int_ => $item->key->value,
+                $item->key instanceof String_ => self::storedIntKey($item->key) ?? $item->key->value,
+                default => null,
+            };
+
+            if ($key === null || $item->unpack) {
+                return null;
+            }
+
+            $stored[$key] = $item->key === null
+                ? new ArrayItem($item->value, new Int_($key), $item->byRef, $item->getAttributes())
+                : $item;
+
+            if (is_int($key)) {
+                $next = max($next ?? $key + 1, $key + 1);
+            }
+        }
+
+        return $stored;
     }
 }

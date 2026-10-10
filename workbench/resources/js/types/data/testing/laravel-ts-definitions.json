@@ -13997,7 +13997,7 @@
                 },
                 {
                     "name": "chained",
-                    "type": "{ c: boolean; b: string; a: number }",
+                    "type": "{ a: number; b: string; c: boolean }",
                     "optional": false
                 },
                 {

@@ -426,7 +426,6 @@ it('leaves a literal that is no list to the record path', function (string $php,
     expect(inlineListType($php))->toBe($type);
 })->with([
     'an empty literal' => ['[]', 'never[]'],
-    'a spread of a record keeps its string keys' => ['[...["k" => 1], "x"]', '{ k: number }'],
     'a spread of a reflected array, whose keys are unknown' => ['[...$this->resource->toArray(), "x"]', 'Record<string, unknown>'],
     'a merge() call, which a resource merges into the array' => ['[$this->merge(["a" => 1])]', '{ a: number }'],
 ]);
@@ -449,9 +448,13 @@ it('types a literal whose keys run 0 to n-1 as a list, and any other literal by 
 ]);
 
 // O5: a spread of an object-typed value joins as an arm of its own type, where it was left out.
-it('keeps an arm for a spread whose value types as an object it cannot read', function () {
-    expect(inlineListType('[...$this->options, "a" => 1]'))->toBe("Omit<Record<string, string>, 'a'> & { a: number }");
-});
+it('keeps an arm for a spread whose value types as one object', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type);
+})->with([
+    'an array cast' => ['[...$this->options, "a" => 1]', "Omit<Record<string, string>, 'a'> & { a: number }"],
+    // The runtime also sends the keyless item, as "0" (Follow-Up F11).
+    'a record beside a keyless item' => ['[...["k" => 1], "x"]', '{ k: number }'],
+]);
 
 it('carries the import an object-typed spread arm names', function () {
     $expr = new AstParser()->parseSource('<?php [...$this->author->only(["id"]), "x" => 1];')[0]->expr;

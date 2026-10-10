@@ -7244,7 +7244,7 @@ test('+ on arrays publishes the array union in value position and as a whole ret
         'with_defaults' => '{ note: string; id: number; sender_id: number | null }',
         'override' => '{ code: string; lane: number }',
         'lanes' => 'number[]',
-        'chained' => '{ c: boolean; b: string; a: number }',
+        'chained' => '{ a: number; b: string; c: boolean }',
         'total' => 'number',
     ])->and(collect($whole->properties)->pluck('type', 'name')->all())->toBe([
         'id' => 'number',

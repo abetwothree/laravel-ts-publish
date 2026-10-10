@@ -208,11 +208,18 @@ final class BinaryOpHandler implements ExpressionHandler
     private function operandKind(array $result): string
     {
         $type = ValueResult::stripNullArm($result['type']);
+        // An enum's import channel rides a list of the enum too, so only the enum's own token counts as a scalar.
+        $enumTokens = array_map(
+            ValueResult::enumTypeName(...),
+            array_values(array_filter([$result['directEnumFqcn'] ?? null, $result['enumFqcn'] ?? null])),
+        );
 
         return match (true) {
             $type === 'unknown' => self::UNTYPED,
-            isset($result['directEnumFqcn']) || isset($result['enumFqcn'])
-                || array_all(TsTypeString::splitTopLevelUnion($type), $this->isScalarType(...)) => self::SCALAR,
+            array_all(
+                TsTypeString::splitTopLevelUnion($type),
+                fn (string $arm): bool => $this->isScalarType($arm) || in_array($arm, $enumTokens, true),
+            ) => self::SCALAR,
             default => self::HIDDEN_KEYS,
         };
     }

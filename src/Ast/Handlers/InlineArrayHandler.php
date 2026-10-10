@@ -257,7 +257,7 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * A result's classes on one kind of channel: its single-entry channel's class, then its embedded queue.
+     * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
      *
      * @param  class-string|null  $single
      * @param  list<class-string>  $embedded
@@ -611,7 +611,7 @@ final class InlineArrayHandler implements ExpressionHandler
     /**
      * The classes the spread arms' tokens name, per queue, in arm order.
      *
-     * A named arm queues its class on the channel of its kind, or the emitted `Model &` token would be looked up
+     * A named arm queues its class on the import channel of its kind, or the emitted `Model &` token would be looked up
      * among the resources and never resolve to an import; an object arm queues what its own value carries.
      *
      * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
