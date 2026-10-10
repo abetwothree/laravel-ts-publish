@@ -106,3 +106,17 @@ describe('elementType', function () {
             ->and(TsTypeShape::elementType('[]'))->toBeNull();
     });
 });
+
+describe('listType', function () {
+    test('lists the element types, each once, parenthesised when they need it', function (array $types, string $list) {
+        expect(TsTypeShape::listType($types))->toBe($list);
+    })->with([
+        'one type' => [['string'], 'string[]'],
+        'a repeated type' => [['string', 'string'], 'string[]'],
+        'two types' => [['string', 'number'], '(string | number)[]'],
+        'a union element' => [['string | null'], '(string | null)[]'],
+        'an intersection element' => [['A & B'], '(A & B)[]'],
+        'a function element' => [['() => void'], '(() => void)[]'],
+        'an untyped element beside a typed one' => [['string', 'unknown'], 'unknown[]'],
+    ]);
+});

@@ -19,6 +19,7 @@ use Workbench\App\Services\PostStatsService;
 test('a vague array signature falls back to the literal body', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ServiceReturnResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
+    // The analysis keeps the keys the body writes; the resource's publisher re-indexes them into a list.
     expect($props['quote']['type'])->toBe('{ unit: string; minimum: number; discounted: { unit: string } }')
         ->and($props['tiers']['type'])->toBe('{ "1": string; "2": string }');
 });
@@ -33,14 +34,14 @@ test('a self-recursive vague method declines instead of looping', function () {
 });
 
 test('a constant key resolves through parent, self and a foreign class', function () {
-    // `parent::PARENT_TIER` is 7 and survives as a quoted key, because the subject is not a resource.
+    // `parent::PARENT_TIER` is 7, kept as the quoted key JSON writes.
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyFixture::class, 'shape'))
         ->toBe(['type' => '{ "7": string; label: string; external: string }', 'optional' => false]);
 });
 
-test('a numeric constant key is dropped when the analyzed subject is a resource', function () {
+test('a numeric constant key is kept when the analyzed subject is a resource', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(ConstantKeyResource::class, 'shape'))
-        ->toBe(['type' => '{ external: string }', 'optional' => false]);
+        ->toBe(['type' => '{ "8": string; external: string }', 'optional' => false]);
 });
 
 // The body's shape stands in for the declaration's array arm only: every other arm it names stays, and a return the

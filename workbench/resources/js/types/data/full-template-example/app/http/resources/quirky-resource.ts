@@ -8,6 +8,7 @@ import type { UserResource } from '.';
 export interface QuirkyResource
 {
     id: number;
+    "42": string;
     flag?: unknown;
     extra: string;
     dynamic?: string;

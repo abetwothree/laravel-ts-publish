@@ -226,9 +226,9 @@ The resolver's docblocks carry the bounds. The shape replaces only the array arm
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
 returns nothing, through a guard in [`AnalysisMemo`](ast-engine.md#the-run-memo-replays-what-it-recorded), so a body
 that calls itself terminates. An int key publishes quoted, as `PriceQuoteService::tierLabels()`'s
-`{ "1": string; "2": string }` shows. When the analyzed subject is a `JsonResource`,
-`InspectsAstNodes::publishableKeyName()` drops a numeric key instead, even in a helper of the resource that the fallback
-reaches.
+`{ "1": string; "2": string }` shows, whatever the subject. A resource publisher then
+[re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
+`ServiceReturnResource.tiers` publishes `string[]`.
 
 The inline type is a plain string with no FQCN channel, so a body whose shape names an enum or a model could never
 import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore drops the whole body answer, and the vague

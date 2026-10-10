@@ -2893,8 +2893,8 @@ declare global {
             over_depth_limit: unknown;
             status_map: { status: app.enums.OrderStatusType };
             status_list: app.enums.OrderStatusType[];
-            all_int_keys: Record<string, unknown>;
-            mixed_keys: { a: number };
+            all_int_keys: string[];
+            mixed_keys: { a: number; "5": string };
             resource_marker: string;
             status_marker: app.enums.StatusType;
         }
@@ -3321,6 +3321,33 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+        }
+        /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
+        export interface DepotTierKeyedResource {
+            id: number;
+            tiers: { "1": string; "2": string };
+            codes: { "06": string; "1.5": string };
+            surcharges: { "3": number };
+            statuses: { "200": string; "404": string };
+            labelled: { name: string; "42": boolean };
+            nested: { inner: { "7": string } };
+            loaded_orders?: { "10": string; "20": string };
+            "42": string;
+        }
+        /**
+         * Numeric keys, which a resource's filter re-indexes into a list wherever every key of an array passes is_numeric(),
+         * and keeps beside a named key.
+         */
+        export interface DepotTierResource {
+            id: number;
+            tiers: string[];
+            codes: string[];
+            surcharges: number[];
+            statuses: string[];
+            labelled: { name: string; "42": boolean };
+            nested: { inner: string[] };
+            loaded_orders?: string[];
+            "42": string;
         }
         /**
          * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
@@ -4016,6 +4043,7 @@ declare global {
             members_bare?: UserResource[];
             members_model_spread?: (Omit<app.models.User, 'flag'> & { flag: boolean })[];
             members_collection_spread?: Record<number, app.models.User> & { flag: boolean };
+            members_zero_key_spread?: (app.models.User | boolean)[];
             members_double_spread?: (Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[];
             members_with_profile_untyped?: (Omit<UserResource, 'profile'> & { profile: ProfileResource })[];
             owner_map_untyped?: unknown;
@@ -4528,6 +4556,7 @@ declare global {
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
             id: number;
+            "42": string;
             flag?: unknown;
             extra: string;
             dynamic?: string;
@@ -4808,7 +4837,7 @@ declare global {
          */
         export interface ServiceReturnResource {
             quote: { unit: string; minimum: number; discounted: { unit: string } };
-            tiers: { "1": string; "2": string };
+            tiers: string[];
         }
         /**
          * Guards against the regression narrowing collectWrittenVariableNames() could introduce: a closure
@@ -5899,6 +5928,7 @@ declare global {
         export interface HandoverListed {
             stages: string[];
             ids: number[];
+            codes: { "200": string; "404": string };
         }
         export interface ManifestAssembled {
             parcelId: number;

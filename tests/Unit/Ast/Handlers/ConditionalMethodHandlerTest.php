@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AggregateAliasPost;
@@ -821,12 +822,12 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'whenHas() default closure, a list' => ['$this->whenHas("no_such_attr", 1, fn ($d = [1]) => $d)', 'number | number[]'],
     'transform() callback, a later list' => ['$this->transform($this->title, fn ($t, $u = [1]) => $u)', 'number[]'],
     'whenLoaded(), a later list' => ['$this->whenLoaded("author", fn ($a, $u = ["x"]) => $u)', 'string[]'],
-    'when(), an int-keyed record a resource re-indexes' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', 'unknown'],
+    'when(), an int-keyed record, which the resource re-indexes later' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', '{ "1": string }'],
     'when(), a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = [new Foo]) => $t)', 'unknown'],
     'when(), a record the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => new Foo]) => $t)', '{ a: unknown }'],
     'when(), a record holding a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => [new Foo]]) => $t)', 'unknown'],
-    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown'],
-    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', 'unknown'],
+    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown[]'],
+    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', '{ "1.5": unknown }'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
     'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
@@ -834,19 +835,20 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
 ]);
 
-// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth, so
-// the record those keys would type as is not what reaches JSON.
-it('binds nothing for a default a resource re-indexes into a list', function (string $default) {
+// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth:
+// the engine types the default by its keys, and the resource's publisher sends it as the list that reaches JSON.
+it('binds a default a resource re-indexes into a list as that list', function (string $default, string $type, string $sent) {
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = '.$default.') => $t)')['type'])
-        ->toBe('unknown');
+        ->toBe($type)
+        ->and(ResourceReindexing::reindexedType($type))->toBe($sent);
 })->with([
-    'a float-string key' => ['["1.5" => "x"]'],
-    'an exponent key' => ['["1e3" => "x"]'],
-    'a key with a leading space' => ['[" 1" => "x"]'],
-    'a negative-zero key' => ['["-0" => "x"]'],
-    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]'],
-    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]'],
-    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]'],
+    'a float-string key' => ['["1.5" => "x"]', '{ "1.5": string }', 'string[]'],
+    'an exponent key' => ['["1e3" => "x"]', '{ "1e3": string }', 'string[]'],
+    'a key with a leading space' => ['[" 1" => "x"]', '{ " 1": string }', 'string[]'],
+    'a negative-zero key' => ['["-0" => "x"]', '{ "-0": string }', 'string[]'],
+    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]', '{ "1": string; "1.5": string }', 'string[]'],
+    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]', '{ a: { "2.5": number } }', '{ a: number[] }'],
+    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]', '{ "1.5": number }', 'number[]'],
 ]);
 
 // Each of these is a constant expression whose value serializes to a string, so its parameter binds as one.

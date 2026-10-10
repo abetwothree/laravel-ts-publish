@@ -315,6 +315,7 @@ class ResourceTransformer extends CoreTransformer
     {
         $analyzer = new ResourceAstAnalyzer($this->reflectionResource, $this->modelClass);
         $analysis = $analyzer->analyze();
+        $analyzer->reindexNumericKeyedArrays($analysis, $this->reflectionResource);
 
         $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
         $this->methodCasts = $analysis->casts;

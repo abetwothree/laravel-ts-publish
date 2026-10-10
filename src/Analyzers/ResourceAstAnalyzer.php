@@ -41,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -331,6 +332,40 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return $analysis ?? new ResourceAnalysis;
+    }
+
+    /**
+     * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
+     * keys; a key a method cast types keeps the cast's text.
+     *
+     * The publishing class decides, not the one declaring the body: an inherited toArray() runs under the subclass's
+     * own `$preserveKeys`.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    public function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
+    {
+        if (! $resource->isSubclassOf(JsonResource::class) || $this->collectionPreservesKeys($resource)) {
+            return;
+        }
+
+        foreach ($analysis->properties as &$property) {
+            if (isset($analysis->casts[$property['name']])) {
+                continue;
+            }
+
+            $property['type'] = ResourceReindexing::reindexedType($property['type']);
+
+            foreach (['bodyType', 'fillType'] as $field) {
+                if (isset($property[$field])) {
+                    $property[$field] = ResourceReindexing::reindexedType($property[$field]);
+                }
+            }
+        }
+
+        unset($property);
     }
 
     /**
@@ -638,7 +673,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         DependencyRecorder::recordClass($resourceFqcn);
 
-        return resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+        $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+
+        // resolve() runs the spread resource's own filter.
+        $this->reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
+
+        return $analysis;
     }
 
     /**
@@ -1307,7 +1347,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     ): ResourceAnalysis {
         $branchCount = count($analyses);
 
-        /** @var array<string, list<AnalyzedProperty>> */
+        /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
         $propertyMap = [];
 
         // Only the channels collapse onto merge(): a property name several branches set has to be
@@ -1360,7 +1400,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             $properties[] = [
-                'name' => $name,
+                'name' => (string) $name,
                 'type' => $type,
                 'optional' => $optional,
                 'description' => $description,

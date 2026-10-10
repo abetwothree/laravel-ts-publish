@@ -16,7 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -72,6 +75,8 @@ use Workbench\App\Http\Resources\ChildSharedResource;
 use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
+use Workbench\App\Http\Resources\DepotTierKeyedResource;
+use Workbench\App\Http\Resources\DepotTierResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
@@ -94,6 +99,7 @@ use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MixedEnumMergedResource;
 use Workbench\App\Http\Resources\MixedEnumReturnBranchesResource;
 use Workbench\App\Http\Resources\NamedArgsConditionalResource;
+use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\OrderResource;
 use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
@@ -3039,7 +3045,7 @@ test('a key named after a model accessor imports that accessor\'s model only whi
         ->and(implode(' ', array_merge(...array_values($used->typeImports))))->toBe('User as ModelsUser User as CrmUser');
 });
 
-test('a numeric-string key in a model-backed resource publishes as written, where an int key is dropped', function () {
+test('an int key and a numeric-string key in a model-backed resource both publish as JSON writes them', function () {
     config()->set('ts-publish.output_to_files', false);
 
     $transformer = new ResourceTransformer(NumericKeyTeamResource::class);
@@ -3047,9 +3053,9 @@ test('a numeric-string key in a model-backed resource publishes as written, wher
 
     // PHP stores '6' as the int key 6, which the model attribute lookup once received as its string name.
     expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))
-        ->toBe(['id' => 'number', 6 => 'string'])
-        ->and($content)->toContain('"6": string;')
-        ->not->toContain('int-key');
+        ->toBe(['id' => 'number', 5 => 'string', 6 => 'string'])
+        ->and($content)->toContain('"5": string;')
+        ->and($content)->toContain('"6": string;');
 });
 
 test('globalTypeReferenceMap() maps every name the file imports, aliased or not, to the class it imports', function () {
@@ -3358,6 +3364,69 @@ it('lets a model cast a transformer subclass injects under another spelling of a
 
     expect($properties['[key: `${string}\\\\unit`]']['type'])->toBe('number')
         ->and($properties)->not->toHaveKey('[key: `${string}\\unit`]');
+});
+
+// ConditionallyLoadsAttributes::removeMissingValues() lists every array whose keys all pass is_numeric(), and keeps the
+// keys of one that holds a named key; a resource that preserves keys keeps them all.
+it('publishes each numeric-keyed array as the list a resource sends, and keeps the keys a named key holds', function (string $resource, array $types) {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer($resource)->properties))
+        ->toBe($types);
+})->with([
+    'a resource' => [DepotTierResource::class, [
+        'id' => 'number',
+        'tiers' => 'string[]',
+        'codes' => 'string[]',
+        'surcharges' => 'number[]',
+        'statuses' => 'string[]',
+        'labelled' => '{ name: string; "42": boolean }',
+        'nested' => '{ inner: string[] }',
+        'loaded_orders' => 'string[]',
+        42 => 'string',
+    ]],
+    'a subclass that preserves keys' => [DepotTierKeyedResource::class, [
+        'id' => 'number',
+        'tiers' => '{ "1": string; "2": string }',
+        'codes' => '{ "06": string; "1.5": string }',
+        'surcharges' => '{ "3": number }',
+        'statuses' => '{ "200": string; "404": string }',
+        'labelled' => '{ name: string; "42": boolean }',
+        'nested' => '{ inner: { "7": string } }',
+        'loaded_orders' => '{ "10": string; "20": string }',
+        42 => 'string',
+    ]],
+]);
+
+it('publishes a numeric-string key beside a collection spread as the list the resource sends', function () {
+    $transformer = new ResourceTransformer(NestedResourceSpreadResource::class);
+
+    expect($transformer->properties['members_zero_key_spread']['type'])->toBe('(User | boolean)[]')
+        ->and($transformer->properties['members_collection_spread']['type'])->toBe('Record<number, User> & { flag: boolean }');
+});
+
+// An AnonymousResourceCollection copies its element's $preserveKeys, so each element keeps the keys it publishes; the
+// collecting resource's re-index leaves the named type alone.
+it('keeps the keys of a preserve-keys resource its own collection() lists', function () {
+    expect(new ResourceTransformer(KeyedTierCollectionResource::class)->properties['tiers']['type'])
+        ->toBe('Record<string, DepotTierKeyedResource>')
+        ->and(new ResourceTransformer(DepotTierKeyedResource::class)->properties['tiers']['type'])
+        ->toBe('{ "1": string; "2": string }');
+});
+
+// resolve() runs the spread resource's own filter, so its arrays arrive re-indexed whatever the spreading class keeps.
+it('publishes a spread resource\'s arrays as that resource sends them, beside the keys a preserve-keys class keeps', function () {
+    $properties = new ResourceTransformer(KeyedDepotTierSpreadResource::class)->properties;
+
+    expect($properties['tiers']['type'])->toBe('string[]')
+        ->and($properties['labelled']['type'])->toBe('{ name: string; "42": boolean }')
+        ->and($properties['own']['type'])->toBe('{ "1": string }');
+});
+
+// A method cast is final for its key, so the publisher's re-index leaves its text as written.
+it('keeps the numeric keys a method cast spells, and re-indexes the key beside it', function () {
+    $properties = new ResourceTransformer(NumericKeyMethodCastResource::class)->properties;
+
+    expect($properties['cast_codes']['type'])->toBe('{ "200": string }')
+        ->and($properties['codes']['type'])->toBe('string[]');
 });
 
 // docs/components/ts-casts.md: an API resource's class-level cast on `42` adds `"42": T`, as a method cast does.

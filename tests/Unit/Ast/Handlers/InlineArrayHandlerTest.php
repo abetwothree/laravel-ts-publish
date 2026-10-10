@@ -430,3 +430,20 @@ it('leaves a literal that is no list to the record path', function (string $php,
     'a spread of a reflected array, whose keys are unknown' => ['[...$this->resource->toArray(), "x"]', 'Record<string, unknown>'],
     'a merge() call, which a resource merges into the array' => ['[$this->merge(["a" => 1])]', '{ a: number }'],
 ]);
+
+// json_encode() writes a list only when the keys run 0 to n-1 in order; a resource's re-index is its publisher's.
+it('types a literal whose keys run 0 to n-1 as a list, and any other literal by the keys JSON writes', function (string $php, string $type) {
+    expect(inlineListType($php, ManifestAssembled::class))->toBe($type);
+})->with([
+    'int keys from 0 in order' => ['[0 => "a", 1 => "b"]', 'string[]'],
+    'numeric-string keys from 0' => ['["0" => "a", "1" => 2]', '(string | number)[]'],
+    'a key written twice keeps its last value' => ['[0 => "a", "0" => 1]', 'number[]'],
+    'int keys out of order' => ['[1 => "a", 0 => "b"]', '{ "1": string; "0": string }'],
+    'an int key not from 0' => ['[42 => "a"]', '{ "42": string }'],
+    'a numeric-string key PHP keeps as a string' => ['["06" => "a"]', '{ "06": string }'],
+    'a named key beside an int key' => ['[0 => "a", "b" => 1]', '{ "0": string; b: number }'],
+    'reads keyed 0 to n-1' => ['[0 => $this->parcelId, "1" => $this->carrier]', '(number | string)[]'],
+    'a read written twice keeps its last value' => ['[0 => $this->parcelId, "0" => $this->carrier]', 'string[]'],
+    'a keyless read after an int key, which PHP keys 1' => ['[0 => $this->parcelId, $this->carrier]', '(number | string)[]'],
+    'reads keyed out of order' => ['[1 => $this->parcelId, 0 => $this->carrier]', '{ "1": number; "0": string }'],
+]);

@@ -6,16 +6,16 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** A resource subject, where a numeric key cannot become a published member. Also the foreign class. */
+/** A resource subject whose numeric constant key publishes as JSON writes it. Also the foreign class. */
 final class ConstantKeyResource extends JsonResource
 {
     public const int NUMERIC_KEY = 8;
 
     public const string EXTERNAL_KEY = 'external';
 
-    /** The numeric constant key is dropped because the subject is a resource; the string-valued one survives. */
+    /** Both constant keys are kept, the numeric one as `"8"`. */
     public function shape(): array
     {
-        return [self::NUMERIC_KEY => 'dropped', self::EXTERNAL_KEY => 'kept'];
+        return [self::NUMERIC_KEY => 'kept', self::EXTERNAL_KEY => 'kept'];
     }
 }

@@ -1847,10 +1847,10 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($names)->not->toContain('bare_value');
     });
 
-    test('skips integer keyed items', function () {
-        $names = array_column($this->analysis->properties, 'name');
+    test('keeps integer keyed items', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
 
-        expect($names)->not->toContain('42');
+        expect($props['42']['type'])->toBe('string');
     });
 
     test('resolves when with single arg as unknown optional', function () {
@@ -5993,10 +5993,10 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($analysis->directEnumFqcns)->toContain(OrderStatus::class)
         // An enum case nested inside a list constant — same requirement, list shape.
         ->and($props['status_list']['type'])->toBe('OrderStatusType[]')
-        // All-int, non-sequential keys: every member is dropped, not a regression.
-        ->and($props['all_int_keys']['type'])->toBe('Record<string, unknown>')
-        // A mixed string/int-keyed constant: the int-keyed member is silently dropped.
-        ->and($props['mixed_keys']['type'])->toBe('{ a: number }')
+        // All-int, non-sequential keys, kept as JSON writes them; the resource's publisher re-indexes them into a list.
+        ->and($props['all_int_keys']['type'])->toBe('{ "200": string; "404": string }')
+        // A mixed string/int-keyed constant keeps its keys, the int one written as JSON writes it.
+        ->and($props['mixed_keys']['type'])->toBe('{ a: number; "5": string }')
         // New behaviour: `Foo::class` now types as a plain string instead of unknown. The four
         // risky call sites never reach this branch — they resolve their ClassConstFetch argument
         // directly, without going through analyzeValueExpression() — so this is new behaviour, not a guard.
@@ -6275,6 +6275,12 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
             ->and($this->props['members_collection_spread']['optional'])->toBeTrue()
             ->and($this->props['members_collection_spread']['type'])->not->toContain('Omit<')
             ->and($this->analysis->inlineModelFqcns['members_collection_spread'] ?? [])->toBe([User::class]);
+    });
+
+    test('a numeric-string key beside a collection spread keeps the intersection the body spells', function () {
+        // '0' is the key 0, which overwrites the first member; ResourceTransformerTest pins the list it sends.
+        expect($this->props['members_zero_key_spread']['type'])->toBe('Record<number, User> & { "0": boolean }')
+            ->and($this->analysis->inlineModelFqcns['members_zero_key_spread'] ?? [])->toBe([User::class]);
     });
 
     test('two resource spreads plus a sibling key intersect in order, each Omit<>\'d against what later overrides it', function () {

@@ -58,10 +58,9 @@ class ClassConstantResource extends AbstractVersionedResource
             'status_map' => ChannelDefaults::STATUS_MAP,
             // An enum case nested inside a list constant — same requirement, list shape.
             'status_list' => ChannelDefaults::STATUS_LIST,
-            // All-int, non-sequential keys — every member is dropped, not a regression (see
-            // ChannelDefaults::ALL_INT_KEYS).
+            // All-int, non-sequential keys, which the resource re-indexes into a list.
             'all_int_keys' => ChannelDefaults::ALL_INT_KEYS,
-            // A mixed string/int-keyed constant — the int-keyed member is silently dropped.
+            // A mixed string/int-keyed constant keeps both keys, the int one written `"5"`.
             'mixed_keys' => ChannelDefaults::MIXED_KEYS,
             // New behaviour: `Foo::class` now types as a plain string, not a resource/model type —
             // the four risky call sites (EnumResource::make(), toResource(...), #[Collects], the

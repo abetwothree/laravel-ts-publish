@@ -19,6 +19,7 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\MagicConst\Line;
 use PhpParser\Node\Scalar\String_;
@@ -434,7 +435,7 @@ final class AnalysisScope
                 || $node instanceof Closure
                 || $node instanceof ArrowFunction
                 || ($node instanceof CallLike && $node->isFirstClassCallable())
-                || ($node instanceof Array_ && ! $this->isRecordLiteral($node)));
+                || ($node instanceof Array_ && ! $this->isKeyedLiteral($node)));
 
             return $unreadable === null ? $engine->resolve($default) : null;
         }
@@ -443,12 +444,14 @@ final class AnalysisScope
     }
 
     /**
-     * Whether an array literal keys every item by a string that fails is_numeric(), so no resource re-indexes it.
+     * Whether an array literal keys every item by a literal int or string, so the engine types it by those keys.
      */
-    private function isRecordLiteral(Array_ $array): bool
+    private function isKeyedLiteral(Array_ $array): bool
     {
-        return array_all($array->items, fn (ArrayItem $item): bool => $item->key instanceof String_
-            && ! is_numeric($item->key->value));
+        return array_all(
+            $array->items,
+            fn (ArrayItem $item): bool => $item->key instanceof String_ || $item->key instanceof Int_,
+        );
     }
 
     /**

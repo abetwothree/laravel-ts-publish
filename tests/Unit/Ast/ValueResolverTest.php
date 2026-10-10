@@ -120,9 +120,9 @@ it('propagates an embedded enum case FQCN out of a nested list/record constant',
         ->and($recordResult['embeddedEnumFqcns'] ?? null)->not->toBeNull();
 });
 
-// resolveClassConstant() — bails to null (never recurses) past the array limits
+// resolveClassConstant() — bails to null past the array limits
 
-it('declines an over-element-count constant array without recursing into it', function () {
+it('declines an over-element-count constant array', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'OVER_ELEMENT_LIMIT');
 
@@ -131,7 +131,7 @@ it('declines an over-element-count constant array without recursing into it', fu
     expect($result)->toBeNull();
 });
 
-it('declines an over-depth constant array without recursing into it', function () {
+it('declines an over-depth constant array', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'OVER_DEPTH_LIMIT');
 
@@ -222,7 +222,8 @@ it('throws for what a constant expression reads that the evaluator cannot', func
     'a missing class constant' => ['self::MISSING'],
 ]);
 
-it('types an evaluated value as a constant, declining a numeric-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
+// json_encode() writes a list only when the keys run 0 to n-1; a resource's re-index is its publisher's.
+it('types an evaluated value as json_encode() writes it, every key kept as written', function (mixed $value, ?string $type) {
     expect(new ValueResolver()->resolveConstantValue($value)['type'] ?? null)->toBe($type);
 })->with([
     'null' => [null, 'null'],
@@ -234,11 +235,11 @@ it('types an evaluated value as a constant, declining a numeric-keyed record a r
     'an object' => [new stdClass, null],
     'a list' => [[1, 'a'], '(number | string)[]'],
     'int keys that form a list' => [[0 => 'a', 1 => 'b'], 'string[]'],
-    'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number }'],
-    'int keys that do not form a list' => [[1 => 'a'], null],
-    'the same, nested in a record' => [['a' => [2 => 'x']], null],
-    'float-string keys, which is_numeric() accepts' => [['1.5' => 'x', '-0' => 'y'], null],
-    'an int key beside a float-string one' => [[1 => 'a', '1.5' => 'b'], null],
+    'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number; "0": number }'],
+    'int keys that do not form a list' => [[1 => 'a'], '{ "1": string }'],
+    'the same, nested in a record' => [['a' => [2 => 'x']], '{ a: { "2": string } }'],
+    'float-string keys, which PHP keeps as strings' => [['1.5' => 'x', '-0' => 'y'], '{ "1.5": string; "-0": string }'],
+    'an int key beside a float-string one' => [[1 => 'a', '1.5' => 'b'], '{ "1": string; "1.5": string }'],
     'a numeric key beside a word key' => [['1.5' => 1, 'a' => 2], '{ "1.5": number; a: number }'],
 ]);
 

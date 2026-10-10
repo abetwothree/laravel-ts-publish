@@ -173,9 +173,12 @@ it('binds a default to the value PHP evaluates it to, and one the evaluator cann
 
     $scope->bindUnpassedParameters($closure, 0, $engine);
 
+    // The engine types a keyed literal by its keys, so a numeric one binds too; `"0"` alone is the list key 0.
     expect(array_map(fn (array $held): string => $held['type'], $scope->varValueBindings))->toBe([
         'list' => '(number | number[])[]',
         'record' => '{ a: unknown }',
+        'intLike' => 'unknown[]',
+        'numeric' => '{ "1.5": unknown }',
         'date' => 'string',
     ]);
 });

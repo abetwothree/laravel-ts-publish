@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
-use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -47,6 +46,19 @@ use ReflectionClass;
  */
 trait InspectsAstNodes
 {
+    /**
+     * The int PHP stores a literal key as, a numeric string such as `'6'` included, or null for any other key.
+     */
+    protected static function storedIntKey(Expr $key): ?int
+    {
+        if ($key instanceof Int_) {
+            return $key->value;
+        }
+
+        // PHP stores a string key as an int only when it is the canonical decimal spelling of one.
+        return $key instanceof String_ && (string) (int) $key->value === $key->value ? (int) $key->value : null;
+    }
+
     /**
      * Whether an expression is `$this->{$methodName}(...)`, called directly on `$this`.
      */
@@ -92,8 +104,9 @@ trait InspectsAstNodes
     /**
      * The name an array key spells, or null when it is not a literal this can read.
      *
-     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list. A key built
-     * from literal text around a value is named by the template-literal index signature that covers it.
+     * An int key is named as `json_encode()` writes it, `"1"`, whatever the subject: only a resource publisher
+     * re-indexes an array whose keys are all numeric. A key built from literal text around a value is named by the
+     * template-literal index signature that covers it.
      *
      * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
@@ -104,7 +117,7 @@ trait InspectsAstNodes
         }
 
         if ($key instanceof Int_) {
-            return $this->publishableKeyName((string) $key->value, $subject);
+            return (string) $key->value;
         }
 
         if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
@@ -118,7 +131,7 @@ trait InspectsAstNodes
             $value = $constant !== null && defined($constant) ? constant($constant) : null;
             $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
-            return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
+            return is_int($value) || is_string($value) ? (string) $value : null;
         }
 
         return $this->interpolatedKeyName($key);
@@ -160,18 +173,6 @@ trait InspectsAstNodes
             fn (Node $part): ?string => $part instanceof InterpolatedStringPart || $part instanceof String_ ? $part->value : null,
             $parts,
         )));
-    }
-
-    /**
-     * Drop a numeric key when the analyzed subject is a resource, and keep every other one: PHP stores a numeric
-     * string key as an int, which the transformer's `array<string, …>` property maps cannot hold. The test is the
-     * subject, not the position, so a numeric key nested inside a resource is dropped as well.
-     *
-     * @param  ReflectionClass<object>  $subject
-     */
-    private function publishableKeyName(string $name, ReflectionClass $subject): ?string
-    {
-        return is_numeric($name) && $subject->isSubclassOf(JsonResource::class) ? null : $name;
     }
 
     /**

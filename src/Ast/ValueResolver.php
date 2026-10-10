@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
@@ -38,6 +38,8 @@ use UnitEnum;
  */
 final class ValueResolver
 {
+    use InspectsAstNodes;
+
     /** Total-element cap for a class constant's array before it bails to unknown; see constantArrayWithinLimits(). */
     private const int MAX_CONSTANT_ARRAY_ELEMENTS = 200;
 
@@ -62,7 +64,7 @@ final class ValueResolver
 
     /**
      * Resolve `SomeClass::CONSTANT` as a value expression. Reads the constant via reflection and
-     * feeds its PHP value through analyzeConstantValue(), which types a scalar leaf itself. Returns null for
+     * feeds its PHP value through resolveConstantValue(), which types a scalar leaf itself. Returns null for
      * anything not a resolvable plain constant.
      *
      * @return ValueExpressionResult|null
@@ -110,7 +112,7 @@ final class ValueResolver
             return null;
         }
 
-        return $this->analyzeConstantValue($value);
+        return $this->resolveConstantValue($value);
     }
 
     /**
@@ -131,29 +133,51 @@ final class ValueResolver
     }
 
     /**
-     * Type an evaluated constant value the way a class constant's value is typed, or null when it cannot be.
-     *
-     * An array whose keys all pass is_numeric() yet which is not a list declines: a resource re-indexes it into a list,
-     * which the record it would type as does not describe.
+     * Convert an evaluated constant value, such as a class constant's, into a TS type, recursing into arrays, or null
+     * when it cannot be typed. A scalar leaf maps by its PHP type; a value that is another enum's case resolves to
+     * that enum.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveConstantValue(mixed $value): ?array
     {
-        return is_array($value) && ResourceReindexing::reindexesAsList($value)
-            ? null
-            : $this->analyzeConstantValue($value);
+        if (is_array($value)) {
+            return $this->analyzeConstantArrayValue($value);
+        }
+
+        // A constant's initializer may itself be another class's enum case (`Status::Live`),
+        // which getValue() hands back as the enum instance rather than a scalar.
+        if ($value instanceof UnitEnum) {
+            $enumFqcn = $value::class;
+
+            return [
+                'type' => LaravelTsPublish::toTsType($enumFqcn)['type'],
+                'optional' => false,
+                'directEnumFqcn' => $enumFqcn,
+            ];
+        }
+
+        return match (true) {
+            is_null($value) => ['type' => 'null', 'optional' => false],
+            is_bool($value) => ['type' => 'boolean', 'optional' => false],
+            is_int($value), is_float($value) => ['type' => 'number', 'optional' => false],
+            is_string($value) => ['type' => 'string', 'optional' => false],
+            default => null,
+        };
     }
 
     /**
-     * Type a keyless array literal as the list json_encode() writes, or null for an empty one, one holding a key or a
-     * by-ref item, or one spreading anything but a list. A constant one is typed as a parameter default is.
+     * Type an array literal json_encode() writes as a list, keyless or keyed 0 to n-1, as that list; null for an empty
+     * one, one with any other keys or a by-ref item, or one spreading anything but a list. A constant one is typed as a
+     * parameter default is.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveListLiteral(Array_ $list, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($list->items === [] || array_any($list->items, fn (ArrayItem $item): bool => $item->key !== null || $item->byRef)) {
+        $items = $this->listItems($list->items);
+
+        if ($items === null) {
             return null;
         }
 
@@ -169,7 +193,7 @@ final class ValueResolver
 
         $elements = [];
 
-        foreach ($list->items as $item) {
+        foreach ($items as $item) {
             $element = $engine->resolve($item->value);
 
             if ($item->unpack) {
@@ -223,39 +247,6 @@ final class ValueResolver
     }
 
     /**
-     * Convert a reflected constant's PHP value into a TS type, recursing into arrays. A scalar
-     * leaf maps by its PHP type; a constant typed as another enum's case resolves to that enum.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function analyzeConstantValue(mixed $value): ?array
-    {
-        if (is_array($value)) {
-            return $this->analyzeConstantArrayValue($value);
-        }
-
-        // A constant's initializer may itself be another class's enum case (`Status::Live`),
-        // which getValue() hands back as the enum instance rather than a scalar.
-        if ($value instanceof UnitEnum) {
-            $enumFqcn = $value::class;
-
-            return [
-                'type' => LaravelTsPublish::toTsType($enumFqcn)['type'],
-                'optional' => false,
-                'directEnumFqcn' => $enumFqcn,
-            ];
-        }
-
-        return match (true) {
-            is_null($value) => ['type' => 'null', 'optional' => false],
-            is_bool($value) => ['type' => 'boolean', 'optional' => false],
-            is_int($value), is_float($value) => ['type' => 'number', 'optional' => false],
-            is_string($value) => ['type' => 'string', 'optional' => false],
-            default => null,
-        };
-    }
-
-    /**
      * Convert a reflected constant's array value into a TS shape: empty stays `never[]`, a keyed
      * array becomes an inline object, a plain list becomes an element array, and either bails to
      * unknown when the array exceeds constantArrayWithinLimits().
@@ -291,7 +282,7 @@ final class ValueResolver
         $embeddedEnumFqcns = [];
 
         foreach ($value as $item) {
-            $itemResult = $this->analyzeConstantValue($item);
+            $itemResult = $this->resolveConstantValue($item);
 
             if ($itemResult === null || $itemResult['type'] === 'unknown') {
                 return null;
@@ -320,9 +311,7 @@ final class ValueResolver
      * analyzeInlineArray() builds one. A member that can't itself be resolved types as `unknown`
      * rather than failing the whole shape, matching analyzeReturnArray()'s per-property behaviour.
      *
-     * An int-keyed member (not routed to analyzeConstantListValue(), since the array as a whole
-     * isn't a list — e.g. `[200 => 'OK', 404 => 'Not Found']`) is dropped, matching how
-     * resolveKeyName() already treats a non-string AST array key everywhere else in this class.
+     * An int key, as in `[200 => 'OK', 404 => 'Not Found']`, prints as the key `json_encode()` writes, `"200"`.
      *
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult
@@ -333,18 +322,10 @@ final class ValueResolver
         $embeddedEnumFqcns = [];
 
         foreach ($value as $key => $item) {
-            if (! is_string($key)) {
-                continue;
-            }
-
-            $itemResult = $this->analyzeConstantValue($item) ?? ValueResult::unknown();
-            $formattedKey = JsEmitter::validJsObjectKey($key);
+            $itemResult = $this->resolveConstantValue($item) ?? ValueResult::unknown();
+            $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
-        }
-
-        if ($parts === []) {
-            return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
         $result = ['type' => '{ '.implode('; ', $parts).' }', 'optional' => false];
@@ -377,6 +358,42 @@ final class ValueResolver
         }
 
         return $fqcns;
+    }
+
+    /**
+     * The items of a literal json_encode() writes as a list, or null for any other literal.
+     *
+     * A keyless item takes the next int key, as PHP gives it, and a key written twice keeps its first position with its
+     * last value. A spread's keys are unknown, so only a keyless literal may hold one.
+     *
+     * @param  array<ArrayItem>  $items
+     * @return list<ArrayItem>|null
+     */
+    private function listItems(array $items): ?array
+    {
+        if ($items === [] || array_any($items, fn (ArrayItem $item): bool => $item->byRef)) {
+            return null;
+        }
+
+        if (array_all($items, fn (ArrayItem $item): bool => $item->key === null)) {
+            return array_values($items);
+        }
+
+        $stored = [];
+        $next = 0;
+
+        foreach ($items as $item) {
+            $key = $item->key === null ? $next : self::storedIntKey($item->key);
+
+            if ($key === null || $item->unpack) {
+                return null;
+            }
+
+            $stored[$key] = $item;
+            $next = max($next, $key + 1);
+        }
+
+        return array_is_list($stored) ? $stored : null;
     }
 
     /**

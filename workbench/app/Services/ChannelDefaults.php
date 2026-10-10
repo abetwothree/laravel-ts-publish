@@ -101,17 +101,14 @@ class ChannelDefaults
     public const array STATUS_LIST = [OrderStatus::Pending, OrderStatus::Shipped];
 
     /**
-     * All-int, non-sequential keys — array_is_list() is false, but no key is a string either, so
-     * every member is dropped. Resolves to Record<string, unknown>, not a regression: matches how
-     * resolveKeyName() already treats a non-string AST array key everywhere else in this class.
+     * All-int, non-sequential keys: an object `{"200": …}` from json_encode(), a list once a resource re-indexes it.
      *
      * @var array<int, string>
      */
     public const array ALL_INT_KEYS = [200 => 'OK', 404 => 'Not Found'];
 
     /**
-     * A mix of string and int keys — the int-keyed member is dropped, the string-keyed one keeps
-     * its real type, matching resolveKeyName()'s existing non-string-key behaviour.
+     * A mix of string and int keys, which every publisher keeps, the int one written `"5"`.
      *
      * @var array<array-key, int|string>
      */

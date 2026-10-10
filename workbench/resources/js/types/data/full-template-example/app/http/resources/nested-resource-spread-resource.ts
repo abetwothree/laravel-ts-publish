@@ -18,6 +18,7 @@ export interface NestedResourceSpreadResource
     members_bare?: UserResource[];
     members_model_spread?: (Omit<User, 'flag'> & { flag: boolean })[];
     members_collection_spread?: Record<number, User> & { flag: boolean };
+    members_zero_key_spread?: (User | boolean)[];
     members_double_spread?: (Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[];
     members_with_profile_untyped?: (Omit<UserResource, 'profile'> & { profile: ProfileResource })[];
     owner_map_untyped?: unknown;

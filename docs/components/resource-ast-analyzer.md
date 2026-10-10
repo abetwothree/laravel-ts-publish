@@ -424,9 +424,9 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
 - **The subtraction is unconditional**: `Omit<T, K>` does not require `K extends keyof T`, so
   `buildSpreadArmTypes()` needs only a later arm's name, never its shape.
 - **A collection arm is never subtracted, and never subtracts**: its keys are indexes, and every other key is a
-  string. The one collision left is a numeric string key beside it. In a resource, `InspectsAstNodes::resolveKeyName()`
-  drops an int key but keeps `'0'`. So `[...$members->toArray(), '0' => true]` publishes
-  `Record<number, User> & { "0": boolean }`, though PHP overwrites index 0.
+  string. The one collision left is a numeric key beside it: the arm keeps
+  `[...$members->toArray(), '0' => true]` as `Record<number, User> & { "0": boolean }`, and the publisher's
+  [re-index](#numeric-keys) sends `(User | boolean)[]`.
 - **Arm order is source order**: all three kinds travel in one list, split by kind only when imports are dispatched.
   Resource arms go on `embeddedResourceFqcns`, and model and collection arms on `embeddedModelFqcns`. Grouping by kind
   any earlier would subtract against the wrong arm. `NestedResourceSpreadResource`'s
@@ -524,6 +524,21 @@ Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyz
 floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
 exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
 `SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+
+## Numeric keys
+
+A numeric key goes through two layers:
+
+- **Key spelling**: every literal key publishes as the key `json_encode()` writes, whatever the subject, so `42 =>`
+  and `'6' =>` print `"42"` and `"6"`. A literal whose stored keys run 0 to n-1 is a list, which
+  `ValueResolver::resolveListLiteral()` types.
+- **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
+  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher,
+  with the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's
+  `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, and so does a spread `R::make()->resolve()` arm,
+  which runs `R`'s own filter. A key a method cast types keeps the cast.
+
+`DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 
 ## Interpolated keys
 

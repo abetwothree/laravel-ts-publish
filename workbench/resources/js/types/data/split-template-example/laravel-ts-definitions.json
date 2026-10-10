@@ -121,6 +121,11 @@
                     "name": "ids",
                     "type": "number[]",
                     "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "{ \"200\": string; \"404\": string }",
+                    "optional": false
                 }
             ]
         },
@@ -11672,12 +11677,12 @@
                 },
                 {
                     "name": "all_int_keys",
-                    "type": "Record<string, unknown>",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
                     "name": "mixed_keys",
-                    "type": "{ a: number }",
+                    "type": "{ a: number; \"5\": string }",
                     "optional": false
                 },
                 {
@@ -13118,6 +13123,106 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DepotTierKeyedResource": {
+            "name": "DepotTierKeyedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tiers",
+                    "type": "{ \"1\": string; \"2\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "{ \"06\": string; \"1.5\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "surcharges",
+                    "type": "{ \"3\": number }",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "{ \"200\": string; \"404\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "labelled",
+                    "type": "{ name: string; \"42\": boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: { \"7\": string } }",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_orders",
+                    "type": "{ \"10\": string; \"20\": string }",
+                    "optional": true
+                },
+                {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DepotTierResource": {
+            "name": "DepotTierResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tiers",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "surcharges",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "labelled",
+                    "type": "{ name: string; \"42\": boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_orders",
+                    "type": "string[]",
+                    "optional": true
+                },
+                {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },
@@ -15019,6 +15124,11 @@
                     "optional": true
                 },
                 {
+                    "name": "members_zero_key_spread",
+                    "type": "(User | boolean)[]",
+                    "optional": true
+                },
+                {
                     "name": "members_double_spread",
                     "type": "(Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[]",
                     "optional": true
@@ -16725,6 +16835,11 @@
                     "optional": false
                 },
                 {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
+                },
+                {
                     "name": "flag",
                     "type": "unknown",
                     "optional": true
@@ -17565,7 +17680,7 @@
                 },
                 {
                     "name": "tiers",
-                    "type": "{ \"1\": string; \"2\": string }",
+                    "type": "string[]",
                     "optional": false
                 }
             ]

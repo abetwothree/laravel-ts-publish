@@ -2,4 +2,5 @@
 export interface HandoverListed {
     stages: string[];
     ids: number[];
+    codes: { "200": string; "404": string };
 }

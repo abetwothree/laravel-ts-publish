@@ -26,8 +26,8 @@ export interface ClassConstantResource
     over_depth_limit: unknown;
     status_map: { status: OrderStatusType };
     status_list: OrderStatusType[];
-    all_int_keys: Record<string, unknown>;
-    mixed_keys: { a: number };
+    all_int_keys: string[];
+    mixed_keys: { a: number; "5": string };
     resource_marker: string;
     status_marker: AsEnum<typeof Status>;
 }

@@ -444,6 +444,31 @@ helper method the action calls, are read as that method's own values, so a first
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
 
+### `collect()` of a constant array whose numeric keys are no list publishes `unknown`
+
+`collect([200 => 'OK', 404 => 'Not Found'])` publishes `unknown`, though a `Collection` keeps its keys and sends
+`{"200":"OK","404":"Not Found"}`. An API resource [re-indexes](./components/resource-ast-analyzer.md#numeric-keys) the
+published types it reads, and a type cannot say whether a `Collection` or an array spelled it. Type the key with
+`#[TsCasts]`.
+
+### Inside an API resource, an object whose shape keys only numbers publishes as a list
+
+An API resource re-indexes only the arrays it reaches. A `Collection`, a `JsonSerializable` or an `Arrayable` object
+keeps its own keys, yet one whose published shape keys only numbers, such as `collect([42 => $this->title])`'s
+`{ "42": string }`, publishes `string[]` there, though Laravel sends `{"42": …}`. Type the key with `#[TsCasts]`.
+
+### A collection that does not preserve keys lists the arrays of an element that does
+
+A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
+re-indexes the numeric-keyed arrays of an element resource that preserves keys. The element's interface still shows
+them keyed. Give the collection `$preserveKeys` too, or collect through the element's own `collection()`.
+
+### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
+
+`['label' => $this->when($c, 'x'), 42 => 'y']` publishes `{ label?: string; "42": string }`. When `$c` is false the API
+resource drops `label`, finds only numeric keys left, and sends `["y"]`. Keep numeric keys apart from a conditional
+named key.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

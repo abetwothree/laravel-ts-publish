@@ -85,6 +85,27 @@ final class TsTypeShape
     }
 
     /**
+     * A list of these element types, each once, or `unknown[]` when one is `unknown`: an element is in every response,
+     * so it is never left out as an untypable union arm is.
+     *
+     * @param  list<string>  $types
+     */
+    public static function listType(array $types): string
+    {
+        $types = array_values(array_unique($types));
+        $element = match (true) {
+            $types === [] => 'never',
+            in_array('unknown', $types, true) => 'unknown',
+            default => implode(' | ', $types),
+        };
+
+        // `[]` binds tighter than `|`, `&` and `=>`, so `A | B[]` would list only B.
+        return count(self::splitTopLevel($element, ['|', '&'])) > 1 || self::topLevelPosition($element, '=') !== null
+            ? '('.$element.')[]'
+            : $element.'[]';
+    }
+
+    /**
      * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quotes.
      *
      * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator().
