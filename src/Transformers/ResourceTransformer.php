@@ -512,6 +512,7 @@ class ResourceTransformer extends CoreTransformer
             ? $this->tsCastsAttributes(new ReflectionClass($this->modelClass))
             : [];
         $model = $reader->castTargets($modelAttributes, $keys, array_keys($this->modelTsCastsOverrides));
+        JsEmitter::warnAmbiguousCasts($this->findable, array_keys($this->modelTsCastsOverrides), $keys);
         $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
         $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
         $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
