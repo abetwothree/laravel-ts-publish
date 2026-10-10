@@ -38,6 +38,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     description: string,
  *     bodyType?: string,
  *     fillType?: string,
+ *     keepsKeys?: bool,
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  *
@@ -117,6 +118,7 @@ class MethodAnalysis
             'type' => $result['type'],
             'optional' => $optional || $result['optional'],
             'description' => $description,
+            ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
 
         $this->dispatchFqcnResults(

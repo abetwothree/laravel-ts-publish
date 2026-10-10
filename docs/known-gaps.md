@@ -451,17 +451,27 @@ read as a position Laravel calls. Use a closure such as `fn () => $this->label()
 published types it reads, and a type cannot say whether a `Collection` or an array spelled it. Type the key with
 `#[TsCasts]`.
 
-### Inside an API resource, an object whose shape keys only numbers publishes as a list
+### Inside an API resource, a `Collection` nested in an array, or the arrays one holds, publish as lists
 
-An API resource re-indexes only the arrays it reaches. A `Collection`, a `JsonSerializable` or an `Arrayable` object
-keeps its own keys, yet one whose published shape keys only numbers, such as `collect([42 => $this->title])`'s
-`{ "42": string }`, publishes `string[]` there, though Laravel sends `{"42": …}`. Type the key with `#[TsCasts]`.
+An API resource re-indexes only the arrays it reaches, so a key's own `collect()` value keeps its numeric keys, but
+`['inner' => collect(['6' => $this->title])]` publishes `{ inner: string[] }`. The arrays a `Collection` holds list the
+same way: `->map(fn () => ['1' => …])` and `collect([['1' => …]])` publish `string[][]`, though Laravel sends
+`{ "1": string }[]`. Type the key with `#[TsCasts]`.
 
 ### A collection that does not preserve keys lists the arrays of an element that does
 
 A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
 re-indexes the numeric-keyed arrays of an element resource that preserves keys. The element's interface still shows
 them keyed. Give the collection `$preserveKeys` too, or collect through the element's own `collection()`.
+
+### An API resource whose top-level keys are all numeric publishes an interface of quoted keys
+
+`toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.
+
+### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
+
+`'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
+outer resource's `filter()` enters the array `resolve()` returns and re-indexes it.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 

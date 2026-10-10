@@ -19,6 +19,6 @@ class KeyedTierCollectionResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        return ['tiers' => DepotTierKeyedResource::collection($this->whenLoaded('tiers'))];
+        return ['tiers' => DepotTierKeyedResource::collection($this->whenLoaded('orders'))];
     }
 }

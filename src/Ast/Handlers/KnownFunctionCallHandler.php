@@ -337,10 +337,16 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         $result = $engine->resolve($items);
 
-        return count(TsTypeString::splitTopLevelUnion($result['type'])) === 1
-            && (str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{'))
-            ? [...$result, 'optional' => false]
-            : null;
+        if (count(TsTypeString::splitTopLevelUnion($result['type'])) !== 1) {
+            return null;
+        }
+
+        // A resource's filter never enters a Collection, so its keys reach JSON as written.
+        return match (true) {
+            str_ends_with($result['type'], '[]') => [...$result, 'optional' => false],
+            str_starts_with($result['type'], '{') => [...$result, 'optional' => false, 'keepsKeys' => true],
+            default => null,
+        };
     }
 
     /**

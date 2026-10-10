@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectedNumericKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
@@ -3427,6 +3428,12 @@ it('keeps the numeric keys a method cast spells, and re-indexes the key beside i
 
     expect($properties['cast_codes']['type'])->toBe('{ "200": string }')
         ->and($properties['codes']['type'])->toBe('string[]');
+});
+
+// ConditionallyLoadsAttributes::filter() never enters a Collection, so its numeric keys reach JSON as written.
+it('keeps the numeric keys of a collect() value, on every branch that sets it, and lists the array beside it', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(CollectedNumericKeysResource::class)->properties))
+        ->toBe(['kept' => '{ "6": string }', 'kept_int' => '{ "42": string }', 'listed' => 'string[]']);
 });
 
 // docs/components/ts-casts.md: an API resource's class-level cast on `42` adds `"42": T`, as a method cast does.

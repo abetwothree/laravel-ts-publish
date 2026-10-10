@@ -336,7 +336,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
-     * keys; a key a method cast types keeps the cast's text.
+     * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
      *
      * The publishing class decides, not the one declaring the body: an inherited toArray() runs under the subclass's
      * own `$preserveKeys`.
@@ -352,7 +352,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         foreach ($analysis->properties as &$property) {
-            if (isset($analysis->casts[$property['name']])) {
+            if (isset($analysis->casts[$property['name']]) || ($property['keepsKeys'] ?? false)) {
                 continue;
             }
 
@@ -1383,6 +1383,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
 
             $presentInAll = count($entries) === $branchCount;
+            $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
             // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
             // error — regardless of whether every branch produced it.
@@ -1406,6 +1407,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 'description' => $description,
                 ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
                 ...($fillType === null ? [] : ['fillType' => $fillType]),
+                ...($keepsKeys ? ['keepsKeys' => true] : []),
             ];
         }
 

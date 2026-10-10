@@ -536,7 +536,8 @@ A numeric key goes through two layers:
   every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher,
   with the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's
   `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, and so does a spread `R::make()->resolve()` arm,
-  which runs `R`'s own filter. A key a method cast types keeps the cast.
+  which runs `R`'s own filter. A key a method cast types keeps the cast, and a key whose result carries `keepsKeys`,
+  set by `collect()` on an object shape because the filter never enters a `Collection`, keeps its keys.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 

@@ -31,7 +31,8 @@ use PhpParser\Node\Expr;
  *      customImports?: TypesImportMap,
  *      carriedFqcns?: CarriedMap,
  *      wrapIsCollection?: bool,
- *      directIsArray?: bool
+ *      directIsArray?: bool,
+ *      keepsKeys?: bool
  * }
  *
  * @internal
