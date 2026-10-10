@@ -58,9 +58,9 @@ every profile, the order handlers run in decides which one answers; see
 - **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
-  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys, a whole re-assignment drops the writes
-  before it, and a key first written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body
-  before its first `break` or `continue`.
+  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys and every signature entry, a whole
+  re-assignment drops the writes before it, and a key first written in a branch, loop, `try` or `switch` publishes
+  optional, except in a `do` body before its first `break` or `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
@@ -557,7 +557,7 @@ evidence the `| undefined` is redundant.
 A value the body cannot type reaches `ReturnShapeRefiner` as `unknown | undefined`. The refiner treats that type as
 unfilled for a signature name only, fills it from `@return array<string, V>`, and adds `| undefined` back. A
 `@return array{…}` shape names literal keys only, so it never fills a signature. The body's own value stays in the
-entry's `bodyType`, for the reconcile below.
+entry's `bodyType` and the fill in its `fillType`, for the reconcile below.
 
 ### Index signatures are reconciled with the keys beside them
 
@@ -578,15 +578,17 @@ beside a signature are all known:
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
-an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts. The pattern is
-read back as TypeScript reads it, so `${string}` matches any run of characters, the empty one included. Each signature
-then gets one outcome:
+an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts, with its own
+value: its `fillType`, else its `bodyType`, else its type, so a matched key a cast retypes leaves no earlier arm. The
+pattern is read back as TypeScript reads it, so `${string}` matches any run of characters, the empty one included.
+Each signature then gets one outcome:
 
 - **Union**: when its entries and every key its pattern matches can join, the entries fold into the first, typed with
   every arm plus `| undefined`. The named keys keep their own types.
 - **Put back**: when an entry or a matched key cannot join, when another signature's pattern may overlap its own, or
   when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`, which
-  for a union holds every folded entry's body value; then the entries fold into the first where those values can join.
+  for a union holds its entries' body values joined where they can join; then the entries fold into the first where
+  those values can join. The fill stays in `fillType`, and the next reconcile re-arms it before it decides.
 - **Left alone**: a signature with no other entry, no matching key and no overlapping pattern, unless the interface
   has an extends clause.
 
@@ -601,8 +603,10 @@ A key cannot join a union when any of these holds:
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
 one key. `bodyType` is how a later conflict finds the body value. The refiner sets it on a fill, and a union sets it
 to its entries' body values joined, or to the last entry's where they cannot join. `mergeReturnBranches()` unions it
-across branches, and a method's `#[TsCasts]` clears it, since that type is the app's own. `SamePatternKeysResource`
-pins the unions, and the test-only `IndexSignatureConflictResource` and `SamePatternDeclinedResource` pin the conflicts.
+across branches, and a method's `#[TsCasts]` clears it, since that type is the app's own. `fillType` follows it: the
+refiner sets it, a union and a put-back fold keep their entries' fills joined, `mergeReturnBranches()` unions it, and
+a method's `#[TsCasts]` clears it. `SamePatternKeysResource` pins the unions, and the test-only
+`IndexSignatureConflictResource` and `SamePatternDeclinedResource` pin the conflicts.
 
 ## Import dispatch rules
 

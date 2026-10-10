@@ -1091,7 +1091,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 foreach ($analysis->properties as &$prop) {
                     if ($prop['name'] === $property) {
                         $prop['type'] = $type;
-                        unset($prop['bodyType']);
+                        unset($prop['bodyType'], $prop['fillType']);
 
                         if ($optional !== null) {
                             $prop['optional'] = $optional;
@@ -1302,6 +1302,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
             $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
+            // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
+            // type is a fill, and a reconcile that puts it back must find it again.
+            $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
+            $fillType = array_column($entries, 'fillType') === []
+                ? null
+                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
@@ -1326,6 +1332,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 'optional' => $optional,
                 'description' => $description,
                 ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
+                ...($fillType === null ? [] : ['fillType' => $fillType]),
             ];
         }
 
@@ -1351,7 +1358,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The cast entry of each key every branch that sets it casts to one text and import, as only then does the union
-     * publish that cast; it keeps an `optional` flag only where every branch's cast sets the same one.
+     * publish that cast. It is optional where any branch's cast says so, since the union is; otherwise it keeps a flag
+     * only where every branch's cast sets the same one.
      *
      * @param  list<MethodAnalysis>  $analyses
      * @param  list<array-key>  $names
@@ -1377,9 +1385,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            $casts[(string) $name] = array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast)
-                ? $cast
-                : ['type' => $cast['type'], 'import' => $cast['import']];
+            $anyOptional = array_any(
+                $branchCasts,
+                static fn (?array $branchCast): bool => ($branchCast['optional'] ?? null) === true,
+            );
+
+            $casts[(string) $name] = match (true) {
+                $anyOptional => ['type' => $cast['type'], 'import' => $cast['import'], 'optional' => true],
+                array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast) => $cast,
+                default => ['type' => $cast['type'], 'import' => $cast['import']],
+            };
         }
 
         return $casts;

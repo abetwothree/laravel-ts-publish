@@ -2796,6 +2796,11 @@ declare global {
             id: number;
             case_title: string;
         }
+        /** A docblock-filled signature beside a same-pattern key only the class-level cast types, so the fill joins the cast. */
+        export interface CastRestoredFillResource {
+            [key: `${string}_tag`]: string | number | undefined;
+            main_tag: number;
+        }
         /**
          * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
          * `children`, a HasMany that loads as a collection, then every resource built around `parent`. Laravel returns null for

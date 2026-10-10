@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
  * TypeScript checks a signature against every key and signature its pattern covers (TS2411, TS2413), so a value the
  * body did not give it — a docblock fill or a same-pattern union — is kept only where no such check can fail.
  *
+ * @phpstan-import-type AnalyzedProperty from MethodAnalysis
+ *
  * @internal
  */
 final class IndexSignatureReconciler
@@ -35,6 +37,13 @@ final class IndexSignatureReconciler
         foreach ($analysis->properties as $index => $property) {
             if (JsEmitter::isIndexSignatureKey($property['name'])) {
                 $signatures[$property['name']][] = $index;
+
+                // An earlier reconcile put this fill back beside a key a later write or cast may have made joinable.
+                if (isset($property['fillType']) && ! isset($property['bodyType'])
+                    && $property['type'] !== $property['fillType']) {
+                    $analysis->properties[$index]['bodyType'] = $property['type'];
+                    $analysis->properties[$index]['type'] = $property['fillType'];
+                }
             } else {
                 // A later write to a named key replaces the earlier one, so only the last entry is ever published.
                 $published[$property['name']] = $property['type'];
@@ -70,7 +79,7 @@ final class IndexSignatureReconciler
             $types = [];
 
             foreach ($indexes as $index) {
-                $types[] = $analysis->properties[$index]['type'];
+                $types[] = $this->ownValue($analysis->properties[$index]);
             }
 
             foreach ($published as $key => $type) {
@@ -104,7 +113,7 @@ final class IndexSignatureReconciler
      * Collapse a signature's entries into the first, typed with every arm.
      *
      * Their body values stay as its `bodyType`, joined, or the last entry's where they cannot join, so an outer
-     * conflict can still put them back.
+     * conflict can still put them back. Where any entry has a fill, foldedFill() keeps one as its `fillType`.
      *
      * @param  non-empty-list<int>  $indexes
      * @param  list<string>  $arms
@@ -112,19 +121,22 @@ final class IndexSignatureReconciler
      */
     private function union(MethodAnalysis $analysis, string $name, array $indexes, array $arms): array
     {
-        $bodies = array_map(
-            fn (int $index): string => $analysis->properties[$index]['bodyType'] ?? $analysis->properties[$index]['type'],
-            $indexes,
-        );
+        $entries = array_map(fn (int $index): array => $analysis->properties[$index], $indexes);
+        $bodies = array_map(fn (array $entry): string => $entry['bodyType'] ?? $entry['type'], $entries);
         $last = $bodies[count($bodies) - 1];
         $bodyType = count($bodies) > 1 ? ($this->joinedValue($analysis, $name, $bodies) ?? $last) : $last;
-        $entry = $analysis->properties[$indexes[0]];
+        $fillType = $this->foldedFill($analysis, $name, $entries);
+        $entry = $entries[0];
 
         $entry['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
-        unset($entry['bodyType']);
+        unset($entry['bodyType'], $entry['fillType']);
 
         if ($entry['type'] !== $bodyType) {
             $entry['bodyType'] = $bodyType;
+        }
+
+        if ($fillType !== null) {
+            $entry['fillType'] = $fillType;
         }
 
         $analysis->properties[$indexes[0]] = $entry;
@@ -180,8 +192,9 @@ final class IndexSignatureReconciler
     /**
      * Put back the value each entry's body gives it, then fold the entries into the first where those values can join.
      *
-     * Each entry a docblock fill or union changed goes back to its `bodyType`. Each entry is a runtime key the one
-     * published signature covers, so a later one must not replace an earlier one.
+     * Each entry a docblock fill or union changed goes back to its `bodyType`, and keeps its `fillType` for a later
+     * reconcile that may find every key joinable. Each entry is a runtime key the one published signature covers, so a
+     * later one must not replace an earlier one.
      *
      * @param  non-empty-list<int>  $indexes
      * @return array<int, true> the later entries, now folded into the first
@@ -205,9 +218,48 @@ final class IndexSignatureReconciler
             return [];
         }
 
-        $analysis->properties[$indexes[0]]['type'] = $joined;
+        $entries = array_map(fn (int $index): array => $analysis->properties[$index], $indexes);
+        $fillType = $this->foldedFill($analysis, $name, $entries);
+        $entry = $entries[0];
+
+        $entry['type'] = $joined;
+        unset($entry['fillType']);
+
+        if ($fillType !== null) {
+            $entry['fillType'] = $fillType;
+        }
+
+        $analysis->properties[$indexes[0]] = $entry;
 
         return array_fill_keys(array_slice($indexes, 1), true);
+    }
+
+    /**
+     * The fill entries folded into one keep: each one's own value joined, or none where no entry has a fill or the
+     * values cannot join, since the one entry left covers every folded entry's keys.
+     *
+     * @param  non-empty-list<AnalyzedProperty>  $entries
+     */
+    private function foldedFill(MethodAnalysis $analysis, string $name, array $entries): ?string
+    {
+        if (array_column($entries, 'fillType') === []) {
+            return null;
+        }
+
+        $values = array_map($this->ownValue(...), $entries);
+
+        return count($values) > 1 ? $this->joinedValue($analysis, $name, $values) : $values[0];
+    }
+
+    /**
+     * The value an entry gives its signature before any named key joins it: its docblock fill, else the body value a
+     * union kept, else its type. A union re-unions from it, so a matched key's earlier arm never outlives a cast.
+     *
+     * @param  AnalyzedProperty  $property
+     */
+    private function ownValue(array $property): string
+    {
+        return $property['fillType'] ?? $property['bodyType'] ?? $property['type'];
     }
 
     /**

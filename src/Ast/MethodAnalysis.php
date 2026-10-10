@@ -37,6 +37,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     optional: bool,
  *     description: string,
  *     bodyType?: string,
+ *     fillType?: string,
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  *
@@ -48,7 +49,8 @@ class MethodAnalysis
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
-     *                                            fill or a same-pattern union changed: the value its body gives it
+     *                                            fill or a same-pattern union changed: the value its body gives it;
+     *                                            `fillType` is that signature's docblock fill, kept through a put-back
      * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
      * @param  ClassMapType  $nestedResources  property name => resource FQCN
      * @param  ImportMapType  $customImports  import path => list of type names

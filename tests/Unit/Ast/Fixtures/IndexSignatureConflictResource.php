@@ -95,6 +95,36 @@ final class IndexSignatureConflictResource extends JsonResource
         return ['price_tag' => 5];
     }
 
+    /** A later number replaces the untyped `main_tag` a spread put beside its filled signature. */
+    public function laterKeyRestoresFill(): array
+    {
+        return [...$this->declinedKey(), 'main_tag' => 5];
+    }
+
+    /** The method's own `#[TsCasts]` types the untyped `main_tag` a spread put beside its filled signature. */
+    #[TsCasts(['main_tag' => 'boolean'])]
+    public function castRestoresFill(): array
+    {
+        return [...$this->declinedKey()];
+    }
+
+    /** The method's own `#[TsCasts]` retypes a `main_tag` the literal's union already joined to the body-typed keys. */
+    #[TsCasts(['main_tag' => 'boolean'])]
+    public function castReplacesUnionArm(): array
+    {
+        return [...$this->literalTags(), 'main_tag' => 5];
+    }
+
+    /** One branch spreads the filled signature alone; the other has a `_tag` key the fill can join. */
+    public function branchFillBesideKey(): array
+    {
+        if ($this->resource->exists) {
+            return [...$this->docTags()];
+        }
+
+        return ['main_tag' => 5];
+    }
+
     /** Body-typed `_tag` keys. */
     public function literalTags(): array
     {

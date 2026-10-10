@@ -46,6 +46,7 @@ final class ReturnShapeRefiner
                 if ($resolved !== null) {
                     $property['bodyType'] = $property['type'];
                     $property['type'] = TsTypeString::orUndefined($resolved);
+                    $property['fillType'] = $property['type'];
                 }
             }
 

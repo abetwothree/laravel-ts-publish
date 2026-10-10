@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchCastsOptionalApartResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchOptionalCastOverRequiredModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CarriedSpelledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastBareBesideWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastCarriedModelEvent;
@@ -574,6 +575,10 @@ describe('a cast the resource and its model both declare', function () {
     // Both branches cast the key to one type, so the union publishes that cast over the model's, whatever each flag.
     it('lets two return branches\' casts of one type win over the model\'s cast when only one marks it optional', function () {
         expect(castInForceLines(BranchCastsOptionalApartResource::class))->toContain('    longitude?: BranchLongitude;');
+    });
+
+    it('keeps a key optional when one branch\'s cast marks it so, over a model cast that marks it required', function () {
+        expect(castInForceLines(BranchOptionalCastOverRequiredModelResource::class))->toContain('    title?: BranchTitle;');
     });
 });
 

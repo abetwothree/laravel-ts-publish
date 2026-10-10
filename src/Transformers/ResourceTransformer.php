@@ -322,8 +322,13 @@ class ResourceTransformer extends CoreTransformer
         $castKeys = $this->castKeys($analysis);
         $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
 
-        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis, $castKeys, $this->tsExtends !== []);
+        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees. A method
+        // cast counts too, since CastChannels::fit() settles its key's import channels only after the reconcile.
+        resolve(IndexSignatureReconciler::class)->reconcile(
+            $analysis,
+            array_map(fn (array $cast): string => $cast['type'], $this->castsInForce),
+            $this->tsExtends !== [],
+        );
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
 

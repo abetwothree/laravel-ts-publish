@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedNotesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedAddressResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedHeldEnumKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Http\Resources\MergedSignatureKeysResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
 
@@ -156,4 +159,54 @@ describe('a merge closure\'s unread return leaves an enclosing returned variable
         'a closure returning a variable the gate rejects' => ['unreadVariable'],
         'a static call passed as it is' => ['unreadValue'],
     ]);
+});
+
+describe('a docblock fill a reconcile put back survives for a later one', function () {
+    test('a later key that replaces the unjoinable one lets the fill union', function () {
+        expect(signatureShape(IndexSignatureConflictResource::class, 'laterKeyRestoresFill'))
+            ->toMatchArray(['[key: `${string}_tag`]' => 'string | number | undefined', 'main_tag' => 'number']);
+    });
+
+    test('a method\'s own #[TsCasts] that types the unjoinable key lets the fill union', function () {
+        expect(signatureShape(IndexSignatureConflictResource::class, 'castRestoresFill'))
+            ->toMatchArray(['[key: `${string}_tag`]' => 'string | boolean | undefined', 'main_tag' => 'boolean']);
+    });
+
+    test('a fill beside a key that stays unjoinable is still put back', function () {
+        $property = collect(new ResourceAstAnalyzer(new ReflectionClass(IndexSignatureConflictResource::class), Post::class, 'declinedKey')->analyze()->properties)
+            ->firstWhere('name', '[key: `${string}_tag`]');
+
+        expect($property)->toMatchArray(['type' => 'unknown | undefined', 'fillType' => 'string | undefined'])
+            ->and($property)->not->toHaveKey('bodyType');
+    });
+
+    test('a branch\'s fill still unions after the branches merge into a type that is the fill itself', function () {
+        expect(signatureShape(IndexSignatureConflictResource::class, 'branchFillBesideKey'))
+            ->toMatchArray(['[key: `${string}_tag`]' => 'string | number | undefined', 'main_tag' => '?number']);
+    });
+
+    test('mergeReturnBranches() unions the fills beside the types, each branch\'s own value standing in for a missing one', function () {
+        $branch = fn (string $type, array $extra = []): ResourceAnalysis => new ResourceAnalysis(properties: [[
+            'name' => '[key: `${string}_tag`]',
+            'type' => $type,
+            'optional' => false,
+            'description' => '',
+            ...$extra,
+        ]]);
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        $merged = $analyzer->mergeReturnBranches([
+            $branch('unknown | undefined', ['fillType' => 'string | undefined']),
+            $branch('number | undefined'),
+        ]);
+        $plain = $analyzer->mergeReturnBranches([$branch('string | undefined'), $branch('number | undefined')]);
+
+        expect($merged->properties[0])->toMatchArray(['fillType' => 'string | undefined | number'])
+            ->and($plain->properties[0])->not->toHaveKey('fillType');
+    });
+
+    it('replaces a matched key\'s earlier arm when a method cast retypes it', function () {
+        expect(signatureShape(IndexSignatureConflictResource::class, 'castReplacesUnionArm'))
+            ->toMatchArray(['[key: `${string}_tag`]' => 'string | boolean | undefined', 'main_tag' => 'boolean']);
+    });
 });

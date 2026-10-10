@@ -23,6 +23,7 @@ export * from './bulletin-wrapped-resource';
 export * from './callable-value-resource';
 export * from './cart-totals-resource';
 export * from './case-spread-resource';
+export * from './cast-restored-fill-resource';
 export * from './category-lineage-resource';
 export * from './category-resource';
 export * from './child-inline-fqcn-resource';
