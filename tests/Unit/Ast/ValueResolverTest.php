@@ -4,13 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
@@ -22,7 +16,6 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Stringable;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
@@ -38,64 +31,6 @@ use Workbench\App\Services\ChannelDefaults;
 function valueResolverTestScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ClassConstantResource::class));
-}
-
-/**
- * An engine that fails the test if ValueResolver calls back into it, proving a decline (over-limit
- * array, ::class, enum case) happened before any leaf recursion.
- */
-function valueResolverThrowingEngine(): ExpressionEngine
-{
-    return new class implements ExpressionEngine
-    {
-        public function resolve(Expr $expr): array
-        {
-            throw new RuntimeException('resolve() must not be called in this case');
-        }
-
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
-        {
-            throw new RuntimeException('spreadAnalysis() must not be called in this case');
-        }
-
-        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
-        {
-            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
-        }
-    };
-}
-
-/**
- * A real engine backed by the production scalar/const-fetch handlers — the same ones a scalar
- * constant's BuilderFactory::val() leaf would dispatch through inside the full analyzer — so
- * ValueResolver's recursion is exercised for real instead of through a canned stub.
- */
-function valueResolverLeafEngine(): ExpressionEngine
-{
-    return new class implements ExpressionEngine
-    {
-        private ExpressionDispatcher $dispatcher;
-
-        public function __construct()
-        {
-            $this->dispatcher = new ExpressionDispatcher([new ScalarHandler, new ConstFetchHandler]);
-        }
-
-        public function resolve(Expr $expr): array
-        {
-            return $this->dispatcher->dispatch($expr, valueResolverTestScope(), $this) ?? ValueResult::unknown();
-        }
-
-        public function spreadAnalysis(string $methodName): ?MethodAnalysis
-        {
-            throw new RuntimeException('spreadAnalysis() must not be called in this case');
-        }
-
-        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
-        {
-            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
-        }
-    };
 }
 
 /**
@@ -122,7 +57,7 @@ it('resolves a scalar constant to its literal type', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'MAX_RETRIES');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverLeafEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBe(['type' => 'number', 'optional' => false]);
 });
@@ -132,10 +67,10 @@ it('resolves self:: and parent:: constants via the scope subject reflection', fu
     $scope = valueResolverTestScope();
 
     $selfResult = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch('self', 'SCHEMA_VERSION'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch('self', 'SCHEMA_VERSION'), $scope,
     );
     $parentResult = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch('parent', 'BASE_VERSION'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch('parent', 'BASE_VERSION'), $scope,
     );
 
     expect($selfResult)->toBe(['type' => 'number', 'optional' => false])
@@ -147,10 +82,10 @@ it('resolves a plain-list constant to an element-union array', function () {
     $scope = valueResolverTestScope();
 
     $agreeing = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch(ChannelDefaults::class, 'CHANNEL_TAGS'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch(ChannelDefaults::class, 'CHANNEL_TAGS'), $scope,
     );
     $disagreeing = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch(ChannelDefaults::class, 'MIXED_TAGS'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch(ChannelDefaults::class, 'MIXED_TAGS'), $scope,
     );
 
     expect($agreeing)->toBe(['type' => 'string[]', 'optional' => false])
@@ -161,7 +96,7 @@ it('resolves a keyed record constant to an inline object, including nested recor
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'DEFAULT_CHANNELS');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverLeafEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBe([
         'type' => '{ in_app: { status_updates: boolean; comments: boolean }; '
@@ -175,10 +110,10 @@ it('propagates an embedded enum case FQCN out of a nested list/record constant',
     $scope = valueResolverTestScope();
 
     $listResult = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch(ChannelDefaults::class, 'STATUS_LIST'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch(ChannelDefaults::class, 'STATUS_LIST'), $scope,
     );
     $recordResult = $resolver->resolveClassConstant(
-        valueResolverClassConstFetch(ChannelDefaults::class, 'STATUS_MAP'), $scope, valueResolverLeafEngine(),
+        valueResolverClassConstFetch(ChannelDefaults::class, 'STATUS_MAP'), $scope,
     );
 
     expect($listResult['embeddedEnumFqcns'] ?? null)->not->toBeNull()
@@ -191,7 +126,7 @@ it('declines an over-element-count constant array without recursing into it', fu
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'OVER_ELEMENT_LIMIT');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverThrowingEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBeNull();
 });
@@ -200,7 +135,7 @@ it('declines an over-depth constant array without recursing into it', function (
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'OVER_DEPTH_LIMIT');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverThrowingEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBeNull();
 });
@@ -213,7 +148,7 @@ it('resolves Foo::class to a plain string, not a decline', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'class');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverThrowingEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBe(['type' => 'string', 'optional' => false]);
 });
@@ -222,7 +157,7 @@ it('declines a bare enum-case fetch, leaving it to resolveEnumFromPropertyArg()'
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(Status::class, 'Draft');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverThrowingEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBeNull();
 });
@@ -231,7 +166,7 @@ it('declines a constant whose lazily-evaluated initializer throws, instead of ab
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'BROKEN');
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope(), valueResolverThrowingEngine());
+    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
 
     expect($result)->toBeNull();
 });
@@ -288,8 +223,15 @@ it('throws for what a constant expression reads that the evaluator cannot', func
 ]);
 
 it('types an evaluated value as a constant, declining a numeric-keyed record a resource re-indexes into a list', function (mixed $value, ?string $type) {
-    expect(new ValueResolver()->resolveConstantValue($value, valueResolverLeafEngine())['type'] ?? null)->toBe($type);
+    expect(new ValueResolver()->resolveConstantValue($value)['type'] ?? null)->toBe($type);
 })->with([
+    'null' => [null, 'null'],
+    'a bool' => [false, 'boolean'],
+    'a float' => [1.5, 'number'],
+    'an empty array' => [[], 'never[]'],
+    'an enum case' => [Status::Draft, 'StatusType'],
+    'a closure, which a resource sends as {} but Inertia calls' => [static fn (): int => 1, null],
+    'an object' => [new stdClass, null],
     'a list' => [[1, 'a'], '(number | string)[]'],
     'int keys that form a list' => [[0 => 'a', 1 => 'b'], 'string[]'],
     'a record with an int key beside a string one' => [['a' => 1, 2], '{ a: number }'],
@@ -299,6 +241,11 @@ it('types an evaluated value as a constant, declining a numeric-keyed record a r
     'an int key beside a float-string one' => [[1 => 'a', '1.5' => 'b'], null],
     'a numeric key beside a word key' => [['1.5' => 1, 'a' => 2], '{ "1.5": number; a: number }'],
 ]);
+
+it('names the enum an evaluated enum case belongs to, for its import', function () {
+    expect(new ValueResolver()->resolveConstantValue(Status::Draft))
+        ->toBe(['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+});
 
 it('types a new default as string only when the class publishes and encodes as one', function (string $class, ?string $type) {
     $new = new New_(new Name($class));

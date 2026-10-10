@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -12,7 +11,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use BackedEnum;
 use DateTimeInterface;
-use PhpParser\BuilderFactory;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
@@ -60,12 +58,12 @@ final class ValueResolver
 
     /**
      * Resolve `SomeClass::CONSTANT` as a value expression. Reads the constant via reflection and
-     * feeds its PHP value back through analyzeConstantValue(), reusing the engine's existing
-     * scalar dispatch for leaves. Returns null for anything not a resolvable plain constant.
+     * feeds its PHP value through analyzeConstantValue(), which types a scalar leaf itself. Returns null for
+     * anything not a resolvable plain constant.
      *
      * @return ValueExpressionResult|null
      */
-    public function resolveClassConstant(ClassConstFetch $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    public function resolveClassConstant(ClassConstFetch $expr, AnalysisScope $scope): ?array
     {
         if (! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
             return null; // @codeCoverageIgnore
@@ -108,7 +106,7 @@ final class ValueResolver
             return null;
         }
 
-        return $this->analyzeConstantValue($value, $engine);
+        return $this->analyzeConstantValue($value);
     }
 
     /**
@@ -136,11 +134,11 @@ final class ValueResolver
      *
      * @return ValueExpressionResult|null
      */
-    public function resolveConstantValue(mixed $value, ExpressionEngine $engine): ?array
+    public function resolveConstantValue(mixed $value): ?array
     {
         return is_array($value) && ResourceReindexing::reindexesAsList($value)
             ? null
-            : $this->analyzeConstantValue($value, $engine);
+            : $this->analyzeConstantValue($value);
     }
 
     /**
@@ -171,15 +169,14 @@ final class ValueResolver
 
     /**
      * Convert a reflected constant's PHP value into a TS type, recursing into arrays. A scalar
-     * reuses the engine's existing dispatch via a synthetic AST node instead of a parallel
-     * value-to-TS mapper; a constant typed as another enum's case resolves to that enum.
+     * leaf maps by its PHP type; a constant typed as another enum's case resolves to that enum.
      *
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantValue(mixed $value, ExpressionEngine $engine): ?array
+    private function analyzeConstantValue(mixed $value): ?array
     {
         if (is_array($value)) {
-            return $this->analyzeConstantArrayValue($value, $engine);
+            return $this->analyzeConstantArrayValue($value);
         }
 
         // A constant's initializer may itself be another class's enum case (`Status::Live`),
@@ -194,13 +191,13 @@ final class ValueResolver
             ];
         }
 
-        // Defensive: a class-constant expression can't construct an arbitrary object (`new` isn't
-        // allowed there), so only an enum instance — handled above — reaches this as non-scalar.
-        if (! is_null($value) && ! is_bool($value) && ! is_int($value) && ! is_float($value) && ! is_string($value)) {
-            return null; // @codeCoverageIgnore
-        }
-
-        return $engine->resolve(new BuilderFactory()->val($value));
+        return match (true) {
+            is_null($value) => ['type' => 'null', 'optional' => false],
+            is_bool($value) => ['type' => 'boolean', 'optional' => false],
+            is_int($value), is_float($value) => ['type' => 'number', 'optional' => false],
+            is_string($value) => ['type' => 'string', 'optional' => false],
+            default => null,
+        };
     }
 
     /**
@@ -211,7 +208,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantArrayValue(array $value, ExpressionEngine $engine): ?array
+    private function analyzeConstantArrayValue(array $value): ?array
     {
         if ($value === []) {
             return ['type' => 'never[]', 'optional' => false];
@@ -222,8 +219,8 @@ final class ValueResolver
         }
 
         return array_is_list($value)
-            ? $this->analyzeConstantListValue($value, $engine)
-            : $this->analyzeConstantRecordValue($value, $engine);
+            ? $this->analyzeConstantListValue($value)
+            : $this->analyzeConstantRecordValue($value);
     }
 
     /**
@@ -238,13 +235,13 @@ final class ValueResolver
      * @param  list<mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantListValue(array $value, ExpressionEngine $engine): ?array
+    private function analyzeConstantListValue(array $value): ?array
     {
         $types = [];
         $embeddedEnumFqcns = [];
 
         foreach ($value as $item) {
-            $itemResult = $this->analyzeConstantValue($item, $engine);
+            $itemResult = $this->analyzeConstantValue($item);
 
             if ($itemResult === null || $itemResult['type'] === 'unknown') {
                 return null;
@@ -280,7 +277,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult
      */
-    private function analyzeConstantRecordValue(array $value, ExpressionEngine $engine): array
+    private function analyzeConstantRecordValue(array $value): array
     {
         $parts = [];
         $embeddedEnumFqcns = [];
@@ -290,7 +287,7 @@ final class ValueResolver
                 continue;
             }
 
-            $itemResult = $this->analyzeConstantValue($item, $engine) ?? ValueResult::unknown();
+            $itemResult = $this->analyzeConstantValue($item) ?? ValueResult::unknown();
             $formattedKey = JsEmitter::validJsObjectKey($key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];

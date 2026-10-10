@@ -36,7 +36,7 @@ final class ClassConstantHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof ClassConstFetch && $expr->class instanceof Name && $expr->name instanceof Identifier) {
-            $constantResult = $this->resolver->resolveClassConstant($expr, $scope, $engine);
+            $constantResult = $this->resolver->resolveClassConstant($expr, $scope);
 
             if ($constantResult !== null) {
                 return $constantResult;

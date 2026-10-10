@@ -438,7 +438,7 @@ final class AnalysisScope
             return $unreadable === null ? $engine->resolve($default) : null;
         }
 
-        return $resolver->resolveConstantValue($value, $engine);
+        return $resolver->resolveConstantValue($value);
     }
 
     /**
