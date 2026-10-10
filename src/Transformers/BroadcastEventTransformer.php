@@ -224,14 +224,18 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);
         $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $targets);
 
-        // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees.
+        $castsInForce = $this->castsInForce($analysis);
+
+        // resolveProperties() lays each cast over its key, and an extends clause adds keys no analysis sees. A method
+        // cast counts too, since CastChannels::fit() settles its key's import channels only after the reconcile.
         resolve(IndexSignatureReconciler::class)->reconcile(
             $analysis,
-            array_intersect_key($this->tsTypeOverrides, array_flip($keys)),
+            array_intersect_key(array_map(fn (array $cast): string => $cast['type'], $castsInForce), array_flip($keys)),
             $this->tsExtends !== [],
+            $this->findable,
         );
 
-        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis));
+        resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $this->properties = $this->resolveProperties($analysis);
         $this->analysisCustomImports = $analysis->customImports;

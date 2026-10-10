@@ -328,6 +328,7 @@ class ResourceTransformer extends CoreTransformer
             $analysis,
             array_map(fn (array $cast): string => $cast['type'], $this->castsInForce),
             $this->tsExtends !== [],
+            $this->findable,
         );
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;

@@ -136,20 +136,22 @@ test('a variable the walk cannot read is skipped, so the literal branch keeps it
     expect(returnedVariableMembers(ReturnedOpaqueVariableResource::class))->toBe('id: number; name: string');
 });
 
-test('a base read as nothing never turns a literal\'s keys optional', function (string $class) {
-    expect(returnedVariableMembers($class))->toBe('id: number');
+test('a base read as nothing never turns a literal\'s keys optional, and adds the variable\'s own keys optional', function (string $class) {
+    expect(returnedVariableMembers($class))->toBe('id: number; x?: number');
 })->with([
     'parent::toArray() with no model' => [ReturnedUnmodeledParentResource::class],
     'only() with no model' => [ReturnedUnmodeledOnlyResource::class],
 ]);
 
-test('a base not read completely never turns a literal\'s keys optional', function (string $class) {
-    expect(returnedVariableMembers($class))->toBe('id: number; name: string');
+test('a base not read completely never turns a literal\'s keys optional, and adds the variable\'s own keys optional', function (string $class, string $members) {
+    expect(returnedVariableMembers($class))->toBe($members);
 })->with([
-    'a helper returning the model\'s toArray()' => [ReturnedOpaqueHelperResource::class],
-    'a helper building on the model\'s toArray()' => [ReturnedPartialHelperResource::class],
-    'a parent whose own toArray() it cannot read' => [ReturnedOpaqueParentChildResource::class],
-    'a helper whose own variable the gate rejects' => [ReturnedRejectedHelperResource::class],
+    'a helper returning the model\'s toArray()' => [ReturnedOpaqueHelperResource::class, 'id: number; name: string; extra?: boolean'],
+    'a helper building on the model\'s toArray()' => [
+        ReturnedPartialHelperResource::class, 'id: number; name: string; kind?: string; extra?: boolean',
+    ],
+    'a parent whose own toArray() it cannot read' => [ReturnedOpaqueParentChildResource::class, 'id: number; name: string; extra?: boolean'],
+    'a helper whose own variable the gate rejects' => [ReturnedRejectedHelperResource::class, 'id: number; name: string; extra?: boolean'],
 ]);
 
 test('a helper base read completely still makes the variable a branch', function (string $class) {
@@ -170,9 +172,12 @@ test('a variable with a write the walk does not read never turns a literal\'s ke
     'a dynamic key' => [ReturnedDynamicKeyResource::class],
     'an appended key' => [ReturnedPushedKeyResource::class],
     'a nested key' => [ReturnedNestedKeyResource::class],
-    'an unset() key' => [ReturnedUnsetKeyResource::class],
     'a ??= of a key it does not hold' => [ReturnedCoalesceKeyResource::class],
 ]);
+
+test('a variable with an unset() key keeps the literal\'s keys required, and adds a key only it sets optional', function () {
+    expect(returnedVariableMembers(ReturnedUnsetKeyResource::class))->toBe('id: number; name: string; slug?: string');
+});
 
 test('a variable with a write the walk cannot name still publishes what the walk reads when returned alone', function () {
     expect(returnedVariableMembers(ReturnedDynamicKeyAloneResource::class))->toBe('id: number');
@@ -202,12 +207,12 @@ test('a skipped variable beside a return the sweep does not take leaves the firs
 ]);
 
 test('a skipped variable beside one read completely leaves that one its required keys', function () {
-    expect(returnedVariableMembers(ReturnedOpaqueBesideReadableResource::class))->toBe('id: number; name: string; y: number');
+    expect(returnedVariableMembers(ReturnedOpaqueBesideReadableResource::class))->toBe('id: number; name: string; y: number; x?: number');
 });
 
 test('a return a parent\'s sweep skips makes a child variable built on it skip, and leaves the parent\'s own shape', function (string $parent, string $parentShape, string $child) {
     expect(returnedVariableMembers($parent))->toBe($parentShape)
-        ->and(returnedVariableMembers($child))->toBe('id: number; name: string');
+        ->and(returnedVariableMembers($child))->toBe('id: number; name: string; extra?: boolean');
 })->with([
     'a return beside its literal' => [
         ReturnedSkippingParentResource::class, 'id: number', ReturnedSkippingParentChildResource::class,
@@ -218,7 +223,7 @@ test('a return a parent\'s sweep skips makes a child variable built on it skip, 
 ]);
 
 test('a parent delegating to no model makes a child variable built on it skip', function () {
-    expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string');
+    expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string; extra?: boolean');
 });
 
 // At a JsonResource, parent::with() is `[]` and parent::jsonSerialize() is the subject's toArray(), never the model.

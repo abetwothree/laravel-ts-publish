@@ -87,7 +87,7 @@ final class ThisPropertyHandler implements ExpressionHandler
             $result = $engine->resolve($item->value);
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
-                $analysis->addProperty($keyName, ValueResult::asIndexSignatureValue($result));
+                $analysis->addSignatureEntry($keyName, $result);
 
                 continue;
             }

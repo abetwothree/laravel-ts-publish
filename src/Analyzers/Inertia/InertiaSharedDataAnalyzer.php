@@ -129,8 +129,11 @@ class InertiaSharedDataAnalyzer
         );
 
         // The overrides are laid over the props below, so they can add or retype a key a signature covers.
-        resolve(IndexSignatureReconciler::class)
-            ->reconcile($analysis, array_map(fn (array $override): string => $override['type'], $mergedOverrides));
+        resolve(IndexSignatureReconciler::class)->reconcile(
+            $analysis,
+            array_map(fn (array $override): string => $override['type'], $mergedOverrides),
+            subject: $middlewareClass,
+        );
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
 

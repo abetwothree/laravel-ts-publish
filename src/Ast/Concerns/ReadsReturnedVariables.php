@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -223,9 +222,8 @@ trait ReadsReturnedVariables
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
 
-                // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
-                    $into->addProperty($keyName, ValueResult::asIndexSignatureValue($result));
+                    $into->addSignatureEntry($keyName, $result);
 
                     continue;
                 }
@@ -364,6 +362,20 @@ trait ReadsReturnedVariables
      */
     private function variableBranch(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
+        $read = $this->readVariable($stmts, $varName, $topLevel);
+
+        return $read !== null && $read[1] ? $read[0] : null;
+    }
+
+    /**
+     * A returned variable's walk and whether it read the variable completely, or null when the gate rejects a whole
+     * write: a walk that counts a lenient read still saw the keys it publishes.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return array{TAnalysis, bool}|null
+     */
+    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?array
+    {
         if (! $this->readsVariableArray($stmts, $varName)) {
             return null;
         }
@@ -371,7 +383,7 @@ trait ReadsReturnedVariables
         $lenientReads = $this->lenientReads;
         $analysis = $this->walkVariable($stmts, $varName, $topLevel);
 
-        return $this->lenientReads === $lenientReads ? $analysis : null;
+        return [$analysis, $this->lenientReads === $lenientReads];
     }
 
     /**
@@ -440,10 +452,19 @@ trait ReadsReturnedVariables
         $properties = $into->properties;
         $names = array_column($properties, 'name');
         $written = [];
+        $positions = [];
 
-        // A key the write itself repeats is one key with its last value, as the same literal returned would publish.
+        // A named key the write itself repeats is one key with its last value, as the same literal returned would
+        // publish; each signature entry is one more runtime key, kept as addSignatureEntry() keeps one.
         foreach ($write->properties as $prop) {
-            $written[$prop['name']] = $prop;
+            if (! JsEmitter::isIndexSignatureKey($prop['name']) && isset($positions[$prop['name']])) {
+                $written[$positions[$prop['name']]] = $prop;
+
+                continue;
+            }
+
+            $positions[$prop['name']] = count($written);
+            $written[] = $prop;
         }
 
         foreach ($written as $prop) {

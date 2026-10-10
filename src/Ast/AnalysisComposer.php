@@ -66,7 +66,10 @@ final class AnalysisComposer
     {
         $this->namespacePath = $fromNamespacePath;
 
-        // No publisher lays another cast over this one, so a method's own cast is the one in force.
+        // No publisher lays another cast over this one, so a method's own cast is the one in force; its key counts with
+        // the cast's text, as each publisher's reconcile counts it, before fit() settles its import channels.
+        resolve(IndexSignatureReconciler::class)
+            ->reconcile($analysis, array_map(fn (array $cast): string => $cast['type'], $analysis->casts));
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
         $this->collectProperties($analysis);
         $this->collectNameMaps($analysis);

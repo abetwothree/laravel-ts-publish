@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EnumThenStringSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedNotesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedAddressResource;
@@ -111,6 +113,21 @@ describe('a runtime key a signature covers reaches the reconcile wherever it is 
             ->and(array_column($analysis->properties, 'name'))->toBe(['[key: `${string}_note`]', 'main']);
     });
 
+    test('a signature whose first entry reads an enum and a later one a string imports no enum it does not spell', function () {
+        $transformer = new ResourceTransformer(EnumThenStringSignatureResource::class);
+        $type = $transformer->properties['[key: `${string}_state`]']['type'];
+        $imports = implode(' ', array_merge(...array_values($transformer->typeImports)));
+
+        foreach (['StatusType', 'Status'] as $name) {
+            expect(str_contains($imports, $name))->toBe(str_contains($type, $name));
+        }
+    });
+
+    test('a whole-array write keeps every signature entry it holds apart, for a later reconcile to join', function () {
+        expect(signatureShape(MergedValueReadsResource::class, 'wholeWriteNotes'))
+            ->toBe(['[key: `${string}_note`]' => 'string | number | undefined', 'main_note' => 'number']);
+    });
+
     test('a collection merging its own resource merges no model keys', function () {
         expect(signatureShape(MergedResourceCollection::class, 'toArray'))->toBe(['meta' => 'number']);
     });
@@ -153,12 +170,17 @@ describe('a merge closure\'s unread return leaves an enclosing returned variable
     });
 
     test('a return the analysis cannot read skips the variable, so the literal keeps its keys required', function (string $method) {
-        expect(signatureShape(MergedValueReadsResource::class, $method))->toBe(['id' => 'number', 'extra_a' => 'number']);
+        expect(signatureShape(MergedValueReadsResource::class, $method))->toMatchArray(['id' => 'number', 'extra_a' => 'number']);
     })->with([
         'a closure returning a static call' => ['unreadClosure'],
         'a closure returning a variable the gate rejects' => ['unreadVariable'],
         'a static call passed as it is' => ['unreadValue'],
     ]);
+
+    test('a key only the skipped variable sets still publishes, optional, beside the keys the read branches agree on', function () {
+        expect(signatureShape(MergedValueReadsResource::class, 'unreadValue'))
+            ->toBe(['id' => 'number', 'extra_a' => 'number', 'title' => '?string']);
+    });
 });
 
 describe('a docblock fill a reconcile put back survives for a later one', function () {
@@ -203,6 +225,26 @@ describe('a docblock fill a reconcile put back survives for a later one', functi
 
         expect($merged->properties[0])->toMatchArray(['fillType' => 'string | undefined | number'])
             ->and($plain->properties[0])->not->toHaveKey('fillType');
+    });
+
+    test('a signature whose value names a model no generated file exports is still filled as a signature', function () {
+        PublishedModelRegistry::register([Post::class]);
+        $signature = fn (string $method): mixed => collect(new ResourceAstAnalyzer(new ReflectionClass(IndexSignatureConflictResource::class), Post::class, $method)->analyze()->properties)
+            ->firstWhere('name', '[key: `${string}_tag`]');
+
+        expect($signature('userTags'))->toMatchArray(['type' => 'string | undefined', 'fillType' => 'string | undefined'])
+            ->and($signature('declinedUserTags'))->toMatchArray(['type' => 'unknown | undefined', 'fillType' => 'string | undefined']);
+    });
+
+    test('a spread helper\'s fill stands over the analyzed method\'s own docblock', function () {
+        expect(signatureShape(IndexSignatureConflictResource::class, 'docblockOverHelperFill'))
+            ->toMatchArray(['[key: `${string}_tag`]' => 'string | number | undefined', 'main_tag' => 'number']);
+    });
+
+    test('a signature entry written without a cast clears the cast an earlier entry of its name brought', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(IndexSignatureConflictResource::class), Post::class, 'entryAfterCastSignature')->analyze();
+
+        expect($analysis->casts)->not->toHaveKey('[key: `${string}_tag`]');
     });
 
     it('replaces a matched key\'s earlier arm when a method cast retypes it', function () {

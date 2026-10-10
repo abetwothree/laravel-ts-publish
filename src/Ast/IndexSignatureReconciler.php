@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 
 /**
@@ -28,9 +29,15 @@ final class IndexSignatureReconciler
      * @param  array<string, string>  $castKeys  keys a publisher lays over the analysis, by type: each is read in
      *                                           place of the analysis's own type, and its channels are not checked
      * @param  bool  $inheritsUnseenKeys  the published type also extends an interface whose keys no analysis sees
+     * @param  string  $subject  the class or action a warning names, given only where this reconcile is the last one;
+     *                           a matched key that keeps a signature from its union then warns
      */
-    public function reconcile(MethodAnalysis $analysis, array $castKeys = [], bool $inheritsUnseenKeys = false): void
-    {
+    public function reconcile(
+        MethodAnalysis $analysis,
+        array $castKeys = [],
+        bool $inheritsUnseenKeys = false,
+        string $subject = '',
+    ): void {
         $signatures = [];
         $published = [];
 
@@ -96,6 +103,10 @@ final class IndexSignatureReconciler
             }
 
             $arms = $overlaps ? null : $this->unionArms($analysis, $keys, $types, $castKeys);
+
+            if ($arms === null && ! $overlaps && $subject !== '') {
+                $this->warnUnjoinableKeys($analysis, $name, $keys, $types, $castKeys, $subject);
+            }
 
             if ($arms === null) {
                 $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
@@ -181,6 +192,41 @@ final class IndexSignatureReconciler
         }
 
         return $arms;
+    }
+
+    /**
+     * Warn about each matched named key that alone keeps the signature from its union, once the signature's own
+     * entries could join: TypeScript then checks the key against the value the signature keeps (TS2411).
+     *
+     * @param  non-empty-list<string>  $keys  the signature's name, then the named keys its pattern matches
+     * @param  list<string>  $types  each of the signature's entries' own values, then each matched key's type
+     * @param  array<string, string>  $castKeys
+     */
+    private function warnUnjoinableKeys(
+        MethodAnalysis $analysis,
+        string $name,
+        array $keys,
+        array $types,
+        array $castKeys,
+        string $subject,
+    ): void {
+        $matched = array_slice($keys, 1);
+        $own = array_slice($types, 0, count($types) - count($matched));
+
+        if ($this->unionArms($analysis, [$name], $own, $castKeys) === null) {
+            return;
+        }
+
+        foreach ($matched as $position => $key) {
+            if ($this->unionArms($analysis, [$key], [$types[count($own) + $position]], $castKeys) === null) {
+                AnalysisWarnings::addOnce($subject, sprintf(
+                    'The key "%s" cannot share the index signature "%s" it matches, so the signature keeps its own '
+                        .'value; type the key, or rename it out of the pattern.',
+                    $key,
+                    $name,
+                ));
+            }
+        }
     }
 
     /** Whether a `'` or `"` in the type is followed by a backslash before the next quote of its kind. */

@@ -377,7 +377,7 @@ class InertiaPageAnalyzer
             }
 
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
-            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts);
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
 
             $this->forgetOverriddenChannels($analysis, $casts);
 

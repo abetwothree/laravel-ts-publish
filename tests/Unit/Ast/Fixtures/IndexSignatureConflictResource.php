@@ -125,6 +125,51 @@ final class IndexSignatureConflictResource extends JsonResource
         return ['main_tag' => 5];
     }
 
+    /**
+     * `_tag` keys whose values name the signed-in user, a model no generated file may export; the docblock types them.
+     *
+     * @return array<string, string>
+     */
+    public function userTags(): array
+    {
+        $data = [];
+
+        foreach (['east', 'west'] as $name) {
+            $data["{$name}_tag"] = auth()->user();
+        }
+
+        return $data;
+    }
+
+    /** The user-valued `_tag` signature beside a `_tag` key nothing types. */
+    public function declinedUserTags(): array
+    {
+        return [...$this->userTags(), ...$this->opaqueTag()];
+    }
+
+    /**
+     * This method's own docblock over the signature a spread helper filled and the literal put back.
+     *
+     * @return array<string, int>
+     */
+    public function docblockOverHelperFill(): array
+    {
+        return [...$this->docTags(), ...$this->opaqueTag()];
+    }
+
+    /** A literal `_tag` entry after a spread whose own `#[TsCasts]` cast the signature. */
+    public function entryAfterCastSignature(): array
+    {
+        return [...$this->castSignatureTags(), "{$this->id}_tag" => 5];
+    }
+
+    /** The body-typed `_tag` signature, cast by this method's own `#[TsCasts]`. */
+    #[TsCasts(['[key: `${string}_tag`]' => 'string'])]
+    public function castSignatureTags(): array
+    {
+        return [...$this->literalTags()];
+    }
+
     /** Body-typed `_tag` keys. */
     public function literalTags(): array
     {

@@ -53,8 +53,9 @@ every profile, the order handlers run in decides which one answers; see
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
-  branch, as a lone variable is. Otherwise, with no branch read completely holding a key, the sweep declines and the
-  first `return` is read; any other return is skipped.
+  branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key no read
+  branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first `return` is
+  read; any other return is skipped.
 - **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
@@ -568,13 +569,13 @@ beside a signature are all known:
 
 - **In the analyzer**: at the end of `analyzeReturnArray()`, and again after the refiner and `#[TsCasts]` in
   `analyze()` and `analyzeThisMethodSpread()`.
-- **In each publisher, over the keys its casts lay over the analysis**: `ResourceTransformer::runAstAnalysis()` and
-  `BroadcastEventTransformer::transformProperties()` also pass whether the interface has an extends clause, from
-  `#[TsExtends]` or a `ts_extends.*` config entry. `InertiaPageAnalyzer::buildPageData()` and
-  `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
-  must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
-  reconcile, `ResourceTransformer` and `BroadcastEventTransformer` fit them to the cast's text through
-  `CastChannels::fit()`, and both Inertia analyzers drop them; see
+- **In each publisher, over every cast in force**, method casts included: `ResourceTransformer::runAstAnalysis()`,
+  `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
+  `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
+  transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
+  entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's FQCN
+  channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
+  fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
@@ -591,6 +592,10 @@ Each signature then gets one outcome:
   those values can join. The fill stays in `fillType`, and the next reconcile re-arms it before it decides.
 - **Left alone**: a signature with no other entry, no matching key and no overlapping pattern, unless the interface
   has an extends clause.
+
+A publisher passes its subject, so a matched named key that alone keeps the union out, beside entries that could
+join, warns once: TypeScript checks that key against the value the signature keeps (TS2411). The analyzer passes
+none, since a later write or cast may still make the key joinable.
 
 A key cannot join a union when any of these holds:
 

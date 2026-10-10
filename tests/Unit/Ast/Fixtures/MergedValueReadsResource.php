@@ -71,6 +71,15 @@ final class MergedValueReadsResource extends JsonResource
         return $data;
     }
 
+    /** A whole-array write whose two `_note` entries stay apart beside an untyped `main_note`, later replaced. */
+    public function wholeWriteNotes(): array
+    {
+        $data = [...$this->colorNotes(), ...$this->countNotes(), 'main_note' => $this->opaque()];
+        $data['main_note'] = 5;
+
+        return $data;
+    }
+
     /** The issue's shape: the pinned branch is a literal, the other merges the model behind a condition. */
     public function pinnedModel(): array
     {
@@ -123,14 +132,14 @@ final class MergedValueReadsResource extends JsonResource
         return $data;
     }
 
-    /** A static call passed as it is. */
+    /** A static call passed as it is, beside a `title` only this branch sets. */
     public function unreadValue(): array
     {
         if ($this->is_pinned) {
             return ['id' => $this->id, 'extra_a' => 2];
         }
 
-        $data = ['id' => $this->id, $this->merge(MergedFields::all())];
+        $data = ['id' => $this->id, 'title' => $this->title, $this->merge(MergedFields::all())];
 
         return $data;
     }
@@ -139,6 +148,22 @@ final class MergedValueReadsResource extends JsonResource
     public function extras(): array
     {
         return ['extra_a' => 1, 'extra_b' => 'x'];
+    }
+
+    /**
+     * `_note` keys only the docblock types.
+     *
+     * @return array<string, int>
+     */
+    public function countNotes(): array
+    {
+        $data = [];
+
+        foreach (['north', 'south'] as $name) {
+            $data["{$name}_note"] = $this->opaque();
+        }
+
+        return $data;
     }
 
     /** `_note` keys the body types. */
@@ -151,5 +176,11 @@ final class MergedValueReadsResource extends JsonResource
         }
 
         return $data;
+    }
+
+    /** Deliberately untyped. */
+    protected function opaque()
+    {
+        return $this->resource->getAttribute('title');
     }
 }

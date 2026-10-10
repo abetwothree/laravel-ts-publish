@@ -263,8 +263,8 @@ could conflict with a neighboring key, and under any extends clause, including o
 key the pattern matches cannot take it, such as `main_tag: PostResource` beside
 ``[key: `${string}_tag`]: string | undefined``, and TS2413 when the pattern sits inside another signature's that
 rejects its value. Where the union is declined, by this reconcile or a later one, and the entries' body values cannot
-join, the signature publishes the last entry's value alone. Type the key, or rename it out of the pattern. The rules
-are under
+join, the signature publishes the last entry's value alone. A publisher warns about each matched key that keeps the
+union out; type the key, or rename it out of the pattern. The rules are under
 [Index signatures](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them).
 
 ### `Model::toArray()` on a receiver declines, deliberately

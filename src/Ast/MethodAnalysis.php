@@ -104,6 +104,12 @@ class MethodAnalysis
         // A class no generated file exports would be a token with no import behind it.
         if (! ValueResult::namesOnlyExportedClasses($result)) {
             $result = [...ValueResult::unknown(), 'optional' => $result['optional']];
+
+            // A signature's untyped value stays `unknown | undefined`, the floor the refiner fills and the reconcile
+            // puts back.
+            if (JsEmitter::isIndexSignatureKey($name)) {
+                $result = ValueResult::asIndexSignatureValue($result);
+            }
         }
 
         $this->properties[] = [
@@ -139,6 +145,18 @@ class MethodAnalysis
         }
 
         $this->carry($result['carriedFqcns'] ?? []);
+    }
+
+    /**
+     * Record one more runtime key a signature covers: it replaces no earlier entry, is never optional, and its value
+     * admits `undefined`. It brings no cast, so, as merge() does, the name's earlier cast no longer describes it.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function addSignatureEntry(string $name, array $result): void
+    {
+        unset($this->casts[$name]);
+        $this->addProperty($name, ValueResult::asIndexSignatureValue($result));
     }
 
     /**

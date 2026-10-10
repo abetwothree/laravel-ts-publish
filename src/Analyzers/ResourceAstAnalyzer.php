@@ -582,9 +582,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $result = $this->analyzeValueExpression($item->value);
 
-            // A key a signature covers is one more runtime key, so it replaces no earlier entry.
             if (JsEmitter::isIndexSignatureKey($keyName)) {
-                $analysis->addProperty($keyName, ValueResult::asIndexSignatureValue($result));
+                $analysis->addSignatureEntry($keyName, $result);
 
                 continue;
             }
@@ -1183,11 +1182,18 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // never turn a sibling's optional.
         /** @var array<string, ResourceAnalysis|null> $variables */
         $variables = [];
+        /** @var array<string, ResourceAnalysis> $partlyRead */
+        $partlyRead = [];
 
         foreach ($candidates as $return) {
             if ($return->expr instanceof Variable && is_string($return->expr->name)
                 && ! array_key_exists($return->expr->name, $variables)) {
-                $variables[$return->expr->name] = $this->variableBranch($stmts, $return->expr->name);
+                $read = $this->readVariable($stmts, $return->expr->name);
+                $variables[$return->expr->name] = $read !== null && $read[1] ? $read[0] : null;
+
+                if ($read !== null && ! $read[1]) {
+                    $partlyRead[$return->expr->name] = $read[0];
+                }
             }
         }
 
@@ -1255,7 +1261,30 @@ class ResourceAstAnalyzer implements ExpressionEngine
             default => $this->analyzeReturnArray($branch),
         }, $branches);
 
-        return count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+        $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+
+        // A variable skipped only for a lenient read still returns on its path: a key no read branch sets may be there.
+        foreach ($partlyRead as $name => $branch) {
+            if ($variables[$name] === null) {
+                $this->addKeysOnlySkippedBranchSets($merged, $branch);
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Add each key only a skipped branch sets, optional; a key the read branches set keeps their type and presence.
+     */
+    private function addKeysOnlySkippedBranchSets(ResourceAnalysis $merged, ResourceAnalysis $skipped): void
+    {
+        $skipped->dropKeysHeldBy($merged);
+
+        foreach ($skipped->properties as $index => $property) {
+            $skipped->properties[$index]['optional'] = ! JsEmitter::isIndexSignatureKey($property['name']);
+        }
+
+        $merged->merge($skipped);
     }
 
     /**
