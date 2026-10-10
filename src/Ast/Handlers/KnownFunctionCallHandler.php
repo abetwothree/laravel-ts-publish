@@ -17,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Config\Repository;
@@ -301,13 +300,26 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     /**
      * Resolve `collect($items)` as the list or object its items encode as.
      *
-     * None or null is `never[]`, a constant array is typed as a parameter default is unless its numeric keys are no
-     * list, and an expression typed as a list or an object shape keeps that type. A literal holding a `when*()` value
-     * declines: Laravel's filter never recurses into a Collection, so the value encodes as `{}`.
+     * None or null is `never[]`, a constant array is typed as a parameter default is, and an expression typed as a list
+     * or an object shape keeps that type. A literal holding a `when*()` value declines: Laravel's filter never recurses
+     * into a Collection, so the value encodes as `{}`.
      *
      * @return ValueExpressionResult|null
      */
     private function collectRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->collectedItemsResult($args, $scope, $engine);
+
+        // The value is a Collection, whose keys json_encode() writes as they are, so a resource's re-index skips it.
+        return $result === null ? null : [...$result, 'keepsKeys' => true];
+    }
+
+    /**
+     * The list or object `collect($items)` encodes as, before it is marked as a Collection's.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function collectedItemsResult(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $items = $args->named('value')?->value;
 
@@ -320,11 +332,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         try {
             $value = $resolver->evaluateConstantExpression($items, $scope);
 
-            // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes. A Collection keeps
-            // its keys, but a resource's re-index of its published types could not tell such a shape from an array's.
+            // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes.
             return match (true) {
                 $value === null => ['type' => 'never[]', 'optional' => false],
-                is_array($value) && ResourceReindexing::reindexesAsList($value) => null,
                 is_array($value) => $resolver->resolveConstantValue($value),
                 default => null,
             };
@@ -341,12 +351,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        // A resource's filter never enters a Collection, so its keys reach JSON as written.
-        return match (true) {
-            str_ends_with($result['type'], '[]') => [...$result, 'optional' => false],
-            str_starts_with($result['type'], '{') => [...$result, 'optional' => false, 'keepsKeys' => true],
-            default => null,
-        };
+        return str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{')
+            ? [...$result, 'optional' => false]
+            : null;
     }
 
     /**

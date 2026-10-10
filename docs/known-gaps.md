@@ -444,19 +444,12 @@ helper method the action calls, are read as that method's own values, so a first
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
 
-### `collect()` of a constant array whose numeric keys are no list publishes `unknown`
-
-`collect([200 => 'OK', 404 => 'Not Found'])` publishes `unknown`, though a `Collection` keeps its keys and sends
-`{"200":"OK","404":"Not Found"}`. An API resource [re-indexes](./components/resource-ast-analyzer.md#numeric-keys) the
-published types it reads, and a type cannot say whether a `Collection` or an array spelled it. Type the key with
-`#[TsCasts]`.
-
 ### Inside an API resource, a `Collection` nested in an array, or the arrays one holds, publish as lists
 
 An API resource re-indexes only the arrays it reaches, so a key's own `collect()` value keeps its numeric keys, but
 `['inner' => collect(['6' => $this->title])]` publishes `{ inner: string[] }`. The arrays a `Collection` holds list the
-same way: `->map(fn () => ['1' => …])` and `collect([['1' => …]])` publish `string[][]`, though Laravel sends
-`{ "1": string }[]`. Type the key with `#[TsCasts]`.
+same way: `->map(fn () => ['1' => …])` publishes `string[][]`, though Laravel sends `{ "1": string }[]`. Type the key
+with `#[TsCasts]`.
 
 ### A collection that does not preserve keys lists the arrays of an element that does
 

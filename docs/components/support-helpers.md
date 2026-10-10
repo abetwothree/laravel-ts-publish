@@ -20,7 +20,7 @@ The helpers and the test that pins them live in these files:
   for aliasing. No facade, and `@internal` like `StringSerialization`.
 - [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
   re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
-  resource publisher, `KnownFunctionCallHandler`'s `collect()` rule and the enum-value warning.
+  resource publisher and the enum-value warning.
 - [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
   `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
   payload. Static and `@internal`.

@@ -693,6 +693,12 @@ test('a top-level int key of a payload publishes on the key Laravel renumbers it
         ]]);
 });
 
+test('a collection keyed by numbers keeps its keys in a payload', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => NumericPayloadKeyBroadcastEvent::class])->properties;
+
+    expect($properties['statuses'])->toBe(['type' => '{ "200": string; "404": string }', 'optional' => false]);
+});
+
 // No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
 it('lets a cast an event transformer subclass injects under another spelling of a signature retype it', function () {
     $properties = app(InjectedSignatureCastEventTransformer::class, ['findable' => UncastEscapedKeyBroadcastEvent::class])->properties;

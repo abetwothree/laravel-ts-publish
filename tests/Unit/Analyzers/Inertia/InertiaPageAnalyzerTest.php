@@ -564,6 +564,11 @@ test('a top-level int key of a page publishes on the key Laravel renumbers it to
         ]]);
 });
 
+test('a collection keyed by numbers keeps its keys in a page prop', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@collectedCodes')['pageType'])
+        ->toBe('Inertia.SharedData & { codes: { "200": string; "404": string } }');
+});
+
 test('an int key a page cast adds renumbers after the props\' own', function () {
     expect(pageData(ControllerWithCastKeyEdges::class.'@numericCastAdded')['pageType'])
         ->toBe('Inertia.SharedData & { heading: string, "0": boolean, "1": string }')
