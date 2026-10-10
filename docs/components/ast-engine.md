@@ -192,7 +192,8 @@ These rules settle the cases the table leaves open:
 - **An unpassed parameter holds its default**: every conditional and merge writer calls
   `AnalysisScope::bindUnpassedParameters()`, which binds an optional one to its default's type, evaluated as PHP does,
   so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
-  `never[]`, and leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
+  `never[]`, a static closure or first-class callable default to `Record<string, never>`, the `{}` Laravel sends, and
+  leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
   `whenNotNull()` or `whenNull()` value closure's, stay unbound.
 - **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and a
   `morphTo` `whenLoaded()` binds the list of its targets, its element never `null`. The map writers skip one, since

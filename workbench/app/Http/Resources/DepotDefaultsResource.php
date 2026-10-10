@@ -37,6 +37,7 @@ final class DepotDefaultsResource extends JsonResource
             'limits' => $this->limits,
             'tags' => $this->tags,
             'notes' => $this->notes,
+            'stage_name' => $this->when($request->has('stage'), fn ($stage = Status::Draft) => $stage->name),
         ];
     }
 }

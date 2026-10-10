@@ -3446,6 +3446,7 @@ it('types the resource\'s own untyped properties from their defaults, over a sam
         'limits' => '{ daily: number; codes: string[] }',
         'tags' => '(string | number)[]',
         'notes' => 'never[]',
+        'stage_name' => 'string',
     ])
         ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusType \\} from '[^']+';$/m");
 });

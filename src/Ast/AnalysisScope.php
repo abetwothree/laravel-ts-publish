@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -18,7 +19,9 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
@@ -421,6 +424,13 @@ final class AnalysisScope
             // A magic constant's value depends on where it appears, so only a bare one binds, and only by its type.
             if ($default instanceof MagicConst) {
                 return ['type' => $default instanceof Line ? 'number' : 'string', 'optional' => false];
+            }
+
+            // PHP 8.5 allows a static closure or a first-class callable here; json_encode() writes the Closure as `{}`.
+            if (($default instanceof Closure && $default->static)
+                || (($default instanceof FuncCall || $default instanceof StaticCall) && $default->isFirstClassCallable())
+            ) {
+                return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
             }
 
             $newDefault = $default instanceof New_ ? $resolver->resolveSerializedNew($default) : null;

@@ -831,8 +831,14 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', '{ "1.5": unknown }'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
-    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
-    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
+    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'Record<string, never>'],
+    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'Record<string, never>'],
+    'when(), a static method first-class callable' => ['$this->when($this->title, fn ($t = \\Workbench\\App\\Enums\\Status::from(...)) => $t)', 'Record<string, never>'],
+    'transform() callback, a later first-class callable' => ['$this->transform($this->title, fn ($t, $u = strlen(...)) => $u)', 'Record<string, never>'],
+    'when(), a closure that is not static, which PHP rejects' => ['$this->when($this->title, fn ($t = function () { return 1; }) => $t)', 'unknown'],
+    'when(), an arrow function, which PHP rejects' => ['$this->when($this->title, fn ($t = static fn () => 1) => $t)', 'unknown'],
+    'when(), a method first-class callable, which PHP rejects' => ['$this->when($this->title, fn ($t = $this->getKey(...)) => $t)', 'unknown'],
+    'when(), a list holding a first-class callable' => ['$this->when($this->title, fn ($t = [strlen(...)]) => $t)', 'unknown'],
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
     'when(), a Collection, which json_encode() writes as its items' => ['$this->when($this->rating, 1, fn ($d = new \\Illuminate\\Support\\Collection(["z"])) => $d)', 'number | string[]'],
     'when(), a Collection holding a closure' => ['$this->when($this->title, fn ($t = new \\Illuminate\\Support\\Collection([static function () { return 1; }])) => $t)', 'unknown'],
@@ -871,6 +877,10 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     '__PROPERTY__' => ['__PROPERTY__', 'string'],
     '__LINE__' => ['__LINE__', 'number'],
     'PHP_EOL' => ['PHP_EOL', 'string'],
+    'PHP_INT_MAX, an int on every host' => ['PHP_INT_MAX', 'number'],
+    'E_ALL, an int on every host' => ['E_ALL', 'number'],
+    'M_PI, a float on every host' => ['M_PI', 'number'],
+    'a class constant' => ['\\Workbench\\App\\Models\\Release::CHANNEL_STABLE', 'number'],
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
     'a global constant and an enum ->value in a list' => ['[PHP_INT_MAX, \\Workbench\\App\\Enums\\Status::Published->value]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
@@ -880,6 +890,22 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     '__TRAIT__ as a key, whose value depends on where it appears' => ['[__TRAIT__ => 1]', 'unknown'],
     '__FILE__ as a key' => ['[__FILE__ => 1]', 'unknown'],
     'a comparison on __TRAIT__, which never folds' => ['__TRAIT__ === "" ? 1 : "a"', 'number | string'],
+]);
+
+// A constant the publishing process never defines, such as one a request defines at runtime, has no value to type.
+it('binds nothing for a default naming a constant the publishing process never defines', function () {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = DEFINED_ONLY_AT_RUNTIME) => $t)')['type'])
+        ->toBe('unknown');
+});
+
+// A default holds one case of its enum, so the enum's members type a read through the parameter.
+it('reads a parameter bound to an enum case default as that enum', function (string $read, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
+        ->toBe($type);
+})->with([
+    '->value' => ['->value', 'number'],
+    '->name' => ['->name', 'string'],
+    'a method' => ['->icon()', 'string'],
 ]);
 
 // A later key must see the outer binding again once a default closure has bound the same name and returned.

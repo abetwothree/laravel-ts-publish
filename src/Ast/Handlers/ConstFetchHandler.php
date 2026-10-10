@@ -7,11 +7,13 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 
 /**
- * Bare `null`/`true`/`false` constant fetches.
+ * Global constant fetches, typed by the value the publishing process holds for the constant.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -28,19 +30,12 @@ final class ConstFetchHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if ($expr instanceof ConstFetch) {
-            $constName = $expr->name->toLowerString();
+        $resolver = new ValueResolver;
 
-            if ($constName === 'null') {
-                return ['type' => 'null', 'optional' => false];
-            }
-
-            if (in_array($constName, ['true', 'false'], true)) {
-                return ['type' => 'boolean', 'optional' => false];
-            }
+        try {
+            return $resolver->resolveConstantValue($resolver->evaluateConstantExpression($expr, $scope));
+        } catch (ConstExprEvaluationException) {
+            return null;
         }
-
-        // A user-defined constant name — the legacy chain never resolved these either.
-        return null;
     }
 }

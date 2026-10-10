@@ -272,14 +272,19 @@ it('resolves true/false constant fetches to boolean', function () {
         ->toBe(['type' => 'boolean', 'optional' => false]);
 });
 
-it('declines a user-defined constant fetch', function () {
-    $handler = new ConstFetchHandler;
-    $expr = new ConstFetch(new Name('PHP_EOL'));
+it('types a global constant fetch by its value\'s type, as a parameter default does', function (string $name, ?string $type) {
+    $result = (new ConstFetchHandler)->resolve(new ConstFetch(new Name($name)), handlerTestScope(), throwingEngine());
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
-
-    expect($result)->toBeNull();
-});
+    expect($result)->toBe($type === null ? null : ['type' => $type, 'optional' => false]);
+})->with([
+    'PHP_EOL' => ['PHP_EOL', 'string'],
+    'PHP_INT_MAX' => ['PHP_INT_MAX', 'number'],
+    'M_PI' => ['M_PI', 'number'],
+    'E_ALL' => ['E_ALL', 'number'],
+    'true' => ['true', 'boolean'],
+    'null' => ['null', 'null'],
+    'an undefined constant' => ['DEFINED_ONLY_AT_RUNTIME', null],
+]);
 
 // BinaryOpHandler
 

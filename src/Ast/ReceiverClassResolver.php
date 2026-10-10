@@ -293,6 +293,13 @@ final class ReceiverClassResolver
             return ReceiverType::of($scope->requestVarNames[$name]);
         }
 
+        $enum = $scope->varValueBindings[$name]['directEnumFqcn'] ?? null;
+
+        // A value bound to one enum case, such as a parameter's default, is that enum.
+        if ($enum !== null && $scope->varValueBindings[$name]['type'] === LaravelTsPublish::toTsType($enum)['type']) {
+            return ReceiverType::of($enum);
+        }
+
         $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);

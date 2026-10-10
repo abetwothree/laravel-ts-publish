@@ -13185,6 +13185,11 @@
                     "name": "notes",
                     "type": "never[]",
                     "optional": false
+                },
+                {
+                    "name": "stage_name",
+                    "type": "string",
+                    "optional": true
                 }
             ]
         },

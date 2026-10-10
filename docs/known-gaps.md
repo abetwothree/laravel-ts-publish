@@ -321,6 +321,12 @@ type it. Inside a ternary or another union the `unknown` arm is left out instead
 `whenCounted()` and `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a
 key can claim a type the closure does not return.
 
+### A global constant types from its value where `ts:publish` runs
+
+`PHP_EOL`, `E_ALL` or a user-defined constant, in place or as a parameter default, types by the value's PHP type on the
+machine that ran the publish. A user constant built from `env()` or config can change type between machines, and one
+defined only at runtime, or only on another OS or extension, leaves the value `unknown`. Built-in constants are stable.
+
 ### On a class that is not an API resource, `$this->when()` publishes `unknown`
 
 Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php), as

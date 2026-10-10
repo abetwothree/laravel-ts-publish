@@ -3333,6 +3333,7 @@ declare global {
             limits: { daily: number; codes: string[] };
             tags: (string | number)[];
             notes: never[];
+            stage_name?: string;
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {
