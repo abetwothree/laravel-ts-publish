@@ -487,6 +487,13 @@ arm's own `id`. Every explicit key is subtracted from every spread arm, whatever
 that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
 or on the left of `+`.
 
+### An operand of `+` not typed as one object adds no keys beside a keyed literal
+
+`$this->resource->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
+left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
+as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
+adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
+
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
 `['label' => $this->when($c, 'x'), 42 => 'y']` publishes `{ label?: string; "42": string }`. When `$c` is false the API

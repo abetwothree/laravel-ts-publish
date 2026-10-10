@@ -432,16 +432,17 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
   [re-index](#numeric-keys) sends `(User | boolean)[]`.
 - **Arm order is source order**: every kind travels in one list, split by kind only when imports are dispatched.
   Resource arms go on `embeddedResourceFqcns`, model and collection arms on `embeddedModelFqcns`, and an object arm's
-  classes on the channels its value carried. Grouping by kind any earlier would subtract against the wrong arm.
-  `NestedResourceSpreadResource`'s `members_model_then_resource_spread` and `members_resource_then_model_spread` pin
-  both directions.
+  classes on the import channels its value carried. Grouping by kind any earlier would subtract against the wrong
+  arm. `NestedResourceSpreadResource`'s `members_model_then_resource_spread` and `members_resource_then_model_spread`
+  pin both directions.
 
 PHP's array union `$a + $b` keeps every key `$a` sets. In value position
-[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the literal `[...$b, ...$a]` that
-`InspectsAstNodes::arrayUnionLiteral()` builds. An operand the literal cannot read from its syntax is spread as the
-value it resolves to, so an object joins as an object arm, and an untyped one as `Record<string, unknown>`, since PHP
-throws on `+` unless both sides are arrays. With no array on either side, `+` stays `number`. As a whole return,
-`analyzeArrayExpression()` reads each side and merges them as `+=` does.
+[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
+`InspectsAstNodes::arrayUnionLiteral()` builds. With every key a literal, that literal holds the items PHP keeps, in
+PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
+cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
+one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
+`+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them as `+=` does.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations
