@@ -1,0 +1,28 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
+
+use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
+
+/**
+ * A test-only class whose members are typed by a docblock union of two models that share a name. Each member renders
+ * a `User[]` token for each class.
+ */
+class ReceiverPairDirectory
+{
+    /** @var User[]|CrmUser[] */
+    public array $owners = [];
+
+    /**
+     * The owners, as a list of either model.
+     *
+     * @return list<User>|list<CrmUser>
+     */
+    public function ownerList(): array
+    {
+        return [];
+    }
+}

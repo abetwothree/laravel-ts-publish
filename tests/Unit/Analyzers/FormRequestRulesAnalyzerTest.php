@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\FormRequest\FormRequestRulesAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableInRequest;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Requests\StringableInRequest;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Support\Facades\Auth;
 use Workbench\App\Http\Requests\ArrayKeysObjectFormRequest;

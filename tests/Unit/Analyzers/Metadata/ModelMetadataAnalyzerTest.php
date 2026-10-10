@@ -7,19 +7,19 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassNamedKeyMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingProvideDecoyProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockOverridesEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumAndScalarMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastKeyMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TraitModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnionEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ClassNamedKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProvideDecoyProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
 
 /**
  * @param  class-string<ModelMetadataProvider>  $providerClass

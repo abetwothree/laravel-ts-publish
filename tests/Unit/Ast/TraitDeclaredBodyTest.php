@@ -6,7 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DeclaredVarTraitResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredVarTraitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTraitShare;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;

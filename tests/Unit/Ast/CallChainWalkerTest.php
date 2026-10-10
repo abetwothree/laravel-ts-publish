@@ -5,7 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\PostTable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use InertiaUI\Table\Table;
@@ -73,7 +73,7 @@ it('returns null gracefully when $baseClass does not exist, instead of erroring'
 
 it('resolves a New_-rooted chain only when allowNew is true', function () {
     $expr = firstStatementExpr(
-        '<?php new \AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\PostTable()->defaultSort("-id");'
+        '<?php new \AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Tables\PostTable()->defaultSort("-id");'
     );
 
     $walker = new CallChainWalker;

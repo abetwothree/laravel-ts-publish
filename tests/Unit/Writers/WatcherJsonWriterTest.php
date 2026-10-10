@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelMetadataProviderModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ModelMetadataProviderModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Writers\WatcherJsonWriter;
 use Illuminate\Filesystem\Filesystem;
 

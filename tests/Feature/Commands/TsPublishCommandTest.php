@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\CustomBarrelWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 

@@ -9,10 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ArchiveSpreadingResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingModelGenerator;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ThrowingResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -345,9 +345,9 @@ test('editing a class a resource reaches only by reflection rebuilds the resourc
     $suffix = bin2hex(random_bytes(4));
     $sources = "$this->cacheDir-src";
 
-    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ReflectedReceiver\\';
+    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\ReflectedReceiver\\';
     $resource = $namespace.'ScoreResource'.$suffix;
-    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/reflected-receiver/score-resource'.$suffix.'.ts';
+    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/stubs/reflected-receiver/score-resource'.$suffix.'.ts';
     Config::set('ts-publish.resources.additional_directories', [$resource]);
     Config::set('ts-publish.resources.included', [$resource]);
 
@@ -361,7 +361,7 @@ test('editing a class a resource reaches only by reflection rebuilds the resourc
         mkdir($sources);
 
         foreach (['Scorer', 'ScoreResource'] as $name) {
-            $stub = (string) file_get_contents(__DIR__.'/../Fixtures/ReflectedReceiver/'.$name.'.php.stub');
+            $stub = (string) file_get_contents(__DIR__.'/../Fixtures/Stubs/ReflectedReceiver/'.$name.'.php.stub');
             file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
             require_once $sources.'/'.$name.'.php';
         }

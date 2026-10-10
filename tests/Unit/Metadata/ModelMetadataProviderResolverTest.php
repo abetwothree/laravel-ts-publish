@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\ModelMetadataProviderResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 
 test('resolves the default metadata provider', function () {
     expect(resolve(ModelMetadataProviderResolver::class)->resolve())

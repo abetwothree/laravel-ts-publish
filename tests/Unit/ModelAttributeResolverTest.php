@@ -8,20 +8,20 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedSubjectModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DriverOverrideModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityAlias;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UncastDecimalOrderItem;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
@@ -615,7 +615,7 @@ test('bare @return Attribute docblock does not override a usable closure signatu
 test('attributeDocblockReturnTypes resolves Attribute<> written as a fully-qualified class name', function () {
     // A `.php.stub` fixture because Pint's fully_qualified_strict_types fixer would rewrite the
     // literal FQCN in the docblock down to a short auto-imported name; its finder only sees `*.php`.
-    require_once __DIR__.'/../Fixtures/FqcnAttributeDocblockFixture.php.stub';
+    require_once __DIR__.'/../Fixtures/Stubs/FqcnAttributeDocblockFixture.php.stub';
 
     $method = new ReflectionMethod(FqcnAttributeDocblockFixture::class, 'sortedByFqcnDocblock');
     $info = app(LaravelTsPublishService::class)->attributeDocblockReturnTypes($method);

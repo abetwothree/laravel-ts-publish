@@ -128,5 +128,6 @@ A class in the workbench, written to exercise one case, that publishes into the 
 _Avoid_: fixture
 
 **Test fixture**:
-A class under `tests/Fixtures/` that tests use directly and that never reaches the golden workbench output.
+A class under `tests/Fixtures/` that tests use directly and that never reaches the golden workbench output. Where a
+new one goes: [Test fixtures](docs/testing/test-fixtures.md).
 _Avoid_: fixture

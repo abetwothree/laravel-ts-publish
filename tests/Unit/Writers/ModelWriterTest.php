@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FullListsModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SwappedRelationModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\FullListsModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\SwappedRelationModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -395,7 +395,7 @@ TYPESCRIPT)
         $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(ShadowedEnumParcel::class));
 
         expect($content)
-            ->toStartWith("import type { User } from '../../../../workbench/app/models';\n\n")
+            ->toStartWith("import type { User } from '../../../../../workbench/app/models';\n\n")
             ->toContain(<<<'TYPESCRIPT'
     // Relations
     /** The parcel's handler. */

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 

@@ -7,7 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MatchEnumShapesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MatchEnumShapesResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use PhpParser\Node\Expr;
 use Workbench\App\Enums\Status;

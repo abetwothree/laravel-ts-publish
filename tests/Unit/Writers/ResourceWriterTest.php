@@ -2,42 +2,42 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsCastClosureResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsCastWhenResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsClosureResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsInlineClosureResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsInlineWhenResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWhenResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastBesideDirectResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastBesideExtendsResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastBesideTypeCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastBesideWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastExtendsBesideInlineSharedNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastHelperResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastImportConstNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastInlineResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastMethodResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastMixedBesideWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastReadBesideSharedNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastSingleResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastSpellsEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastTernaryBesideResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastTernaryBesideSharedNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastTernaryBesideTypeCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastTernaryResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWhenNullColumnResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWhenNullOtherEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWhenNullPairResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWhenNullSameEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesAliasedWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesOtherWrapInlineResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesSharedWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapBesideDirectResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapsArrayResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsInlineClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsInlineWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastBesideDirectResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastBesideExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastBesideTypeCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastBesideWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastExtendsBesideInlineSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastImportConstNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastInlineResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastMethodResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastMixedBesideWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastReadBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastSingleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastSpellsEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastTernaryBesideResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastTernaryBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastTernaryBesideTypeCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastTernaryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWhenNullColumnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWhenNullOtherEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWhenNullPairResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWhenNullSameEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesAliasedWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesOtherWrapInlineResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesSharedWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapBesideDirectResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsArrayResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -142,7 +142,7 @@ test('publishes a conditional over two enum resources and a null as the enums\' 
     $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
 
     expect(array_values(preg_grep('/^(import |    state\??: )/', explode("\n", $content)) ?: []))->toBe([
-        "import type { StatusType, VisibilityType } from '../../../../workbench/app/enums';",
+        "import type { StatusType, VisibilityType } from '../../../../../../workbench/app/enums';",
         $key,
     ]);
 })->with([
@@ -210,7 +210,7 @@ test('publishes a cast that spells none of its key\'s enums as written', functio
         EnumResourceCastTernaryBesideResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status } from '../../../../workbench/app/enums';",
+            "import { Status } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    a: AsEnum<typeof Status>;',
         ],
@@ -219,7 +219,7 @@ test('publishes a cast that spells none of its key\'s enums as written', functio
         EnumResourceCastTernaryBesideSharedNameResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status as CrmStatus } from '../../../../workbench/crm/enums';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
             '    k: string | null;',
             '    a: AsEnum<typeof CrmStatus> | null;',
         ],
@@ -228,7 +228,7 @@ test('publishes a cast that spells none of its key\'s enums as written', functio
     'one enum resource, beside a direct read of its enum' => [
         EnumResourceCastBesideDirectResource::class,
         [
-            "import type { StatusType } from '../../../../workbench/app/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    a: StatusType;',
         ],
@@ -237,7 +237,7 @@ test('publishes a cast that spells none of its key\'s enums as written', functio
         EnumResourceCastMixedBesideWrapResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status } from '../../../../workbench/app/enums';",
+            "import { Status } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    a: AsEnum<typeof Status>;',
         ],
@@ -258,7 +258,7 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesWrapsResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status, Visibility } from '../../../../workbench/app/enums';",
+            "import { Status, Visibility } from '../../../../../../workbench/app/enums';",
             '    k: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;',
         ],
     ],
@@ -266,8 +266,8 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesWrapBesideDirectResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status } from '../../../../workbench/app/enums';",
-            "import type { StatusType } from '../../../../workbench/app/enums';",
+            "import { Status } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             '    k: AsEnum<typeof Status> | string;',
             '    a: StatusType;',
         ],
@@ -276,7 +276,7 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesWrapResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status } from '../../../../workbench/app/enums';",
+            "import { Status } from '../../../../../../workbench/app/enums';",
             '    k: AsEnum<typeof Status> | string;',
         ],
     ],
@@ -284,7 +284,7 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesWrapsArrayResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status, Visibility } from '../../../../workbench/app/enums';",
+            "import { Status, Visibility } from '../../../../../../workbench/app/enums';",
             '    k: (AsEnum<typeof Status> | AsEnum<typeof Visibility>)[];',
         ],
     ],
@@ -296,8 +296,8 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesAliasedWrapResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status as WorkbenchStatus } from '../../../../workbench/app/enums';",
-            "import { Status as CrmStatus } from '../../../../workbench/crm/enums';",
+            "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
             '    k: AsEnum<typeof WorkbenchStatus> | null;',
             '    a: AsEnum<typeof CrmStatus> | null;',
         ],
@@ -306,8 +306,8 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         EnumResourceCastWritesSharedWrapResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status as WorkbenchStatus } from '../../../../workbench/app/enums';",
-            "import { Status as CrmStatus } from '../../../../workbench/crm/enums';",
+            "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
             '    k: AsEnum<typeof WorkbenchStatus> | null;',
             '    a: AsEnum<typeof CrmStatus> | null;',
         ],
@@ -327,7 +327,7 @@ test('publishes a cast holding the enum\'s type as written, and wraps a key besi
     'a cast that spells the enum\'s type' => [
         EnumResourceCastSpellsEnumResource::class,
         [
-            "import type { VisibilityType } from '../../../../workbench/app/enums';",
+            "import type { VisibilityType } from '../../../../../../workbench/app/enums';",
             '    k: VisibilityType | null;',
         ],
     ],
@@ -335,7 +335,7 @@ test('publishes a cast holding the enum\'s type as written, and wraps a key besi
         EnumResourceCastBesideWrapResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status } from '../../../../workbench/app/enums';",
+            "import { Status } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    a: AsEnum<typeof Status>;',
         ],
@@ -356,7 +356,7 @@ test('keeps the type import a spelling or a bare read still needs', function (st
     'an extends clause' => [
         EnumResourceCastBesideExtendsResource::class,
         [
-            "import type { StatusType } from '../../../../workbench/app/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             'export interface EnumResourceCastBesideExtendsResource extends Partial<Record<StatusType, unknown>>',
             '    k: string | null;',
         ],
@@ -364,7 +364,7 @@ test('keeps the type import a spelling or a bare read still needs', function (st
     'another key\'s cast' => [
         EnumResourceCastBesideTypeCastResource::class,
         [
-            "import type { StatusType } from '../../../../workbench/app/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    b: StatusType[];',
         ],
@@ -372,7 +372,7 @@ test('keeps the type import a spelling or a bare read still needs', function (st
     'another key\'s cast, beside a ternary over two enum resources' => [
         EnumResourceCastTernaryBesideTypeCastResource::class,
         [
-            "import type { StatusType, VisibilityType } from '../../../../workbench/app/enums';",
+            "import type { StatusType, VisibilityType } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    b: StatusType | VisibilityType;',
         ],
@@ -381,8 +381,8 @@ test('keeps the type import a spelling or a bare read still needs', function (st
         EnumResourceCastReadBesideSharedNameResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status as CrmStatus } from '../../../../workbench/crm/enums';",
-            "import type { StatusType as WorkbenchStatusType } from '../../../../workbench/app/enums';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
             '    a: WorkbenchStatusType | null;',
             '    c: AsEnum<typeof CrmStatus> | null;',
@@ -392,8 +392,8 @@ test('keeps the type import a spelling or a bare read still needs', function (st
         EnumResourceCastExtendsBesideInlineSharedNameResource::class,
         [
             "import { type AsEnum } from '@tolki/ts';",
-            "import { Status as CrmStatus } from '../../../../workbench/crm/enums';",
-            "import type { StatusType } from '../../../../workbench/app/enums';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             'export interface EnumResourceCastExtendsBesideInlineSharedNameResource extends Partial<Record<StatusType, unknown>>',
             '    k: string | null;',
             '    inline: { crm: AsEnum<typeof CrmStatus> | null };',

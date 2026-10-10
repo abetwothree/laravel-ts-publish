@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\RecordingImportNameRegistry;
 
 describe('ImportNameRegistry', function () {
     test('non-colliding names pass through unaliased', function () {

@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HookedPropertiesValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableTier;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\JsonSerializableTier;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FreshObjectJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\HookedPropertiesValue;
 use Carbon\CarbonImmutable;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
