@@ -192,6 +192,9 @@ trait InspectsAstNodes
      * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
      * only a single walk lets a later key clear the FQCN channels an earlier one registered.
      *
+     * array_merge() renumbers every int key from 0, so a literal int key takes its new number until a spread or
+     * `parent::` call, whose int keys cannot be counted.
+     *
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
     protected function mergedArrayLiteral(FuncCall $call, ?string $parentMethodName = null, array $localVarBindings = []): ?Array_
@@ -201,6 +204,7 @@ trait InspectsAstNodes
         }
 
         $items = [];
+        $next = 0;
 
         foreach ($call->getArgs() as $arg) {
             $value = $arg->value;
@@ -210,7 +214,20 @@ trait InspectsAstNodes
             }
 
             if ($value instanceof Array_) {
-                $items = [...$items, ...$value->items];
+                foreach ($value->items as $item) {
+                    if ($next !== null && $item->key !== null && self::storedIntKey($item->key) !== null) {
+                        $items[] = new ArrayItem($item->value, new Int_($next++), $item->byRef, $item->getAttributes());
+
+                        continue;
+                    }
+
+                    $next = match (true) {
+                        $next === null || $item->unpack => null,
+                        $item->key === null => $next + 1,
+                        default => $next,
+                    };
+                    $items[] = $item;
+                }
 
                 continue;
             }
@@ -220,6 +237,7 @@ trait InspectsAstNodes
             }
 
             $items[] = new ArrayItem($value, byRef: false, unpack: true);
+            $next = null;
         }
 
         return new Array_($items);

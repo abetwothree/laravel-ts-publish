@@ -164,19 +164,20 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps spread-merge and `casts` replace-merges, the source winning,
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning,
      * and a key the source sets without a cast loses its entry. The four inline maps append WITHOUT deduping:
      * aliasPropertyType() consumes each as a positional queue against the rendered type. `carried` unions per kind.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
-        $this->enumResources = [...$this->enumResources, ...$source->enumResources];
-        $this->nestedResources = [...$this->nestedResources, ...$source->nestedResources];
-        $this->directEnumFqcns = [...$this->directEnumFqcns, ...$source->directEnumFqcns];
-        $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
-        $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
-        $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
+        // A spread would renumber a numeric property name, which PHP stores as an int.
+        $this->enumResources = array_replace($this->enumResources, $source->enumResources);
+        $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
+        $this->directEnumFqcns = array_replace($this->directEnumFqcns, $source->directEnumFqcns);
+        $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
+        $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
+        $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
 
         foreach ($source->properties as $property) {
             if (! isset($source->casts[$property['name']])) {

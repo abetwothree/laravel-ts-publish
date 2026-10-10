@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ArrayMergeHandler;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
@@ -58,6 +59,20 @@ it('lets a later argument overwrite an earlier key, keeping its position', funct
     expect((new ArrayMergeHandler)->resolve($expr, new AnalysisScope(new ReflectionClass(stdClass::class)), arrayMergeTestEngine())['type'])
         ->toBe('{ id: string; name: string }');
 });
+
+// array_merge() renumbers every int key from 0 across its arguments, an int-like string's included.
+it('renumbers each int key as array_merge() does', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect((new ArrayMergeHandler)->resolve($expr, new AnalysisScope(new ReflectionClass(stdClass::class)), arrayMergeTestEngine())['type'])
+        ->toBe($type);
+})->with([
+    'an int key beside a named one' => ['array_merge(["a" => 1], [42 => "x"])', '{ a: number; "0": string }'],
+    'the same int key in two arguments' => ['array_merge([0 => "a"], [0 => 1])', '(string | number)[]'],
+    'an int-like string key' => ['array_merge(["a" => 1], ["7" => "x"])', '{ a: number; "0": string }'],
+    'a numeric string PHP keeps as a string' => ['array_merge(["a" => 1], ["06" => "x"])', '{ a: number; "06": string }'],
+    'an int key after a keyless item' => ['array_merge(["x"], [9 => "y", "b" => 2])', '{ "1": string; b: number }'],
+]);
 
 it('declines when an argument is not an array literal or a parent call', function () {
     $expr = arrayMergeCall([arrayMergeLiteral('id', 1), new Arg(new Variable('extra'))]);

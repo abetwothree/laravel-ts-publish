@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetada
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
@@ -232,6 +233,14 @@ test('rejects metadata payloads without string property keys', function () {
             InvalidArgumentException::class,
             'model [Workbench\\App\\Models\\User] must use string keys; got integer keys: [0]',
         );
+});
+
+// A payload cannot hold an int key, so a required numeric shape key is one it always lacks; an optional one never errs.
+test('names a required numeric @return shape key the payload lacks instead of throwing a TypeError', function () {
+    config()->set('ts-publish.model_metadata.provider_class', NumericShapeKeyMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(InvalidArgumentException::class, 'model [Workbench\App\Models\User] is missing required keys: [7]');
 });
 
 test('rejects returned metadata keys without inferred or declared types', function () {

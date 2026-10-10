@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -3428,6 +3430,15 @@ it('keeps the numeric keys a method cast spells, and re-indexes the key beside i
 
     expect($properties['cast_codes']['type'])->toBe('{ "200": string }')
         ->and($properties['codes']['type'])->toBe('string[]');
+});
+
+// A cast key is an int and a property name a string, so a strict match once missed and a second entry was appended.
+it('retypes a numeric key the body writes with the method cast on it, in one entry', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericMethodCastResource::class))->analyze();
+
+    expect(array_map(fn (array $property): array => [$property['name'], $property['type']], $analysis->properties))
+        ->toBe([['id', 'number'], ['42', 'boolean'], ['6', 'number'], ['nested', '{ "42": string }']])
+        ->and(new ResourceTransformer(NumericMethodCastResource::class)->properties[42]['type'])->toBe('boolean');
 });
 
 // ConditionallyLoadsAttributes::filter() never enters a Collection, so its numeric keys reach JSON as written.

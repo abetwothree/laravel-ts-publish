@@ -21,7 +21,6 @@ use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\Continue_;
@@ -570,13 +569,11 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The key a write's dim names, a literal string or a pattern interpolatedKeyName() accepts; null for any other.
+     * The key a write's dim names, read as resolveKeyName() reads a literal's key; null for any other.
      */
     private function namedKey(Expr $dim): ?string
     {
-        return $dim instanceof String_
-            ? $this->literalKeyName($dim->value, $this->subjectReflection())
-            : $this->interpolatedKeyName($dim);
+        return $this->resolveKeyName($dim, $this->subjectReflection());
     }
 
     /**

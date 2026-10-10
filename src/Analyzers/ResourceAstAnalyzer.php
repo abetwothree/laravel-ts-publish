@@ -1119,12 +1119,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
 
             foreach ($types as $property => $value) {
+                // PHP stores a numeric cast key as an int, while a property names its key as a string.
+                $property = (string) $property;
                 $type = is_array($value) ? $value['type'] : $value;
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
                 $import = is_array($value) ? ($value['import'] ?? null) : null;
 
                 if ($optional === true) {
-                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember((string) $property, $type, true);
+                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember($property, $type, true);
                 }
 
                 $found = false;
