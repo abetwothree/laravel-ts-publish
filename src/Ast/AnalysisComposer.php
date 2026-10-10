@@ -160,8 +160,7 @@ final class AnalysisComposer
      */
     private function registerCarried(MethodAnalysis $analysis): void
     {
-        $enumTypeName = static fn (string $fqcn): string => LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
-            ?? class_basename($fqcn).'Type';
+        $enumTypeName = ValueResult::enumTypeName(...);
 
         foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
             $this->enumFqcnMap[$fqcn] ??= $name;

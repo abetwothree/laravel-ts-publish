@@ -33,8 +33,9 @@ use PhpParser\Node\Identifier;
 
 /**
  * An inline array literal, e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
- * becomes `{ name: string; value: number }`. Also folds spreads that resolve to a bare named resource, a bound
- * model's or collection's toArray(), or any other value typed as one object into intersection arms.
+ * becomes `{ name: string; value: number }`, and a list such as `[$a, $b]` a list type. Also folds spreads that resolve
+ * to a bare named resource, a bound model's or collection's toArray(), or any other value typed as one object into
+ * intersection arms.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
@@ -269,10 +270,10 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze an inline array literal and produce an inline TypeScript object type.
+     * Analyze an inline array literal and produce an inline TypeScript object type, or a list type for a list.
      *
      * e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
-     * becomes `{ name: string; value: number }`.
+     * becomes `{ name: string; value: number }`, and `[1, 2]` becomes `number[]`.
      *
      * @return ValueExpressionResult
      */

@@ -16,7 +16,7 @@ final class TopLevelRenumbering
      * Map each top-level name to the key Laravel sends it on: int-like names renumber from 0 in source order.
      *
      * @param  list<string>  $names
-     * @return array<string, string>
+     * @return array<array-key, string> keyed by name, which PHP stores as an int when it is int-like
      */
     public static function renumber(array $names): array
     {
@@ -36,7 +36,7 @@ final class TopLevelRenumbering
      * @template TValue
      *
      * @param  array<array-key, TValue>  $map
-     * @param  array<string, string>  $renumbered
+     * @param  array<array-key, string>  $renumbered
      * @return array<array-key, TValue>
      */
     public static function rekey(array $map, array $renumbered): array
@@ -53,7 +53,7 @@ final class TopLevelRenumbering
     /**
      * Warn once for each key Laravel sends on another number.
      *
-     * @param  array<string, string>  $renumbered
+     * @param  array<array-key, string>  $renumbered
      */
     public static function warnRenumbered(string $subject, string $topLevel, array $renumbered): void
     {

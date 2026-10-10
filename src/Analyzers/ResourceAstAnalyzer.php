@@ -241,6 +241,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
+     * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
+     *
+     * The publishing class decides, not the one declaring the body: an inherited toArray() runs under the subclass's
+     * own `$preserveKeys`.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
+    {
+        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
+            $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
+        }
+    }
+
+    /**
      * Analyze the subject's $this->methodName body and return the resulting property/type analysis.
      */
     public function analyze(): ResourceAnalysis
@@ -333,24 +351,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return $analysis ?? new ResourceAnalysis;
-    }
-
-    /**
-     * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
-     * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
-     *
-     * The publishing class decides, not the one declaring the body: an inherited toArray() runs under the subclass's
-     * own `$preserveKeys`.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     */
-    public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
-    {
-        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
-            $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
-        }
     }
 
     /**

@@ -370,7 +370,7 @@ class InertiaSharedDataAnalyzer
      *
      * @param  SharedPropMap  $props
      * @param  SharedPropMap  $overrides
-     * @return array<string, string>
+     * @return array<array-key, string>
      */
     protected function renumberTopLevel(array $props, array $overrides, string $middlewareClass): array
     {

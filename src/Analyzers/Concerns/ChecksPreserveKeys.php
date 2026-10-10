@@ -7,7 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 use ReflectionClass;
 
 /**
- * Preserve-keys detection shared between ResourceAstAnalyzer and InertiaPageAnalyzer.
+ * Whether a resource preserves its keys, read by the resource analyzer and the handlers typing a resource collection.
+ * `collectionPreservesKeys()` is static so the publisher's re-index can ask it of a class it never analyzes.
+ *
+ * @internal
  */
 trait ChecksPreserveKeys
 {

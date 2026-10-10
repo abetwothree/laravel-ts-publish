@@ -438,7 +438,7 @@ class InertiaPageAnalyzer
      *
      * @param  PagePropMap  $props
      * @param  array<array-key, string>  $casts
-     * @return array<string, string>
+     * @return array<array-key, string>
      */
     protected function renumberTopLevel(array $props, array $casts, string $subject): array
     {
