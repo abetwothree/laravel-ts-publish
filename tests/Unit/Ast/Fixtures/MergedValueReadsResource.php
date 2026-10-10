@@ -59,6 +59,18 @@ final class MergedValueReadsResource extends JsonResource
         return $data;
     }
 
+    /** Two key writes of one `_note` pattern with values of different types, then a named key written twice. */
+    public function twoNoteWrites(): array
+    {
+        $data = [];
+        $data["{$this->slug}_note"] = 'x';
+        $data["{$this->id}_note"] = 5;
+        $data['main'] = 'x';
+        $data['main'] = 5;
+
+        return $data;
+    }
+
     /** The issue's shape: the pinned branch is a literal, the other merges the model behind a condition. */
     public function pinnedModel(): array
     {

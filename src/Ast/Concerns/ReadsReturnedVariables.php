@@ -222,11 +222,12 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
-                $isIndexSignature = JsEmitter::isIndexSignatureKey($keyName);
-                $optional = ! $isIndexSignature && ($isConditional || $result['optional']);
 
-                if ($isIndexSignature) {
-                    $result = ValueResult::asIndexSignatureValue($result);
+                // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
+                if (JsEmitter::isIndexSignatureKey($keyName)) {
+                    $into->addProperty($keyName, ValueResult::asIndexSignatureValue($result));
+
+                    continue;
                 }
 
                 $existingIndex = null;
@@ -246,14 +247,14 @@ trait ReadsReturnedVariables
 
                 $appendedIndex = count($into->properties);
 
-                $into->addProperty($keyName, $result, $optional);
+                $into->addProperty($keyName, $result, $isConditional || $result['optional']);
 
                 // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one
-                // was absent; an index signature is never optional.
+                // was absent.
                 if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
                     $appended = $into->properties[$appendedIndex];
-                    $appended['optional'] = ! $isIndexSignature && ($result['optional']
-                        || ($isConditional && $into->properties[$existingIndex]['optional']));
+                    $appended['optional'] = $result['optional']
+                        || ($isConditional && $into->properties[$existingIndex]['optional']);
 
                     $into->properties[$existingIndex] = $appended;
                     array_splice($into->properties, $appendedIndex, 1);

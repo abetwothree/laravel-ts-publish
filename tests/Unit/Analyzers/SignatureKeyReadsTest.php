@@ -100,6 +100,14 @@ describe('a runtime key a signature covers reaches the reconcile wherever it is 
             ->toBe(['[key: `${string}_note`]' => 'string | number | undefined']);
     });
 
+    test('a second key write of one pattern keeps the first, while a named key written twice keeps its last value', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(MergedValueReadsResource::class), Post::class, 'twoNoteWrites')->analyze();
+
+        expect(signatureShape(MergedValueReadsResource::class, 'twoNoteWrites'))
+            ->toBe(['[key: `${string}_note`]' => 'string | number | undefined', 'main' => 'number'])
+            ->and(array_column($analysis->properties, 'name'))->toBe(['[key: `${string}_note`]', 'main']);
+    });
+
     test('a collection merging its own resource merges no model keys', function () {
         expect(signatureShape(MergedResourceCollection::class, 'toArray'))->toBe(['meta' => 'number']);
     });
