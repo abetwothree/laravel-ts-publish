@@ -165,6 +165,9 @@ def detect_regressions(b: dict, h: dict) -> list:
         # True when k has head members and every one already existed in base: member-level
         # comparison is then exhaustive for k, so the parent is skipped rather than double-reported.
         # A member new in head has no base counterpart, so it falls through and the parent stays checked.
+        # Members come only from k's own inline object, so a sibling named `'tags.*'` is never one of `tags`'s.
+        if "{" not in h[k]:
+            return False
         members = [
             other for other in head_keys
             if other[:-1] == k[:-1] and (other[-1].startswith(k[-1] + ".") or other[-1].startswith(k[-1] + "["))
@@ -265,6 +268,10 @@ UNION_BASE = "    variants?: ({ name: string } | { email: string })[];"
 UNION_HEAD = "    variants?: ({ name: unknown } | { email: string })[];"
 
 
+SIBLING_BASE = "export interface StorePostRequestProbe {\n    tags: string[];\n    'tags.*': string;\n}\n"
+SIBLING_HEAD = "export interface StorePostRequestProbe {\n    tags: unknown;\n    'tags.*': string;\n}\n"
+
+
 def run_parsetest() -> int:
     failed = 0
     for name, source, want in PARSE_CASES:
@@ -319,7 +326,15 @@ def run_parsetest() -> int:
         failed += 1
         print(f"FAIL - union member regressing without flagging the indexed parent (synthetic)\n  got: {bad}")
 
-    total = len(PARSE_CASES) + 5
+    base, head = parse_source(SIBLING_BASE), parse_source(SIBLING_HEAD)
+    bad = detect_regressions(base, head)
+    if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == ["StorePostRequestProbe.tags"]:
+        print("PASS - property regressing beside a quoted 'tags.*' sibling (store-post-request.ts:10)")
+    else:
+        failed += 1
+        print(f"FAIL - property regressing beside a quoted 'tags.*' sibling (store-post-request.ts:10)\n  got: {bad}")
+
+    total = len(PARSE_CASES) + 6
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
         return 1

@@ -330,5 +330,3 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
   is accepted. Do not fix it with content-hashed arm keys.
-- **A sibling whose quoted name holds a `.` or `[`**: `'tags.*'` reads as a member of `tags`, so `detect_regressions()`
-  skips `tags`'s own key whenever `'tags.*'` existed at the base.
