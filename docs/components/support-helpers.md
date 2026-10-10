@@ -20,6 +20,8 @@ The helpers and the test that pins them live in these files:
   for aliasing. No facade, and `@internal` like `StringSerialization`.
 - [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
   re-indexes an array into a list. Static and `@internal`, read by `ValueResolver` and the enum-value warning.
+- [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
+  grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -85,6 +87,7 @@ name two namespaces publish resolves as that file's import does. For a name no F
 `#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
 `GlobalsWriterTest` pins both collection orders.
 
+The index-signature key grammar lives in `IndexSignatureKey`, and `JsEmitter::isIndexSignatureKey()` delegates to it.
 `JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
 one home for their test or spelling, so a new caller uses them rather than a local regex.
 

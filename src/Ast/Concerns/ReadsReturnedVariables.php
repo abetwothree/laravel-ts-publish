@@ -16,15 +16,12 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Plus;
-use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\InterpolatedStringPart;
-use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -551,45 +548,5 @@ trait ReadsReturnedVariables
             $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node->var,
             default => null,
         };
-    }
-
-    /**
-     * An index-signature name for a key built from literal text around a variable, or null for any other key.
-     */
-    private function interpolatedKeyName(Expr $dim): ?string
-    {
-        $parts = match (true) {
-            $dim instanceof InterpolatedString => $dim->parts,
-            $dim instanceof Concat => [$dim->left, $dim->right],
-            default => null,
-        };
-
-        if ($parts === null) {
-            return null;
-        }
-
-        $pattern = '';
-        $hasLiteral = false;
-        $hasDynamic = false;
-
-        foreach ($parts as $part) {
-            if ($part instanceof InterpolatedStringPart || $part instanceof String_) {
-                // JsEmitter::isIndexSignatureKey()'s backtick alternative has no escape clause, so an escaped
-                // backtick could never be read back; decline rather than publish an unmatchable name.
-                if (str_contains($part->value, '`')) {
-                    return null;
-                }
-
-                // TypeScript reads a backslash in template text as an escape and a raw CR as LF, so `\` is written
-                // `\\`, `${` `\${` and a CR `\r`; IndexSignatureReconciler::literalSegments() undoes all three.
-                $pattern .= strtr($part->value, ['\\' => '\\\\', '${' => '\\${', "\r" => '\\r']);
-                $hasLiteral = true;
-            } else {
-                $pattern .= '${string}';
-                $hasDynamic = true;
-            }
-        }
-
-        return $hasLiteral && $hasDynamic ? '[key: `'.$pattern.'`]' : null;
     }
 }

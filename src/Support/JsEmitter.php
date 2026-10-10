@@ -61,7 +61,7 @@ class JsEmitter
      */
     public function isIndexSignatureKey(string $key): bool
     {
-        return preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key) === 1;
+        return IndexSignatureKey::is($key);
     }
 
     /**
@@ -97,7 +97,7 @@ class JsEmitter
             $known[$key] = true;
 
             if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
-                foreach ($this->castSpellings($key) as $spelling) {
+                foreach (IndexSignatureKey::castSpellings($key) as $spelling) {
                     $spelledBy[$spelling][$key] = true;
                 }
             }
@@ -509,36 +509,6 @@ class JsEmitter
             (array) $value,
             fn (int|string $key): bool => ! is_string($key) || ! str_starts_with($key, "\0"),
             ARRAY_FILTER_USE_KEY,
-        );
-    }
-
-    /**
-     * The spellings of a signature's name, other than the name, that a #[TsCasts] key may use for it.
-     *
-     * @return list<string>
-     */
-    private function castSpellings(string $name): array
-    {
-        $spellings = [
-            $this->readEscapes($name, ['\\' => '\\']),
-            $this->readEscapes($name, ['r' => "\r"]),
-            $this->readEscapes($name, ['\\' => '\\', 'r' => "\r"]),
-        ];
-
-        return array_values(array_diff(array_unique($spellings), [$name]));
-    }
-
-    /**
-     * The text with each escape the map names read back, pair by pair from the left, and every other one kept.
-     *
-     * @param  array<string, string>  $as  escaped character => what it reads as
-     */
-    private function readEscapes(string $text, array $as): string
-    {
-        return (string) preg_replace_callback(
-            '/\\\\(.)/s',
-            fn (array $escape): string => $as[$escape[1]] ?? $escape[0],
-            $text,
         );
     }
 }

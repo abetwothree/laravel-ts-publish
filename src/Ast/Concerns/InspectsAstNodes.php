@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -17,8 +20,10 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Block;
@@ -114,6 +119,24 @@ trait InspectsAstNodes
         }
 
         return null;
+    }
+
+    /**
+     * An index-signature name for a key built from literal text around a variable, `"{$name}_tag"` or
+     * `$name.'_tag'`, or null for any other key.
+     */
+    protected function interpolatedKeyName(Expr $key): ?string
+    {
+        $parts = match (true) {
+            $key instanceof InterpolatedString => $key->parts,
+            $key instanceof Concat => [$key->left, $key->right],
+            default => null,
+        };
+
+        return $parts === null ? null : IndexSignatureKey::fromParts(array_values(array_map(
+            fn (Node $part): ?string => $part instanceof InterpolatedStringPart || $part instanceof String_ ? $part->value : null,
+            $parts,
+        )));
     }
 
     /**

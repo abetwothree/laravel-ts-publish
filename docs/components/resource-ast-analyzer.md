@@ -520,12 +520,13 @@ exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publ
 
 `ReadsReturnedVariables::collectVariableArrayAssignments()` publishes a key built from literal text around a variable,
 such as `$data["{$name}_label"] = …` or `$data[$name.'_label'] = …`, as a template-literal index signature:
-``[key: `${string}_label`]``. `interpolatedKeyName()` needs both a literal and a dynamic part. It declines a literal
-part holding a backtick, because `JsEmitter::isIndexSignatureKey()` has no escape for one.
+``[key: `${string}_label`]``. `InspectsAstNodes::interpolatedKeyName()` maps the parts to `IndexSignatureKey::fromParts()`,
+which needs both a literal and a dynamic part and declines a literal part holding a backtick, because
+`IndexSignatureKey::is()` has no escape for one.
 
 Each literal part is escaped the way TypeScript reads template text: a backslash doubled, `${` as `\${`, and a carriage
 return as `\r`. Written raw, a backslash would fail to compile (TS1125, TS1337) or match other text, and a CR would
-read as a line feed. `IndexSignatureReconciler::literalSegments()` undoes all three.
+read as a line feed. `IndexSignatureKey::literalSegments()` undoes all three.
 
 A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::castTargets()` decides which signature
 it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes. An Inertia page and Inertia

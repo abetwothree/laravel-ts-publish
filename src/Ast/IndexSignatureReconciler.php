@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 
 /**
  * Settles each template-literal index signature against the keys published beside it.
@@ -43,7 +44,7 @@ final class IndexSignatureReconciler
         $segments = [];
 
         foreach (array_keys($signatures) as $name) {
-            $parsed = $this->literalSegments($name);
+            $parsed = IndexSignatureKey::literalSegments($name);
 
             if ($parsed !== null) {
                 $segments[$name] = $parsed;
@@ -228,33 +229,5 @@ final class IndexSignatureReconciler
         $quoted = array_map(fn (string $segment): string => preg_quote($segment, '/'), $segments);
 
         return '/^'.implode('.*', $quoted).'$/s';
-    }
-
-    /**
-     * A template-literal signature's literal text between its `${string}` placeholders, or null for any other key.
-     *
-     * @return non-empty-list<string>|null
-     */
-    private function literalSegments(string $name): ?array
-    {
-        if (! JsEmitter::isIndexSignatureKey($name) || preg_match('/`(.*)`\]$/s', $name, $template) !== 1) {
-            return null;
-        }
-
-        // `\` is written `\\`, `${` `\${` and a CR `\r`: a `${string}` that no escape consumes is a placeholder.
-        $segments = preg_split('/\\\\.(*SKIP)(*FAIL)|\$\{string\}/s', $template[1]);
-
-        if ($segments === false || $segments === []) {
-            return null; // @codeCoverageIgnore
-        }
-
-        return array_map(
-            fn (string $segment): string => (string) preg_replace_callback(
-                '/\\\\(.)/s',
-                fn (array $escape): string => $escape[1] === 'r' ? "\r" : $escape[1],
-                $segment,
-            ),
-            $segments,
-        );
     }
 }
