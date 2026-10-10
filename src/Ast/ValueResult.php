@@ -21,6 +21,7 @@ use ReflectionClass;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type CarriedMap from MethodAnalysis
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
@@ -383,6 +384,8 @@ final class ValueResult
         $embeddedResourceFqcns = [];
         /** @var TypesImportMap $customImports */
         $customImports = [];
+        /** @var CarriedMap $carried */
+        $carried = [];
 
         foreach ($branchResults as $inner) {
             // EnumResource branches are tracked apart from direct-access ones, so the result can
@@ -418,6 +421,10 @@ final class ValueResult
 
             foreach ($inner['customImports'] ?? [] as $path => $importTypes) {
                 $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
+            }
+
+            foreach ($inner['carriedFqcns'] ?? [] as $kind => $fqcns) {
+                $carried[$kind] = array_values(array_unique([...($carried[$kind] ?? []), ...$fqcns]));
             }
         }
 
@@ -471,6 +478,10 @@ final class ValueResult
 
         if ($customImports !== []) {
             $result['customImports'] = $customImports;
+        }
+
+        if ($carried !== []) {
+            $result['carriedFqcns'] = $carried;
         }
 
         return $result;

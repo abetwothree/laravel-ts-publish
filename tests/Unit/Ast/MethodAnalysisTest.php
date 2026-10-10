@@ -121,6 +121,27 @@ it('merges casts with the source winning for a key both cast', function () {
     ]);
 });
 
+// The source's value takes the key, and a cast entry describes only the value it was written for.
+it('clears the cast entry of a key the source sets without one', function () {
+    $target = new MethodAnalysis(casts: ['owner' => ['type' => 'string', 'import' => null], 'kept' => ['type' => 'K', 'import' => null]]);
+    $target->merge(new MethodAnalysis(properties: [['name' => 'owner', 'type' => 'User', 'optional' => false, 'description' => '']]));
+
+    expect($target->casts)->toBe(['kept' => ['type' => 'K', 'import' => null]]);
+});
+
+it('merges carried classes once per kind', function () {
+    $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
+    $target->merge(new MethodAnalysis(carried: [
+        'enums' => ['Workbench\App\Enums\Status', 'Workbench\Crm\Enums\Status'],
+        'models' => ['Workbench\App\Models\User'],
+    ]));
+
+    expect($target->carried)->toBe([
+        'enums' => ['Workbench\App\Enums\Status', 'Workbench\Crm\Enums\Status'],
+        'models' => ['Workbench\App\Models\User'],
+    ]);
+});
+
 it('forgets the cast entry of a key another value took over, and no other key\'s', function () {
     $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => '@/a'], 'kept' => ['type' => 'B', 'import' => null]]);
 

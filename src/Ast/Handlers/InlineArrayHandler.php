@@ -402,6 +402,11 @@ final class InlineArrayHandler implements ExpressionHandler
             $result['customImports'] = $analysis->customImports;
         }
 
+        // A member's carried class travels on its own, never queued: only a text with no class of its name keeps it.
+        if ($analysis->carried !== []) {
+            $result['carriedFqcns'] = $analysis->carried;
+        }
+
         return $result;
     }
 

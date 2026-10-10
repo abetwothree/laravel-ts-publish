@@ -75,6 +75,7 @@ use ReflectionNamedType;
  * @phpstan-import-type RequestVarNamesMap from AnalysisScope
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
+ * @phpstan-import-type CastMap from MethodAnalysis
  *
  * @internal
  */
@@ -1173,9 +1174,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, and
-     * flatTypeAlias keeps the first non-null value. Public for `Inertia::render()`. A spread helper and a merge call
-     * drop an untyped branch ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
+     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, a
+     * cast survives only where every branch setting its key casts it alike, and flatTypeAlias is the first non-null.
+     *
+     * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
+     * only a merge call keeps the `null` left alone ($keepsLoneNull).
      *
      * @param  list<ResourceAnalysis>  $analyses
      */
@@ -1254,10 +1257,41 @@ class ResourceAstAnalyzer implements ExpressionEngine
             multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
             enumResourceArmShapes: $channels->enumResourceArmShapes,
-            casts: $channels->casts,
+            casts: $this->castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
+            carried: $channels->carried,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+    }
+
+    /**
+     * The cast entry of each key every branch that sets it casts alike, as only then does the union publish that cast.
+     *
+     * @param  list<MethodAnalysis>  $analyses
+     * @param  list<array-key>  $names
+     * @return CastMap
+     */
+    private function castsEveryBranchAgrees(array $analyses, array $names): array
+    {
+        $casts = [];
+
+        foreach ($names as $name) {
+            $branchCasts = [];
+
+            foreach ($analyses as $analysis) {
+                if (in_array((string) $name, array_column($analysis->properties, 'name'), true)) {
+                    $branchCasts[] = $analysis->casts[$name] ?? null;
+                }
+            }
+
+            $cast = $branchCasts[0] ?? null;
+
+            if ($cast !== null && array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast)) {
+                $casts[(string) $name] = $cast;
+            }
+        }
+
+        return $casts;
     }
 
     /**

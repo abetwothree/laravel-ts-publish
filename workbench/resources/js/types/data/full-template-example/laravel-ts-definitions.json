@@ -285,7 +285,7 @@
                 },
                 {
                     "name": "contact",
-                    "type": "Partial<CrmUser>",
+                    "type": "Partial<User>",
                     "optional": false
                 }
             ]

@@ -230,6 +230,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->properties = $this->resolveProperties($analysis);
         $this->analysisCustomImports = $analysis->customImports;
         $this->analysisImports = new AnalysisImports()->build($analysis, $this->namespacePath)['typeImports'];
+        $this->registerCarried($analysis);
 
         return $this;
     }
@@ -399,12 +400,71 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function castsInForce(MethodAnalysis $analysis): array
     {
         $casts = $analysis->casts;
+        $keys = array_flip(array_column($analysis->properties, 'name'));
 
-        foreach ($this->tsTypeOverrides as $name => $type) {
+        // A cast whose key names no payload property publishes nothing, so its import binds no name.
+        foreach (array_intersect_key($this->tsTypeOverrides, $keys) as $name => $type) {
             $casts[$name] = ['type' => $type, 'import' => $this->tsCastsImportPaths[$name] ?? null];
         }
 
         return $casts;
+    }
+
+    /**
+     * Register each class a cast carried that a payload type or extends clause spells with no class of its name behind
+     * it: an enum or a model for aliasing, a resource as an import.
+     */
+    protected function registerCarried(MethodAnalysis $analysis): void
+    {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $enumNames = $this->ownNames($this->enumFqcnMap);
+        $modelNames = $this->ownNames($this->modelFqcnMap);
+
+        foreach ($analysis->carried['enums'] ?? [] as $fqcn) {
+            $typeName = LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+
+            if (CastChannels::spelledUnclaimed($typeName, $types, $enumNames, $this->tsExtends)) {
+                $this->enumFqcnMap[$fqcn] ??= $typeName;
+            }
+        }
+
+        foreach ($analysis->carried['models'] ?? [] as $fqcn) {
+            if (CastChannels::spelledUnclaimed(class_basename($fqcn), $types, $modelNames, $this->tsExtends)) {
+                $this->modelFqcnMap[$fqcn] ??= class_basename($fqcn);
+            }
+        }
+
+        $resourceNames = [];
+
+        foreach (array_keys($this->properties) as $name) {
+            $resourceNames[$name] = array_map(TsNaming::resourceTypeName(...), [
+                ...(isset($analysis->nestedResources[$name]) ? [$analysis->nestedResources[$name]] : []),
+                ...($analysis->inlineResourceFqcns[$name] ?? []),
+            ]);
+        }
+
+        foreach ($analysis->carried['resources'] ?? [] as $fqcn) {
+            $typeName = TsNaming::resourceTypeName($fqcn);
+
+            if (CastChannels::spelledUnclaimed($typeName, $types, $resourceNames, $this->tsExtends)) {
+                $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
+                $this->analysisImports[$importPath] = array_values(array_unique([...($this->analysisImports[$importPath] ?? []), $typeName]));
+            }
+        }
+    }
+
+    /**
+     * The names of the registered classes each payload key's import channels hold.
+     *
+     * @param  array<class-string, string>  $map  FQCN => unaliased name
+     * @return array<string, list<string>>
+     */
+    protected function ownNames(array $map): array
+    {
+        return array_map(
+            static fn (array $fqcns): array => array_values(array_intersect_key($map, array_flip($fqcns))),
+            $this->propertyFqcns,
+        );
     }
 
     /**
@@ -490,7 +550,7 @@ class BroadcastEventTransformer extends CoreTransformer
             );
             $aliasable[$importPath][$typeName] = true;
 
-            // A class a cast displaced stays carried until here, where only the names a type still spells survive.
+            // Only a name a type still spells is imported, as ResourceTransformer::pruneUnspelledImports() keeps it.
             if (TsTypeString::typeNameOccursIn($this->localImportName($fqcn, $typeName), ...$types)) {
                 $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             }

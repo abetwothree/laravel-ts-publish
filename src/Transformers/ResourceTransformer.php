@@ -39,6 +39,7 @@ use ReflectionClass;
  * @phpstan-import-type ImportMapType from MethodAnalysis
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type CarriedMap from MethodAnalysis
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -99,6 +100,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var array<string, true> property name => true, for a key one of the resource's own methods casts */
     protected array $methodCastKeys = [];
+
+    /** @var CarriedMap the classes the casts displaced and no import channel holds, registered only while spelled */
+    protected array $carried = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -320,6 +324,7 @@ class ResourceTransformer extends CoreTransformer
         // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
         resolve(IndexSignatureReconciler::class)->reconcile($analysis, $castKeys, $this->tsExtends !== []);
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
+        $this->carried = $analysis->carried;
 
         // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -661,6 +666,16 @@ class ResourceTransformer extends CoreTransformer
             ]));
         }
 
+        $enumTypeName = static fn (string $fqcn): string => LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
+            ?? class_basename($fqcn).'Type';
+
+        // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
+        foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
+            $this->enumFqcnMap[$fqcn] ??= $typeName;
+            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->directEnumProperties[$fqcn] = $fqcn;
+        }
+
         $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends);
 
         return $this;
@@ -668,8 +683,7 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Drops the model and resource imports no property or extends clause still needs after #[TsCasts] overrides, and
-     * keeps each custom import the analysis carried while a type spells its name and no cast in force brings that name
-     * from another path.
+     * keeps each custom import the analysis carried while a type spells its name.
      *
      * @return $this
      */
@@ -692,29 +706,25 @@ class ResourceTransformer extends CoreTransformer
             ]));
         }
 
-        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->tsExtends);
         // A collection's flat type alias spells the resource it collects, with no property behind it.
-        $this->resourceFqcnMap = $this->keepSpelled(
-            $this->resourceFqcnMap,
-            $resources,
-            [...$this->tsExtends, ...array_filter([$this->typeAlias])],
-        );
+        $resourceExtra = [...$this->tsExtends, ...array_filter([$this->typeAlias])];
+        $resourceName = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
 
-        // A name a cast in force brings is bound by that cast's own import, so the name from any other path collides.
-        $castPaths = [];
+        foreach ($this->carriedInUse('models', $this->modelFqcnMap, $models, $this->tsExtends, class_basename(...)) as $fqcn => $name) {
+            $this->modelFqcnMap[$fqcn] ??= $name;
+        }
 
-        foreach ($this->castsInForce as $cast) {
-            foreach (CastChannels::brings($cast) as $name) {
-                $castPaths[$name][] = $cast['import'];
+        foreach ($this->carriedInUse('resources', $this->resourceFqcnMap, $resources, $resourceExtra, $resourceName) as $fqcn => $name) {
+            if ($fqcn !== $this->findable) {
+                $this->resourceFqcnMap[$fqcn] ??= $name;
             }
         }
 
+        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->tsExtends);
+        $this->resourceFqcnMap = $this->keepSpelled($this->resourceFqcnMap, $resources, $resourceExtra);
+
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
-                if (isset($castPaths[$typeName]) && ! in_array($importPath, $castPaths[$typeName], true)) {
-                    continue;
-                }
-
                 if (TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                     $this->customImports[$importPath][] = $typeName;
                 }
@@ -738,26 +748,55 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function keepSpelled(array $map, array $attributed, array $extra): array
     {
-        return array_filter($map, function (string $name, string $fqcn) use ($map, $attributed, $extra): bool {
-            if (TsTypeString::typeNameOccursIn($name, ...$extra)) {
-                return true;
-            }
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $ownNames = $this->ownNames($map, $attributed);
 
-            foreach ($this->properties as $property => ['type' => $type]) {
-                if (! TsTypeString::typeNameOccursIn($name, $type)) {
-                    continue;
-                }
-
-                $own = $attributed[$property] ?? [];
-
-                if (in_array($fqcn, $own, true)
-                    || ! array_any($own, fn (string $other): bool => ($map[$other] ?? null) === $name)) {
+        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra): bool {
+            foreach ($types as $property => $type) {
+                if (in_array($fqcn, $attributed[$property] ?? [], true) && TsTypeString::typeNameOccursIn($name, $type)) {
                     return true;
                 }
             }
 
-            return false;
+            return CastChannels::spelledUnclaimed($name, $types, $ownNames, $extra);
         }, ARRAY_FILTER_USE_BOTH);
+    }
+
+    /**
+     * Each carried class of one kind some published text spells with no class of its name behind it, by that name.
+     *
+     * @param  'enums'|'models'|'resources'  $kind
+     * @param  array<string, string>  $map  FQCN => unaliased name, of this kind's registered classes
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  Closure(class-string): string  $nameOf
+     * @return array<class-string, string>
+     */
+    protected function carriedInUse(string $kind, array $map, array $attributed, array $extra, Closure $nameOf): array
+    {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $ownNames = $this->ownNames($map, $attributed);
+        $inUse = [];
+
+        foreach ($this->carried[$kind] ?? [] as $fqcn) {
+            if (CastChannels::spelledUnclaimed($nameOf($fqcn), $types, $ownNames, $extra)) {
+                $inUse[$fqcn] = $nameOf($fqcn);
+            }
+        }
+
+        return $inUse;
+    }
+
+    /**
+     * The names of the registered classes each property's import channels carry.
+     *
+     * @param  array<string, string>  $map  FQCN => unaliased name
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @return array<array-key, list<string>>
+     */
+    protected function ownNames(array $map, array $attributed): array
+    {
+        return array_map(static fn (array $own): array => array_values(array_intersect_key($map, array_flip($own))), $attributed);
     }
 
     /**

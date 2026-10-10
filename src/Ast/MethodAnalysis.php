@@ -25,6 +25,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
  * @phpstan-type CastInForce = array{type: string, import: string|null}
  * @phpstan-type CastMap = array<string, CastInForce>
+ * @phpstan-type CarriedMap = array{
+ *     enums?: list<class-string>,
+ *     models?: list<class-string>,
+ *     resources?: list<class-string>,
+ * }
  * @phpstan-type AnalyzedProperty = array{
  *     name: string,
  *     type: string,
@@ -58,6 +63,8 @@ class MethodAnalysis
      *                                                          for a mixed EnumResource/direct-access ternary or match
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, and the path of
      *                          its own import, if any; a publisher fits the key's import channels to that text
+     * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: in no import
+     *                               channel, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -75,6 +82,7 @@ class MethodAnalysis
         public array $inlineEnumResourceFqcns = [],
         public array $enumResourceArmShapes = [],
         public array $casts = [],
+        public array $carried = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -125,14 +133,16 @@ class MethodAnalysis
         foreach ($result['customImports'] ?? [] as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
         }
+
+        $this->carry($result['carriedFqcns'] ?? []);
     }
 
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` spread-merge with the source winning on
-     * collision. `inlineModelFqcns`, `inlineResourceFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append
-     * WITHOUT deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
+     * `properties` appends; the single-value class maps and `casts` spread-merge with the source winning, and a key the
+     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
+     * consumes each as a positional queue against the rendered type. `carried` unions per kind.
      */
     public function merge(self $source): void
     {
@@ -143,7 +153,15 @@ class MethodAnalysis
         $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
         $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
         $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
+
+        foreach ($source->properties as $property) {
+            if (! isset($source->casts[$property['name']])) {
+                unset($this->casts[$property['name']]);
+            }
+        }
+
         $this->casts = [...$this->casts, ...$source->casts];
+        $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
@@ -165,6 +183,20 @@ class MethodAnalysis
             $this->inlineEnumResourceFqcns[$propName] = [
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
+        }
+    }
+
+    /**
+     * Add classes a cast carried, once each per kind.
+     *
+     * @param  CarriedMap  $carried
+     */
+    public function carry(array $carried): void
+    {
+        foreach ($carried as $kind => $fqcns) {
+            if ($fqcns !== []) {
+                $this->carried[$kind] = array_values(array_unique([...($this->carried[$kind] ?? []), ...$fqcns]));
+            }
         }
     }
 
