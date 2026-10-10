@@ -36,6 +36,7 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
+use ReflectionClass;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
@@ -72,6 +73,13 @@ trait ReadsReturnedVariables
      * @return ValueExpressionResult
      */
     abstract protected function analyzeValueExpression(Expr $expr): array;
+
+    /**
+     * The class under analysis, the subject a warning names.
+     *
+     * @return ReflectionClass<object>
+     */
+    abstract protected function subjectReflection(): ReflectionClass;
 
     /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
@@ -523,7 +531,9 @@ trait ReadsReturnedVariables
      */
     private function namedKey(Expr $dim): ?string
     {
-        return $dim instanceof String_ ? $dim->value : $this->interpolatedKeyName($dim);
+        return $dim instanceof String_
+            ? $this->literalKeyName($dim->value, $this->subjectReflection())
+            : $this->interpolatedKeyName($dim);
     }
 
     /**

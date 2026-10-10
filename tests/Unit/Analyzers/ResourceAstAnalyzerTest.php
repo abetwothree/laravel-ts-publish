@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastAliasedEnumResource;
@@ -30,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedAttributeDigestCollection;
@@ -7027,3 +7029,22 @@ it('reflects a Carbon method on a date cast, never on a timestamp cast', functio
     'a timestamp cast' => ['$this->deleted_at->format("Y")', 'unknown'],
     'the timestamp cast itself' => ['$this->deleted_at', 'number | null'],
 ]);
+
+// Printed bare, `[key: string]` would type every other key (TS2411) and the `\_x` text would sit beside the real
+// `\\_x` signature (TS2413); a literal key is never a signature, so it is left out.
+it('a literal key whose text reads as an index signature is left out with a warning, and the real signature stays', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['id', '[key: `${string}\\\\_x`]'])
+        ->and($properties['[key: `${string}\\\\_x`]']['type'])->toBe('string | undefined')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: `${string}\\_x`]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: number]" reads as an index signature, so it is left out; rename it.',
+        ])
+        ->and(array_unique(array_column(AnalysisWarnings::all(), 'subject')))->toBe([SignatureTextKeyResource::class]);
+
+    AnalysisWarnings::reset();
+});

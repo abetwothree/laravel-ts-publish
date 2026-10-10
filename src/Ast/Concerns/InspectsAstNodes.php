@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
@@ -98,7 +99,7 @@ trait InspectsAstNodes
     protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
     {
         if ($key instanceof String_) {
-            return $key->value;
+            return $this->literalKeyName($key->value, $subject);
         }
 
         if ($key instanceof Int_) {
@@ -117,6 +118,26 @@ trait InspectsAstNodes
 
             return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
         }
+
+        return null;
+    }
+
+    /**
+     * A literal key's text, or null with a warning when it reads as an index signature: printed bare, it would type
+     * other keys.
+     *
+     * @param  ReflectionClass<object>  $subject  the warning's subject
+     */
+    protected function literalKeyName(string $text, ReflectionClass $subject): ?string
+    {
+        if (! IndexSignatureKey::is($text)) {
+            return $text;
+        }
+
+        AnalysisWarnings::addOnce(
+            $subject->getName(),
+            'The key "'.$text.'" reads as an index signature, so it is left out; rename it.',
+        );
 
         return null;
     }

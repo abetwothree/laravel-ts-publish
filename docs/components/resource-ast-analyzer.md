@@ -528,6 +528,9 @@ Each literal part is escaped the way TypeScript reads template text: a backslash
 return as `\r`. Written raw, a backslash would fail to compile (TS1125, TS1337) or match other text, and a CR would
 read as a line feed. `IndexSignatureKey::literalSegments()` undoes all three.
 
+A literal key whose text reads as a signature, `'[key: string]'`, is left out by `InspectsAstNodes::literalKeyName()` with a
+warning, because printed bare it would type other keys.
+
 A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::castTargets()` decides which signature
 it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes. An Inertia page and Inertia
 shared data still emit the losing spelling's import, unused.

@@ -410,6 +410,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * The class under analysis, the subject a warning names.
+     *
+     * @return ReflectionClass<object>
+     */
+    protected function subjectReflection(): ReflectionClass
+    {
+        return $this->scope->subjectReflection;
+    }
+
+    /**
      * A new, empty resource analysis for a returned variable's walk to fill.
      */
     protected function newVariableAnalysis(): ResourceAnalysis
