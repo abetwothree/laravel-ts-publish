@@ -15,6 +15,7 @@ export * from './ReportSynced';
 export * from './ReviewerCastEvent';
 export * from './SameBasenameModelEvent';
 export * from './ServerCreated';
+export * from './TaggedPayloadEvent';
 export * from './TeamMessageSent';
 export * from './TeamRosterSynced';
 export * from './UserNotification';

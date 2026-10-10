@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithLosingSpellingImport;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
@@ -382,7 +383,7 @@ test('a #[TsCasts] key with the backslashes a single-quoted PHP string leaves re
 // PHP stores '42' as an int; the optional-suffix check used to receive it under strict types and throw a TypeError.
 test('a numeric cast key lands on its own key instead of stopping the run', function () {
     expect(analyzeSharedDataFor(MiddlewareWithNumericCastKey::class)['sharedPageProps'])
-        ->toBe('{ appName: string, 42: boolean }');
+        ->toBe('{ appName: string, "42": boolean }');
 });
 
 test('share()\'s spelling of a signature outranks the class\'s exact name', function () {
@@ -395,4 +396,30 @@ test('a losing cast spelling brings no import', function () {
 
     expect($result['sharedPageProps'])->toBe('{ id: number, [key: `${string}\\\\_cast`]: number }')
         ->and($result['typeImports'])->toBe([]);
+});
+
+it('quotes a shared-data key that is not an identifier', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithKeyEdges::class)['sharedPageProps'])
+        ->toBe('{ "can-edit": boolean, ok: number }');
+});
+
+test('the shared-data type prints no ? after a signature, whatever flag reaches it', function () {
+    $analyzer = new class extends InertiaSharedDataAnalyzer
+    {
+        /**
+         * The type string the builder prints.
+         *
+         * @param  array<string, array{type: string, optional: bool}>  $props
+         * @param  array<string, array{type: string, optional: bool}>  $overrides
+         */
+        public function build(array $props, array $overrides): string
+        {
+            return $this->buildTypeStringWithOverrides($props, $overrides);
+        }
+    };
+
+    expect($analyzer->build(
+        ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
+        ['[key: number]' => ['type' => 'string', 'optional' => true]],
+    ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, [key: number]: string }');
 });

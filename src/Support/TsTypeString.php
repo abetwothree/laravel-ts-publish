@@ -71,10 +71,9 @@ class TsTypeString
      */
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
-        // The `?` of an optional key is not a token separator, so a key stripped without it survives as
-        // `name?` and reads as an unimportable value. A quoted key (`"1"`, from an int or constant array
-        // key) is a key just the same, and nothing imports it.
-        $withoutKeys = (string) preg_replace('/(?:\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
+        // A key goes with its optional `?`, no token separator, or `name?` would read as a value. A quoted key (`"1"`,
+        // from an int or constant array key) and a generated index signature are keys too, and nothing imports them.
+        $withoutKeys = (string) preg_replace('/(?:'.IndexSignatureKey::PATTERN.'|\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
 
         // A string or number literal needs no import, whatever it spells.
         $withoutLiterals = (string) preg_replace(
@@ -419,9 +418,9 @@ class TsTypeString
      */
     protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
     {
-        // A literal's text is a value, so 'Post' must stay 'Post'. A template literal is matched only so a quote inside
-        // it opens no string; its own text is qualified like the rest.
-        $literal = '/(\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
+        // A literal's text is a value, so 'Post' must stay 'Post', and a nested index signature's is a key, kept whole.
+        // A template literal is matched only so a quote inside it opens no string; its own text is qualified as usual.
+        $literal = '/('.IndexSignatureKey::PATTERN.'|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
         $segments = preg_split($literal, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
         $qualifiable = array_filter(
             $segments,

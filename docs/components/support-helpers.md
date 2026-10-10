@@ -51,7 +51,13 @@ belongs to the engine, however string-shaped its signature looks. Reflection alo
 
 `validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
 only in a type position, so every value-position caller must leave the default alone.
-[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does.
+[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does. The type positions that pass it are
+the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildTypeStringWithOverrides()` methods and
+`BuildsInlineObjectTypes::buildInlineObjectType()`; each prints `?` only after a key `isIndexSignatureKey()` rejects.
+
+`signatureSafeMember()` sits beside `isIndexSignatureKey()` as the one home for the optional-signature rule: each site
+that sets `optional` from a `#[TsCasts]` entry sends it through, so an optional signature publishes required, with a
+value that admits `undefined`.
 
 `castTargets()` decides which published key a `#[TsCasts]` key retypes:
 
@@ -79,9 +85,9 @@ metadata keeps `normalizeMetadataValue()`.
 
 ### `TsTypeString`
 
-The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward call is
-`TsTypeShape::splitTopLevel()`. That one-way dependency is what made the class safe to lift out. A new member that
-wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
+`TsTypeShape::splitTopLevel()` and `IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to
+lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which

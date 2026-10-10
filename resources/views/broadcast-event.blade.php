@@ -10,8 +10,8 @@ export interface {{ $data->eventName }}{!! count($data->tsExtends) > 0 ? ' exten
 @foreach ($data->properties as $name => $prop)
 @php
     $tsType = $prop['type'];
-    $optional = $prop['optional'] ? '?' : '';
+    $optional = $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '';
 @endphp
-    {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! $tsType !!};
+    {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! $tsType !!};
 @endforeach
 }

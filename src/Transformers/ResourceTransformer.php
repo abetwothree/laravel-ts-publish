@@ -490,7 +490,7 @@ class ResourceTransformer extends CoreTransformer
     /**
      * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, each location deciding alone
      * so a later one outranks an earlier one, then import what the resource's own surviving casts name. One decision
-     * per source moves its type, optional and import entries together; a key no attribute names keeps its spelling.
+     * per source moves its type, optional and import entries together; a key no attribute names decides last.
      *
      * @param  list<string>  $keys
      */
@@ -498,7 +498,11 @@ class ResourceTransformer extends CoreTransformer
     {
         $reader = resolve(TsCastsReader::class);
 
-        $resource = $reader->castTargets($this->tsCastsAttributes($this->reflectionResource), $keys);
+        $resource = $reader->castTargets(
+            $this->tsCastsAttributes($this->reflectionResource),
+            $keys,
+            array_keys($this->tsTypeOverrides),
+        );
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
         $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);
@@ -506,7 +510,7 @@ class ResourceTransformer extends CoreTransformer
         $modelAttributes = $this->modelClass !== null && class_exists($this->modelClass)
             ? $this->tsCastsAttributes(new ReflectionClass($this->modelClass))
             : [];
-        $model = $reader->castTargets($modelAttributes, $keys);
+        $model = $reader->castTargets($modelAttributes, $keys, array_keys($this->modelTsCastsOverrides));
         $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
         $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
         $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
@@ -551,7 +555,11 @@ class ResourceTransformer extends CoreTransformer
             }
 
             if (isset($this->modelTsCastsOptionalOverrides[$property])) {
-                $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
+                $optional = $this->modelTsCastsOptionalOverrides[$property];
+                $this->properties[$property] = [
+                    ...$this->properties[$property],
+                    ...JsEmitter::signatureSafeMember((string) $property, $type, $optional),
+                ];
             }
         }
 
@@ -569,7 +577,10 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($this->optionalOverrides as $property => $optional) {
             if (isset($this->properties[$property])) {
-                $this->properties[$property]['optional'] = $optional;
+                $this->properties[$property] = [
+                    ...$this->properties[$property],
+                    ...JsEmitter::signatureSafeMember((string) $property, $this->properties[$property]['type'], $optional),
+                ];
             }
         }
 

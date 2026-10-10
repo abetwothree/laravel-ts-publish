@@ -1011,6 +1011,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
                 $import = is_array($value) ? ($value['import'] ?? null) : null;
 
+                if ($optional === true) {
+                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember((string) $property, $type, true);
+                }
+
                 $found = false;
 
                 foreach ($analysis->properties as &$prop) {

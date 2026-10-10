@@ -425,18 +425,14 @@ class InertiaPageAnalyzer
             return TsTypeStringService::EMPTY_OBJECT; // @codeCoverageIgnore
         }
 
+        $casts = array_map(fn (string $type): array => ['type' => $type, 'optional' => false], $overrides);
         $parts = [];
 
-        foreach ($props as $key => $prop) {
-            $parts[] = isset($overrides[$key])
-                ? $key.': '.$overrides[$key]
-                : $key.($prop['optional'] ? '?: ' : ': ').$prop['type'];
-        }
-
-        foreach ($overrides as $key => $type) {
-            if (! array_key_exists($key, $props)) {
-                $parts[] = $key.': '.$type;
-            }
+        // A cast keeps its prop's place, and one no prop has goes after them.
+        foreach (array_replace($props, $casts) as $key => $entry) {
+            $key = (string) $key;
+            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
+                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
         }
 
         return '{ '.implode(', ', $parts).' }';

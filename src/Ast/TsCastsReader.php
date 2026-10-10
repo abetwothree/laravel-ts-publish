@@ -75,17 +75,21 @@ class TsCastsReader
     /**
      * The published key each cast key of these instances retypes, as JsEmitter::castTargets() decides it for each
      * instance alone; a later instance's claim on a key then outranks an earlier one's, whatever either spelling.
+     * The $castKeys no instance names, such as one a transformer subclass injects, decide last, as one more location.
      *
      * @param  list<TsCasts>  $attributes  in the precedence order unpack() takes
      * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @param  list<string>  $castKeys  every cast key the caller holds
      * @return array<string, string|null>
      */
-    public function castTargets(array $attributes, array $keys): array
+    public function castTargets(array $attributes, array $keys, array $castKeys = []): array
     {
+        $locations = array_map(fn (TsCasts $attribute): array => array_keys($attribute->types), $attributes);
+        $locations[] = array_values(array_diff($castKeys, ...$locations));
         $targets = [];
 
-        foreach ($attributes as $attribute) {
-            foreach (JsEmitter::castTargets(array_keys($attribute->types), $keys) as $castKey => $target) {
+        foreach ($locations as $location) {
+            foreach (JsEmitter::castTargets($location, $keys) as $castKey => $target) {
                 if ($target !== null) {
                     foreach (array_keys($targets, $target, true) as $earlier) {
                         $targets[$earlier] = null;

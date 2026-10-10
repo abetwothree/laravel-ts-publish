@@ -3951,6 +3951,12 @@ declare global {
             members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof app.models.User | keyof UserResource> & Omit<app.models.User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
             owner_relation_spread: Omit<app.models.User, 'flag'> & { flag: boolean };
         }
+        /** Index signatures inside nested shapes: one beside a named key its pattern matches, one whose text holds a backslash. */
+        export interface NestedSignatureResource {
+            id: number;
+            box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };
+            units: { [key: `${string}\\unit`]: string | undefined };
+        }
         export interface NonArrayReturnResource {
             id: number;
             name: string;
@@ -3977,6 +3983,12 @@ declare global {
             category?: Pick<app.models.Category, 'id' | 'name'> | null;
             dynamic: Record<string, unknown>;
             dynamic_category?: Record<string, unknown> | null;
+        }
+        /** Optional casts on two index signatures, one on the class and one on toArray(): neither can carry `?:`. */
+        export interface OptionalSignatureCastResource {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
+            [key: `${string}_note`]: number | undefined;
         }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
@@ -5859,6 +5871,10 @@ declare global {
         export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;
+        }
+        export interface TaggedPayloadEvent {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
         }
         export interface TeamMessageSent {
             teamId: number;

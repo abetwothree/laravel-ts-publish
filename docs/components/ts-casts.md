@@ -39,9 +39,10 @@ An API resource's method casts outrank its model's, so `modelCastsOver()` skips 
 that took it, so the later location outranks the earlier whatever either spells.
 `ResourceTransformer::castsOverAnalysisKeys()` (the resource and its model apart),
 `BroadcastEventTransformer::transformProperties()` and `InertiaSharedDataAnalyzer::buildResult()` call it once the keys
-are known, then re-key the merged maps with `JsEmitter::retargetCasts()`. A key no attribute names, such as one a
-transformer subclass injects, keeps its own spelling. An Inertia page has one location and decides per rendered
-component. A page's and shared data's imports follow the surviving casts, so a losing spelling brings none.
+are known, then re-key the merged maps with `JsEmitter::retargetCasts()`. On a resource and an event, a key no
+attribute names, such as one a transformer subclass injects, decides last, as one more location. An Inertia page has
+one location and decides per rendered component. A page's and shared data's imports follow the surviving casts, so a
+losing spelling brings none.
 
 A numeric cast key keeps its key: PHP stores `'42'` as an int, which `array_merge()` or a spread renumbers, so every
 merge of cast maps uses `array_replace()`. An API resource's class-level cast on `42` then adds `"42": T`, as a method

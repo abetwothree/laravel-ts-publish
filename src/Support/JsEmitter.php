@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use BackedEnum;
 use Closure;
 use InvalidArgumentException;
@@ -61,6 +62,18 @@ class JsEmitter
     public function isIndexSignatureKey(string $key): bool
     {
         return IndexSignatureKey::is($key);
+    }
+
+    /**
+     * Publish an optional index signature, which cannot carry `?`, as a required one whose value admits `undefined`.
+     *
+     * @return array{type: string, optional: bool}
+     */
+    public function signatureSafeMember(string $key, string $type, bool $optional): array
+    {
+        return $optional && $this->isIndexSignatureKey($key)
+            ? ['type' => TsTypeString::orUndefined($type), 'optional' => false]
+            : ['type' => $type, 'optional' => $optional];
     }
 
     /**

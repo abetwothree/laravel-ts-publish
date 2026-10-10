@@ -15,6 +15,9 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  */
 final class IndexSignatureKey
 {
+    /** A generated signature key, unanchored, for a pattern that finds one inside a type. */
+    public const string PATTERN = '\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]';
+
     /**
      * The template-literal signature for these parts, or null without both a literal and a dynamic part.
      *
@@ -53,7 +56,7 @@ final class IndexSignatureKey
      */
     public static function is(string $key): bool
     {
-        return preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key) === 1;
+        return preg_match('/^'.self::PATTERN.'$/', $key) === 1;
     }
 
     /**

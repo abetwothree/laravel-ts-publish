@@ -319,6 +319,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\TaggedPayloadEvent": {
+            "name": "TaggedPayloadEvent",
+            "eventName": "TaggedPayloadEvent",
+            "broadcastName": ".Workbench.App.Events.TaggedPayloadEvent",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\TeamMessageSent": {
             "name": "TeamMessageSent",
             "eventName": "TeamMessageSent",
@@ -14741,6 +14758,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\NestedSignatureResource": {
+            "name": "NestedSignatureResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "box",
+                    "type": "{ [key: `${string}_tag`]: string | number | undefined; price_tag: number }",
+                    "optional": false
+                },
+                {
+                    "name": "units",
+                    "type": "{ [key: `${string}\\\\unit`]: string | undefined }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\NonArrayReturnResource": {
             "name": "NonArrayReturnResource",
             "properties": [
@@ -14798,6 +14835,26 @@
                     "name": "dynamic_category",
                     "type": "Record<string, unknown> | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\OptionalSignatureCastResource": {
+            "name": "OptionalSignatureCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_note`]",
+                    "type": "number | undefined",
+                    "optional": false
                 }
             ]
         },

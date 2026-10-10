@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
@@ -6936,7 +6937,7 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         $props = ($this->shape)('nestedBranches');
 
         expect($props['[key: `${string}_tag`]']['type'])
-            ->toBe('string | { "[key: `${string}_tag`]": string | undefined } | number | undefined')
+            ->toBe('string | { [key: `${string}_tag`]: string | undefined } | number | undefined')
             ->and($props['box_tag']['optional'])->toBeTrue()
             ->and($props['price_tag']['optional'])->toBeTrue();
     });
@@ -7047,6 +7048,20 @@ it('a literal key whose text reads as an index signature is left out with a warn
             'The key "[key: number]" reads as an index signature, so it is left out; rename it.',
         ])
         ->and(array_unique(array_column(AnalysisWarnings::all(), 'subject')))->toBe([SignatureTextKeyResource::class]);
+
+    AnalysisWarnings::reset();
+});
+
+// A nested signature prints bare, so a nested literal key spelled like one must be left out as a top-level one is.
+it('leaves out a nested literal key that reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(NestedSignatureTextKeyResource::class)->properties;
+
+    expect($properties['box']['type'])->toBe('{ x: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
 
     AnalysisWarnings::reset();
 });

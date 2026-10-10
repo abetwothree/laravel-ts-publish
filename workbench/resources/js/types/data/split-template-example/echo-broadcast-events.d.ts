@@ -16,6 +16,7 @@ import type { ReviewerCastEvent } from './app/events/ReviewerCastEvent';
 import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
+import type { TaggedPayloadEvent } from './app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './app/events/TeamRosterSynced';
 import type { UserNotification } from './app/events/UserNotification';
@@ -43,6 +44,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.SameBasenameModelEvent": SameBasenameModelEvent;
         "server.created": ServerCreated;
         ".Workbench.Crm.Events.StatusSynced": StatusSynced;
+        ".Workbench.App.Events.TaggedPayloadEvent": TaggedPayloadEvent;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;
         ".Workbench.App.Events.TeamRosterSynced": TeamRosterSynced;
         ".Workbench.App.Events.UserNotification": UserNotification;

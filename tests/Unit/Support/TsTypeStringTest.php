@@ -521,6 +521,7 @@ describe('qualifyGlobalType', function () {
         'an escaped backslash before the closing quote' => ["'Post\\\\' | Post", "'Post\\\\' | app.models.Post"],
         'the other quote inside' => ["\"it's Post\" | 'say \"User\"' | User", "\"it's Post\" | 'say \"User\"' | app.models.User"],
         'a shape member and a quoted key' => ["{ kind: 'Post'; \"User\": User }", "{ kind: 'Post'; \"User\": app.models.User }"],
+        'a nested index signature\'s key' => ['{ [key: `${string}Post`]: Post | undefined }', '{ [key: `${string}Post`]: app.models.Post | undefined }'],
     ]);
 
     test('reads a template literal as before: its text is qualified, and a quote inside opens no string', function () {
@@ -1106,6 +1107,18 @@ describe('typeNameOccursIn', function () {
             ->and($this->service->typeNameOccursIn('Post', $textOnly))->toBeFalse()
             ->and($this->service->typeNameOccursIn('Post', $textOnly.' | Post'))->toBeTrue();
     });
+});
+
+describe('shapeValueHasUnimportableToken', function () {
+    // A nested shape prints its signature bare, so the template text must read as a key rather than as a value token.
+    test('a generated index signature is a key, and only its value can need an import', function (string $type, bool $expected) {
+        expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
+    })->with([
+        'a template-literal signature' => ['{ [key: `${string}_tag`]: string | undefined; price_tag: number }', false],
+        'one whose text holds a backslash' => ['{ [key: `${string}\\\\unit`]: string | undefined }', false],
+        'a number signature' => ['{ [key: number]: string }', false],
+        'a class as the signature\'s value' => ['{ [key: `${string}_tag`]: User | undefined }', true],
+    ]);
 });
 
 describe('orUndefined', function () {

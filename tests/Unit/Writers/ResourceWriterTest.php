@@ -41,6 +41,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapsResou
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\View;
+use Workbench\App\Http\Resources\NestedSignatureResource;
+use Workbench\App\Http\Resources\OptionalSignatureCastResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\WarehouseResource;
@@ -408,4 +412,38 @@ test('resource without TsExtends renders plain interface', function () {
     expect($content)
         ->toContain('export interface PostResource')
         ->not->toContain('extends');
+});
+
+it('prints a nested index signature bare, with its backslash doubled once', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(NestedSignatureResource::class));
+
+    expect($content)
+        ->toContain('    box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };')
+        ->toContain('    units: { [key: `${string}\\\\unit`]: string | undefined };')
+        ->not->toContain('"[key:');
+});
+
+// An optional signature cast is settled before any template sees it, so a template published unguarded still compiles.
+it('keeps a resource template published before this release compiling', function () {
+    $root = sys_get_temp_dir().'/ts-publish-published-'.uniqid();
+    $views = $root.'/resources/views/vendor/laravel-ts-publish';
+    mkdir($views, recursive: true);
+    copy(__DIR__.'/../../views/resource-published-before-signature-guard.blade.php', $views.'/resource.blade.php');
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        $template = View::getFinder()->find('laravel-ts-publish::resource');
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(OptionalSignatureCastResource::class));
+    } finally {
+        File::deleteDirectory($root);
+    }
+
+    expect($template)->toBe($views.'/resource.blade.php')
+        ->and($content)->toContain('    [key: `${string}_tag`]: string | undefined;')
+        ->and($content)->toContain('    [key: `${string}_note`]: number | undefined;')
+        ->and($content)->not->toContain(']?:');
 });

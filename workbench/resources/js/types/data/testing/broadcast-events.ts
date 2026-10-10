@@ -16,6 +16,7 @@ import type { ReviewerCastEvent } from './workbench/app/events/ReviewerCastEvent
 import type { SameBasenameModelEvent } from './workbench/app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
+import type { TaggedPayloadEvent } from './workbench/app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
 import type { UserNotification } from './workbench/app/events/UserNotification';
@@ -42,6 +43,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.SameBasenameModelEvent'
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
+    | '.Workbench.App.Events.TaggedPayloadEvent'
     | '.Workbench.App.Events.TeamMessageSent'
     | '.Workbench.App.Events.TeamRosterSynced'
     | '.Workbench.App.Events.UserNotification'
@@ -68,6 +70,7 @@ export const BroadcastEvents = Object.freeze({
     SameBasenameModelEvent: '.Workbench.App.Events.SameBasenameModelEvent',
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
+    TaggedPayloadEvent: '.Workbench.App.Events.TaggedPayloadEvent',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
     TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
     UserNotification: '.Workbench.App.Events.UserNotification',
@@ -95,6 +98,7 @@ export type {
     SameBasenameModelEvent,
     ServerCreated,
     StatusSynced,
+    TaggedPayloadEvent,
     TeamMessageSent,
     TeamRosterSynced,
     UserNotification,

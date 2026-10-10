@@ -362,16 +362,11 @@ class InertiaSharedDataAnalyzer
 
         $parts = [];
 
-        foreach ($props as $key => $prop) {
-            $entry = $overrides[$key] ?? $prop;
-
-            $parts[] = $key.($entry['optional'] ? '?: ' : ': ').$entry['type'];
-        }
-
-        foreach ($overrides as $key => $override) {
-            if (! array_key_exists($key, $props)) {
-                $parts[] = $key.($override['optional'] ? '?: ' : ': ').$override['type'];
-            }
+        // An override keeps its prop's place, and one no prop has goes after them.
+        foreach (array_replace($props, $overrides) as $key => $entry) {
+            $key = (string) $key;
+            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
+                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
         }
 
         return '{ '.implode(', ', $parts).' }';
@@ -396,7 +391,7 @@ class InertiaSharedDataAnalyzer
             $optional = str_ends_with($key, '?');
             $name = $optional ? substr($key, 0, -1) : $key;
 
-            $normalized[$name] = ['type' => $type, 'optional' => $optional];
+            $normalized[$name] = JsEmitter::signatureSafeMember($name, $type, $optional);
         }
 
         return $normalized;

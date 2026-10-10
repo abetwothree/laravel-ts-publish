@@ -535,7 +535,9 @@ A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::ca
 it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes.
 
 The key is never optional, since `[key: T]?:` is a syntax error. Its value gains `| undefined` instead, through
-`TsTypeString::orUndefined()`, for two reasons:
+`TsTypeString::orUndefined()`; an optional `#[TsCasts]` on a signature is settled the same way, through
+`JsEmitter::signatureSafeMember()`. Nested shapes and broadcast events print a signature bare, as resources do. The
+`| undefined` is there for two reasons:
 
 - **Runtime accuracy**: a key matching the pattern is not guaranteed present.
 - **Consumer builds**: under plain `strict`, without `exactOptionalPropertyTypes`, a signature beside an optional

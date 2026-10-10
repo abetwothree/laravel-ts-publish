@@ -213,7 +213,11 @@ class BroadcastEventTransformer extends CoreTransformer
         $analysis = $this->runAnalysis();
         $keys = array_column($analysis->properties, 'name');
 
-        $targets = resolve(TsCastsReader::class)->castTargets($this->tsCastsAttributes($this->reflection), $keys);
+        $targets = resolve(TsCastsReader::class)->castTargets(
+            $this->tsCastsAttributes($this->reflection),
+            $keys,
+            array_keys($this->tsTypeOverrides),
+        );
 
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $targets);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $targets);
@@ -316,10 +320,11 @@ class BroadcastEventTransformer extends CoreTransformer
             $name = $property['name'];
 
             if (isset($this->tsTypeOverrides[$name])) {
-                $result[$name] = [
-                    'type' => $this->tsTypeOverrides[$name],
-                    'optional' => $this->optionalOverrides[$name] ?? $property['optional'],
-                ];
+                $result[$name] = JsEmitter::signatureSafeMember(
+                    (string) $name,
+                    $this->tsTypeOverrides[$name],
+                    $this->optionalOverrides[$name] ?? $property['optional'],
+                );
                 $this->propertyFqcns[$name] = $this->collectPropertyFqcns($name, $analysis);
 
                 continue;

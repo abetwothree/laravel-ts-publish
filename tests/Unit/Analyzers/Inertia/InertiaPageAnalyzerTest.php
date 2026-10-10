@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -516,7 +517,7 @@ test('a controller method\'s cast key holding a raw CR retypes the CR signature'
 
 test('a page cast on a numeric key lands on that key', function () {
     expect(pageData(ControllerWithCastKeyEdges::class.'@numeric')['pageType'])
-        ->toBe('Inertia.SharedData & { heading: string, 42: boolean }');
+        ->toBe('Inertia.SharedData & { heading: string, "42": boolean }');
 });
 
 test('a losing page cast spelling brings no import', function () {
@@ -532,4 +533,30 @@ it('keeps a page cast\'s import once when only one rendered component returns it
     expect($data['component'])->toBe(['Edges/WithMeta', 'Edges/WithoutMeta'])
         ->and($data['pageType'][0])->toBe('Inertia.SharedData & { meta: PageMeta, id: number }')
         ->and($data['externalImports'])->toBe(['@/types/meta' => ['PageMeta']]);
+});
+
+it('quotes a page prop key that is not an identifier', function () {
+    expect(pageData(InertiaKeyEdgesController::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
+});
+
+test('the page type prints no ? after a signature, whatever flag reaches it', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /**
+         * The type string the builder prints.
+         *
+         * @param  array<string, array{type: string, optional: bool}>  $props
+         * @param  array<string, string>  $overrides
+         */
+        public function build(array $props, array $overrides): string
+        {
+            return $this->buildTypeStringWithOverrides($props, $overrides);
+        }
+    };
+
+    expect($analyzer->build(
+        ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
+        ['a-b' => 'string'],
+    ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, "a-b": string }');
 });

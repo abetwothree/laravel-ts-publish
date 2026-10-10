@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
@@ -15,7 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UncastEscapedKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
 use Workbench\App\Events\EnumBroadcastEvent;
@@ -28,6 +32,7 @@ use Workbench\App\Events\PureEnumEvent;
 use Workbench\App\Events\ReportSynced;
 use Workbench\App\Events\SameBasenameModelEvent;
 use Workbench\App\Events\ServerCreated;
+use Workbench\App\Events\TaggedPayloadEvent;
 use Workbench\App\Events\TeamMessageSent;
 use Workbench\App\Events\TeamRosterSynced;
 use Workbench\App\Events\UserNotification;
@@ -644,8 +649,26 @@ test('an event cast on a numeric key lands on that key', function () {
     ]);
 });
 
+// No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
+it('lets a cast an event transformer subclass injects under another spelling of a signature retype it', function () {
+    $properties = app(InjectedSignatureCastEventTransformer::class, ['findable' => UncastEscapedKeyBroadcastEvent::class])->properties;
+
+    expect($properties['[key: `${string}\\\\_cast`]']['type'])->toBe('boolean')
+        ->and($properties)->not->toHaveKey('[key: `${string}\\_cast`]');
+});
+
 test('an event\'s casts() spelling of a signature outranks the class\'s exact name', function () {
     $properties = app(BroadcastEventTransformer::class, ['findable' => SpellingsAcrossLocationsBroadcastEvent::class])->properties;
 
     expect($properties['[key: `${string}\\\\_x`]']['type'])->toBe('number');
+});
+
+it('prints an event\'s index signature bare', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => TaggedPayloadEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain("    id: number;\n    [key: `\${string}_tag`]: string | undefined;")
+        ->not->toContain('"[key:');
 });
