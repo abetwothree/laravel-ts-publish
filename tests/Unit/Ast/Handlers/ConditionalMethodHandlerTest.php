@@ -835,6 +835,7 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
     'when(), a Collection, which json_encode() writes as its items' => ['$this->when($this->rating, 1, fn ($d = new \\Illuminate\\Support\\Collection(["z"])) => $d)', 'number | string[]'],
+    'when(), a Collection holding a closure' => ['$this->when($this->title, fn ($t = new \\Illuminate\\Support\\Collection([static function () { return 1; }])) => $t)', 'unknown'],
 ]);
 
 // A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth:

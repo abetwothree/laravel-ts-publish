@@ -715,6 +715,7 @@ it('types a wrap\'s null arm: kept through a fluent self-returning call, dropped
     'a key holding new around null' => ['["p" => new self(null)]', '{ p: null }'],
     'a default parameter holding new around null' => ['$this->when($this->name, fn ($p = new self(null)) => $p)', 'null'],
     'make() around a make() around null' => ['self::make(self::make(null))', 'FluentSelfResource'],
+    'static make() around a static make() around null' => ['static::make(static::make(null))', 'FluentSelfResource'],
     'new around a make() that is not a resource\'s and returns only null' => ['new self(\\'.NullOnlyMaker::class.'::make())', 'null'],
     'resolve() on make()' => ['self::make($this->parent)->resolve()', 'FluentSelfResource'],
     'resolve() on new' => ['new self($this->parent)->resolve()', 'FluentSelfResource'],

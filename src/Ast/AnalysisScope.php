@@ -429,10 +429,8 @@ final class AnalysisScope
                 return $newDefault;
             }
 
-            // `new Collection([...])` types as collect([...]) does, which reads its own list: it skips the check below.
-            if ($default instanceof New_ && NewResourceHandler::collectCall($default) !== null) {
-                return $engine->resolve($default);
-            }
+            // collect() reads the list of a `new Collection([...])` itself, so the list clause below lets it through.
+            $readsOwnList = $default instanceof New_ && NewResourceHandler::collectCall($default) !== null;
 
             // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`,
             // and a list the evaluator failed on may hold an operation that throws, such as `1 / 0`; a default that
@@ -441,7 +439,7 @@ final class AnalysisScope
                 || $node instanceof Closure
                 || $node instanceof ArrowFunction
                 || ($node instanceof CallLike && $node->isFirstClassCallable())
-                || ($node instanceof Array_ && ! $this->isKeyedLiteral($node)));
+                || (! $readsOwnList && $node instanceof Array_ && ! $this->isKeyedLiteral($node)));
 
             return $unreadable === null ? $engine->resolve($default) : null;
         }

@@ -74,7 +74,8 @@ final class NewResourceHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `new SomeResource(...)` — resolve as a nested resource.
+     * Type `new X(...)`: a resource as itself or null, an EnumResource or a resource collection as what it wraps,
+     * `new Collection($items)` as collect($items), and any other class as json_encode() writes it.
      *
      * @return ValueExpressionResult
      */
