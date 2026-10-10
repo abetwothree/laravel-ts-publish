@@ -35,7 +35,9 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
 /**
@@ -287,6 +289,54 @@ it('resolves arithmetic operators to number', function () {
 
     expect($result)->toBe(['type' => 'number', 'optional' => false]);
 });
+
+/** The type a `+` expression resolves to on PostResource over a Post. */
+function arrayUnionType(string $php): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'];
+}
+
+it('types + on arrays as the array union, the left operand\'s keys winning', function (string $php, string $type) {
+    expect(arrayUnionType($php))->toBe($type);
+})->with([
+    'two literals' => ['["a" => 1] + ["b" => "x"]', '{ b: string; a: number }'],
+    'a key both set keeps the left value' => ['["a" => 1] + ["a" => "x", "b" => true]', '{ a: number; b: boolean }'],
+    'an attribute filter plus a literal' => ['$this->only(["id"]) + ["x" => 1]', '{ x: number; id: number }'],
+    'a list plus a list literal' => ['explode(",", $this->title) + ["z"]', 'string[]'],
+    'two lists' => ['[1, 2] + [3, 4, 5]', 'number[]'],
+    'a nested union' => ['["a" => 1] + ["b" => "x"] + ["c" => true]', '{ c: boolean; b: string; a: number }'],
+    'a resource payload plus a literal' => [
+        '(new \\'.UserResource::class.'($this->author))->resolve() + ["extra" => 1]',
+        "Omit<UserResource, 'extra'> & { extra: number }",
+    ],
+    'a bare enum case' => ['["s" => \\'.Status::class.'::Draft] + ["t" => 1]', '{ t: number; s: StatusType }'],
+]);
+
+it('keeps + on numbers a number', function (string $php) {
+    expect(arrayUnionType($php))->toBe('number');
+})->with([
+    'a column plus a literal' => ['$this->word_count + 1'],
+    'two columns' => ['$this->word_count + $this->id'],
+    'a literal on the left, resolved without the engine' => ['1 + $this->title'],
+    'two operands neither of which is provably an array' => ['json_decode("{}") + json_decode("[]")'],
+]);
+
+// PHP's `+` throws unless both sides are arrays, so an operand beside an array is one, even when its keys are unread.
+it('types + with an array operand whose keys it cannot read as a spread arm of that operand\'s type', function (string $php, string $type) {
+    expect(arrayUnionType($php))->toBe($type);
+})->with([
+    'an untyped operand on the left' => ['json_decode("{}") + ["x" => 1]', "Omit<Record<string, unknown>, 'x'> & { x: number }"],
+    'an untyped operand on the right' => ['["x" => 1] + json_decode("{}")', "Omit<Record<string, unknown>, 'x'> & { x: number }"],
+]);
+
+it('types + with an array operand the union literal cannot read as an arm, never unknown', function (string $php, string $member) {
+    expect(arrayUnionType($php))->not->toBe('unknown')->toContain($member);
+})->with([
+    'a relation filter' => ['$this->author->only(["id"]) + ["x" => 1]', 'x: number'],
+    'an array cast' => ['$this->options + ["a" => "x"]', 'a: string'],
+]);
 
 it('resolves concat to string', function () {
     $handler = new BinaryOpHandler;

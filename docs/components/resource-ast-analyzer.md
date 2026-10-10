@@ -406,17 +406,20 @@ agrees with `CollectionPipelineHandler`.
 ## Inline-array spreads become intersection arms
 
 In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) turns a spread into an
-arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes three kinds:
+arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes four kinds:
 
 - **Resource arm**: a spread of one named resource, such as `UserResource::make($m)->resolve($request)`, never an
   array or collection of one.
 - **Model arm**: `$var->toArray()` on a closure-bound model, or `$this->relation->toArray()` along real relations.
 - **Collection arm**: `$var->toArray()` on a to-many `whenLoaded()` parameter, or a relation chain that ends to-many.
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
+- **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
+  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
-a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member.
+a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member. An object
+arm names no class to flatten, so it is left out there.
 
 Each arm is `Omit<>`'d against every explicit key and every later arm's `keyof`. PHP's `[...$a, 'k' => $v]` lets the
 later write win, while TypeScript's `&` intersects both and makes a disagreeing key `never`. Three rules follow:
@@ -427,10 +430,18 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
   string. The one collision left is a numeric key beside it: the arm keeps
   `[...$members->toArray(), '0' => true]` as `Record<number, User> & { "0": boolean }`, and the publisher's
   [re-index](#numeric-keys) sends `(User | boolean)[]`.
-- **Arm order is source order**: all three kinds travel in one list, split by kind only when imports are dispatched.
-  Resource arms go on `embeddedResourceFqcns`, and model and collection arms on `embeddedModelFqcns`. Grouping by kind
-  any earlier would subtract against the wrong arm. `NestedResourceSpreadResource`'s
-  `members_model_then_resource_spread` and `members_resource_then_model_spread` pin both directions.
+- **Arm order is source order**: every kind travels in one list, split by kind only when imports are dispatched.
+  Resource arms go on `embeddedResourceFqcns`, model and collection arms on `embeddedModelFqcns`, and an object arm's
+  classes on the channels its value carried. Grouping by kind any earlier would subtract against the wrong arm.
+  `NestedResourceSpreadResource`'s `members_model_then_resource_spread` and `members_resource_then_model_spread` pin
+  both directions.
+
+PHP's array union `$a + $b` keeps every key `$a` sets. In value position
+[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the literal `[...$b, ...$a]` that
+`InspectsAstNodes::arrayUnionLiteral()` builds. An operand the literal cannot read from its syntax is spread as the
+value it resolves to, so an object joins as an object arm, and an untyped one as `Record<string, unknown>`, since PHP
+throws on `+` unless both sides are arrays. With no array on either side, `+` stays `number`. As a whole return,
+`analyzeArrayExpression()` reads each side and merges them as `+=` does.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations

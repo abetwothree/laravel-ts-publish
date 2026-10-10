@@ -50,6 +50,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -383,8 +384,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call to the
-     * method itself, an `array_merge()` of those, an own-model `only()`/`except()` or a `$this->method()` call; null
-     * for any other expression.
+     * method itself, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call or a `+`
+     * of any of them; null for any other expression.
      */
     protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -399,6 +400,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
         if ($expr instanceof FuncCall) {
             return $this->analyzeReturnArrayMerge($expr, $topLevel);
+        }
+
+        // `$a + $b` keeps every key $a sets, as `+=` does.
+        if ($expr instanceof Plus) {
+            $left = $this->readsAsArray($expr) ? $this->analyzeArrayExpression($expr->left, $topLevel) : null;
+            $right = $left === null ? null : $this->analyzeArrayExpression($expr->right, $topLevel);
+
+            if ($left === null || $right === null) {
+                return null;
+            }
+
+            $right->dropKeysHeldBy($left);
+            $left->merge($right);
+
+            return $left;
         }
 
         if (! $expr instanceof MethodCall || ! $expr->name instanceof Identifier) {
@@ -419,6 +435,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function readsAsArray(Expr $expr): bool
     {
+        if ($expr instanceof Plus) {
+            return $this->readsAsArray($expr->left) && $this->readsAsArray($expr->right);
+        }
+
         if (! $expr instanceof MethodCall) {
             return $expr instanceof Array_
                 || $this->isParentCallTo($expr, $this->methodName)
@@ -621,13 +641,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
      * and flatten its shape into this resource's own properties. Null for anything the classifier
-     * declines, so the caller falls through to $this->merge()'s own handling.
+     * declines, or takes only by its type, so the caller falls through to $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {
         $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
 
-        if ($arm === null) {
+        if ($arm === null || isset($arm['type'])) {
             return null;
         }
 

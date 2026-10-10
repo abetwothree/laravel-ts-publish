@@ -12,11 +12,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
@@ -31,8 +33,8 @@ use PhpParser\Node\Identifier;
 
 /**
  * An inline array literal, e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
- * becomes `{ name: string; value: number }`. Also folds spreads that resolve to a bare named
- * resource, a bound model's toArray(), or a bound collection's toArray() into intersection arms.
+ * becomes `{ name: string; value: number }`. Also folds spreads that resolve to a bare named resource, a bound
+ * model's or collection's toArray(), or any other value typed as one object into intersection arms.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
@@ -41,6 +43,13 @@ use PhpParser\Node\Identifier;
  * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
  *
  * @phpstan-type InlineSpreadArm = array{fqcn: class-string, isModel: bool, isCollection: bool}
+ * @phpstan-type ObjectSpreadArm = array{type: string, result: ValueExpressionResult}
+ * @phpstan-type SpreadArmFqcns = array{
+ *      models: list<class-string>,
+ *      resources: list<class-string>,
+ *      enums: list<class-string>,
+ *      enumResources: list<class-string>,
+ * }
  * @phpstan-type MemberNames = array<string, list<string>>
  *
  * @internal
@@ -51,12 +60,11 @@ final class InlineArrayHandler implements ExpressionHandler
     use InspectsAstNodes;
 
     /**
-     * Classify a spread's value expression as a bare named resource, a bound model's toArray(), or
-     * a bound collection's toArray() — the three shapes an inline array's intersection is built
-     * from. Shared with ResourceAstAnalyzer's top-level flatten path so the two never diverge on
-     * the same shape.
+     * Classify a spread's value expression as a bare named resource, a bound model's or collection's toArray(), or
+     * any other value typed as one object: the arms an inline array's intersection is built from. Shared with
+     * ResourceAstAnalyzer's top-level flatten path, so the two never diverge on the same shape.
      *
-     * @return InlineSpreadArm|null
+     * @return InlineSpreadArm|ObjectSpreadArm|null
      */
     public static function classifySpreadArm(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
@@ -85,7 +93,13 @@ final class InlineArrayHandler implements ExpressionHandler
             return ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
         }
 
-        return null;
+        // Spreading null throws, so a null arm sets no key. A class no generated file exports would be a token with no
+        // import behind it.
+        $type = ValueResult::stripNullArm($spreadResult['type']);
+
+        return self::isObjectType($type) && ValueResult::namesOnlyExportedClasses($spreadResult)
+            ? ['type' => $type, 'result' => $spreadResult]
+            : null;
     }
 
     /** @return list<class-string<Expr>> */
@@ -234,6 +248,27 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * Whether a type is one object: an object literal, a `Record`, or a `Pick<>` of a model.
+     */
+    private static function isObjectType(string $type): bool
+    {
+        return count(TsTypeString::splitTopLevelUnion($type)) === 1
+            && (TsTypeShape::isObjectLike($type) || (str_starts_with($type, 'Pick<') && str_ends_with($type, '>')));
+    }
+
+    /**
+     * A result's classes on one kind of channel: its single-entry channel's class, then its embedded queue.
+     *
+     * @param  class-string|null  $single
+     * @param  list<class-string>  $embedded
+     * @return list<class-string>
+     */
+    private static function channelFqcns(?string $single, array $embedded): array
+    {
+        return [...($single !== null ? [$single] : []), ...$embedded];
+    }
+
+    /**
      * Analyze an inline array literal and produce an inline TypeScript object type.
      *
      * e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
@@ -342,10 +377,10 @@ final class InlineArrayHandler implements ExpressionHandler
             $embeddedEnumResourceFqcns = [];
         }
 
-        // Each spread arm's import travels the channel matching its kind, or the emitted `Model &`
-        // token would be looked up among the resources and never resolve to an import.
-        $spreadModelFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => $arm['isModel']), 'fqcn');
-        $spreadResourceFqcns = array_column(array_filter($spreadArms, fn (array $arm): bool => ! $arm['isModel']), 'fqcn');
+        // Spread arms lead the type, so their tokens lead each queue.
+        $armFqcns = $this->spreadArmFqcns($spreadArms);
+        $embeddedEnumFqcns = [...$armFqcns['enums'], ...$embeddedEnumFqcns];
+        $embeddedEnumResourceFqcns = [...$armFqcns['enumResources'], ...$embeddedEnumResourceFqcns];
 
         $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
         $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
@@ -354,7 +389,7 @@ final class InlineArrayHandler implements ExpressionHandler
         // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
         // member's own arms.
         $embeddedModelFqcns = [
-            ...$spreadModelFqcns,
+            ...$armFqcns['models'],
             ...$this->memberFqcns(
                 $analysis,
                 $analysis->inlineModelFqcns,
@@ -390,7 +425,7 @@ final class InlineArrayHandler implements ExpressionHandler
         // per resource token, in the order the type spells them: spread arms lead the type, then each member, and a
         // member whose own union names two resources carries both. Never deduped, as for the models above.
         $embeddedResourceFqcns = [
-            ...$spreadResourceFqcns,
+            ...$armFqcns['resources'],
             ...$this->memberFqcns(
                 $analysis,
                 $analysis->inlineResourceFqcns,
@@ -402,6 +437,16 @@ final class InlineArrayHandler implements ExpressionHandler
 
         if ($embeddedResourceFqcns !== []) {
             $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
+        }
+
+        foreach ($spreadArms as $arm) {
+            if (isset($arm['result'])) {
+                $analysis->carry($arm['result']['carriedFqcns'] ?? []);
+
+                foreach ($arm['result']['customImports'] ?? [] as $path => $types) {
+                    $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
+                }
+            }
         }
 
         // A #[TsType(import: …)] token inside the inline object is spelled in the emitted type string,
@@ -538,15 +583,14 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Collect every spread in an inline array resolving to a bare named resource, to a bound
-     * model's toArray(), or to a bound collection's toArray(), in source order — the arms an
-     * intersection type is built from.
+     * Collect every spread in an inline array that classifySpreadArm() takes, in source order — the
+     * arms an intersection type is built from.
      *
-     * @return list<InlineSpreadArm>
+     * @return list<InlineSpreadArm|ObjectSpreadArm>
      */
     private function collectInlineArraySpreadArms(Array_ $array, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        /** @var list<InlineSpreadArm> $spreadArms */
+        /** @var list<InlineSpreadArm|ObjectSpreadArm> $spreadArms */
         $spreadArms = [];
 
         foreach ($array->items as $item) {
@@ -565,11 +609,42 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * The classes the spread arms' tokens name, per queue, in arm order.
+     *
+     * A named arm queues its class on the channel of its kind, or the emitted `Model &` token would be looked up
+     * among the resources and never resolve to an import; an object arm queues what its own value carries.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
+     * @return SpreadArmFqcns
+     */
+    private function spreadArmFqcns(array $spreadArms): array
+    {
+        $fqcns = ['models' => [], 'resources' => [], 'enums' => [], 'enumResources' => []];
+
+        foreach ($spreadArms as $arm) {
+            if (! isset($arm['result'])) {
+                $fqcns[$arm['isModel'] ? 'models' : 'resources'][] = $arm['fqcn'];
+
+                continue;
+            }
+
+            $result = $arm['result'];
+
+            array_push($fqcns['models'], ...self::channelFqcns($result['modelFqcn'] ?? null, $result['embeddedModelFqcns'] ?? []));
+            array_push($fqcns['resources'], ...self::channelFqcns($result['resourceFqcn'] ?? null, $result['embeddedResourceFqcns'] ?? []));
+            array_push($fqcns['enums'], ...self::channelFqcns($result['directEnumFqcn'] ?? null, $result['embeddedEnumFqcns'] ?? []));
+            array_push($fqcns['enumResources'], ...($result['embeddedEnumResourceFqcns'] ?? []));
+        }
+
+        return $fqcns;
+    }
+
+    /**
      * Build each spread's intersection arm, `Omit<>`'d against every key a later arm or an
      * explicit key will overwrite at runtime. `Omit<T, K>` doesn't require `K extends keyof T`,
      * so a later arm's own shape never has to be resolved — only its name, for `keyof`.
      *
-     * @param  list<InlineSpreadArm>  $spreadArms
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
      * @param  list<string>  $explicitKeyNames
      * @return list<string>
      */
@@ -578,17 +653,17 @@ final class InlineArrayHandler implements ExpressionHandler
         $explicitKeyLiterals = array_map(fn (string $key): string => "'{$key}'", $explicitKeyNames);
 
         return array_map(function (int $index) use ($spreadArms, $explicitKeyLiterals): string {
-            $armName = TsNaming::resourceTypeName($spreadArms[$index]['fqcn']);
+            $armName = $this->spreadArmName($spreadArms[$index]);
 
             // Spreading a collection renumbers its elements 0..n, so a collection arm holds only
             // numeric keys: nothing string-keyed can overwrite it, and it overwrites nothing.
-            if ($spreadArms[$index]['isCollection']) {
+            if ($spreadArms[$index]['isCollection'] ?? false) {
                 return "Record<number, {$armName}>";
             }
 
             $laterArmNames = array_values(array_unique(array_map(
-                fn (array $arm): string => TsNaming::resourceTypeName($arm['fqcn']),
-                array_filter(array_slice($spreadArms, $index + 1), fn (array $arm): bool => ! $arm['isCollection']),
+                $this->spreadArmName(...),
+                array_filter(array_slice($spreadArms, $index + 1), fn (array $arm): bool => ! ($arm['isCollection'] ?? false)),
             )));
 
             $excluded = [
@@ -598,6 +673,16 @@ final class InlineArrayHandler implements ExpressionHandler
 
             return $excluded === [] ? $armName : 'Omit<'.$armName.', '.implode(' | ', $excluded).'>';
         }, array_keys($spreadArms));
+    }
+
+    /**
+     * The type a spread arm is spelled with: a named arm's class, or an object arm's own type.
+     *
+     * @param  InlineSpreadArm|ObjectSpreadArm  $arm
+     */
+    private function spreadArmName(array $arm): string
+    {
+        return isset($arm['type']) ? $arm['type'] : TsNaming::resourceTypeName($arm['fqcn']);
     }
 
     /**

@@ -3501,6 +3501,15 @@ declare global {
             handovers: HandoverResource[];
         }
         /**
+         * Returns an array union whole: the filtered attributes keep their own types, and the defaults add only the keys the
+         * filter leaves out.
+         */
+        export interface HandoverDefaultsResource {
+            id: number;
+            sender_id: number | null;
+            note: string;
+        }
+        /**
          * Stacked on a body-less collection and body-less itself: Laravel collects its own `$collects`, under the inherited
          * `handovers` wrap.
          */
@@ -3570,6 +3579,17 @@ declare global {
             receiver?: workbench.crm.models.User | null;
             watchers?: workbench.app.models.User[];
             crm_watchers?: workbench.crm.models.User[];
+        }
+        /**
+         * `+` on arrays publishes PHP's array union, where the left operand's keys win and the right one adds the rest, and
+         * `+` on numbers stays a number.
+         */
+        export interface HandoverUnionResource {
+            with_defaults: { note: string; id: number; sender_id: number | null };
+            override: { code: string; lane: number };
+            lanes: number[];
+            chained: { c: boolean; b: string; a: number };
+            total: number;
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
@@ -5950,6 +5970,7 @@ declare global {
             stages: string[];
             ids: number[];
             codes: { "200": string; "404": string };
+            override: { code: string; lane: number };
         }
         export interface ManifestAssembled {
             parcelId: number;

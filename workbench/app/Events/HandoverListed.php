@@ -8,8 +8,8 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
 /**
- * Broadcasts list literals, which json_encode() writes as JSON arrays, and an int-keyed constant, which it writes as
- * an object.
+ * Broadcasts list literals, which json_encode() writes as JSON arrays, an int-keyed constant, which it writes as an
+ * object, and an array union.
  */
 class HandoverListed implements ShouldBroadcast
 {
@@ -26,6 +26,7 @@ class HandoverListed implements ShouldBroadcast
             'stages' => ['sent', 'received'],
             'ids' => [$this->handoverId, 0],
             'codes' => self::CODES,
+            'override' => ['code' => 'in'] + ['code' => 0, 'lane' => 2],
         ];
     }
 

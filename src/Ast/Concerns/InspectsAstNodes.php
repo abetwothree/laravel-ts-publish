@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -248,6 +249,33 @@ trait InspectsAstNodes
         // A keyless item keeps the key it gets at runtime only beside a keyed one; an all-keyless literal stays a list.
         if ($keyless !== [] && array_filter($items, fn (ArrayItem $item): bool => $item->key !== null) !== []) {
             $items = array_values(array_replace($items, $keyless));
+        }
+
+        return new Array_($items);
+    }
+
+    /**
+     * Re-express PHP's array union `$left + $right` as the literal `[...$right, ...$left]`, whose later spread wins a
+     * key as the left operand does. A literal operand, or a local holding one, gives its items; a nested `+` its own.
+     *
+     * Unlike array_merge(), `+` keeps every int key, so nothing is renumbered.
+     *
+     * @param  array<string, Expr>  $localVarBindings  substituted for a variable operand
+     */
+    protected function arrayUnionLiteral(Plus $union, array $localVarBindings = []): Array_
+    {
+        $items = [];
+
+        foreach ([$union->right, $union->left] as $operand) {
+            if ($operand instanceof Variable && is_string($operand->name)) {
+                $operand = $localVarBindings[$operand->name] ?? $operand;
+            }
+
+            array_push($items, ...match (true) {
+                $operand instanceof Array_ => $operand->items,
+                $operand instanceof Plus => $this->arrayUnionLiteral($operand, $localVarBindings)->items,
+                default => [new ArrayItem($operand, byRef: false, unpack: true)],
+            });
         }
 
         return new Array_($items);

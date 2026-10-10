@@ -34,6 +34,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnum
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
@@ -136,11 +138,13 @@ use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
+use Workbench\App\Http\Resources\HandoverDefaultsResource;
 use Workbench\App\Http\Resources\HandoverDigestCollection;
 use Workbench\App\Http\Resources\HandoverListResource;
 use Workbench\App\Http\Resources\HandoverRosterCollection;
 use Workbench\App\Http\Resources\HandoverRosterResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
+use Workbench\App\Http\Resources\HandoverUnionResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
@@ -7230,4 +7234,40 @@ test('a list of an enum case beside a read of the same enum publishes one elemen
 
     expect(collect($analysis->properties)->pluck('type', 'name')->all()['case_list'])->toBe('StatusType[]')
         ->and($analysis->inlineEnumFqcns['case_list'] ?? [])->toBe([Status::class]);
+});
+
+test('+ on arrays publishes the array union in value position and as a whole return', function () {
+    $value = new ResourceAstAnalyzer(new ReflectionClass(HandoverUnionResource::class), Handover::class)->analyze();
+    $whole = new ResourceAstAnalyzer(new ReflectionClass(HandoverDefaultsResource::class), Handover::class)->analyze();
+
+    expect(collect($value->properties)->pluck('type', 'name')->all())->toBe([
+        'with_defaults' => '{ note: string; id: number; sender_id: number | null }',
+        'override' => '{ code: string; lane: number }',
+        'lanes' => 'number[]',
+        'chained' => '{ c: boolean; b: string; a: number }',
+        'total' => 'number',
+    ])->and(collect($whole->properties)->pluck('type', 'name')->all())->toBe([
+        'id' => 'number',
+        'sender_id' => 'number | null',
+        'note' => 'string',
+    ]);
+});
+
+// Review Focus 4: the parent's keys win a key both sides set, as `+=` keeps them.
+test('+ after a parent call publishes every parent key, the parent winning a key both set', function () {
+    $parent = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->analyze();
+    $union = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionResource::class), Post::class)->analyze();
+    $parentTypes = collect($parent->properties)->pluck('type', 'name')->all();
+
+    expect(collect($union->properties)->pluck('type', 'name')->all())->toBe([...$parentTypes, 'extra' => 'number'])
+        ->and($parentTypes['id'])->toBe('number');
+});
+
+test('a variable built from + is read whole beside a literal return, so only the keys both set stay required', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionVariableResource::class), Post::class)->analyze();
+    $optional = collect($analysis->properties)->pluck('optional', 'name');
+
+    expect($optional['id'])->toBeFalse()
+        ->and($optional['title'])->toBeTrue()
+        ->and($optional['extra'])->toBeTrue();
 });

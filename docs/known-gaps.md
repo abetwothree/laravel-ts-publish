@@ -480,6 +480,13 @@ object on Redis and Ably, yet publishes `{ "0": … }`.
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
 outer resource's `filter()` enters the array `resolve()` returns and re-indexes it.
 
+### An explicit key written before a spread publishes its own type, though the spread's value wins
+
+`['id' => 'x', ...$arm]` publishes `Omit<Arm, 'id'> & { id: string }`, though PHP lets the later spread write the
+arm's own `id`. Every explicit key is subtracted from every spread arm, whatever their order. An array union reads as
+that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
+or on the left of `+`.
+
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
 `['label' => $this->when($c, 'x'), 42 => 'y']` publishes `{ label?: string; "42": string }`. When `$c` is false the API
