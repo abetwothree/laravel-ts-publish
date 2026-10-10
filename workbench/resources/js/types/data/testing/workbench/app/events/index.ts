@@ -12,6 +12,7 @@ export * from './PayloadDiffersEvent';
 export * from './PostPublishedEvent';
 export * from './PureEnumEvent';
 export * from './ReportSynced';
+export * from './ReviewerCastEvent';
 export * from './SameBasenameModelEvent';
 export * from './ServerCreated';
 export * from './TeamMessageSent';

@@ -31,7 +31,7 @@ final class CastChannels
      */
     public static function brings(array $cast): array
     {
-        return $cast['import'] ? TsTypeString::extractImportableTypes($cast['type']) : [];
+        return $cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : [];
     }
 
     /**
@@ -58,7 +58,7 @@ final class CastChannels
      *
      * A publisher calls it once, over the casts in force, after it knows every cast source.
      *
-     * @param  CastMap  $casts  key => the cast in force for it: its text, and whether it brings its own import
+     * @param  CastMap  $casts  key => the cast in force for it: its text, and the path of its own import, if any
      */
     public function fit(MethodAnalysis $analysis, array $casts): void
     {

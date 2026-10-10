@@ -998,6 +998,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             foreach ($types as $property => $value) {
                 $type = is_array($value) ? $value['type'] : $value;
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
+                $import = is_array($value) ? ($value['import'] ?? null) : null;
 
                 $found = false;
 
@@ -1028,11 +1029,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 }
 
                 // The publisher fits the key's import channels to this text once it knows which cast is in force.
-                $analysis->casts[$property] = ['type' => $type, 'import' => is_array($value) && isset($value['import'])];
+                $analysis->casts[$property] = ['type' => $type, 'import' => $import];
 
-                if (is_array($value) && isset($value['import'])) {
+                if ($import !== null) {
                     foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                        $analysis->customImports[$value['import']][] = $importName;
+                        $analysis->customImports[$import][] = $importName;
                     }
                 }
             }

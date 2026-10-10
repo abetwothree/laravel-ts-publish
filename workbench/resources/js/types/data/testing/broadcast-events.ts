@@ -12,6 +12,7 @@ import type { PayloadDiffersEvent } from './workbench/app/events/PayloadDiffersE
 import type { PostPublishedEvent } from './workbench/app/events/PostPublishedEvent';
 import type { PureEnumEvent } from './workbench/app/events/PureEnumEvent';
 import type { ReportSynced } from './workbench/app/events/ReportSynced';
+import type { ReviewerCastEvent } from './workbench/app/events/ReviewerCastEvent';
 import type { SameBasenameModelEvent } from './workbench/app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
@@ -37,6 +38,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.PostPublishedEvent'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
+    | '.Workbench.App.Events.ReviewerCastEvent'
     | '.Workbench.App.Events.SameBasenameModelEvent'
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
@@ -62,6 +64,7 @@ export const BroadcastEvents = Object.freeze({
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
+    ReviewerCastEvent: '.Workbench.App.Events.ReviewerCastEvent',
     SameBasenameModelEvent: '.Workbench.App.Events.SameBasenameModelEvent',
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
@@ -88,6 +91,7 @@ export type {
     PostPublishedEvent,
     PureEnumEvent,
     ReportSynced,
+    ReviewerCastEvent,
     SameBasenameModelEvent,
     ServerCreated,
     StatusSynced,

@@ -23,7 +23,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
- * @phpstan-type CastInForce = array{type: string, import: bool}
+ * @phpstan-type CastInForce = array{type: string, import: string|null}
  * @phpstan-type CastMap = array<string, CastInForce>
  * @phpstan-type AnalyzedProperty = array{
  *     name: string,
@@ -56,8 +56,8 @@ class MethodAnalysis
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
      *                                                          for a mixed EnumResource/direct-access ternary or match
-     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, and whether
-     *                          it brings its own import; a publisher fits the key's import channels to that text
+     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, and the path of
+     *                          its own import, if any; a publisher fits the key's import channels to that text
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */

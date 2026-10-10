@@ -273,6 +273,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\ReviewerCastEvent": {
+            "name": "ReviewerCastEvent",
+            "eventName": "ReviewerCastEvent",
+            "broadcastName": ".Workbench.App.Events.ReviewerCastEvent",
+            "properties": [
+                {
+                    "name": "reviewer",
+                    "type": "ReviewerCard | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "Partial<CrmUser>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\SameBasenameModelEvent": {
             "name": "SameBasenameModelEvent",
             "eventName": "SameBasenameModelEvent",

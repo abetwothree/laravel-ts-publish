@@ -9,7 +9,7 @@ export {}
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
-import type { ReviewSubject } from '@js/types/reviews';
+import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -5848,6 +5848,10 @@ declare global {
         export interface ReportSynced {
             salesReport: Partial<workbench.app.models.sales.report.Report>;
             marketingReport: Partial<workbench.app.models.marketing.report.Report>;
+        }
+        export interface ReviewerCastEvent {
+            reviewer: ReviewerCard | null;
+            contact: Partial<workbench.crm.models.User>;
         }
         export interface SameBasenameModelEvent {
             actor: workbench.app.models.User | workbench.crm.models.User;

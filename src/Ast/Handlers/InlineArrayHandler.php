@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -241,6 +242,9 @@ final class InlineArrayHandler implements ExpressionHandler
     private function analyzeInlineArray(Array_ $array, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $analysis = $engine->returnArrayAnalysis($array);
+
+        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 
         // `json_encode([])` emits `[]`, not `{}` — only an array whose keys we failed to resolve is
         // honestly a record. `never[]` says the literal can hold nothing, which is what `[]` means.

@@ -434,7 +434,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * The cast in force for every key a cast retypes, with the text it publishes and whether it brings its own import:
+     * The cast in force for every key a cast retypes, with the text it publishes and the path of its own import:
      * the resource's class-level cast, else the last method cast the analysis reports, else the model's.
      *
      * @param  array<string, string>  $castKeys  castKeys()'s resource casts, and model casts over keys no method casts
@@ -446,8 +446,8 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($castKeys as $property => $type) {
             $import = isset($this->tsTypeOverrides[$property])
-                ? isset($this->tsCastsImportPaths[$property])
-                : isset($this->modelTsCastsImportPaths[$property]);
+                ? ($this->tsCastsImportPaths[$property] ?? null)
+                : ($this->modelTsCastsImportPaths[$property] ?? null);
             $casts[$property] = ['type' => $type, 'import' => $import];
         }
 
@@ -668,7 +668,8 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Drops the model and resource imports no property or extends clause still needs after #[TsCasts] overrides, and
-     * keeps each #[TsType] import the analysis carried while a type still spells its name.
+     * keeps each custom import the analysis carried while a type spells its name and no cast in force brings that name
+     * from another path.
      *
      * @return $this
      */
@@ -699,8 +700,21 @@ class ResourceTransformer extends CoreTransformer
             [...$this->tsExtends, ...array_filter([$this->typeAlias])],
         );
 
+        // A name a cast in force brings is bound by that cast's own import, so the name from any other path collides.
+        $castPaths = [];
+
+        foreach ($this->castsInForce as $cast) {
+            foreach (CastChannels::brings($cast) as $name) {
+                $castPaths[$name][] = $cast['import'];
+            }
+        }
+
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
+                if (isset($castPaths[$typeName]) && ! in_array($importPath, $castPaths[$typeName], true)) {
+                    continue;
+                }
+
                 if (TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                     $this->customImports[$importPath][] = $typeName;
                 }
@@ -1058,7 +1072,7 @@ class ResourceTransformer extends CoreTransformer
             foreach ($named as $i => $fqcn) {
                 /** @var class-string $fqcn */
                 if (! isset($this->modelFqcnMap[$fqcn])) {
-                    $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i]; // @codeCoverageIgnore
+                    $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i];
                 }
             }
         }

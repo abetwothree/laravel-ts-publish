@@ -115,7 +115,7 @@ class TsTypeString
 
         foreach ($parts as $part) {
             $name = (string) preg_replace(
-                ['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\[\])+$/'],
+                ['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\s*\[\s*\])+$/'],
                 '',
                 trim($part),
             );

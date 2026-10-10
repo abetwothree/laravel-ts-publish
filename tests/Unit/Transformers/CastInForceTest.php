@@ -9,9 +9,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastBareBesideWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDroppedEnumBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastKeyofTypeofImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastModelEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastModelNoImportEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOneOfTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastResourceEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoClassAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoEnumAccessorKeyResource;
@@ -21,9 +25,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoClassAccessorOnlyResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTypeofWithoutWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMixedTernaryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastModelEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastModelNoImportEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastOverAttributeImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoClassAccessorResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
@@ -34,13 +42,16 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RewrittenSpreadKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SameBasenameOverrideResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsReversedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadOverSpreadEnumResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Events\ReviewerCastEvent;
 use Workbench\App\Http\Resources\ImageReviewCastResource;
 use Workbench\App\Http\Resources\PostSpelledCastResource;
 use Workbench\App\Http\Resources\WarehouseContactCastResource;
@@ -227,6 +238,14 @@ describe('a cast over a key whose classes it displaces', function () {
             CastOverAttributeImportOnlyResource::class,
             ["import type { MenuSettingsType } from '@js/types/menu';", '    menu_config: MenuSettingsType | null;'],
         ],
+        'a cast with an import named like the `#[TsType]` import of an attribute its key reads' => [
+            CastOverAttributeImportResource::class,
+            ["import type { MenuSettingsType } from '@js/types/menu';", '    menu_config: MenuSettingsType | null;'],
+        ],
+        'a method-level cast with an import named like the `#[TsType]` import of an attribute its key reads' => [
+            MethodCastOverAttributeImportResource::class,
+            ["import type { MenuSettingsType } from '@js/types/menu';", '    menu_config: MenuSettingsType | null;'],
+        ],
         'a cast over a bare enum read beside a wrap of the same enum' => [
             CastBareBesideWrapResource::class,
             [
@@ -254,6 +273,24 @@ describe('a cast a spread helper declares', function () {
     it('publishes each spread cast as written, aliasing only the package\'s own names', function (string $resource, array $lines) {
         expect(castInForceLines($resource))->toBe($lines);
     })->with([
+        'a helper spread at the top level' => [
+            SpreadCastResource::class,
+            [
+                "import type { User } from '@js/types/user';",
+                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                '    manager: User | null;',
+                '    crm: CrmUser | null;',
+            ],
+        ],
+        'a helper spread inside an inline array' => [
+            InlineSpreadCastResource::class,
+            [
+                "import type { User } from '@js/types/user';",
+                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                '    nested: { manager: User | null; x: number };',
+                '    crm: CrmUser | null;',
+            ],
+        ],
         'two helpers, the later one without an import' => [
             SiblingSpreadCastsResource::class,
             [
@@ -273,6 +310,67 @@ describe('a cast a spread helper declares', function () {
             ],
         ],
     ]);
+
+    it('publishes an inline array\'s spread cast as written through AstEngine::analyze()', function () {
+        $result = resolve(AstEngine::class)->analyze(InlineSpreadCastResource::class, 'toArray', null, 'tests/fixtures');
+
+        expect(array_column($result->properties, 'type', 'name'))->toBe([
+            'nested' => '{ manager: User | null; x: number }',
+            'crm' => 'CrmUser | null',
+        ])->and($result->typeImports)->toBe([
+            '@js/types/user' => ['User'],
+            '../../workbench/crm/models' => ['User as CrmUser'],
+        ]);
+    });
+});
+
+// #111: an event publishes a cast as written, never wrapped in `Partial<>` or aliased by the value it displaced, and
+// its import never shares a name with a model's.
+describe('a cast on a broadcast event', function () {
+    it('publishes the workbench event\'s method-level cast as written, with no model import for it', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => ReviewerCastEvent::class]);
+
+        expect(array_column($transformer->properties, 'type'))->toBe(['ReviewerCard | null', 'Partial<CrmUser>'])
+            ->and($transformer->typeImports)->toBe([
+                '@js/types/reviews' => ['ReviewerCard'],
+                '../../crm/models' => ['User as CrmUser'],
+            ]);
+    });
+
+    it('publishes each cast as written, aliasing only a cast without an import', function (string $event, array $types, array $imports) {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => $event]);
+
+        expect(array_column($transformer->properties, 'type'))->toBe($types)
+            ->and($transformer->typeImports)->toBe($imports);
+    })->with([
+        'a class-level cast with an import' => [
+            CastModelEvent::class,
+            ['User | null', 'Partial<CrmUser>'],
+            ['@js/types/user' => ['User'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+        ],
+        'a class-level cast without an import' => [
+            CastModelNoImportEvent::class,
+            ['AppUser | null', 'Partial<CrmUser>'],
+            ['../../../../workbench/app/models' => ['User as AppUser'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+        ],
+        'a `broadcastWith()` cast with an import' => [
+            MethodCastModelEvent::class,
+            ['User | null', 'Partial<CrmUser>'],
+            ['@js/types/user' => ['User'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+        ],
+        'a `broadcastWith()` cast without an import' => [
+            MethodCastModelNoImportEvent::class,
+            ['AppUser | null', 'Partial<CrmUser>'],
+            ['../../../../workbench/app/models' => ['User as AppUser'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+        ],
+    ]);
+
+    it('imports no resource a cast displaced', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastResourceEvent::class]);
+
+        expect(array_column($transformer->properties, 'type'))->toBe(['{ id: number }'])
+            ->and($transformer->typeImports)->toBe([]);
+    });
 });
 
 describe('a cast the resource and its model both declare', function () {
@@ -321,7 +419,7 @@ describe('CastChannels', function () {
             multiEnumResourceFqcns: ['k' => [Status::class, Visibility::class]],
         );
 
-        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'StatusType | null', 'import' => false]]);
+        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'StatusType | null', 'import' => null]]);
 
         expect($analysis->enumResources)->toBe([])
             ->and($analysis->multiEnumResourceFqcns)->toBe([])
@@ -338,14 +436,14 @@ describe('CastChannels', function () {
             ],
             modelFqcns: ['k' => User::class, 'crm' => CrmUser::class],
             inlineModelFqcns: ['k' => [CrmUser::class]],
-            casts: ['k' => ['type' => 'User | null', 'import' => true]],
+            casts: ['k' => ['type' => 'User | null', 'import' => '@js/types/user']],
         );
 
-        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'User | null', 'import' => true]]);
+        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'User | null', 'import' => '@js/types/user']]);
 
         expect($analysis->modelFqcns)->toBe(['crm' => CrmUser::class])
             ->and($analysis->inlineModelFqcns)->toBe([])
-            ->and($analysis->casts)->toBe(['k' => ['type' => 'User | null', 'import' => true]]);
+            ->and($analysis->casts)->toBe(['k' => ['type' => 'User | null', 'import' => '@js/types/user']]);
     });
 
     it('leaves a key no cast retypes, and a cast key with no channel, as they are', function () {
@@ -354,7 +452,7 @@ describe('CastChannels', function () {
             directEnumFqcns: ['a' => Priority::class],
         );
 
-        resolve(CastChannels::class)->fit($analysis, ['b' => ['type' => 'PriorityType', 'import' => false]]);
+        resolve(CastChannels::class)->fit($analysis, ['b' => ['type' => 'PriorityType', 'import' => null]]);
 
         expect($analysis->directEnumFqcns)->toBe(['a' => Priority::class]);
     });
@@ -369,8 +467,8 @@ describe('CastChannels', function () {
         );
 
         resolve(CastChannels::class)->fit($analysis, [
-            'a' => ['type' => 'string', 'import' => false],
-            'b' => ['type' => 'StatusType', 'import' => true],
+            'a' => ['type' => 'string', 'import' => null],
+            'b' => ['type' => 'StatusType', 'import' => '@js/types/status'],
         ]);
 
         expect($analysis->directEnumFqcns)->toBe([]);
@@ -382,7 +480,7 @@ describe('CastChannels', function () {
             directEnumFqcns: ['6' => Status::class],
         );
 
-        resolve(CastChannels::class)->fit($analysis, [6 => ['type' => 'string', 'import' => false]]);
+        resolve(CastChannels::class)->fit($analysis, [6 => ['type' => 'string', 'import' => null]]);
 
         expect($analysis->directEnumFqcns)->toBe([Status::class => Status::class]);
     });

@@ -111,22 +111,22 @@ it('appends inlineResourceFqcns per property WITHOUT deduping, same as inlineMod
 
 // A later spread's cast is the one the key publishes, so its entry wins, with or without an import.
 it('merges casts with the source winning for a key both cast', function () {
-    $target = new MethodAnalysis(casts: ['k' => ['type' => 'A', 'import' => true], 'kept' => ['type' => 'K', 'import' => true]]);
-    $target->merge(new MethodAnalysis(casts: ['k' => ['type' => 'B', 'import' => false], 'owner' => ['type' => 'D', 'import' => true]]));
+    $target = new MethodAnalysis(casts: ['k' => ['type' => 'A', 'import' => '@/a'], 'kept' => ['type' => 'K', 'import' => '@/k']]);
+    $target->merge(new MethodAnalysis(casts: ['k' => ['type' => 'B', 'import' => null], 'owner' => ['type' => 'D', 'import' => '@/d']]));
 
     expect($target->casts)->toBe([
-        'k' => ['type' => 'B', 'import' => false],
-        'kept' => ['type' => 'K', 'import' => true],
-        'owner' => ['type' => 'D', 'import' => true],
+        'k' => ['type' => 'B', 'import' => null],
+        'kept' => ['type' => 'K', 'import' => '@/k'],
+        'owner' => ['type' => 'D', 'import' => '@/d'],
     ]);
 });
 
 it('forgets the cast entry of a key another value took over, and no other key\'s', function () {
-    $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => true], 'kept' => ['type' => 'B', 'import' => false]]);
+    $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => '@/a'], 'kept' => ['type' => 'B', 'import' => null]]);
 
     $analysis->forgetChannels('taken_over');
 
-    expect($analysis->casts)->toBe(['kept' => ['type' => 'B', 'import' => false]]);
+    expect($analysis->casts)->toBe(['kept' => ['type' => 'B', 'import' => null]]);
 });
 
 it('forgets every channel keyed by a property another value took over, and nothing keyed by another', function () {

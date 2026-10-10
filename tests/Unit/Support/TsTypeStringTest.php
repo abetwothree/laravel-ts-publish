@@ -380,6 +380,7 @@ describe('extractImportableTypes', function () {
         'keyof typeof' => ['keyof typeof Status', ['Status']],
         'readonly array' => ['readonly Tag[] | null', ['Tag']],
         'a nested array' => ['Grid[][]', ['Grid']],
+        'an array written with a space' => ['Foo []', ['Foo']],
         'an indexed access' => ['(typeof Status)[keyof typeof Status]', []],
         'a template literal' => ['`${string}-tag`', []],
         'a qualified name' => ['Geo.Point', []],

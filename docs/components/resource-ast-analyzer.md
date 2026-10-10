@@ -560,8 +560,8 @@ beside a signature are all known:
   `#[TsExtends]` or a `ts_extends.*` config entry. `InertiaPageAnalyzer::buildPageData()` and
   `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
   must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
-  reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` fits
-  them to the cast's text through `CastChannels::fit()`; see
+  reconcile, `ResourceTransformer` and `BroadcastEventTransformer` fit them to the cast's text through
+  `CastChannels::fit()`, and both Inertia analyzers drop them; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
@@ -646,7 +646,8 @@ steps depend on it:
   `pruneOverriddenEnumImports()`, which removes the names it reads. `pruneOverriddenAnalysisImports()` and
   `pruneOverriddenEnumImports()` drop each model, resource, `#[TsType]` and enum type import that no property type or
   extends clause still spells. Before aliasing, `keepSpelled()` keeps a class for a key whose type spells it only if
-  that key's import channels carry it or no other class of its name, so a class no key reads never forces an alias.
+  that key's import channels carry it or no other class of its name, so a class no key reads forces an alias only
+  where a type or an extends clause spells its name with no class of that name behind it.
   After the `AsEnum` rewrite, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
@@ -30,6 +31,7 @@ use ReflectionClass;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  * @phpstan-import-type PropertiesList from TsBroadcastEventDto
+ * @phpstan-import-type CastMap from MethodAnalysis
  *
  * @extends CoreTransformer<ShouldBroadcast>
  */
@@ -84,6 +86,13 @@ class BroadcastEventTransformer extends CoreTransformer
      * @var TypesImportMap
      */
     protected array $analysisImports = [];
+
+    /**
+     * The imports the analysis's own `#[TsType]` and method-level `#[TsCasts]` entries bring: path => type names.
+     *
+     * @var TypesImportMap
+     */
+    protected array $analysisCustomImports = [];
 
     /**
      * Per-property FQCN tracking — maps property name to list of FQCNs added by that property's type.
@@ -216,13 +225,10 @@ class BroadcastEventTransformer extends CoreTransformer
             $this->tsExtends !== [],
         );
 
-        // A #[TsCasts] override replaces the property's type outright, so the type it displaced
-        // must not keep an import alive.
-        foreach (array_keys($this->tsTypeOverrides) as $name) {
-            $analysis->forgetChannels((string) $name);
-        }
+        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis));
 
         $this->properties = $this->resolveProperties($analysis);
+        $this->analysisCustomImports = $analysis->customImports;
         $this->analysisImports = new AnalysisImports()->build($analysis, $this->namespacePath)['typeImports'];
 
         return $this;
@@ -312,6 +318,7 @@ class BroadcastEventTransformer extends CoreTransformer
                     'type' => $this->tsTypeOverrides[$name],
                     'optional' => $this->optionalOverrides[$name] ?? $property['optional'],
                 ];
+                $this->propertyFqcns[$name] = $this->collectPropertyFqcns($name, $analysis);
 
                 continue;
             }
@@ -385,12 +392,29 @@ class BroadcastEventTransformer extends CoreTransformer
     }
 
     /**
+     * The cast in force for every key a cast retypes: the event's own, else the last `broadcastWith()` cast.
+     *
+     * @return CastMap
+     */
+    protected function castsInForce(MethodAnalysis $analysis): array
+    {
+        $casts = $analysis->casts;
+
+        foreach ($this->tsTypeOverrides as $name => $type) {
+            $casts[$name] = ['type' => $type, 'import' => $this->tsCastsImportPaths[$name] ?? null];
+        }
+
+        return $casts;
+    }
+
+    /**
      * Detect conflicting import names and assign globally-unique aliases via ImportNameRegistry.
      */
     protected function resolveImportConflicts(): self
     {
         $registry = new ImportNameRegistry(['Events', 'Enums', 'Models']);
         $registry->reserve($this->eventName);
+        $registry->reserveMany(...$this->customImportNames());
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $registry->register($fqcn, $typeName);
@@ -406,6 +430,27 @@ class BroadcastEventTransformer extends CoreTransformer
         );
 
         return $this;
+    }
+
+    /**
+     * The names this file imports from the app's own modules, which no alias may take: the casts' imports, the extends
+     * clauses' and the analysis's.
+     *
+     * @return list<string>
+     */
+    protected function customImportNames(): array
+    {
+        $names = [];
+
+        foreach (array_keys($this->tsCastsImportPaths) as $property) {
+            array_push($names, ...TsTypeString::extractImportableTypes($this->tsTypeOverrides[$property] ?? ''));
+        }
+
+        foreach ([...array_values($this->tsExtendsImports), ...array_values($this->analysisCustomImports)] as $typeNames) {
+            array_push($names, ...$typeNames);
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**
@@ -436,21 +481,27 @@ class BroadcastEventTransformer extends CoreTransformer
         /** @var array<string, array<string, true>> $aliasable */
         $aliasable = [];
 
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+
         foreach ($this->modelFqcnMap + $this->enumFqcnMap as $fqcn => $typeName) {
             $importPath = TsNaming::relativeImportPath(
                 $this->namespacePath,
                 TsNaming::namespaceToPath($fqcn),
             );
-
-            $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
             $aliasable[$importPath][$typeName] = true;
+
+            // A class a cast displaced stays carried until here, where only the names a type still spells survive.
+            if (TsTypeString::typeNameOccursIn($this->localImportName($fqcn, $typeName), ...$types)) {
+                $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+            }
         }
 
-        // Skip what the loop above already emitted: only it knows the alias a name collision forced,
+        // Skip what the loop above already settled: only it knows the alias a name collision forced,
         // and an unaliased duplicate would re-import the very name the alias exists to avoid.
         foreach ($this->analysisImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
-                if (! isset($aliasable[$importPath][$typeName])) {
+                if (! isset($aliasable[$importPath][$typeName])
+                    && TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                     $imports[$importPath][] = $typeName;
                 }
             }
@@ -459,7 +510,8 @@ class BroadcastEventTransformer extends CoreTransformer
         foreach ($this->tsCastsImportPaths as $property => $importPath) {
             $type = $this->tsTypeOverrides[$property] ?? null;
 
-            if ($type !== null) {
+            // A cast whose key names no payload property adds none, so its import would go unused.
+            if ($type !== null && isset($this->properties[$property])) {
                 foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }

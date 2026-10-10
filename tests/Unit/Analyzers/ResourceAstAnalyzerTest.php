@@ -6473,7 +6473,7 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
         $reflection = new ReflectionClass(BranchedCastSpreadResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
 
-        expect($analysis->casts)->toBe(['reviewable' => ['type' => 'UserResource | null', 'import' => true]])
+        expect($analysis->casts)->toBe(['reviewable' => ['type' => 'UserResource | null', 'import' => '@js/types/user']])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
             ->toBe('UserResource | null');
     });

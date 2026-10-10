@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
@@ -623,4 +624,11 @@ test('a non-resource subject reads $this->when() as its own method, not as a res
 
     expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
         ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
+});
+
+// A key no payload property names adds none on an event, so its import would be unused (TS6196).
+it('imports nothing for an event cast that retypes no payload key', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => AmbiguousSpellingBroadcastEvent::class]);
+
+    expect($transformer->typeImports)->toBe([]);
 });
