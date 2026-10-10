@@ -196,6 +196,7 @@
     "app\/Http\/Resources\/MergeClosureResource.php",
     "app\/Http\/Resources\/MergeDefaultResource.php",
     "app\/Http\/Resources\/MergeMultiBranchClosureResource.php",
+    "app\/Http\/Resources\/MergedSignatureKeysResource.php",
     "app\/Http\/Resources\/MiscCollection.php",
     "app\/Http\/Resources\/MixedEnumMergedResource.php",
     "app\/Http\/Resources\/MixedEnumReturnBranchesResource.php",

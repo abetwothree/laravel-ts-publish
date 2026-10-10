@@ -34,7 +34,7 @@ class MergeClosureResource extends JsonResource
                 ];
             }),
             $this->mergeWhen(true, function () {
-                // A closure that returns a non-array expression: closureReturnBranches() reads no branch from it
+                // The resource's own model, which a merge serializes through toArray(): its keys merge, `id` excepted
                 return $this->resource;
             }),
         ];

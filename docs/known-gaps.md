@@ -262,8 +262,9 @@ could conflict with a neighboring key, and under any extends clause, including o
 `ts_extends.broadcast_events`, since it cannot see inherited keys. The body value can still fail `tsc`: TS2411 when a
 key the pattern matches cannot take it, such as `main_tag: PostResource` beside
 ``[key: `${string}_tag`]: string | undefined``, and TS2413 when the pattern sits inside another signature's that
-rejects its value. Where the union is declined, a second signature with the same pattern replaces the first, so the
-signature publishes the last entry's value alone. Type the key, or rename it out of the pattern. The rules are under
+rejects its value. Where the union is declined and the entries' body values cannot join, a second signature with the
+same pattern replaces the first, so the signature publishes the last entry's value alone. Type the key, or rename it
+out of the pattern. The rules are under
 [Index signatures](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them).
 
 ### `Model::toArray()` on a receiver declines, deliberately

@@ -3810,6 +3810,30 @@ declare global {
             id: number;
             user_name?: string;
             user_email?: string;
+            ulid?: string;
+            user_id?: number;
+            status?: app.enums.OrderStatusType;
+            payment_method?: app.enums.PaymentMethodType | null;
+            currency?: app.enums.CurrencyType;
+            subtotal?: string;
+            tax?: string;
+            discount?: string;
+            total?: string;
+            shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes?: string | null;
+            placed_at?: string | null;
+            paid_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
+            cancelled_at?: string | null;
+            ip_address?: string | null;
+            user_agent?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            deleted_at?: string | null;
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
         }
         /**
          * Exercises mergeWhen() and mergeUnless() with a default, which Laravel merges when the condition fails. A key only
@@ -3838,6 +3862,23 @@ declare global {
             archived_at?: string | null;
             total?: string;
             currency?: app.enums.CurrencyType;
+        }
+        /**
+         * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
+         * value covers every key it matches, and merges of a helper's keys and of the model itself.
+         */
+        export interface MergedSignatureKeysResource {
+            id: number;
+            [key: `${string}_note`]: string | number | undefined;
+            main_label: string;
+            [key: `${string}_label`]: number | string | undefined;
+            name?: string;
+            slug?: string;
+            color?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
         }
         export interface MiscCollection {
             data: unknown;

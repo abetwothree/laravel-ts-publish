@@ -48,7 +48,9 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
@@ -561,6 +563,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($item->key === null && $item->value instanceof MethodCall) {
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
+                $this->dropKeysSetBefore($mergeResult, $analysis);
                 $analysis->merge($mergeResult);
 
                 continue;
@@ -578,6 +581,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $result = $this->analyzeValueExpression($item->value);
 
+            // A key a signature covers is one more runtime key, so it replaces no earlier entry.
+            if (JsEmitter::isIndexSignatureKey($keyName)) {
+                $analysis->addProperty($keyName, ValueResult::asIndexSignatureValue($result));
+
+                continue;
+            }
+
             // When a child key overrides a parent spread key, clear stale parent tracking
             $analysis->forgetChannels($keyName);
 
@@ -587,6 +597,30 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
+    }
+
+    /**
+     * Drop each named key a merge sets that the array already holds, a signature excepted.
+     *
+     * Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key keeps its value and
+     * its presence.
+     */
+    private function dropKeysSetBefore(ResourceAnalysis $merged, ResourceAnalysis $before): void
+    {
+        $held = array_flip(array_column($before->properties, 'name'));
+        $kept = [];
+
+        foreach ($merged->properties as $property) {
+            if (isset($held[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $merged->forgetChannels($property['name']);
+
+                continue;
+            }
+
+            $kept[] = $property;
+        }
+
+        $merged->properties = $kept;
     }
 
     /**
@@ -823,7 +857,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The arrays a merge argument can merge, one analysis each: an array literal, or each array a closure returns.
+     * The arrays a merge argument can merge, one analysis each: a literal, a value, or each array a closure returns.
+     *
+     * mergedValueAnalysis() reads a value; an argument the analysis cannot read counts as a lenient read.
      *
      * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
      */
@@ -831,6 +867,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         if ($expr instanceof Array_) {
             return [$this->mergedArrayAnalysis($expr)];
+        }
+
+        // Laravel merges value($value), so a value passed as it is merges as a closure returning it would.
+        if (! $expr instanceof ClosureExpr && ! $expr instanceof ArrowFunction) {
+            $branch = $this->mergedValueBranch($expr);
+
+            if ($branch === null) {
+                $this->lenientReads++;
+            }
+
+            return $branch === null ? [] : [$branch];
         }
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
@@ -854,6 +901,22 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         return (new ThisPropertyHandler)
             ->extractPropertiesFromArray($array, $this, $this->scope->subjectReflection, optional: false);
+    }
+
+    /**
+     * The keys a merged model or method call sets.
+     *
+     * The resource's own model merges what `Model::toArray()` writes, through jsonSerialize(); any other value is read
+     * as a whole array analyzeArrayExpression() accepts.
+     */
+    private function mergedValueAnalysis(Expr $expr): ?ResourceAnalysis
+    {
+        // A collection's resource is the list of collected items, whose keys are numbers.
+        if ($this->isResourceFetch($expr)) {
+            return $this->isResourceCollection($this->scope) ? null : $this->buildModelSerializedAnalysis();
+        }
+
+        return $this->analyzeArrayExpression($expr, topLevel: false);
     }
 
     /**

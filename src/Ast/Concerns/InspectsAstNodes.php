@@ -92,7 +92,8 @@ trait InspectsAstNodes
     /**
      * The name an array key spells, or null when it is not a literal this can read.
      *
-     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
+     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list. A key built
+     * from literal text around a value is named by the template-literal index signature that covers it.
      *
      * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
@@ -115,11 +116,12 @@ trait InspectsAstNodes
             };
             $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
             $value = $constant !== null && defined($constant) ? constant($constant) : null;
+            $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
             return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
         }
 
-        return null;
+        return $this->interpolatedKeyName($key);
     }
 
     /**

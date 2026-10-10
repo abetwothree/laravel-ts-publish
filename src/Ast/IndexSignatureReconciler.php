@@ -60,7 +60,7 @@ final class IndexSignatureReconciler
             }
 
             if ($inheritsUnseenKeys) {
-                $this->restoreBodyTypes($analysis, $indexes);
+                $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
 
                 continue;
             }
@@ -89,7 +89,7 @@ final class IndexSignatureReconciler
             $arms = $overlaps ? null : $this->unionArms($analysis, $keys, $types, $castKeys);
 
             if ($arms === null) {
-                $this->restoreBodyTypes($analysis, $indexes);
+                $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
             } else {
                 $dropped += $this->union($analysis, $indexes, $arms);
             }
@@ -172,18 +172,36 @@ final class IndexSignatureReconciler
     }
 
     /**
-     * Put back the value each entry's body gives it, on the entries a docblock fill or union changed.
+     * Put back the value each entry's body gives it, then fold the entries into the first where those values can join.
      *
-     * @param  list<int>  $indexes
+     * Each entry a docblock fill or union changed goes back to its `bodyType`. Each entry is a runtime key the one
+     * published signature covers, so a later one must not replace an earlier one.
+     *
+     * @param  non-empty-list<int>  $indexes
+     * @return array<int, true> the later entries, now folded into the first
      */
-    private function restoreBodyTypes(MethodAnalysis $analysis, array $indexes): void
+    private function restoreBodyTypes(MethodAnalysis $analysis, string $name, array $indexes): array
     {
+        $types = [];
+
         foreach ($indexes as $index) {
             if (isset($analysis->properties[$index]['bodyType'])) {
                 $analysis->properties[$index]['type'] = $analysis->properties[$index]['bodyType'];
                 unset($analysis->properties[$index]['bodyType']);
             }
+
+            $types[] = $analysis->properties[$index]['type'];
         }
+
+        $arms = count($indexes) > 1 ? $this->unionArms($analysis, [$name], $types, []) : null;
+
+        if ($arms === null) {
+            return [];
+        }
+
+        $analysis->properties[$indexes[0]]['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
+
+        return array_fill_keys(array_slice($indexes, 1), true);
     }
 
     /**

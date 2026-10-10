@@ -45,6 +45,19 @@ final class ValueResult
     }
 
     /**
+     * A value as a template-literal index signature publishes it: never optional, its type admitting `undefined`.
+     *
+     * `[key: T]?:` is a syntax error, and a key matching the pattern is not guaranteed present.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function asIndexSignatureValue(array $result): array
+    {
+        return [...$result, 'type' => TsTypeString::orUndefined($result['type']), 'optional' => false];
+    }
+
+    /**
      * Drop a top-level `| null` arm from a type string — a guarded success path proves it unreachable.
      * Nested null members (inside object shapes, generics, or array element types) are kept.
      *

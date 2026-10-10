@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -234,12 +234,10 @@ trait ReadsReturnedVariables
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
                 $isIndexSignature = JsEmitter::isIndexSignatureKey($keyName);
-                $optional = $isConditional || $result['optional'];
+                $optional = ! $isIndexSignature && ($isConditional || $result['optional']);
 
                 if ($isIndexSignature) {
-                    $result['type'] = TsTypeString::orUndefined($result['type']);
-                    $result['optional'] = false;
-                    $optional = false;
+                    $result = ValueResult::asIndexSignatureValue($result);
                 }
 
                 $existingIndex = null;
@@ -295,8 +293,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The branches a closure's returns can merge: one per returned array, `[]` included, and one per returned variable
-     * the walk reads completely, however often it is returned. None when no branch sets a key.
+     * The branches a closure's returns can merge, none when no branch sets a key.
+     *
+     * One per returned array, `[]` included, one per returned variable the walk reads completely, however often it is
+     * returned, and one per other value mergedValueBranch() reads. A return none of them reads is a lenient read.
      *
      * @return list<TAnalysis>
      */
@@ -313,16 +313,25 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            if (! $returned instanceof Variable || ! is_string($returned->name) || isset($read[$returned->name])) {
+            if ($returned instanceof Variable && is_string($returned->name)) {
+                if (isset($read[$returned->name])) {
+                    continue;
+                }
+
+                $read[$returned->name] = true;
+                $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
+            } else {
+                $branch = $this->mergedValueBranch($returned);
+            }
+
+            // Its keys are unknown, so a variable holding this merge is not read completely either.
+            if ($branch === null) {
+                $this->lenientReads++;
+
                 continue;
             }
 
-            $read[$returned->name] = true;
-            $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
-
-            if ($branch !== null) {
-                $branches[] = $branch;
-            }
+            $branches[] = $branch;
         }
 
         // A guard's `return []` merges nothing, so beside a branch that sets a key it is a branch like any other.
@@ -335,6 +344,26 @@ trait ReadsReturnedVariables
      * @return TAnalysis
      */
     abstract private function mergedArrayAnalysis(Array_ $array): MethodAnalysis;
+
+    /**
+     * The analysis of a merged value other than an array literal or a variable, or null for one the host does not read.
+     *
+     * @return TAnalysis|null
+     */
+    abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
+
+    /**
+     * A merged value's branch, or null when the host does not read it completely, as variableBranch() decides.
+     *
+     * @return TAnalysis|null
+     */
+    private function mergedValueBranch(Expr $expr): ?MethodAnalysis
+    {
+        $lenientReads = $this->lenientReads;
+        $analysis = $this->mergedValueAnalysis($expr);
+
+        return $this->lenientReads === $lenientReads ? $analysis : null;
+    }
 
     /**
      * A returned variable's branch, or null when the walk does not read it completely: the gate rejects a whole write,

@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpellingsAcrossLocationsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
@@ -3832,10 +3833,12 @@ it('reads a merge side it cannot read as an array as an empty branch', function 
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeUnreadableDefaultResource::class), Post::class);
     $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toBe([
+    // The model and the helper call are read, since each merges as a closure returning it would.
+    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toMatchArray([
         'id' => 'number',
         'null_default' => '?string',
-        'call_default' => '?string',
+        'call_default' => 'string',
+        'title' => '?string',
         'default_only' => '?number',
         'spread_default' => '?string',
         'needs_arg_default' => '?string',
@@ -7062,6 +7065,20 @@ it('leaves out a nested literal key that reads as an index signature', function 
     $properties = new ResourceTransformer(NestedSignatureTextKeyResource::class)->properties;
 
     expect($properties['box']['type'])->toBe('{ x: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
+
+    AnalysisWarnings::reset();
+});
+
+// A constant's text is a literal key too, so one spelled like a signature is left out as a written one is.
+it('leaves out a constant key whose text reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextConstantKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['x'])
         ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
             'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
         ]);

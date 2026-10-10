@@ -318,7 +318,12 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
-  included, and a returned variable the walk reads completely are branches; a side read as no array is an empty branch.
+  included, a returned variable the walk reads completely, and any other value `mergedValueAnalysis()` reads are
+  branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()` reads,
+  such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges `value($value)`.
+  A side read as no array is an empty branch; one the analysis cannot read also counts as a lenient read, so a variable
+  holding the merge is not read completely. A key set before a merge keeps its value and presence, as `mergeData()`
+  unions the merged keys after it.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`.
@@ -521,7 +526,8 @@ exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publ
 
 `ReadsReturnedVariables::collectVariableArrayAssignments()` publishes a key built from literal text around a variable,
 such as `$data["{$name}_label"] = …` or `$data[$name.'_label'] = …`, as a template-literal index signature:
-``[key: `${string}_label`]``. `InspectsAstNodes::interpolatedKeyName()` maps the parts to `IndexSignatureKey::fromParts()`,
+``[key: `${string}_label`]``. `InspectsAstNodes::resolveKeyName()` does the same for such a key written in a returned,
+merged or nested literal. `InspectsAstNodes::interpolatedKeyName()` maps the parts to `IndexSignatureKey::fromParts()`,
 which needs both a literal and a dynamic part and declines a literal part holding a backtick, because
 `IndexSignatureKey::is()` has no escape for one.
 
@@ -536,7 +542,7 @@ A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::ca
 it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes.
 
 The key is never optional, since `[key: T]?:` is a syntax error. Its value gains `| undefined` instead, through
-`TsTypeString::orUndefined()`; an optional `#[TsCasts]` on a signature is settled the same way, through
+`ValueResult::asIndexSignatureValue()`; an optional `#[TsCasts]` on a signature is settled the same way, through
 `JsEmitter::signatureSafeMember()`. Nested shapes and broadcast events print a signature bare, as resources do. The
 `| undefined` is there for two reasons:
 
@@ -578,7 +584,8 @@ then gets one outcome:
 - **Union**: when its entries and every key its pattern matches can join, the entries fold into the first, typed with
   every arm plus `| undefined`. The named keys keep their own types.
 - **Put back**: when an entry or a matched key cannot join, when another signature's pattern may overlap its own, or
-  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`.
+  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`, then the
+  entries fold into the first where those values can join.
 - **Left alone**: a signature with no other entry, no matching key and no overlapping pattern, unless the interface
   has an extends clause.
 
