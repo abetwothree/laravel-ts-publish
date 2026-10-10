@@ -36,7 +36,7 @@ final class ArrayMergeHandler implements ExpressionHandler
             return null;
         }
 
-        $merged = $this->mergedArrayLiteral($expr);
+        $merged = $this->mergedArrayLiteral($expr, $scope->subjectReflection);
 
         return $merged === null ? null : $engine->resolve($merged);
     }

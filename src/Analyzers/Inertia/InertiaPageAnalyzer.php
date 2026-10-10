@@ -280,7 +280,7 @@ class InertiaPageAnalyzer
                 return [$compacted];
             }
 
-            $merged = $this->mergedArrayLiteral($propsArg, null, $scope->localVarBindings);
+            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->localVarBindings);
 
             if ($merged !== null) {
                 return [$merged];

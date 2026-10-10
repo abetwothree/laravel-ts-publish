@@ -442,7 +442,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         if (! $expr instanceof MethodCall) {
             return $expr instanceof Array_
                 || $this->isParentCallTo($expr, $this->methodName)
-                || ($expr instanceof FuncCall && $this->mergedArrayLiteral($expr, $this->methodName) !== null);
+                || ($expr instanceof FuncCall
+                    && $this->mergedArrayLiteral($expr, $this->scope->subjectReflection, $this->methodName) !== null);
         }
 
         if (! $expr->name instanceof Identifier) {
@@ -782,7 +783,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
     {
-        $merged = $this->mergedArrayLiteral($call, $this->methodName);
+        $merged = $this->mergedArrayLiteral($call, $this->scope->subjectReflection, $this->methodName);
 
         return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
     }

@@ -121,21 +121,37 @@ trait InspectsAstNodes
             return (string) $key->value;
         }
 
-        if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
-            $parent = $subject->getParentClass();
-            $class = match ($key->class->toLowerString()) {
-                'self', 'static' => $subject->getName(),
-                'parent' => $parent === false ? null : $parent->getName(),
-                default => $key->class->toString(),
-            };
-            $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
-            $value = $constant !== null && defined($constant) ? constant($constant) : null;
+        if ($key instanceof ClassConstFetch) {
+            $value = $this->constantKeyValue($key, $subject);
             $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
-            return is_int($value) || is_string($value) ? (string) $value : null;
+            return $value === null ? null : (string) $value;
         }
 
         return $this->interpolatedKeyName($key);
+    }
+
+    /**
+     * The int or string a class-constant key holds, or null when it holds neither or cannot be read.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent`
+     */
+    protected function constantKeyValue(ClassConstFetch $key, ReflectionClass $subject): int|string|null
+    {
+        if (! $key->class instanceof Name || ! $key->name instanceof Identifier) {
+            return null;
+        }
+
+        $parent = $subject->getParentClass();
+        $class = match ($key->class->toLowerString()) {
+            'self', 'static' => $subject->getName(),
+            'parent' => $parent === false ? null : $parent->getName(),
+            default => $key->class->toString(),
+        };
+        $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
+        $value = $constant !== null && defined($constant) ? constant($constant) : null;
+
+        return is_int($value) || is_string($value) ? $value : null;
     }
 
     /**
@@ -193,13 +209,18 @@ trait InspectsAstNodes
      * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
      * only a single walk lets a later key clear the FQCN channels an earlier one registered.
      *
-     * array_merge() renumbers every int key from 0, so a literal int key takes its new number until a spread or
-     * `parent::` call, whose int keys cannot be counted.
+     * array_merge() renumbers every int key from 0, so a literal int key, or a constant holding one, takes its new
+     * number until a spread, a `parent::` call or a constant that cannot be read, whose int keys cannot be counted.
      *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
-    protected function mergedArrayLiteral(FuncCall $call, ?string $parentMethodName = null, array $localVarBindings = []): ?Array_
-    {
+    protected function mergedArrayLiteral(
+        FuncCall $call,
+        ReflectionClass $subject,
+        ?string $parentMethodName = null,
+        array $localVarBindings = [],
+    ): ?Array_ {
         if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
             return null;
         }
@@ -217,7 +238,16 @@ trait InspectsAstNodes
 
             if ($value instanceof Array_) {
                 foreach ($value->items as $item) {
-                    if ($next !== null && $item->key !== null && self::storedIntKey($item->key) !== null) {
+                    $constant = $item->key instanceof ClassConstFetch
+                        ? $this->constantKeyValue($item->key, $subject)
+                        : null;
+                    $intKey = match (true) {
+                        $item->key === null => null,
+                        $constant !== null => is_int($constant) ? $constant : PhpArrayKey::storedInt($constant),
+                        default => self::storedIntKey($item->key),
+                    };
+
+                    if ($next !== null && $intKey !== null) {
                         $items[] = new ArrayItem($item->value, new Int_($next++), $item->byRef, $item->getAttributes());
 
                         continue;
@@ -230,6 +260,7 @@ trait InspectsAstNodes
                     $next = match (true) {
                         $next === null || $item->unpack => null,
                         $item->key === null => $next + 1,
+                        $item->key instanceof ClassConstFetch && $constant === null => null,
                         default => $next,
                     };
                     $items[] = $item;

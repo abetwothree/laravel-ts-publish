@@ -13,6 +13,8 @@ final class ConstantKeyResource extends JsonResource
 
     public const string EXTERNAL_KEY = 'external';
 
+    public const string NUMERIC_TEXT_KEY = '9';
+
     /** Both constant keys are kept, the numeric one as `"8"`. */
     public function shape(): array
     {
