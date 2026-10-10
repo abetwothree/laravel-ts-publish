@@ -53,9 +53,11 @@ pins it.
 ## Imports
 
 - The cast's own import is kept. A displaced class whose name that import brings is dropped unless another key reads
-  it.
+  it, and so is a model attribute's `#[TsType]` import of that name.
 - A class the text spells stays queued for the key, so it is imported and aliased like any package name.
-- Every other displaced class is carried, self-keyed with no queue. `ResourceTransformer::pruneUnspelledImports()`,
-  after the `AsEnum` rewrite, drops any import whose local name no property type, extends clause or type alias spells.
+- Every other displaced class is carried, self-keyed with no queue, and kept only for a text that spells its name with
+  no class of its own behind it: another key's cast without import channels, an extends clause, a type alias.
+  `ResourceTransformer::keepSpelled()` decides that before aliasing, so a carried class never forces an alias, and
+  `pruneUnspelledImports()`, after the `AsEnum` rewrite, drops any import whose local name no published type spells.
 - For a cast key, `resolveMultiEnumAccessorFqcns()` and `resolveMultiClassAccessorFqcns()` register through
   `castSpells()` only the accessor classes its text spells and its import does not bring.

@@ -461,9 +461,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function castBrings(string $property): array
     {
-        $cast = $this->castsInForce[$property] ?? null;
-
-        return $cast !== null && $cast['import'] ? TsTypeString::extractImportableTypes($cast['type']) : [];
+        return isset($this->castsInForce[$property]) ? CastChannels::brings($this->castsInForce[$property]) : [];
     }
 
     /**
@@ -475,13 +473,12 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function castSpells(string $property, array $fqcns, Closure $nameOf): array
     {
-        $brought = $this->castBrings($property);
-        $queue = array_values(array_filter(
+        return CastChannels::spells(
             $fqcns,
-            fn (string $fqcn): bool => ! in_array($nameOf($fqcn), $brought, true),
-        ));
-
-        return new ClassTokenQueue($queue, $nameOf)->take($this->castsInForce[$property]['type'] ?? '');
+            $this->castsInForce[$property]['type'] ?? '',
+            $this->castBrings($property),
+            $nameOf,
+        );
     }
 
     /**
@@ -647,26 +644,31 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops enum-map entries whose bare type no property or extends clause names any more after #[TsCasts] overrides.
+     * Drops the enum-map entries no property or extends clause still needs after #[TsCasts] overrides.
      *
      * @return $this
      */
     protected function pruneOverriddenEnumImports(): self
     {
-        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+        $attributed = [];
 
-        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
-                unset($this->enumFqcnMap[$fqcn]);
-            }
+        foreach (array_keys($this->properties) as $property) {
+            $attributed[$property] = array_values(array_filter([
+                $this->enumResourceProperties[$property]['fqcn'] ?? null,
+                $this->propertyEnumFqcns[$property] ?? null,
+                ...($this->multiEnumResourceProperties[$property] ?? []),
+                ...($this->propertyInlineEnumFqcns[$property] ?? []),
+            ]));
         }
+
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends);
 
         return $this;
     }
 
     /**
-     * Drops the model and #[TsType] imports the analysis carried for a name that neither a property type nor an extends
-     * clause still spells after #[TsCasts] overrides, which would otherwise be emitted as an unused import.
+     * Drops the model and resource imports no property or extends clause still needs after #[TsCasts] overrides, and
+     * keeps each #[TsType] import the analysis carried while a type still spells its name.
      *
      * @return $this
      */
@@ -675,11 +677,27 @@ class ResourceTransformer extends CoreTransformer
         // An extends clause names a type as surely as a property does, and can rely on the same import.
         $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
 
-        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
-                unset($this->modelFqcnMap[$fqcn]);
-            }
+        $models = [];
+        $resources = [];
+
+        foreach (array_keys($this->properties) as $property) {
+            $models[$property] = array_values(array_filter([
+                $this->propertyModelFqcns[$property] ?? null,
+                ...($this->propertyInlineModelFqcns[$property] ?? []),
+            ]));
+            $resources[$property] = array_values(array_filter([
+                $this->propertyResourceFqcns[$property] ?? null,
+                ...($this->propertyInlineResourceFqcns[$property] ?? []),
+            ]));
         }
+
+        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->tsExtends);
+        // A collection's flat type alias spells the resource it collects, with no property behind it.
+        $this->resourceFqcnMap = $this->keepSpelled(
+            $this->resourceFqcnMap,
+            $resources,
+            [...$this->tsExtends, ...array_filter([$this->typeAlias])],
+        );
 
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
@@ -690,6 +708,42 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * Keeps each class an extends clause or type alias spells, or a property whose type spells it and whose own import
+     * channels carry it or no other class of its name: a class no key reads, as a cast displaced it, then never forces
+     * an alias on the one a key reads.
+     *
+     * @template TFqcn of string
+     *
+     * @param  array<TFqcn, string>  $map  FQCN => unaliased name
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @return array<TFqcn, string>
+     */
+    protected function keepSpelled(array $map, array $attributed, array $extra): array
+    {
+        return array_filter($map, function (string $name, string $fqcn) use ($map, $attributed, $extra): bool {
+            if (TsTypeString::typeNameOccursIn($name, ...$extra)) {
+                return true;
+            }
+
+            foreach ($this->properties as $property => ['type' => $type]) {
+                if (! TsTypeString::typeNameOccursIn($name, $type)) {
+                    continue;
+                }
+
+                $own = $attributed[$property] ?? [];
+
+                if (in_array($fqcn, $own, true)
+                    || ! array_any($own, fn (string $other): bool => ($map[$other] ?? null) === $name)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /**
@@ -1022,11 +1076,15 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function registerModelAttributeCustomImports(string $propName, array $imports): void
     {
+        // A name a cast key's own import brings is the app's: the attribute's import of that name would duplicate it.
+        $brought = $this->castBrings($propName);
+
         foreach ($imports as $path => $names) {
             foreach ($names as $name) {
                 $type = $this->properties[$propName]['type'] ?? '';
 
-                if (TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
+                if (! in_array($name, $brought, true)
+                    && TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
                     $this->customImports[$path][] = $name;
                 }
             }

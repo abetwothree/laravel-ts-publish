@@ -644,16 +644,16 @@ steps depend on it:
 - **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
   holds none of the enums' type names, as a later spread's key leaves them, and runs before
   `pruneOverriddenEnumImports()`, which removes the names it reads. `pruneOverriddenAnalysisImports()` and
-  `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
-  clause still spells. Both read names before aliasing, so two same-basename models both stay imported up to
-  aliasing while either is spelled, and the alias can outlive the collision. After the `AsEnum` rewrite,
-  `pruneUnspelledImports()` drops each enum, model, resource and custom import whose local name no type still spells.
+  `pruneOverriddenEnumImports()` drop each model, resource, `#[TsType]` and enum type import that no property type or
+  extends clause still spells. Before aliasing, `keepSpelled()` keeps a class for a key whose type spells it only if
+  that key's import channels carry it or no other class of its name, so a class no key reads never forces an alias.
+  After the `AsEnum` rewrite, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
   every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and
   `resolveMultiEnumAccessorFqcns()` import them back by the key's name, which is the attribute's own. A class or a
-  `#[TsType]` import comes back only while the key's type spells it, and for a cast key only a class its text spells
-  and its import does not bring. The `Stockroom` and `Bulletin` resources pin these reads.
+  `#[TsType]` import comes back only while the key's type spells it, and for a cast key only what its text spells and
+  its import does not bring. The `Stockroom` and `Bulletin` resources pin these reads.
 
 The token test matches a name wherever it stands, inside a string or a comment too, so it can keep an import that ends
 up unused; see
@@ -712,7 +712,7 @@ where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that
 `RoleType[] | Record<string, RoleType>` or a default's extra `string` arm. Rebuilding from the FQCN could express only
 `X`, `X[]` and their nullable forms. The token pattern skips a namespace-qualified `foo.RoleType` and a longer
 `RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
-the same PHP shape, and they must never disagree.
+the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEnum` only for a type that spells it.
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 

@@ -101,8 +101,8 @@ class TsTypeString
     }
 
     /**
-     * Extract importable type identifiers from a TypeScript type string,
-     * filtering out primitives, inline types, and union syntax.
+     * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
+     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left.
      *
      * @return list<string>
      */
@@ -110,19 +110,21 @@ class TsTypeString
     {
         $parts = explode('|', $typeString);
         $importable = [];
+        // A digit or a combining mark continues an identifier but cannot start one.
+        $identifier = '/^(?![\p{Nd}\p{Mn}\p{Mc}])'.$this->identifierCharacter().'+$/u';
 
         foreach ($parts as $part) {
-            $part = trim($part);
+            $name = (string) preg_replace(
+                ['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\[\])+$/'],
+                '',
+                trim($part),
+            );
 
-            if ($part === '' || in_array($part, self::TS_PRIMITIVES, true)) {
+            if (in_array($name, self::TS_PRIMITIVES, true) || preg_match($identifier, $name) !== 1) {
                 continue;
             }
 
-            if (str_starts_with($part, '{') || str_starts_with($part, '[') || str_contains($part, '<')) {
-                continue;
-            }
-
-            $importable[] = str_ends_with($part, '[]') ? substr($part, 0, -2) : $part;
+            $importable[] = $name;
         }
 
         return array_values(array_unique($importable));

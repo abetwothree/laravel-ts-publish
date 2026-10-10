@@ -9,6 +9,7 @@ export {}
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
+import type { ReviewSubject } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -3591,6 +3592,14 @@ declare global {
             height?: number;
         }
         /**
+         * Casts the key that reads two resources named `UserResource` to a type of the app's own, so neither resource is
+         * imported.
+         */
+        export interface ImageReviewCastResource {
+            id: number;
+            reviewable?: ReviewSubject | null;
+        }
+        /**
          * Exposes a morphTo whose targets' resources share a basename: Crm's UserResource and this namespace's UserResource
          * must each be named by its own alias, inside an inline array as well.
          */
@@ -5286,6 +5295,16 @@ declare global {
          */
         export interface ViewerPermissionsResource {
             can_publish: boolean;
+        }
+        /**
+         * Casts away the CRM `User` of `contact` and both enums of the `review_priority` accessor, so the only class left to
+         * import is the app's own `User`, under its own name.
+         */
+        export interface WarehouseContactCastResource {
+            id: number;
+            manager: workbench.app.models.User | null;
+            contact: { id: number; name: string } | null;
+            review_priority: string;
         }
         /**
          * Resource with no @mixin or TsResource — tests convention-based model guess.

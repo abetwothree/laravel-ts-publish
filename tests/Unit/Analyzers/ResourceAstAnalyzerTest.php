@@ -6446,11 +6446,12 @@ describe('ResourceTransformer with a #[TsCasts] entry that brings no import', fu
         expect($transformer->properties['status']['type'])->toBe('WorkbenchStatusType | null');
     });
 
-    test('a resource cast without an import, over its model\'s cast with an import, is aliased', function () {
+    // The cast spells one `User`, so only the first class the key read stays, and with no second `User` no alias.
+    test('a resource cast without an import, over its model\'s cast with an import, names the key\'s own class', function () {
         $transformer = new ResourceTransformer(CastOverModelCastResource::class);
 
-        expect($transformer->properties['reviewable']['type'])->toBe('CrmUser | null')
-            ->and($transformer->typeImports)->not->toHaveKey('@js/types/user');
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports)->toBe(['../../../../workbench/crm/models' => ['User']]);
     });
 
     test('a class-level cast without an import, over a method-level one with an import, is aliased', function () {

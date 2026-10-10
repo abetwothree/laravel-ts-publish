@@ -5,11 +5,33 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastBareBesideWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDisplacedOwnNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDroppedEnumBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastKeyofTypeofImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOneOfTwoWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoClassAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoEnumAccessorKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastStringMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastStringTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoClassAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTypeofWithoutWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMixedTernaryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoClassAccessorResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodSameBasenameOverrideResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelVsMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RewrittenSpreadKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SameBasenameOverrideResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsReversedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadOverSpreadEnumResource;
@@ -19,7 +41,9 @@ use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Resources\ImageReviewCastResource;
 use Workbench\App\Http\Resources\PostSpelledCastResource;
+use Workbench\App\Http\Resources\WarehouseContactCastResource;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -35,7 +59,7 @@ function castInForceLines(string $resource): array
 
     $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
 
-    return array_values(preg_grep('/^(import |    [a-z_]+\??: )/', explode("\n", $content)) ?: []);
+    return array_values(preg_grep('/^(import |    [A-Za-z0-9_"]+\??: )/', explode("\n", $content)) ?: []);
 }
 
 beforeEach(fn () => config()->set('ts-publish.enums.use_tolki_package', true));
@@ -68,6 +92,14 @@ describe('a cast that spells an enum resource\'s own type', function () {
             CastOneOfTwoWrapsResource::class,
             ["import type { StatusType } from '../../../../workbench/app/enums';", '    k: StatusType | null;'],
         ],
+        'the cast writes the const after `typeof` without the wrap' => [
+            CastTypeofWithoutWrapResource::class,
+            ["import { Status } from '../../../../workbench/app/enums';", '    k: (typeof Status)[keyof typeof Status];'],
+        ],
+        'the cast writes `keyof typeof` with its own import' => [
+            CastKeyofTypeofImportResource::class,
+            ["import type { Status } from '@js/types/enums';", '    k: keyof typeof Status;'],
+        ],
     ]);
 
     // No cast is involved: the later spread's value takes the key, and the earlier spread's wrap must not be rewritten.
@@ -81,6 +113,139 @@ describe('a cast that spells an enum resource\'s own type', function () {
         expect(array_column($result->properties, 'type', 'name'))->toBe(['k' => 'string'])
             ->and($result->typeImports)->toBe([])
             ->and($result->valueImports)->toBe([]);
+    });
+});
+
+// #111: a class a cast displaced is not imported, whichever cast displaced it and whatever kind of class it is.
+describe('a cast over a key whose classes it displaces', function () {
+    it('publishes the workbench resource over a resource union with no resource import', function () {
+        expect(castInForceLines(ImageReviewCastResource::class))->toBe([
+            "import type { ReviewSubject } from '@js/types/reviews';",
+            '    id: number;',
+            '    reviewable?: ReviewSubject | null;',
+        ]);
+    });
+
+    it('publishes the workbench resource over a CRM model and an `only()` accessor with only the app\'s model', function () {
+        expect(castInForceLines(WarehouseContactCastResource::class))->toBe([
+            "import type { User } from '../../models';",
+            '    id: number;',
+            '    manager: User | null;',
+            '    contact: { id: number; name: string } | null;',
+            '    review_priority: string;',
+        ]);
+    });
+
+    it('imports only what each cast\'s text needs', function (string $resource, array $lines) {
+        expect(castInForceLines($resource))->toBe($lines);
+    })->with([
+        'a class-level cast with an import over a resource union' => [
+            CastMorphUnionResource::class,
+            ["import type { UserResource } from '@js/types/user';", '    id: number;', '    reviewable?: UserResource | null;'],
+        ],
+        'a method-level cast with an import over a resource union' => [
+            MethodCastMorphUnionResource::class,
+            ["import type { UserResource } from '@js/types/user';", '    id: number;', '    reviewable?: UserResource | null;'],
+        ],
+        'a cast without an import over a resource union' => [
+            CastStringMorphUnionResource::class,
+            ['    reviewable?: { id: number } | null;'],
+        ],
+        'a cast without an import that spells the name a resource union\'s resources share' => [
+            CastSpelledMorphUnionResource::class,
+            ["import type { UserResource } from '../../../../workbench/crm/http/resources';", '    reviewable?: UserResource | null;'],
+        ],
+        'a method-level cast with an import over a two-enum accessor' => [
+            MethodCastTwoEnumResource::class,
+            [
+                "import type { StatusType } from '@js/types/status';",
+                "import type { Image } from '../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                '    id: number;',
+                '    review_priority: StatusType | null;',
+                '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
+            ],
+        ],
+        'a class-level cast with an import over a two-enum `only()` accessor' => [
+            CastTwoEnumAccessorOnlyResource::class,
+            [
+                "import type { StatusType } from '@js/types/status';",
+                "import type { Image } from '../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                '    review_priority: StatusType | null;',
+                '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
+            ],
+        ],
+        'a method-level cast with an import over a two-enum `only()` accessor' => [
+            MethodCastTwoEnumAccessorOnlyResource::class,
+            [
+                "import type { StatusType } from '@js/types/status';",
+                "import type { Image } from '../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                '    review_priority: StatusType | null;',
+                '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
+            ],
+        ],
+        'a cast without an import over a two-enum `only()` accessor' => [
+            CastStringTwoEnumAccessorOnlyResource::class,
+            ['    review_priority: string;'],
+        ],
+        // No import channel reaches the key, so the accessor's late registration binds the token to its first class.
+        'a cast without an import that adds a two-enum accessor\'s key and spells the name its enums share' => [
+            CastSpelledTwoEnumAccessorKeyResource::class,
+            [
+                "import type { StatusType } from '../../../../workbench/app/enums';",
+                '    id: number;',
+                '    review_priority: StatusType | null;',
+            ],
+        ],
+        'a method-level cast with an import over a two-model accessor' => [
+            MethodCastTwoClassAccessorResource::class,
+            ["import type { User } from '@js/types/user';", '    last_user_activity_by_typed: User | null;'],
+        ],
+        'a class-level cast with an import over a two-model `only()` accessor' => [
+            CastTwoClassAccessorOnlyResource::class,
+            ["import type { User } from '@js/types/user';", '    last_user_activity_by_typed: User | null;'],
+        ],
+        // `only()` drops a two-model accessor's import channels, so its late registration binds the first class.
+        'a cast without an import that spells the name a two-model `only()` accessor\'s models share' => [
+            CastSpelledTwoClassAccessorOnlyResource::class,
+            [
+                "import type { User } from '../../../../workbench/crm/models';",
+                '    last_user_activity_by_typed: User | null;',
+            ],
+        ],
+        'a class-level cast with an import named like the enum it displaces' => [
+            CastDisplacedOwnNameResource::class,
+            ["import type { RoleType } from '@js/types/role';", '    role: RoleType | null;'],
+        ],
+        'a method-level cast with an import named like the enum it displaces' => [
+            MethodCastDisplacedOwnNameResource::class,
+            ["import type { RoleType } from '@js/types/role';", '    role: RoleType | null;'],
+        ],
+        'a cast with an import named like the `#[TsType]` import of an `only()` attribute' => [
+            CastOverAttributeImportOnlyResource::class,
+            ["import type { MenuSettingsType } from '@js/types/menu';", '    menu_config: MenuSettingsType | null;'],
+        ],
+        'a cast over a bare enum read beside a wrap of the same enum' => [
+            CastBareBesideWrapResource::class,
+            [
+                "import { type AsEnum } from '@tolki/ts';",
+                "import { Status } from '../../../../workbench/app/enums';",
+                '    k: string;',
+                '    a: AsEnum<typeof Status>;',
+            ],
+        ],
+    ]);
+
+    it('drops the enum a cast displaced beside another enum of its type name, with the tolki package off', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        expect(castInForceLines(CastDroppedEnumBesideSharedNameResource::class))->toBe([
+            "import type { StatusType } from '../../../../workbench/crm/enums';",
+            '    k: string;',
+            '    crm: StatusType | null;',
+        ]);
     });
 });
 
@@ -114,6 +279,38 @@ describe('a cast the resource and its model both declare', function () {
     it('lets a resource\'s own toArray() cast win over its model\'s cast', function () {
         expect(castInForceLines(ModelVsMethodCastResource::class))->toContain('    longitude: MethodLongitude;');
     });
+});
+
+// #81: a model that no key reads any more is neither imported nor a reason to alias the one a key still reads.
+describe('two same-basename models, one of them displaced', function () {
+    it('imports only the model a key still reads, under its own name', function (string $resource, array $lines) {
+        expect(castInForceLines($resource))->toBe($lines);
+    })->with([
+        'a class-level cast' => [
+            SameBasenameOverrideResource::class,
+            [
+                "import type { User } from '../../../../workbench/app/models';",
+                '    manager: User | null;',
+                '    contact: { id: number } | null;',
+            ],
+        ],
+        'a method-level cast' => [
+            MethodSameBasenameOverrideResource::class,
+            [
+                "import type { User } from '../../../../workbench/app/models';",
+                '    manager: User | null;',
+                '    contact: { id: number } | null;',
+            ],
+        ],
+        'a key that overrides a spread helper\'s key' => [
+            RewrittenSpreadKeyResource::class,
+            [
+                "import type { User } from '../../../../workbench/app/models';",
+                '    who: string;',
+                '    manager: User | null;',
+            ],
+        ],
+    ]);
 });
 
 describe('CastChannels', function () {
@@ -160,5 +357,33 @@ describe('CastChannels', function () {
         resolve(CastChannels::class)->fit($analysis, ['b' => ['type' => 'PriorityType', 'import' => false]]);
 
         expect($analysis->directEnumFqcns)->toBe(['a' => Priority::class]);
+    });
+
+    it('drops a class one key carries when another key\'s import brings its name', function () {
+        $analysis = new MethodAnalysis(
+            properties: [
+                ['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => ''],
+                ['name' => 'b', 'type' => 'StatusType', 'optional' => false, 'description' => ''],
+            ],
+            directEnumFqcns: ['a' => Status::class, 'b' => Status::class],
+        );
+
+        resolve(CastChannels::class)->fit($analysis, [
+            'a' => ['type' => 'string', 'import' => false],
+            'b' => ['type' => 'StatusType', 'import' => true],
+        ]);
+
+        expect($analysis->directEnumFqcns)->toBe([]);
+    });
+
+    it('fits a numeric cast key, which PHP stores as an int', function () {
+        $analysis = new MethodAnalysis(
+            properties: [['name' => '6', 'type' => 'StatusType', 'optional' => false, 'description' => '']],
+            directEnumFqcns: ['6' => Status::class],
+        );
+
+        resolve(CastChannels::class)->fit($analysis, [6 => ['type' => 'string', 'import' => false]]);
+
+        expect($analysis->directEnumFqcns)->toBe([Status::class => Status::class]);
     });
 });

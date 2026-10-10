@@ -121,7 +121,7 @@ it('merges casts with the source winning for a key both cast', function () {
     ]);
 });
 
-it('forgets the cast mark of a key another value took over, and no other key\'s', function () {
+it('forgets the cast entry of a key another value took over, and no other key\'s', function () {
     $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => true], 'kept' => ['type' => 'B', 'import' => false]]);
 
     $analysis->forgetChannels('taken_over');

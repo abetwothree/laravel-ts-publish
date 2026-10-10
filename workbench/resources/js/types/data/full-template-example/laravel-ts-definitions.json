@@ -13914,6 +13914,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ImageReviewCastResource": {
+            "name": "ImageReviewCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable",
+                    "type": "ReviewSubject | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ImageReviewResource": {
             "name": "ImageReviewResource",
             "properties": [
@@ -19115,6 +19130,31 @@
                 {
                     "name": "can_publish",
                     "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WarehouseContactCastResource": {
+            "name": "WarehouseContactCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "manager",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "{ id: number; name: string } | null",
+                    "optional": false
+                },
+                {
+                    "name": "review_priority",
+                    "type": "string",
                     "optional": false
                 }
             ]

@@ -373,6 +373,18 @@ describe('extractImportableTypes', function () {
             ->toBe(['Foo']);
     });
 
+    // An import specifier is one identifier, so a type operator is read past and anything else is not imported.
+    test('extractImportableTypes reads the name after a type operator', function (string $type, array $names) {
+        expect($this->service->extractImportableTypes($type))->toBe($names);
+    })->with([
+        'keyof typeof' => ['keyof typeof Status', ['Status']],
+        'readonly array' => ['readonly Tag[] | null', ['Tag']],
+        'a nested array' => ['Grid[][]', ['Grid']],
+        'an indexed access' => ['(typeof Status)[keyof typeof Status]', []],
+        'a template literal' => ['`${string}-tag`', []],
+        'a qualified name' => ['Geo.Point', []],
+    ]);
+
     test('extractImportableTypes returns empty for all primitives', function () {
         expect($this->service->extractImportableTypes('string | number | boolean | null'))
             ->toBeEmpty();

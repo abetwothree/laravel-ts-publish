@@ -3127,9 +3127,12 @@ describe('a union of two models that share a name', function () {
             ->toBe('CrmUser | null');
     });
 
+    // The first write's class is read by no key, so it is not imported and forces no alias on the last write's.
     test('names a key written twice by its last write\'s class', function () {
-        expect((new ResourceTransformer(HandoverRewrittenKeyResource::class))->properties['who']['type'])
-            ->toBe('{ p: WorkbenchUser | null }');
+        $transformer = new ResourceTransformer(HandoverRewrittenKeyResource::class);
+
+        expect($transformer->properties['who']['type'])->toBe('{ p: User | null }')
+            ->and($transformer->typeImports)->toBe(['../../../../workbench/app/models' => ['User']]);
     });
 });
 

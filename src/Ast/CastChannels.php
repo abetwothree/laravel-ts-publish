@@ -16,12 +16,43 @@ use Closure;
  * A class the displaced value carried stays queued only for a token the text spells and the entry's import does not
  * bring, so no pass rebuilds the text's shape (the `AsEnum` rewrite) or aliases a name the app brings itself.
  *
+ * @phpstan-import-type CastInForce from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  *
  * @internal
  */
 final class CastChannels
 {
+    /**
+     * The names a cast's own import brings into the file, each the app's own, which no class of the package supplies.
+     *
+     * @param  CastInForce  $cast
+     * @return list<string>
+     */
+    public static function brings(array $cast): array
+    {
+        return $cast['import'] ? TsTypeString::extractImportableTypes($cast['type']) : [];
+    }
+
+    /**
+     * The class behind each token of a cast's text among the given ones, leaving out a class whose name its import
+     * brings: the per-name rule every publisher's fit and late registration shares.
+     *
+     * @param  list<class-string>  $fqcns
+     * @param  list<string>  $brought  brings() for the cast
+     * @param  Closure(class-string): string  $nameOf
+     * @return list<class-string>
+     */
+    public static function spells(array $fqcns, string $type, array $brought, Closure $nameOf): array
+    {
+        $queue = array_values(array_filter(
+            $fqcns,
+            fn (string $fqcn): bool => ! in_array($nameOf($fqcn), $brought, true),
+        ));
+
+        return new ClassTokenQueue($queue, $nameOf)->take($type);
+    }
+
     /**
      * Rewrite every cast key's import channels to the classes its text spells, as embedded names, and carry the rest.
      *
@@ -38,7 +69,7 @@ final class CastChannels
         /** @var list<class-string> $broughtOver */
         $broughtOver = [];
 
-        foreach ($casts as $key => ['type' => $type, 'import' => $import]) {
+        foreach ($casts as $key => $castInForce) {
             // PHP stores a numeric-string key such as '6' as an int.
             $name = (string) $key;
 
@@ -46,8 +77,8 @@ final class CastChannels
                 continue;
             }
 
-            // A name the entry's import brings is the app's own; the package's class of that name is displaced.
-            $brought = $import ? TsTypeString::extractImportableTypes($type) : [];
+            $type = $castInForce['type'];
+            $brought = self::brings($castInForce);
 
             $enums = $this->enumsOf($analysis, $name);
             $models = $this->modelsOf($analysis, $name);
@@ -155,11 +186,7 @@ final class CastChannels
      */
     private function divide(array $fqcns, string $type, array $brought, Closure $nameOf, array &$broughtOver): array
     {
-        $queue = array_values(array_filter(
-            $fqcns,
-            fn (string $fqcn): bool => ! in_array($nameOf($fqcn), $brought, true),
-        ));
-        $kept = new ClassTokenQueue($queue, $nameOf)->take($type);
+        $kept = self::spells($fqcns, $type, $brought, $nameOf);
         $carried = [];
 
         foreach (array_unique($fqcns) as $fqcn) {

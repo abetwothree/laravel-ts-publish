@@ -353,9 +353,9 @@ branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `ali
 class twice needs two entries.
 
 `forgetChannels()` drops every import channel entry, and the `casts` entry, keyed by one property, when another value
-takes the key over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset channels
-by hand would miss the next channel added. `merge()` lets the later analysis's `casts` entry win, with or without an
-import.
+takes the key over, such as a `#[TsCasts]` override or a child key over a spread parent's. A site that unset import
+channels by hand would miss the next import channel added. `merge()` lets the later analysis's `casts` entry win, with
+or without an import.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
 owns its rules.
