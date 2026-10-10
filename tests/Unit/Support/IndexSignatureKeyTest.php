@@ -23,6 +23,17 @@ describe('fromParts', function () {
     });
 });
 
+describe('is', function () {
+    test('only a generated index signature is one, never a property name', function (string $key, bool $expected) {
+        expect(IndexSignatureKey::is($key))->toBe($expected);
+    })->with([
+        'string' => ['[key: string]', true],
+        'number' => ['[key: number]', true],
+        'a template' => ['[key: `${string}_tag`]', true],
+        'a property name' => ['price_tag', false],
+    ]);
+});
+
 describe('castSpellings', function () {
     test('each other spelling a #[TsCasts] key may use for a signature name', function () {
         expect(IndexSignatureKey::castSpellings('[key: `${string}\\\\\\r`]'))->toBe([

@@ -87,9 +87,9 @@ name two namespaces publish resolves as that file's import does. For a name no F
 `#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
 `GlobalsWriterTest` pins both collection orders.
 
-The index-signature key grammar lives in `IndexSignatureKey`, and `JsEmitter::isIndexSignatureKey()` delegates to it.
-`JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
-one home for their test or spelling, so a new caller uses them rather than a local regex.
+The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
+point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()` and
+`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather than a local regex.
 
 ### `TsNaming`
 

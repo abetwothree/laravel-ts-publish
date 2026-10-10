@@ -56,8 +56,7 @@ class JsEmitter
     }
 
     /**
-     * Whether a key is a generated `[key: number]`/`[key: string]`/template-literal index signature rather than a
-     * property name: it prints unquoted in a type position and can never carry `?:`.
+     * Whether a key is a generated index signature; see IndexSignatureKey::is().
      */
     public function isIndexSignatureKey(string $key): bool
     {
