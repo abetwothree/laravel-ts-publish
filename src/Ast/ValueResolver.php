@@ -225,30 +225,16 @@ final class ValueResolver
      * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
      *
      * A model declines, since its JSON depends on its runtime attributes, casts and hidden fields. So does a class
-     * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls.
+     * Inertia sends by its toArray(), toResponse() or toInertiaProperty(), none of which json_encode() calls. The value
+     * is an object, which an API resource's filter never enters, so it keeps its keys.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveSerializedNew(New_ $new): ?array
     {
-        $string = $this->resolveStringSerializedNew($new);
+        $result = $this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new);
 
-        if ($string !== null || ! $new->class instanceof Name) {
-            return $string;
-        }
-
-        $class = $new->class->toString();
-
-        if (! class_exists($class)
-            || is_a($class, Model::class, true)
-            || is_a($class, Arrayable::class, true)
-            || is_a($class, Responsable::class, true)
-            || is_a($class, 'Inertia\\ProvidesInertiaProperty', true)
-        ) {
-            return null;
-        }
-
-        return resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class));
+        return $result === null ? null : [...$result, 'keepsKeys' => true];
     }
 
     /**
@@ -275,6 +261,31 @@ final class ValueResolver
             'type' => is_a($class, DateTimeInterface::class, true) ? LaravelTsPublish::toTsType($class)['type'] : $type,
             'optional' => false,
         ];
+    }
+
+    /**
+     * Type `new X(...)` as toTsType() reads X, or null for a class resolveSerializedNew() declines.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function resolveClassSerializedNew(New_ $new): ?array
+    {
+        if (! $new->class instanceof Name) {
+            return null;
+        }
+
+        $class = $new->class->toString();
+
+        if (! class_exists($class)
+            || is_a($class, Model::class, true)
+            || is_a($class, Arrayable::class, true)
+            || is_a($class, Responsable::class, true)
+            || is_a($class, 'Inertia\\ProvidesInertiaProperty', true)
+        ) {
+            return null;
+        }
+
+        return resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class));
     }
 
     /**

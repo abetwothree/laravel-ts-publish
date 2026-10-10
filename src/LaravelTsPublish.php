@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AllowDynamicProperties;
 use ArrayObject;
@@ -67,6 +68,7 @@ use UnitEnum;
  *    classFqcns: list<class-string>,
  *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
+ *    keepsKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  *
@@ -76,6 +78,9 @@ use UnitEnum;
  * once, so its order alone cannot say which token is which.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
+ *
+ * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
+ * never enters, so its numeric keys are never re-indexed.
  *
  * The delegations below keep every `LaravelTsPublish::` helper answering for callers outside this
  * package; inside it, call the helper's own facade.
@@ -335,7 +340,7 @@ class LaravelTsPublish
 
             $result['type'] = $shapeType ?? 'unknown[]';
 
-            return $result;
+            return [...$result, 'keepsKeys' => true];
         }
 
         // 5a-bis. JsonSerializable (non-Model, non-Arrayable) → object shape from jsonSerialize().
@@ -353,7 +358,7 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 $result['type'] = $shapeType;
 
-                return $result;
+                return [...$result, 'keepsKeys' => true];
             }
         }
 
@@ -383,7 +388,7 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 $result['type'] = $shapeType;
 
-                return $result;
+                return [...$result, 'keepsKeys' => true];
             }
         }
 
@@ -395,7 +400,7 @@ class LaravelTsPublish
         if ($stringableObjectType !== null) {
             $result['type'] = $stringableObjectType;
 
-            return $result;
+            return [...$result, 'keepsKeys' => true];
         }
 
         // 5. Any other existing class
@@ -2392,6 +2397,13 @@ class LaravelTsPublish
         // empty queue would keep ClassTokenQueue::fqcnsOf() from falling back to `classFqcns`.
         if ($classTokenFqcns !== [] && count(array_unique($result['classes'])) < count($result['classes'])) {
             $result['classTokenFqcns'] = $classTokenFqcns;
+        }
+
+        // The re-index rewrites only an arm holding an object, so the union keeps its keys when each such arm does.
+        $keyed = array_filter($infos, fn (array $info): bool => TsTypeShape::holdsKeyedObject($info['type']));
+
+        if ($keyed !== [] && array_all($keyed, fn (array $info): bool => $info['keepsKeys'] ?? false)) {
+            $result['keepsKeys'] = true;
         }
 
         return $result;

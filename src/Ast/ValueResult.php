@@ -29,7 +29,8 @@ use ReflectionClass;
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string>,
- *      customImports?: TypesImportMap
+ *      customImports?: TypesImportMap,
+ *      keepsKeys?: bool
  * }
  *
  * @internal
@@ -174,6 +175,10 @@ final class ValueResult
 
         if (($attribute['customImports'] ?? []) !== []) {
             $result['customImports'] = $attribute['customImports'];
+        }
+
+        if ($attribute['keepsKeys'] ?? false) {
+            $result['keepsKeys'] = true;
         }
 
         return $result;

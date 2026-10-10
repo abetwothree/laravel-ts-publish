@@ -468,6 +468,12 @@ An API resource re-indexes only the arrays it reaches, so a key's own `collect()
 same way: `->map(fn () => ['1' => …])` publishes `string[][]`, though Laravel sends `{ "1": string }[]`. Type the key
 with `#[TsCasts]`.
 
+### An object's own JSON under an array key, or beside an array an API resource lists, publishes as lists
+
+Where `schedule()` returns a `JsonSerializable` keyed only by numbers, `['week' => $this->schedule()]` publishes
+`{ week: string[] }` and `$c ? $this->schedule() : [1 => 'a']` publishes `string[]`, though Laravel sends the object
+with its keys. Alone, or beside `null` or a scalar, it keeps them. Type the key with `#[TsCasts]`.
+
 ### A collection that does not preserve keys lists the arrays of an element that does
 
 A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it

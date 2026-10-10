@@ -24,7 +24,7 @@ use ReflectionClass;
  * @phpstan-import-type RelationInfo from \AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo
  * @phpstan-import-type ValueExpressionResult from \AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler
  *
- * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, classTokenFqcns?: list<class-string>, customImports: array<string, list<string>>}
+ * @phpstan-type ModelAttributeTypeResult = array{type: string, enumFqcn: class-string|null, classFqcns: list<class-string>, classTokenFqcns?: list<class-string>, customImports: array<string, list<string>>, keepsKeys?: bool}
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
 trait ResolvesModelTypes
@@ -80,6 +80,7 @@ trait ResolvesModelTypes
             // Present only where the type spells one name for two classes; see TypeScriptTypeInfo.
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
+            ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
     }
 
@@ -153,7 +154,7 @@ trait ResolvesModelTypes
             $relationName = array_search($name, $relationKeys, true);
 
             if ($relationName === false) {
-                $this->addModelAttributeProperty($analysis, $name);
+                $analysis->addProperty($name, $this->serializedModelAttributeResult($name));
 
                 continue;
             }
@@ -161,7 +162,7 @@ trait ResolvesModelTypes
             // array_merge() lets a loaded relation overwrite the attribute of the same key, which is always written.
             unset($relationKeys[$relationName]);
             $analysis->addProperty($name, ValueResult::unionResults([
-                $this->modelAttributeResult($name),
+                $this->serializedModelAttributeResult($name),
                 $this->modelRelationResult($relationName),
             ]));
         }
@@ -214,7 +215,28 @@ trait ResolvesModelTypes
             ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => ClassTokenQueue::fqcnsOf($info)] : []),
             ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
             ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
+            ...(($info['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
+    }
+
+    /**
+     * The value Model::toArray() writes for an attribute, which is its read but for an Arrayable value, written as its
+     * toArray() array: one an API resource's filter enters.
+     *
+     * @return ValueExpressionResult
+     */
+    private function serializedModelAttributeResult(string $name): array
+    {
+        $result = $this->modelAttributeResult($name);
+
+        /** @var class-string $modelClass a model attribute resolves only with one */
+        $modelClass = $this->scope->modelClass;
+
+        if (($result['keepsKeys'] ?? false) && resolve(ModelAttributeResolver::class)->serializesAsArray($modelClass, $name)) {
+            unset($result['keepsKeys']);
+        }
+
+        return $result;
     }
 
     /**

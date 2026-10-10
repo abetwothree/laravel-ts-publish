@@ -740,7 +740,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            $analysis->addProperty($column, ValueResult::withAttributeChannels(['type' => $tsInfo['type'], 'optional' => $optional], $tsInfo));
+            // Model::toArray() writes an Arrayable value as its toArray() array, which the filter enters.
+            $keepsKeys = ($tsInfo['keepsKeys'] ?? false) && ! $resolver->serializesAsArray($modelFqcn, $column);
+
+            $analysis->addProperty($column, ValueResult::withAttributeChannels(
+                ['type' => $tsInfo['type'], 'optional' => $optional],
+                [...$tsInfo, 'keepsKeys' => $keepsKeys],
+            ));
         }
 
         return $analysis;

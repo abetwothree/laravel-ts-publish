@@ -23,7 +23,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollecti
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -3484,6 +3487,41 @@ it('keeps the numeric keys of a collect() value, on every branch that sets it an
             'rows_listed' => 'string[][]',
             'order_codes' => '{ "5": CurrencyType }[]',
         ]);
+});
+
+// ConditionallyLoadsAttributes::filter() enters arrays only, so an object's JSON keeps the keys its class declares,
+// whether a method returns it, a property or a cast holds it, a `new` builds it or the model's toArray() keeps it; that
+// toArray() writes an Arrayable value as its own array, which the filter re-indexes.
+it('keeps the numeric keys of a value object\'s own JSON, in every position a resource reads one', function () {
+    $types = fn (string $resource): array => array_map(
+        fn (array $property): string => $property['type'],
+        new ResourceTransformer($resource)->properties,
+    );
+
+    expect(array_slice($types(WeekScheduleResource::class), 0, 6))->toBe([
+        'schedule' => '{ 1: string; 2: string }',
+        'schedule_new' => '{ 1: string; 2: string }',
+        'schedule_property' => '{ 1: string; 2: string } | null',
+        'schedule_cast' => '{ 1: string; 2: string } | null',
+        'schedule_default' => '{ 1: string; 2: string }',
+        'listed' => 'string[]',
+    ]);
+
+    foreach ([SchedulePostResource::class, SchedulePostSpreadResource::class] as $resource) {
+        expect(array_intersect_key($types($resource), array_flip(['metadata', 'options'])))->toBe([
+            'metadata' => '{ 1: string; 2: string } | null',
+            'options' => 'string[] | null',
+        ]);
+    }
+});
+
+// docs/known-gaps.md: one key's flag cannot keep an object's keys under a key of an array, or beside an array arm the
+// resource lists, so the whole value re-indexes, though Laravel sends the object as `{"1":"mon","2":"tue"}`.
+it('re-indexes an object\'s own JSON under an array key or beside an array the resource lists', function () {
+    $properties = new ResourceTransformer(WeekScheduleResource::class)->properties;
+
+    expect($properties['by_week']['type'])->toBe('{ week: string[] }')
+        ->and($properties['schedule_or_listed']['type'])->toBe('string[]');
 });
 
 // docs/components/ts-casts.md: an API resource's class-level cast on `42` adds `"42": T`, as a method cast does.

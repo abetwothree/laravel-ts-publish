@@ -1671,6 +1671,17 @@ describe('emptyTypeScriptInfo', function () {
 });
 
 describe('mergeTypeScriptInfos', function () {
+    // An object's own JSON keeps its keys; the re-index rewrites only an arm holding an object.
+    test('keeps an object\'s keys beside an arm holding no object, and drops them beside an array shape', function () {
+        $object = [...$this->service->emptyTypeScriptInfo(), 'type' => '{ 1: string }', 'keepsKeys' => true];
+        $text = [...$this->service->emptyTypeScriptInfo(), 'type' => 'string'];
+        $shape = [...$this->service->emptyTypeScriptInfo(), 'type' => '{ 2: string }'];
+
+        expect($this->service->mergeTypeScriptInfos([$object, $text]))->toHaveKey('keepsKeys', true)
+            ->and($this->service->mergeTypeScriptInfos([$object, $shape]))->not->toHaveKey('keepsKeys')
+            ->and($this->service->mergeTypeScriptInfos([$text, $text]))->not->toHaveKey('keepsKeys');
+    });
+
     test('preserves a separate type token for each unique FQCN even when basenames are the same', function () {
         $infoA = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['App\\Models\\User']];
         $infoB = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['Crm\\Models\\User']];

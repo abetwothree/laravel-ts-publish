@@ -5,9 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WeekRota;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WeekSchedule;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSettings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PublicLabelStringable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializationProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
@@ -61,6 +64,19 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'a CarbonInterval whose jsonSerialize() writes a string' => [StringJsonIntervalProbe::class, 'string'],
     'the datetime column type, unchanged' => ['datetime', 'string'],
     'a class cast returning ?DateTime, which Model::toArray() runs through serializeDate()' => [DateTimeCast::class, 'string | null'],
+]);
+
+// An API resource's filter enters arrays only, so the JSON a class declares keeps the numeric keys it spells.
+it('marks the JSON a class declares for itself as keeping its keys, and no other type', function (string $type, bool $keeps) {
+    expect(LaravelTsPublish::toTsType($type)['keepsKeys'] ?? false)->toBe($keeps);
+})->with([
+    'a jsonSerialize() shape' => [WeekSchedule::class, true],
+    'the same class, nullable' => ['?'.WeekSchedule::class, true],
+    'a toArray() shape' => [WeekRota::class, true],
+    'typed public properties' => [PostSettings::class, true],
+    'a __toString() class written as its properties' => [PublicLabelStringable::class, true],
+    'a class written as a string' => [NullableStringJson::class, false],
+    'a scalar' => ['int', false],
 ]);
 
 it('keeps the class token where only a method body or the runtime value says what json_encode() writes', function (string $class) {

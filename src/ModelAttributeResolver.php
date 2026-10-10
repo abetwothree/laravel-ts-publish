@@ -18,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -479,6 +480,18 @@ class ModelAttributeResolver
         }
 
         return $this->attributeClassCache[$key];
+    }
+
+    /**
+     * Whether Model::toArray() writes the attribute's value as that Arrayable's toArray() array, not as the object.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function serializesAsArray(string $modelFqcn, string $attributeName): bool
+    {
+        $class = $this->resolveAttributeClass($modelFqcn, $attributeName);
+
+        return $class !== null && is_a($class, Arrayable::class, true);
     }
 
     /**
