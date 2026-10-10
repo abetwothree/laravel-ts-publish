@@ -107,6 +107,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\HandoverListed": {
+            "name": "HandoverListed",
+            "eventName": "HandoverListed",
+            "broadcastName": ".Workbench.App.Events.HandoverListed",
+            "properties": [
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "ids",
+                    "type": "number[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\ManifestAssembled": {
             "name": "ManifestAssembled",
             "eventName": "ManifestAssembled",
@@ -13589,6 +13606,76 @@
                 {
                     "name": "handovers",
                     "type": "HandoverSummaryResource[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverListResource": {
+            "name": "HandoverListResource",
+            "properties": [
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "stamps",
+                    "type": "(number | string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "lanes",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "route",
+                    "type": "{ stops: string[]; hops: number }",
+                    "optional": false
+                },
+                {
+                    "name": "empty",
+                    "type": "never[]",
+                    "optional": false
+                },
+                {
+                    "name": "stops",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "OrderStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "senders",
+                    "type": "(UserResource | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "legs",
+                    "type": "({ from: string; to: string } | { from: string; to: number })[]",
+                    "optional": false
+                },
+                {
+                    "name": "grid",
+                    "type": "number[][]",
+                    "optional": false
+                },
+                {
+                    "name": "flags",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "opaque",
+                    "type": "unknown[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected",
+                    "type": "(number | string | null)[]",
                     "optional": false
                 }
             ]

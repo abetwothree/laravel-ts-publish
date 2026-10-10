@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
 use DateTimeInterface;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\New_;
@@ -142,6 +146,57 @@ final class ValueResolver
     }
 
     /**
+     * Type a keyless array literal as the list json_encode() writes, or null for an empty one, one holding a key or a
+     * by-ref item, or one spreading anything but a list. A constant one is typed as a parameter default is.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveListLiteral(Array_ $list, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if ($list->items === [] || array_any($list->items, fn (ArrayItem $item): bool => $item->key !== null || $item->byRef)) {
+            return null;
+        }
+
+        try {
+            $value = $this->evaluateConstantExpression($list, $scope);
+            $constant = is_array($value) && array_is_list($value) ? $this->resolveConstantValue($value) : null;
+
+            if ($constant !== null) {
+                return $constant;
+            }
+        } catch (ConstExprEvaluationException) {
+        }
+
+        $elements = [];
+
+        foreach ($list->items as $item) {
+            $element = $engine->resolve($item->value);
+
+            if ($item->unpack) {
+                $elementType = $this->spreadListElementType($element['type']);
+
+                if ($elementType === null) {
+                    return null;
+                }
+
+                $element = [...$element, 'type' => $elementType];
+            }
+
+            $elements[] = $element;
+        }
+
+        // Every element is present in every response, so one no rule types cannot be left out as a union arm is.
+        if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
+            return ['type' => 'unknown[]', 'optional' => false];
+        }
+
+        // A missing when*() element drops its `optional`: an API resource removes it and re-indexes the rest.
+        $union = ValueResult::unionResults($elements);
+
+        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
+    }
+
+    /**
      * Type `new X(...)` by the string json_encode() writes X as, whatever TS name the package publishes X under:
      * `string`, or `string | null` for a nullable one; null for any other class. A date takes `toTsType()`'s type.
      *
@@ -226,11 +281,6 @@ final class ValueResolver
     /**
      * Convert a plain-list constant array into an element type: `T[]` when every element agrees,
      * `(A | B)[]` when they don't, or null (unknown) when any element can't itself be resolved.
-     *
-     * Recurses through analyzeConstantValue() — rather than delegating the whole array back to the
-     * AST pipeline — so a list nested inside a keyed constant (analyzeConstantRecordValue()) is
-     * resolved the same way a top-level one is: analyzeReturnArray() has no key to shape a keyless
-     * item from and would otherwise silently drop every element.
      *
      * @param  list<mixed>  $value
      * @return ValueExpressionResult|null
@@ -327,6 +377,18 @@ final class ValueResolver
         }
 
         return $fqcns;
+    }
+
+    /**
+     * The element type of the list a spread adds, or null for any other type.
+     *
+     * A reflected `array` reads as `unknown[]` whatever its keys, so its string keys could survive the spread.
+     */
+    private function spreadListElementType(string $type): ?string
+    {
+        $element = count(TsTypeShape::splitTopLevel($type, ['|', '&'])) === 1 ? TsTypeShape::elementType($type) : null;
+
+        return $element === 'unknown' ? null : $element;
     }
 
     /**

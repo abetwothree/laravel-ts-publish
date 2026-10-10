@@ -52,6 +52,7 @@ test('infers default metadata types from the provider return shape', function ()
 });
 
 test('falls back to body inference for a provider with a generic array declaration', function () {
+    config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $data = (new ModelMetadataTransformer(User::class))->data();
@@ -64,14 +65,18 @@ test('falls back to body inference for a provider with a generic array declarati
             'maximum' => null,
         ],
         'role' => 'Admin',
+        'regions' => ['north', 'south'],
     ])->and($data->propertyTypes)->toBe([
         'morphClass' => 'string',
         'enabled' => 'boolean',
         'limits' => '{ minimum: number; maximum: null }',
         'role' => 'RoleType',
+        'regions' => 'string[]',
     ])->and($data->typeImports)->toBe([
         '../enums' => ['RoleType'],
-    ]);
+    ])->and((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
+        ->toContain("    regions: ['north', 'south'],")
+        ->toContain('    regions: string[];');
 });
 
 test('imports the enum a body-inferred value names', function () {

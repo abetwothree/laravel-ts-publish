@@ -4,6 +4,7 @@ import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { HandoverListed } from './app/events/HandoverListed';
 import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
@@ -32,6 +33,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.DocblockShapedEvent": DocblockShapedEvent;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
         ".Workbench.App.Events.FacilityAudited": FacilityAudited;
+        ".Workbench.App.Events.HandoverListed": HandoverListed;
         ".Workbench.App.Events.ManifestAssembled": ManifestAssembled;
         ".Workbench.App.Events.MixedTypesEvent": MixedTypesEvent;
         ".Workbench.App.Events.MultiModelEvent": MultiModelEvent;

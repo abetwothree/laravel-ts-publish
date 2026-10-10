@@ -808,7 +808,7 @@ it('publishes MIN() and MAX() of a column by a custom_ts_mappings entry for its 
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
-// is a list, never the record the engine types an array literal as, and a list the evaluator cannot read binds nothing.
+// is a list, and a list the evaluator cannot read binds nothing.
 it('binds a parameter default to the value it evaluates to', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
@@ -867,6 +867,7 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     '__LINE__' => ['__LINE__', 'number'],
     'PHP_EOL' => ['PHP_EOL', 'string'],
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
+    'a global constant and an enum ->value in a list' => ['[PHP_INT_MAX, \\Workbench\\App\\Enums\\Status::Published->value]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
     'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
     'a ?string serialization returning null' => ['new \\'.NullableStringJson::class.'()', 'string | null'],

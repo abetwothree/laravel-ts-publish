@@ -135,6 +135,7 @@ use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
 use Workbench\App\Http\Resources\HandoverDigestCollection;
+use Workbench\App\Http\Resources\HandoverListResource;
 use Workbench\App\Http\Resources\HandoverRosterCollection;
 use Workbench\App\Http\Resources\HandoverRosterResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
@@ -226,6 +227,7 @@ use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Merchant;
 use Workbench\App\Models\Order;
@@ -5977,8 +5979,7 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($props['channel_tags']['type'])->toBe('string[]')
         // A list whose elements don't agree resolves to a union element array.
         ->and($props['mixed_tags']['type'])->toBe('(string | number)[]')
-        // A list nested inside a keyed constant resolves the same way a top-level one does,
-        // rather than the Record<string, unknown> a keyless item would otherwise misreport.
+        // A list nested inside a keyed constant resolves the same way a top-level one does.
         ->and($props['nested_tags']['type'])->toBe('{ primary: string[]; secondary: string[] }')
         // Negative case: an undefined-constant reference degrades to unknown at read time
         // instead of throwing and aborting the whole generation run.
@@ -7160,4 +7161,25 @@ describe('a cast across its locations', function () {
 
         expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
     });
+});
+
+test('a keyless list literal publishes the list it encodes as, with the imports its elements name', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(HandoverListResource::class), Handover::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe([
+        'stages' => 'string[]',
+        'stamps' => '(number | string | null)[]',
+        'lanes' => 'number[]',
+        'route' => '{ stops: string[]; hops: number }',
+        'empty' => 'never[]',
+        'stops' => 'string[]',
+        'statuses' => 'OrderStatusType[]',
+        'senders' => '(UserResource | null)[]',
+        'legs' => '({ from: string; to: string } | { from: string; to: number })[]',
+        'grid' => 'number[][]',
+        'flags' => 'string[]',
+        'opaque' => 'unknown[]',
+        'collected' => '(number | string | null)[]',
+    ])->and($analysis->inlineEnumFqcns['statuses'] ?? [])->toBe([OrderStatus::class, OrderStatus::class])
+        ->and($analysis->inlineResourceFqcns['senders'] ?? [])->toBe([UserResource::class]);
 });

@@ -26,6 +26,12 @@ accessor's getter body left with only that `null` publishes `unknown` instead, w
 `null` still publishes `null`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes
 back.
 
+### A list literal holding an element no rule types publishes `unknown[]`
+
+`[$this->id, json_decode('{}')]` publishes `unknown[]`, not `number[]`. A list element is in every response, so unlike a
+union arm it is never left out ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms)). Type
+the element with a return type or a `@return` docblock, or the key with `#[TsCasts]`, and the list takes its type.
+
 ### `config()` on an absent key with no default types as null
 
 `config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A

@@ -4,6 +4,7 @@ export * from './DispatchRelayed';
 export * from './DocblockShapedEvent';
 export * from './EnumBroadcastEvent';
 export * from './FacilityAudited';
+export * from './HandoverListed';
 export * from './ManifestAssembled';
 export * from './MixedTypesEvent';
 export * from './MultiModelEvent';

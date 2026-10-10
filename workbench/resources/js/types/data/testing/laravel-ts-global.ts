@@ -3480,6 +3480,25 @@ declare global {
         export interface HandoverDigestCollection {
             handovers: HandoverSummaryResource[];
         }
+        /**
+         * Keyless list literals publish the JSON arrays they encode as: a constant one by its values, any other by its
+         * elements' types, a spread of a list adding its elements, and an element no rule types leaving the element `unknown`.
+         */
+        export interface HandoverListResource {
+            stages: string[];
+            stamps: (number | string | null)[];
+            lanes: number[];
+            route: { stops: string[]; hops: number };
+            empty: never[];
+            stops: string[];
+            statuses: workbench.app.enums.OrderStatusType[];
+            senders: (UserResource | null)[];
+            legs: ({ from: string; to: string } | { from: string; to: number })[];
+            grid: number[][];
+            flags: string[];
+            opaque: unknown[];
+            collected: (number | string | null)[];
+        }
         /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
         export interface HandoverNoticeResource {
             id: number;
@@ -5876,6 +5895,10 @@ declare global {
             facility: Partial<workbench.app.models.Facility>;
             trail: Partial<workbench.app.packages.audit.models.AuditTrail>;
             record: unknown;
+        }
+        export interface HandoverListed {
+            stages: string[];
+            ids: number[];
         }
         export interface ManifestAssembled {
             parcelId: number;

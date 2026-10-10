@@ -40,8 +40,7 @@ class ChannelDefaults
     public const array MIXED_TAGS = ['in_app', 1];
 
     /**
-     * A list nested inside a keyed constant — each value resolves to `string[]`, not the
-     * `Record<string, unknown>` a keyless item would misreport through the AST pipeline.
+     * A list nested inside a keyed constant — each value resolves to `string[]`, as a top-level list does.
      *
      * @var array<string, list<string>>
      */

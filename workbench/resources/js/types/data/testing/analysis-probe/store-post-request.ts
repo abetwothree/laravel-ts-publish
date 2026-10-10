@@ -2,11 +2,11 @@
 
 export interface StorePostRequestProbe
 {
-    title: Record<string, unknown>;
-    body: Record<string, unknown>;
-    published: Record<string, unknown>;
-    rating: Record<string, unknown>;
-    email: Record<string, unknown>;
-    tags: Record<string, unknown>;
-    'tags.*': Record<string, unknown>;
+    title: string[];
+    body: string[];
+    published: string[];
+    rating: string[];
+    email: string[];
+    tags: string[];
+    'tags.*': string[];
 }

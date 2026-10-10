@@ -21,6 +21,7 @@ use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
+use Workbench\App\Http\Controllers\InertiaListPropsController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -121,6 +122,7 @@ Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('in
 Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
 Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 Route::get('/key-edges', [InertiaKeyEdgesController::class, 'show'])->name('key-edges.show');
+Route::get('/list-props', [InertiaListPropsController::class, 'show'])->name('list-props.show');
 
 Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => ['posts-inertia' => 'post']]);
 

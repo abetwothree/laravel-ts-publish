@@ -67,6 +67,7 @@ export * from './guard-clause-closure-resource';
 export * from './guarded-collection-spread-resource';
 export * from './handover-collection';
 export * from './handover-digest-collection';
+export * from './handover-list-resource';
 export * from './handover-notice-resource';
 export * from './handover-resource';
 export * from './handover-roster-collection';

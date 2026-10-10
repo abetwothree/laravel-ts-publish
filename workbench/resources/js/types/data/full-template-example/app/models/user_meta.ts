@@ -5,9 +5,11 @@ export const UserModelMetadata = {
     enabled: true,
     limits: {minimum: 1, maximum: null},
     role: 'Admin',
+    regions: ['north', 'south'],
 } as const satisfies {
     morphClass: string;
     enabled: boolean;
     limits: { minimum: number; maximum: null };
     role: RoleType;
+    regions: string[];
 };

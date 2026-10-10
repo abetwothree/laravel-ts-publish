@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -241,16 +243,22 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     private function analyzeInlineArray(Array_ $array, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $analysis = $engine->returnArrayAnalysis($array);
-
-        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
-        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
-
         // `json_encode([])` emits `[]`, not `{}` — only an array whose keys we failed to resolve is
         // honestly a record. `never[]` says the literal can hold nothing, which is what `[]` means.
         if ($array->items === []) {
             return ['type' => 'never[]', 'optional' => false];
         }
+
+        $list = $this->holdsMergeCall($array) ? null : new ValueResolver()->resolveListLiteral($array, $scope, $engine);
+
+        if ($list !== null) {
+            return $list;
+        }
+
+        $analysis = $engine->returnArrayAnalysis($array);
+
+        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 
         // A spread whose value resolves to a bare named resource (not an array/collection of one), to a
         // bound model's toArray(), or to a bound collection's toArray(), intersects with the literal's keys.
@@ -515,6 +523,18 @@ final class InlineArrayHandler implements ExpressionHandler
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * Whether a keyless item is a `$this->merge()`, `mergeWhen()` or `mergeUnless()` call, whose keys an API resource
+     * merges into the array instead of listing the call's value.
+     */
+    private function holdsMergeCall(Array_ $array): bool
+    {
+        return array_any($array->items, fn (ArrayItem $item): bool => $item->key === null
+            && ($this->isThisMethodCall($item->value, 'merge')
+                || $this->isThisMethodCall($item->value, 'mergeWhen')
+                || $this->isThisMethodCall($item->value, 'mergeUnless')));
     }
 
     /**

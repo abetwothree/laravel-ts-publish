@@ -14,6 +14,7 @@ export { default as InertiaController } from './inertia-controller';
 export { default as InertiaFacilityController } from './inertia-facility-controller';
 export { default as InertiaFormRequestController } from './inertia-form-request-controller';
 export { default as InertiaKeyEdgesController } from './inertia-key-edges-controller';
+export { default as InertiaListPropsController } from './inertia-list-props-controller';
 export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';

@@ -300,9 +300,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     /**
      * Resolve `collect($items)` as the list or object its items encode as.
      *
-     * None or null is `never[]`, a constant array is typed as a parameter default's value is, a list literal is a list
-     * of its elements, and an expression typed as a list or an object shape keeps that type. A literal holding a
-     * `when*()` value declines: Laravel's filter never recurses into a Collection, so the value encodes as `{}`.
+     * None or null is `never[]`, a constant array is typed as a parameter default's value is, and an expression typed
+     * as a list or an object shape, such as a list literal, keeps that type. A literal holding a `when*()` value
+     * declines: Laravel's filter never recurses into a Collection, so the value encodes as `{}`.
      *
      * @return ValueExpressionResult|null
      */
@@ -332,34 +332,12 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        if ($items instanceof Array_ && array_all($items->items, fn (ArrayItem $item): bool => $item->key === null && ! $item->unpack)) {
-            return $this->listLiteralResult($items, $engine);
-        }
-
         $result = $engine->resolve($items);
 
         return count(TsTypeString::splitTopLevelUnion($result['type'])) === 1
             && (str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{'))
             ? [...$result, 'optional' => false]
             : null;
-    }
-
-    /**
-     * A list literal as a list of its element types, or null when one of them does not type.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function listLiteralResult(Array_ $list, ExpressionEngine $engine): ?array
-    {
-        $elements = array_values(array_map(fn (ArrayItem $item): array => $engine->resolve($item->value), $list->items));
-
-        if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
-            return null;
-        }
-
-        $union = ValueResult::unionResults($elements);
-
-        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
     }
 
     /**

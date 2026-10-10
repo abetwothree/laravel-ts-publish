@@ -378,6 +378,7 @@ A union arm the engine cannot type is left out, never widened to `unknown`, so `
 the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
 see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
 makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,

@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -14,8 +16,10 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
+use Workbench\App\Events\ManifestAssembled;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
@@ -369,4 +373,60 @@ it('keeps the queue of a member that gives one name two classes, whatever its to
         [],
         [UserResource::class, CrmUserResource::class],
     ],
+]);
+
+/** The type one expression resolves to on a resource subject, or on a plain class when $subject names one. */
+function inlineListType(string $php, ?string $subject = null): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $analyzer = $subject === null
+        ? new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)
+        : new ResourceAstAnalyzer(new ReflectionClass($subject));
+
+    return $analyzer->resolve($expr)['type'];
+}
+
+it('types a keyless list literal as the list it encodes as, as collect() does', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type)
+        ->and(inlineListType('collect('.$php.')'))->toBe($type);
+})->with([
+    'a constant list' => ['["a", "b"]', 'string[]'],
+    'a mixed constant list' => ['[1, "a"]', '(number | string)[]'],
+    'a constant list of lists' => ['[[1, 2], [3]]', 'number[][]'],
+    'a constant list of records' => ['[["a" => 1], ["a" => 2]]', '{ a: number }[]'],
+    'enum cases' => ['[\\'.Status::class.'::Draft, \\'.Status::class.'::Published]', 'StatusType[]'],
+    'a global constant and an enum value' => ['[PHP_INT_MAX, \\'.Status::class.'::Published->value]', 'number[]'],
+    'a list of reads' => ['[$this->id, $this->title]', '(number | string)[]'],
+    'a list of shapes' => ['[["a" => $this->id], ["b" => $this->title]]', '({ a: number } | { b: string })[]'],
+    'a spread of a list' => ['[...explode(",", $this->title), 1]', '(string | number)[]'],
+    'a spread of a constant list' => ['[...["a"], "b"]', 'string[]'],
+    'an element no rule types' => ['[$this->id, json_decode("{}")]', 'unknown[]'],
+]);
+
+it('keeps a missing when() element out of a list, which a resource re-indexes', function () {
+    expect(inlineListType('[$this->when($this->is_pinned, "pinned"), "x"]'))->toBe('string[]');
+});
+
+it('types a list nested in a keyed literal, and a resource list, with its import', function () {
+    $expr = new AstParser()->parseSource('<?php ["tags" => ["a"], "authors" => [new \\'.UserResource::class.'($this->author)]];')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe('{ tags: string[]; authors: UserResource[] }')
+        ->and($result['embeddedResourceFqcns'] ?? [])->toBe([UserResource::class]);
+});
+
+it('types a list literal the same on a subject that is no resource', function (string $php, string $type) {
+    expect(inlineListType($php, ManifestAssembled::class))->toBe($type);
+})->with([
+    'a constant list' => ['["a", "b"]', 'string[]'],
+    'a list of reads' => ['[$this->parcelId, $this->carrier]', '(number | string)[]'],
+]);
+
+it('leaves a literal that is no list to the record path', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type);
+})->with([
+    'an empty literal' => ['[]', 'never[]'],
+    'a spread of a record keeps its string keys' => ['[...["k" => 1], "x"]', 'Record<string, unknown>'],
+    'a spread of a reflected array, whose keys are unknown' => ['[...$this->resource->toArray(), "x"]', 'Record<string, unknown>'],
+    'a merge() call, which a resource merges into the array' => ['[$this->merge(["a" => 1])]', '{ a: number }'],
 ]);

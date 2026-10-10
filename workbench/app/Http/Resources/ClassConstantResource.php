@@ -45,8 +45,7 @@ class ClassConstantResource extends AbstractVersionedResource
             'channel_tags' => ChannelDefaults::CHANNEL_TAGS,
             // A list whose elements don't agree — resolves to a union element array.
             'mixed_tags' => ChannelDefaults::MIXED_TAGS,
-            // A list nested inside a keyed constant — each value must resolve to string[], not
-            // the Record<string, unknown> a keyless item would misreport through the AST pipeline.
+            // A list nested inside a keyed constant — each value resolves to string[], as a top-level list does.
             'nested_tags' => ChannelDefaults::NESTED_TAGS,
             // Negative case: references an undefined constant, degrading to unknown at read time
             // rather than aborting the whole generation run.

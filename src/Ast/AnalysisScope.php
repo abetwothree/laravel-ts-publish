@@ -427,8 +427,9 @@ final class AnalysisScope
                 return $stringDefault;
             }
 
-            // Only the engine reads `new`, but it types a list literal as a record and a closure by its return, though
-            // json_encode() writes a Closure as `{}`; a default that reads a variable is no constant expression at all.
+            // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`,
+            // and a list the evaluator failed on may hold an operation that throws, such as `1 / 0`; a default that
+            // reads a variable is no constant expression at all.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
                 || $node instanceof Closure
                 || $node instanceof ArrowFunction

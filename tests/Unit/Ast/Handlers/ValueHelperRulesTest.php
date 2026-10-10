@@ -38,6 +38,8 @@ it('types the value helpers as json_encode() writes what they return', function 
     'collect() with a record of columns' => ['collect(["title" => $this->title])', '{ title: string }'],
     'collect() with a list-typed expression' => ['collect(explode(",", $this->title))', 'string[]'],
     'collect() with an optional list-typed expression' => ['collect($this->when($this->title, explode(",", $this->title)))', 'string[]'],
+    'collect() with a list holding an untypable element, still a list' => ['collect([$this->title, json_decode("{}")])', 'unknown[]'],
+    'collect() with a list and the spread of a list' => ['collect([...explode(",", $this->title), 1])', '(string | number)[]'],
 ]);
 
 it('leaves the value helpers it cannot type, and __(), to unknown', function (string $php) {
@@ -46,7 +48,6 @@ it('leaves the value helpers it cannot type, and __(), to unknown', function (st
     'url() with no path returns the UrlGenerator' => ['url()'],
     'url() with null returns the UrlGenerator' => ['url(null)'],
     'collect() of a scalar' => ['collect("abc")'],
-    'collect() of a list holding an untypable element' => ['collect([$this->title, json_decode("{}")])'],
     'collect() of a numeric-keyed record, declined conservatively' => ['collect([1 => "a"])'],
     'collect() of a keyed when() value, which encodes as {}' => ['collect(["a" => $this->when($this->title, 1)])'],
     'collect() of a listed when() value, which encodes as {}' => ['collect([$this->when($this->title, 1)])'],
