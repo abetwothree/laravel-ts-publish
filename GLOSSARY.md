@@ -95,6 +95,10 @@ An import named inside an override, so a hand-written TypeScript type can be use
 One kind of class name a published type carries so its file can import it, such as model, enum, or custom-import names.
 _Avoid_: channel, FQCN channel
 
+**Index signature**:
+A published key pattern, such as ``[key: `${string}_tag`]``, that types every runtime key it matches.
+_Avoid_: signature key, pattern key
+
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 

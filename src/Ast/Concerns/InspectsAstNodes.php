@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -17,8 +21,10 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Block;
@@ -86,14 +92,15 @@ trait InspectsAstNodes
     /**
      * The name an array key spells, or null when it is not a literal this can read.
      *
-     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
+     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list. A key built
+     * from literal text around a value is named by the template-literal index signature that covers it.
      *
      * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
     protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
     {
         if ($key instanceof String_) {
-            return $key->value;
+            return $this->literalKeyName($key->value, $subject);
         }
 
         if ($key instanceof Int_) {
@@ -109,11 +116,50 @@ trait InspectsAstNodes
             };
             $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
             $value = $constant !== null && defined($constant) ? constant($constant) : null;
+            $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
             return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
         }
 
+        return $this->interpolatedKeyName($key);
+    }
+
+    /**
+     * A literal key's text, or null with a warning when it reads as an index signature: printed bare, it would type
+     * other keys.
+     *
+     * @param  ReflectionClass<object>  $subject  the warning's subject
+     */
+    protected function literalKeyName(string $text, ReflectionClass $subject): ?string
+    {
+        if (! IndexSignatureKey::is($text)) {
+            return $text;
+        }
+
+        AnalysisWarnings::addOnce(
+            $subject->getName(),
+            'The key "'.$text.'" reads as an index signature, so it is left out; rename it.',
+        );
+
         return null;
+    }
+
+    /**
+     * An index-signature name for a key built from literal text around a variable, `"{$name}_tag"` or
+     * `$name.'_tag'`, or null for any other key.
+     */
+    protected function interpolatedKeyName(Expr $key): ?string
+    {
+        $parts = match (true) {
+            $key instanceof InterpolatedString => $key->parts,
+            $key instanceof Concat => [$key->left, $key->right],
+            default => null,
+        };
+
+        return $parts === null ? null : IndexSignatureKey::fromParts(array_values(array_map(
+            fn (Node $part): ?string => $part instanceof InterpolatedStringPart || $part instanceof String_ ? $part->value : null,
+            $parts,
+        )));
     }
 
     /**

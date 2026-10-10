@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -16,15 +15,12 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Plus;
-use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\InterpolatedStringPart;
-use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -39,6 +35,7 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
+use ReflectionClass;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
@@ -75,6 +72,13 @@ trait ReadsReturnedVariables
      * @return ValueExpressionResult
      */
     abstract protected function analyzeValueExpression(Expr $expr): array;
+
+    /**
+     * The class under analysis, the subject a warning names.
+     *
+     * @return ReflectionClass<object>
+     */
+    abstract protected function subjectReflection(): ReflectionClass;
 
     /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
@@ -187,8 +191,8 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            // $var += [...] — PHP's union keeps every key already set, so only the new keys join, and a key the left
-            // side keeps drops the right side's channels along with its value.
+            // $var += [...] — PHP's union keeps every key already set, so only the new keys and each signature entry
+            // join, and a key the left side keeps drops the right side's channels along with its value.
             if ($stmt instanceof ExpressionStmt
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
@@ -201,18 +205,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $present = array_column($into->properties, 'name');
-                $added = [];
-
-                foreach ($addedAnalysis->properties as $prop) {
-                    if (in_array($prop['name'], $present, true)) {
-                        $addedAnalysis->forgetChannels($prop['name']);
-                    } else {
-                        $added[] = $prop;
-                    }
-                }
-
-                $addedAnalysis->properties = $added;
+                $addedAnalysis->dropKeysHeldBy($into);
                 $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
 
                 continue;
@@ -228,13 +221,11 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
-                $isIndexSignature = JsEmitter::isIndexSignatureKey($keyName);
-                $optional = $isConditional || $result['optional'];
 
-                if ($isIndexSignature) {
-                    $result['type'] = TsTypeString::orUndefined($result['type']);
-                    $result['optional'] = false;
-                    $optional = false;
+                if (JsEmitter::isIndexSignatureKey($keyName)) {
+                    $into->addSignatureEntry($keyName, $result);
+
+                    continue;
                 }
 
                 $existingIndex = null;
@@ -254,14 +245,14 @@ trait ReadsReturnedVariables
 
                 $appendedIndex = count($into->properties);
 
-                $into->addProperty($keyName, $result, $optional);
+                $into->addProperty($keyName, $result, $isConditional || $result['optional']);
 
                 // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one
-                // was absent; an index signature is never optional.
+                // was absent.
                 if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
                     $appended = $into->properties[$appendedIndex];
-                    $appended['optional'] = ! $isIndexSignature && ($result['optional']
-                        || ($isConditional && $into->properties[$existingIndex]['optional']));
+                    $appended['optional'] = $result['optional']
+                        || ($isConditional && $into->properties[$existingIndex]['optional']);
 
                     $into->properties[$existingIndex] = $appended;
                     array_splice($into->properties, $appendedIndex, 1);
@@ -290,8 +281,10 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The branches a closure's returns can merge: one per returned array, `[]` included, and one per returned variable
-     * the walk reads completely, however often it is returned. None when no branch sets a key.
+     * The branches a closure's returns can merge, none when no branch sets a key.
+     *
+     * One per returned array, `[]` included, one per returned variable the walk reads completely, however often it is
+     * returned, and one per other value mergedValueBranch() reads. A return none of them reads is a lenient read.
      *
      * @return list<TAnalysis>
      */
@@ -308,16 +301,25 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            if (! $returned instanceof Variable || ! is_string($returned->name) || isset($read[$returned->name])) {
+            if ($returned instanceof Variable && is_string($returned->name)) {
+                if (isset($read[$returned->name])) {
+                    continue;
+                }
+
+                $read[$returned->name] = true;
+                $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
+            } else {
+                $branch = $this->mergedValueBranch($returned);
+            }
+
+            // Its keys are unknown, so a variable holding this merge is not read completely either.
+            if ($branch === null) {
+                $this->lenientReads++;
+
                 continue;
             }
 
-            $read[$returned->name] = true;
-            $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
-
-            if ($branch !== null) {
-                $branches[] = $branch;
-            }
+            $branches[] = $branch;
         }
 
         // A guard's `return []` merges nothing, so beside a branch that sets a key it is a branch like any other.
@@ -332,6 +334,26 @@ trait ReadsReturnedVariables
     abstract private function mergedArrayAnalysis(Array_ $array): MethodAnalysis;
 
     /**
+     * The analysis of a merged value other than an array literal or a variable, or null for one the host does not read.
+     *
+     * @return TAnalysis|null
+     */
+    abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
+
+    /**
+     * A merged value's branch, or null when the host does not read it completely, as variableBranch() decides.
+     *
+     * @return TAnalysis|null
+     */
+    private function mergedValueBranch(Expr $expr): ?MethodAnalysis
+    {
+        $lenientReads = $this->lenientReads;
+        $analysis = $this->mergedValueAnalysis($expr);
+
+        return $this->lenientReads === $lenientReads ? $analysis : null;
+    }
+
+    /**
      * A returned variable's branch, or null when the walk does not read it completely: the gate rejects a whole write,
      * or reading it counts a lenient read, as a model-less `parent::toArray()` or an unreadable helper does.
      *
@@ -340,6 +362,20 @@ trait ReadsReturnedVariables
      */
     private function variableBranch(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
+        $read = $this->readVariable($stmts, $varName, $topLevel);
+
+        return $read !== null && $read[1] ? $read[0] : null;
+    }
+
+    /**
+     * A returned variable's walk and whether it read the variable completely, or null when the gate rejects a whole
+     * write: a walk that counts a lenient read still saw the keys it publishes.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return array{TAnalysis, bool}|null
+     */
+    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?array
+    {
         if (! $this->readsVariableArray($stmts, $varName)) {
             return null;
         }
@@ -347,7 +383,7 @@ trait ReadsReturnedVariables
         $lenientReads = $this->lenientReads;
         $analysis = $this->walkVariable($stmts, $varName, $topLevel);
 
-        return $this->lenientReads === $lenientReads ? $analysis : null;
+        return [$analysis, $this->lenientReads === $lenientReads];
     }
 
     /**
@@ -405,23 +441,35 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Merge a whole-array write into the keys a variable already holds. A new key is optional when the write is
-     * conditional or its value can vanish; a key set again keeps its first position and takes the last value, optional
-     * when that value can vanish or a conditional write leaves an optional old one.
+     * Merge a whole-array write into the keys a variable already holds.
+     *
+     * A new key or a signature entry is appended, optional when the write is conditional or its value can vanish; a
+     * named key set again keeps its first position and takes the last value, optional when that value can vanish or a
+     * conditional write leaves an optional old one.
      */
     private function mergeWholeArrayWrite(MethodAnalysis $into, MethodAnalysis $write, bool $isConditional): void
     {
         $properties = $into->properties;
         $names = array_column($properties, 'name');
         $written = [];
+        $positions = [];
 
-        // A key the write itself repeats is one key with its last value, as the same literal returned would publish.
+        // A named key the write itself repeats is one key with its last value, as the same literal returned would
+        // publish; each signature entry is one more runtime key, kept as addSignatureEntry() keeps one.
         foreach ($write->properties as $prop) {
-            $written[$prop['name']] = $prop;
+            if (! JsEmitter::isIndexSignatureKey($prop['name']) && isset($positions[$prop['name']])) {
+                $written[$positions[$prop['name']]] = $prop;
+
+                continue;
+            }
+
+            $positions[$prop['name']] = count($written);
+            $written[] = $prop;
         }
 
         foreach ($written as $prop) {
-            $index = array_search($prop['name'], $names, true);
+            // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
+            $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);
 
             if ($index === false) {
                 $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
@@ -526,7 +574,9 @@ trait ReadsReturnedVariables
      */
     private function namedKey(Expr $dim): ?string
     {
-        return $dim instanceof String_ ? $dim->value : $this->interpolatedKeyName($dim);
+        return $dim instanceof String_
+            ? $this->literalKeyName($dim->value, $this->subjectReflection())
+            : $this->interpolatedKeyName($dim);
     }
 
     /**
@@ -551,45 +601,5 @@ trait ReadsReturnedVariables
             $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node->var,
             default => null,
         };
-    }
-
-    /**
-     * An index-signature name for a key built from literal text around a variable, or null for any other key.
-     */
-    private function interpolatedKeyName(Expr $dim): ?string
-    {
-        $parts = match (true) {
-            $dim instanceof InterpolatedString => $dim->parts,
-            $dim instanceof Concat => [$dim->left, $dim->right],
-            default => null,
-        };
-
-        if ($parts === null) {
-            return null;
-        }
-
-        $pattern = '';
-        $hasLiteral = false;
-        $hasDynamic = false;
-
-        foreach ($parts as $part) {
-            if ($part instanceof InterpolatedStringPart || $part instanceof String_) {
-                // JsEmitter::isIndexSignatureKey()'s backtick alternative has no escape clause, so an escaped
-                // backtick could never be read back; decline rather than publish an unmatchable name.
-                if (str_contains($part->value, '`')) {
-                    return null;
-                }
-
-                // TypeScript reads a backslash in template text as an escape and a raw CR as LF, so `\` is written
-                // `\\`, `${` `\${` and a CR `\r`; IndexSignatureReconciler::literalSegments() undoes all three.
-                $pattern .= strtr($part->value, ['\\' => '\\\\', '${' => '\\${', "\r" => '\\r']);
-                $hasLiteral = true;
-            } else {
-                $pattern .= '${string}';
-                $hasDynamic = true;
-            }
-        }
-
-        return $hasLiteral && $hasDynamic ? '[key: `'.$pattern.'`]' : null;
     }
 }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
@@ -23,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\TracksEnumImports;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Config;
@@ -36,6 +39,8 @@ use ReflectionClass;
  * @phpstan-import-type ValuesImportMap from TsResourceDto
  * @phpstan-import-type ImportMapType from MethodAnalysis
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type CarriedMap from MethodAnalysis
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -91,8 +96,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, string> property name => import path from the resource's #[TsCasts] */
     protected array $tsCastsImportPaths = [];
 
-    /** @var array<string, true> property name => true, for a key whose cast in force brings its own import */
-    protected array $importedCastKeys = [];
+    /** @var CastMap property name => the cast in force for a key any #[TsCasts] retypes */
+    protected array $castsInForce = [];
+
+    /** @var CastMap property name => the cast one of the resource's own methods declares for the key */
+    protected array $methodCasts = [];
+
+    /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
+    protected array $carried = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -149,9 +160,6 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<string, list<class-string>> property name => ordered list of enum FQCNs for ternary/union where ALL non-null branches are EnumResource calls with different FQCNs */
     protected array $multiEnumResourceProperties = [];
 
-    /** @var list<class-string> the enums whose single or union record dropOverriddenEnumResources() dropped */
-    protected array $droppedEnumResourceFqcns = [];
-
     /** @var array<string, string> property name => TS type override from model's #[TsCasts] */
     protected array $modelTsCastsOverrides = [];
 
@@ -185,6 +193,7 @@ class ResourceTransformer extends CoreTransformer
             ->resolveImportConflicts()
             ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
+            ->pruneUnspelledImports()
             ->buildResolvedImports();
 
         return $this;
@@ -308,12 +317,21 @@ class ResourceTransformer extends CoreTransformer
         $analysis = $analyzer->analyze();
 
         $this->castsOverAnalysisKeys(array_column($analysis->properties, 'name'));
+        $this->methodCasts = $analysis->casts;
 
         $castKeys = $this->castKeys($analysis);
-        $this->importedCastKeys = $this->castKeysWithImport($castKeys, $analysis);
+        $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
 
-        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees.
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis, $castKeys, $this->tsExtends !== []);
+        // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees. A method
+        // cast counts too, since CastChannels::fit() settles its key's import channels only after the reconcile.
+        resolve(IndexSignatureReconciler::class)->reconcile(
+            $analysis,
+            array_map(fn (array $cast): string => $cast['type'], $this->castsInForce),
+            $this->tsExtends !== [],
+            $this->findable,
+        );
+        resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
+        $this->carried = $analysis->carried;
 
         // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -428,34 +446,79 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * The keys whose cast in force brings its own import: the resource's, else the model's, else one a method's cast
-     * set that the analysis reports. That text is the app's own, so no queue of the value it replaced may alias it.
+     * The cast in force for every key a cast retypes, with the text it publishes and the path of its own import:
+     * the resource's class-level cast, else the last method cast the analysis reports, else the model's.
      *
-     * @param  array<string, string>  $castKeys  castKeys()'s resource and model casts, which win over a method's
-     * @return array<string, true>
+     * @param  array<string, string>  $castKeys  castKeys()'s resource casts, and model casts over keys no method casts
+     * @return CastMap
      */
-    protected function castKeysWithImport(array $castKeys, MethodAnalysis $analysis): array
+    protected function collectCastsInForce(array $castKeys, MethodAnalysis $analysis): array
     {
-        $imports = $this->tsCastsImportPaths + array_diff_key($this->modelTsCastsImportPaths, $this->tsTypeOverrides);
+        $casts = $analysis->casts;
 
-        return array_fill_keys(array_keys(array_intersect_key($castKeys, $imports)), true)
-            + array_diff_key($analysis->importedCastKeys, $castKeys);
+        foreach ($castKeys as $property => $type) {
+            $import = isset($this->tsTypeOverrides[$property])
+                ? ($this->tsCastsImportPaths[$property] ?? null)
+                : ($this->modelTsCastsImportPaths[$property] ?? null);
+            $casts[$property] = ['type' => $type, 'import' => $import];
+        }
+
+        return $casts;
     }
 
     /**
-     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, then import what the resource's
-     * own surviving casts name. One decision per source moves its type, optional and import entries together.
+     * The names a cast key's own import brings into the file, which no class of the package may supply.
+     *
+     * @return list<string>
+     */
+    protected function castBrings(string $property): array
+    {
+        return isset($this->castsInForce[$property]) ? CastChannels::brings($this->castsInForce[$property]) : [];
+    }
+
+    /**
+     * The class behind each token of a cast key's text among the given ones, leaving out the names its import brings.
+     *
+     * @param  list<class-string>  $fqcns
+     * @param  Closure(class-string): string  $nameOf
+     * @return list<class-string>
+     */
+    protected function castSpells(string $property, array $fqcns, Closure $nameOf): array
+    {
+        return CastChannels::spells(
+            $fqcns,
+            $this->castsInForce[$property]['type'] ?? '',
+            $this->castBrings($property),
+            $nameOf,
+        );
+    }
+
+    /**
+     * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, each location deciding alone
+     * so a later one outranks an earlier one, then import what the resource's own surviving casts name. One decision
+     * per source moves its type, optional and import entries together; a key no attribute names decides last.
      *
      * @param  list<string>  $keys
      */
     protected function castsOverAnalysisKeys(array $keys): void
     {
-        $resource = JsEmitter::castTargets(array_keys($this->tsTypeOverrides), $keys);
+        $reader = resolve(TsCastsReader::class);
+
+        $resource = $reader->castTargets(
+            $this->tsCastsAttributes($this->reflectionResource),
+            $keys,
+            array_keys($this->tsTypeOverrides),
+        );
+        JsEmitter::warnAmbiguousCasts($this->findable, array_keys($this->tsTypeOverrides), $keys);
         $this->tsTypeOverrides = JsEmitter::retargetCasts($this->tsTypeOverrides, $resource);
         $this->tsCastsImportPaths = JsEmitter::retargetCasts($this->tsCastsImportPaths, $resource);
         $this->optionalOverrides = JsEmitter::retargetCasts($this->optionalOverrides, $resource);
 
-        $model = JsEmitter::castTargets(array_keys($this->modelTsCastsOverrides), $keys);
+        $modelAttributes = $this->modelClass !== null && class_exists($this->modelClass)
+            ? $this->tsCastsAttributes(new ReflectionClass($this->modelClass))
+            : [];
+        $model = $reader->castTargets($modelAttributes, $keys, array_keys($this->modelTsCastsOverrides));
+        JsEmitter::warnAmbiguousCasts($this->findable, array_keys($this->modelTsCastsOverrides), $keys);
         $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
         $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
         $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
@@ -468,7 +531,8 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * The model #[TsCasts] types that apply to the given keys: each one the model casts and the resource does not.
+     * The model #[TsCasts] types that apply to the given keys: each one the model casts and the resource does not, on
+     * the class or on one of its methods.
      *
      * @param  array<array-key, mixed>  $keys  the analysis's keys, as array keys
      * @return array<string, string>
@@ -477,7 +541,9 @@ class ResourceTransformer extends CoreTransformer
     {
         return array_filter(
             $this->modelTsCastsOverrides,
-            fn (int|string $property): bool => isset($keys[$property]) && ! isset($this->tsTypeOverrides[$property]),
+            fn (int|string $property): bool => isset($keys[$property])
+                && ! isset($this->tsTypeOverrides[$property])
+                && ! isset($this->methodCasts[$property]),
             ARRAY_FILTER_USE_KEY,
         );
     }
@@ -487,6 +553,13 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function applyOverrides(): self
     {
+        // The model cast's flag holds on each key the analysis has, unless one of the resource's own casts sets a flag.
+        $modelOptional = array_filter(
+            array_intersect_key($this->modelTsCastsOptionalOverrides, $this->properties),
+            fn (int|string $property): bool => ! isset($this->methodCasts[$property]['optional']),
+            ARRAY_FILTER_USE_KEY,
+        );
+
         foreach ($this->modelCastsOver($this->properties) as $property => $type) {
             $this->properties[$property] = [...$this->properties[$property], 'type' => $type];
 
@@ -494,10 +567,6 @@ class ResourceTransformer extends CoreTransformer
                 foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                 }
-            }
-
-            if (isset($this->modelTsCastsOptionalOverrides[$property])) {
-                $this->properties[$property]['optional'] = $this->modelTsCastsOptionalOverrides[$property];
             }
         }
 
@@ -513,9 +582,12 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        foreach ($this->optionalOverrides as $property => $optional) {
+        foreach (array_replace($modelOptional, $this->optionalOverrides) as $property => $optional) {
             if (isset($this->properties[$property])) {
-                $this->properties[$property]['optional'] = $optional;
+                $this->properties[$property] = [
+                    ...$this->properties[$property],
+                    ...JsEmitter::signatureSafeMember((string) $property, $this->properties[$property]['type'], $optional),
+                ];
             }
         }
 
@@ -524,13 +596,14 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Drops a key's enum-resource records when its type holds none of their enums' type names, and moves each enum to
-     * its inline wraps. Left in place, they make rewriteEnumResourceTypes() throw, overwrite the cast or import each
-     * enum for nothing. This reads $enumFqcnMap before pruneOverriddenEnumImports() removes the entries no type holds.
+     * its inline wraps. Left in place, they make rewriteEnumResourceTypes() throw or import each enum for nothing.
+     * This reads $enumFqcnMap before pruneOverriddenEnumImports() removes the entries no type holds.
      *
      * @return $this
      */
     protected function dropOverriddenEnumResources(): self
     {
+        // CastChannels::fit() already moved a cast key's records, so only a later spread's key leaves one here.
         foreach ($this->properties as $property => ['type' => $type]) {
             $holdsTypeName = fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
                 $this->enumFqcnMap[$fqcn],
@@ -548,13 +621,11 @@ class ResourceTransformer extends CoreTransformer
                     $this->propertyEnumFqcns[$property],
                 );
                 $wraps[] = $single;
-                $this->droppedEnumResourceFqcns[] = $single;
             }
 
             if ($several !== [] && ! array_any($several, $holdsTypeName)) {
                 unset($this->multiEnumResourceProperties[$property]);
                 array_push($wraps, ...$several);
-                array_push($this->droppedEnumResourceFqcns, ...$several);
             }
 
             // Which wraps the type writes depends on the const aliases, so keepWrittenInlineWraps() cuts the list after
@@ -603,26 +674,41 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops enum-map entries whose bare type no property or extends clause names any more after #[TsCasts] overrides.
+     * Drops the enum-map entries no property or extends clause still needs after #[TsCasts] overrides.
      *
      * @return $this
      */
     protected function pruneOverriddenEnumImports(): self
     {
-        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+        $attributed = [];
 
-        foreach ($this->enumFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
-                unset($this->enumFqcnMap[$fqcn]);
-            }
+        foreach (array_keys($this->properties) as $property) {
+            $attributed[$property] = array_values(array_filter([
+                $this->enumResourceProperties[$property]['fqcn'] ?? null,
+                $this->propertyEnumFqcns[$property] ?? null,
+                ...($this->multiEnumResourceProperties[$property] ?? []),
+                ...($this->propertyInlineEnumFqcns[$property] ?? []),
+            ]));
         }
+
+        $enumTypeName = static fn (string $fqcn): string => LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
+            ?? class_basename($fqcn).'Type';
+
+        // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
+        foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
+            $this->enumFqcnMap[$fqcn] ??= $typeName;
+            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+            $this->directEnumProperties[$fqcn] = $fqcn;
+        }
+
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends);
 
         return $this;
     }
 
     /**
-     * Drops the model and #[TsType] imports the analysis carried for a name that neither a property type nor an extends
-     * clause still spells after #[TsCasts] overrides, which would otherwise be emitted as an unused import.
+     * Drops the model and resource imports no property or extends clause still needs after #[TsCasts] overrides, and
+     * keeps each custom import the analysis carried while a type spells its name.
      *
      * @return $this
      */
@@ -631,17 +717,141 @@ class ResourceTransformer extends CoreTransformer
         // An extends clause names a type as surely as a property does, and can rely on the same import.
         $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
 
-        foreach ($this->modelFqcnMap as $fqcn => $typeName) {
-            if (! TsTypeString::typeNameOccursIn($typeName, ...$types)) {
-                unset($this->modelFqcnMap[$fqcn]);
+        $models = [];
+        $resources = [];
+
+        foreach (array_keys($this->properties) as $property) {
+            $models[$property] = array_values(array_filter([
+                $this->propertyModelFqcns[$property] ?? null,
+                ...($this->propertyInlineModelFqcns[$property] ?? []),
+            ]));
+            $resources[$property] = array_values(array_filter([
+                $this->propertyResourceFqcns[$property] ?? null,
+                ...($this->propertyInlineResourceFqcns[$property] ?? []),
+            ]));
+        }
+
+        // A collection's flat type alias spells the resource it collects, with no property behind it.
+        $resourceExtra = [...$this->tsExtends, ...array_filter([$this->typeAlias])];
+        $resourceName = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+
+        foreach ($this->carriedInUse('models', $this->modelFqcnMap, $models, $this->tsExtends, class_basename(...)) as $fqcn => $name) {
+            $this->modelFqcnMap[$fqcn] ??= $name;
+        }
+
+        foreach ($this->carriedInUse('resources', $this->resourceFqcnMap, $resources, $resourceExtra, $resourceName) as $fqcn => $name) {
+            if ($fqcn !== $this->findable) {
+                $this->resourceFqcnMap[$fqcn] ??= $name;
             }
         }
+
+        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->tsExtends);
+        $this->resourceFqcnMap = $this->keepSpelled($this->resourceFqcnMap, $resources, $resourceExtra);
 
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
             foreach ($typeNames as $typeName) {
                 if (TsTypeString::typeNameOccursIn($typeName, ...$types)) {
                     $this->customImports[$importPath][] = $typeName;
                 }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Keeps each class an extends clause or type alias spells, or a property whose type spells it and whose own import
+     * channels carry it or no other class of its name: a class no key reads, as a cast displaced it, then never forces
+     * an alias on the one a key reads.
+     *
+     * @template TFqcn of string
+     *
+     * @param  array<TFqcn, string>  $map  FQCN => unaliased name
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @return array<TFqcn, string>
+     */
+    protected function keepSpelled(array $map, array $attributed, array $extra): array
+    {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $ownNames = $this->ownNames($map, $attributed);
+
+        return array_filter($map, function (string $name, string $fqcn) use ($attributed, $types, $ownNames, $extra): bool {
+            foreach ($types as $property => $type) {
+                if (in_array($fqcn, $attributed[$property] ?? [], true) && TsTypeString::typeNameOccursIn($name, $type)) {
+                    return true;
+                }
+            }
+
+            return CastChannels::spelledUnclaimed($name, $types, $ownNames, $extra);
+        }, ARRAY_FILTER_USE_BOTH);
+    }
+
+    /**
+     * Each carried class of one kind some published text spells with no class of its name behind it, by that name.
+     *
+     * @param  'enums'|'models'|'resources'  $kind
+     * @param  array<string, string>  $map  FQCN => unaliased name, of this kind's registered classes
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  Closure(class-string): string  $nameOf
+     * @return array<class-string, string>
+     */
+    protected function carriedInUse(string $kind, array $map, array $attributed, array $extra, Closure $nameOf): array
+    {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $ownNames = $this->ownNames($map, $attributed);
+        $inUse = [];
+
+        foreach ($this->carried[$kind] ?? [] as $fqcn) {
+            if (CastChannels::spelledUnclaimed($nameOf($fqcn), $types, $ownNames, $extra)) {
+                $inUse[$fqcn] = $nameOf($fqcn);
+            }
+        }
+
+        return $inUse;
+    }
+
+    /**
+     * The names of the registered classes each property's import channels carry.
+     *
+     * @param  array<string, string>  $map  FQCN => unaliased name
+     * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
+     * @return array<array-key, list<string>>
+     */
+    protected function ownNames(array $map, array $attributed): array
+    {
+        return array_map(static fn (array $own): array => array_values(array_intersect_key($map, array_flip($own))), $attributed);
+    }
+
+    /**
+     * Drops each model, resource, enum type and custom import whose name, as this file spells it after aliasing, no
+     * property type, extends clause or type alias still names: the earlier prunes read names before aliasing.
+     *
+     * @return $this
+     */
+    protected function pruneUnspelledImports(): self
+    {
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
+
+        $spelled = fn (string $typeName, string $fqcn): bool => TsTypeString::typeNameOccursIn(
+            $this->localImportName($fqcn, $typeName),
+            ...$types,
+        );
+        $this->enumFqcnMap = array_filter($this->enumFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
+        $this->resourceFqcnMap = array_filter($this->resourceFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
+        $this->modelFqcnMap = array_filter($this->modelFqcnMap, $spelled, ARRAY_FILTER_USE_BOTH);
+
+        foreach ($this->customImports as $path => $names) {
+            $kept = array_values(array_filter(
+                $names,
+                fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$types),
+            ));
+
+            if ($kept === []) {
+                unset($this->customImports[$path]);
+            } else {
+                $this->customImports[$path] = $kept;
             }
         }
 
@@ -769,18 +979,6 @@ class ResourceTransformer extends CoreTransformer
             ];
         }
 
-        // Only where two enums share a type name: the prune reads names, so each keeps the other's import. A dropped
-        // record never reached the loops above, which settle such an import by whether some key reads the enum bare.
-        $typeNameCounts = array_count_values($originalEnumFqcnMap);
-
-        foreach (array_unique($this->droppedEnumResourceFqcns) as $fqcn) {
-            $typeName = $originalEnumFqcnMap[$fqcn] ?? null;
-
-            if ($typeName !== null && $typeNameCounts[$typeName] > 1 && ! $this->readsEnumDirectly($fqcn)) {
-                unset($this->enumFqcnMap[$fqcn]);
-            }
-        }
-
         // analyzeInlineArray() already substituted each inline wrap's bare const name into 'AsEnum<typeof {bare}>';
         // rewriteTypeReferences() can't alias it, as $nameMap excludes enumConstMap. Only the name after `typeof` is a
         // const; bare, it is another enum's type. Two inline members can share one bare name, so alias by FQCN order.
@@ -842,13 +1040,34 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->propertyEnumFqcnsList[$propName] = $tsInfo['enumFqcns'];
+            /** @var array<class-string, string> $typeNames */
+            $typeNames = [];
+            $constNames = [];
 
             foreach ($tsInfo['enumFqcns'] as $i => $fqcn) {
-                /** @var class-string $fqcn */
+                $typeNames[$fqcn] = $tsInfo['enumTypes'][$i] ?? class_basename($fqcn).'Type';
+                $constNames[$fqcn] = $tsInfo['enums'][$i] ?? class_basename($fqcn);
+            }
+
+            // A cast key keeps only the enums its own text spells, as CastChannels::fit() leaves the analysis's.
+            $fqcns = isset($this->castsInForce[$propName])
+                ? $this->castSpells(
+                    (string) $propName,
+                    array_keys($typeNames),
+                    fn (string $fqcn): string => $typeNames[$fqcn],
+                )
+                : array_keys($typeNames);
+
+            if ($fqcns === []) {
+                continue;
+            }
+
+            $this->propertyEnumFqcnsList[$propName] = $fqcns;
+
+            foreach ($fqcns as $fqcn) {
                 if (! isset($this->enumFqcnMap[$fqcn])) {
-                    $this->enumFqcnMap[$fqcn] = $tsInfo['enumTypes'][$i] ?? class_basename($fqcn).'Type';
-                    $this->enumConstMap[$fqcn] = $tsInfo['enums'][$i] ?? class_basename($fqcn);
+                    $this->enumFqcnMap[$fqcn] = $typeNames[$fqcn];
+                    $this->enumConstMap[$fqcn] = $constNames[$fqcn];
                 }
             }
         }
@@ -883,25 +1102,41 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            // The key may hold something else under the accessor's name, and an unused import is a tsc error.
-            $type = $this->properties[$propName]['type'];
-            $named = array_filter(
-                $tsInfo['classFqcns'],
-                fn (int $i): bool => TsTypeString::typeNameOccursIn($tsInfo['classes'][$i], $type),
-                ARRAY_FILTER_USE_KEY,
-            );
+            if (isset($this->castsInForce[$propName])) {
+                $classNames = array_combine($tsInfo['classFqcns'], $tsInfo['classes']);
+                $kept = $this->castSpells(
+                    (string) $propName,
+                    ClassTokenQueue::fqcnsOf($tsInfo),
+                    fn (string $fqcn): string => $classNames[$fqcn] ?? class_basename($fqcn),
+                );
 
-            if ($named === []) {
-                continue;
+                if ($kept === []) {
+                    continue;
+                }
+
+                $this->propertyModelFqcnsList[$propName] = $kept;
+                $named = array_intersect($tsInfo['classFqcns'], $kept);
+            } else {
+                // The key may hold something else under the accessor's name, and an unused import is a tsc error.
+                $type = $this->properties[$propName]['type'];
+                $named = array_filter(
+                    $tsInfo['classFqcns'],
+                    fn (int $i): bool => TsTypeString::typeNameOccursIn($tsInfo['classes'][$i], $type),
+                    ARRAY_FILTER_USE_KEY,
+                );
+
+                if ($named === []) {
+                    continue;
+                }
+
+                // A class the key's type does not spell is never read: aliasing walks each name's own queue.
+                $this->propertyModelFqcnsList[$propName] = ClassTokenQueue::fqcnsOf($tsInfo);
             }
-
-            // A class the key's type does not spell is never read: aliasing walks each name's own queue.
-            $this->propertyModelFqcnsList[$propName] = ClassTokenQueue::fqcnsOf($tsInfo);
 
             foreach ($named as $i => $fqcn) {
                 /** @var class-string $fqcn */
                 if (! isset($this->modelFqcnMap[$fqcn])) {
-                    $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i]; // @codeCoverageIgnore
+                    $this->modelFqcnMap[$fqcn] = $tsInfo['classes'][$i];
                 }
             }
         }
@@ -919,11 +1154,15 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function registerModelAttributeCustomImports(string $propName, array $imports): void
     {
+        // A name a cast key's own import brings is the app's: the attribute's import of that name would duplicate it.
+        $brought = $this->castBrings($propName);
+
         foreach ($imports as $path => $names) {
             foreach ($names as $name) {
                 $type = $this->properties[$propName]['type'] ?? '';
 
-                if (TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
+                if (! in_array($name, $brought, true)
+                    && TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
                     $this->customImports[$path][] = $name;
                 }
             }
@@ -987,8 +1226,7 @@ class ResourceTransformer extends CoreTransformer
         $nameMap = $this->enumFqcnMap + $this->resourceFqcnMap + $this->modelFqcnMap;
 
         foreach ($this->mergePropertyFqcnMaps() as $propName => $propFqcns) {
-            // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
-            if (! isset($this->properties[$propName]) || isset($this->importedCastKeys[$propName])) {
+            if (! isset($this->properties[$propName])) {
                 continue;
             }
 

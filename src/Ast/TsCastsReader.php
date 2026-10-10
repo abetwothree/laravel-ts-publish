@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 
 /**
@@ -31,15 +32,23 @@ class TsCastsReader
     public function unpack(array $attributes): array
     {
         $merged = [];
+        $optionalOverrides = [];
 
+        // array_merge() would renumber a numeric key, which PHP stores as an int even when written '42'.
         foreach ($attributes as $attribute) {
-            $merged = array_merge($merged, $attribute->types);
+            $merged = array_replace($merged, $attribute->types);
+
+            // A later entry that says nothing about optional keeps an earlier attribute's flag.
+            foreach ($attribute->types as $key => $value) {
+                if (is_array($value) && isset($value['optional'])) {
+                    $optionalOverrides[$key] = $value['optional'];
+                }
+            }
         }
 
         $overrides = [];
         $importPaths = [];
         $importMap = [];
-        $optionalOverrides = [];
 
         foreach ($merged as $key => $value) {
             if (is_array($value)) {
@@ -53,10 +62,6 @@ class TsCastsReader
                         $importMap[$value['import']][] = $typeName;
                     }
                 }
-
-                if (isset($value['optional'])) {
-                    $optionalOverrides[$key] = $value['optional'];
-                }
             } else {
                 $overrides[$key] = $value;
             }
@@ -68,5 +73,36 @@ class TsCastsReader
             'importMap' => $importMap,
             'optionalOverrides' => $optionalOverrides,
         ];
+    }
+
+    /**
+     * The published key each cast key of these instances retypes, as JsEmitter::castTargets() decides it for each
+     * instance alone; a later instance's claim on a key then outranks an earlier one's, whatever either spelling.
+     * The $castKeys no instance names, such as one a transformer subclass injects, decide last, as one more location.
+     *
+     * @param  list<TsCasts>  $attributes  in the precedence order unpack() takes
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @param  list<string>  $castKeys  every cast key the caller holds
+     * @return array<string, string|null>
+     */
+    public function castTargets(array $attributes, array $keys, array $castKeys = []): array
+    {
+        $locations = array_map(fn (TsCasts $attribute): array => array_keys($attribute->types), $attributes);
+        $locations[] = array_values(array_diff($castKeys, ...$locations));
+        $targets = [];
+
+        foreach ($locations as $location) {
+            foreach (JsEmitter::castTargets($location, $keys) as $castKey => $target) {
+                if ($target !== null) {
+                    foreach (array_keys($targets, $target, true) as $earlier) {
+                        $targets[$earlier] = null;
+                    }
+                }
+
+                $targets[$castKey] = $target;
+            }
+        }
+
+        return $targets;
     }
 }

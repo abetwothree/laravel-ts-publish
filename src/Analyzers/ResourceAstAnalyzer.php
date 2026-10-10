@@ -48,7 +48,9 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
@@ -75,6 +77,7 @@ use ReflectionNamedType;
  * @phpstan-import-type RequestVarNamesMap from AnalysisScope
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
+ * @phpstan-import-type CastMap from MethodAnalysis
  *
  * @internal
  */
@@ -104,6 +107,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /** Built once per instance by dispatcher(), so the handler-candidate memo survives across dispatches. */
     protected ?ExpressionDispatcher $dispatcher = null;
+
+    /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
+    protected ?string $sharedDataShareClass = null;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -294,7 +300,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
                 resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod, keepsUnresolvedNames: false);
-                $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
+
+                // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+                if (! $this->isInertiaShare($ownMethod)) {
+                    $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
+                }
+
                 resolve(IndexSignatureReconciler::class)->reconcile($branchAnalysis);
             }
 
@@ -406,6 +417,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         return $filterKeys !== null
             || ($this->hasThisReceiver($expr) && $this->scope->subjectReflection->hasMethod($name));
+    }
+
+    /**
+     * The class under analysis, the subject a warning names.
+     *
+     * @return ReflectionClass<object>
+     */
+    protected function subjectReflection(): ReflectionClass
+    {
+        return $this->scope->subjectReflection;
     }
 
     /**
@@ -542,6 +563,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($item->key === null && $item->value instanceof MethodCall) {
                 $mergeResult = $this->analyzeMergeExpression($item->value);
 
+                // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
+                $mergeResult->dropKeysHeldBy($analysis);
                 $analysis->merge($mergeResult);
 
                 continue;
@@ -558,6 +581,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             $result = $this->analyzeValueExpression($item->value);
+
+            if (JsEmitter::isIndexSignatureKey($keyName)) {
+                $analysis->addSignatureEntry($keyName, $result);
+
+                continue;
+            }
 
             // When a child key overrides a parent spread key, clear stale parent tracking
             $analysis->forgetChannels($keyName);
@@ -804,7 +833,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The arrays a merge argument can merge, one analysis each: an array literal, or each array a closure returns.
+     * The arrays a merge argument can merge, one analysis each: a literal, a value, or each array a closure returns.
+     *
+     * mergedValueAnalysis() reads a value; an argument the analysis cannot read counts as a lenient read.
      *
      * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
      */
@@ -812,6 +843,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         if ($expr instanceof Array_) {
             return [$this->mergedArrayAnalysis($expr)];
+        }
+
+        // Laravel merges value($value), so a value passed as it is merges as a closure returning it would.
+        if (! $expr instanceof ClosureExpr && ! $expr instanceof ArrowFunction) {
+            $branch = $this->mergedValueBranch($expr);
+
+            if ($branch === null) {
+                $this->lenientReads++;
+            }
+
+            return $branch === null ? [] : [$branch];
         }
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
@@ -838,6 +880,22 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * The keys a merged model or method call sets.
+     *
+     * The resource's own model merges what `Model::toArray()` writes, through jsonSerialize(); any other value is read
+     * as a whole array analyzeArrayExpression() accepts.
+     */
+    private function mergedValueAnalysis(Expr $expr): ?ResourceAnalysis
+    {
+        // A collection's resource is the list of collected items, whose keys are numbers.
+        if ($this->isResourceFetch($expr)) {
+            return $this->isResourceCollection($this->scope) ? null : $this->buildModelSerializedAnalysis();
+        }
+
+        return $this->analyzeArrayExpression($expr, topLevel: false);
+    }
+
+    /**
      * Resolve and analyze the parent class's declaration of $this->methodName.
      */
     protected function analyzeParentToArray(): ?ResourceAnalysis
@@ -859,6 +917,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
         );
+        $parentAnalyzer->sharedDataShareClass = $this->sharedDataShareClass();
 
         $analysis = $parentAnalyzer->analyze();
         $this->lenientReads += $parentAnalyzer->lenientReads;
@@ -986,6 +1045,27 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * The class declaring the share() InertiaSharedDataAnalyzer reads the casts of, own or inherited by the analyzed
+     * middleware; an empty string for any other subject.
+     */
+    private function sharedDataShareClass(): string
+    {
+        return $this->sharedDataShareClass ??= $this->methodName === 'share'
+            && is_subclass_of($this->scope->subjectReflection->getName(), 'Inertia\\Middleware')
+                ? $this->scope->subjectReflection->getMethod('share')->getDeclaringClass()->getName()
+                : '';
+    }
+
+    /**
+     * Whether the method is the share() whose casts InertiaSharedDataAnalyzer applies, never a parent's one that the
+     * middleware's own share() spreads.
+     */
+    private function isInertiaShare(ReflectionMethod $method): bool
+    {
+        return $method->getDeclaringClass()->getName() === $this->sharedDataShareClass();
+    }
+
+    /**
      * Apply #[TsCasts] overrides declared on a reflection method, updating or injecting properties.
      *
      * Accepted on trait/helper methods and on toArray() itself, as a lightweight override mechanism.
@@ -993,26 +1073,33 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
         foreach ($method->getAttributes(TsCasts::class) as $attr) {
-            $types = JsEmitter::castsByKey($attr->newInstance()->types, array_column($analysis->properties, 'name'));
+            $keys = array_column($analysis->properties, 'name');
+            $types = JsEmitter::castsByKey($attr->newInstance()->types, $keys);
+
+            JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
 
             foreach ($types as $property => $value) {
                 $type = is_array($value) ? $value['type'] : $value;
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
+                $import = is_array($value) ? ($value['import'] ?? null) : null;
+
+                if ($optional === true) {
+                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember((string) $property, $type, true);
+                }
 
                 $found = false;
 
+                // Every entry of a key written twice: the last one publishes, and the reconciler reads them all.
                 foreach ($analysis->properties as &$prop) {
                     if ($prop['name'] === $property) {
                         $prop['type'] = $type;
-                        unset($prop['bodyType']);
+                        unset($prop['bodyType'], $prop['fillType']);
 
                         if ($optional !== null) {
                             $prop['optional'] = $optional;
                         }
 
                         $found = true;
-
-                        break;
                     }
                 }
 
@@ -1027,16 +1114,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     ];
                 }
 
-                // An import makes the text the app's own, which no queue may alias; a cast without one, here or in a
-                // later method, spells the package's names and is aliased as before.
-                if (is_array($value) && isset($value['import'])) {
-                    $analysis->importedCastKeys[$property] = true;
+                // The publisher fits the key's import channels to this text once it knows which cast is in force.
+                $analysis->casts[$property] = $optional === null
+                    ? ['type' => $type, 'import' => $import]
+                    : ['type' => $type, 'import' => $import, 'optional' => $optional];
 
+                if ($import !== null) {
                     foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                        $analysis->customImports[$value['import']][] = $importName;
+                        $analysis->customImports[$import][] = $importName;
                     }
-                } else {
-                    unset($analysis->importedCastKeys[$property]);
                 }
             }
         }
@@ -1099,11 +1185,18 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // never turn a sibling's optional.
         /** @var array<string, ResourceAnalysis|null> $variables */
         $variables = [];
+        /** @var array<string, ResourceAnalysis> $partlyRead */
+        $partlyRead = [];
 
         foreach ($candidates as $return) {
             if ($return->expr instanceof Variable && is_string($return->expr->name)
                 && ! array_key_exists($return->expr->name, $variables)) {
-                $variables[$return->expr->name] = $this->variableBranch($stmts, $return->expr->name);
+                $read = $this->readVariable($stmts, $return->expr->name);
+                $variables[$return->expr->name] = $read !== null && $read[1] ? $read[0] : null;
+
+                if ($read !== null && ! $read[1]) {
+                    $partlyRead[$return->expr->name] = $read[0];
+                }
             }
         }
 
@@ -1171,13 +1264,39 @@ class ResourceAstAnalyzer implements ExpressionEngine
             default => $this->analyzeReturnArray($branch),
         }, $branches);
 
-        return count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+        $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+
+        // A variable skipped only for a lenient read still returns on its path: a key no read branch sets may be there.
+        foreach ($partlyRead as $name => $branch) {
+            if ($variables[$name] === null) {
+                $this->addKeysOnlySkippedBranchSets($merged, $branch);
+            }
+        }
+
+        return $merged;
     }
 
     /**
-     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, and
-     * flatTypeAlias keeps the first non-null value. Public for `Inertia::render()`. A spread helper and a merge call
-     * drop an untyped branch ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
+     * Add each key and signature entry only a skipped branch sets, optional; a key the read branches set keeps
+     * their type and presence.
+     */
+    private function addKeysOnlySkippedBranchSets(ResourceAnalysis $merged, ResourceAnalysis $skipped): void
+    {
+        $skipped->dropKeysHeldBy($merged);
+
+        foreach ($skipped->properties as $index => $property) {
+            $skipped->properties[$index]['optional'] = ! JsEmitter::isIndexSignatureKey($property['name']);
+        }
+
+        $merged->merge($skipped);
+    }
+
+    /**
+     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, a
+     * cast survives only where every branch setting its key casts it alike, and flatTypeAlias is the first non-null.
+     *
+     * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
+     * only a merge call keeps the `null` left alone ($keepsLoneNull).
      *
      * @param  list<ResourceAnalysis>  $analyses
      */
@@ -1216,6 +1335,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
             $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
             $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
+            // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
+            // type is a fill, and a reconcile that puts it back must find it again.
+            $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
+            $fillType = array_column($entries, 'fillType') === []
+                ? null
+                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
 
             $presentInAll = count($entries) === $branchCount;
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
@@ -1240,6 +1365,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 'optional' => $optional,
                 'description' => $description,
                 ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
+                ...($fillType === null ? [] : ['fillType' => $fillType]),
             ];
         }
 
@@ -1256,10 +1382,55 @@ class ResourceAstAnalyzer implements ExpressionEngine
             multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
             enumResourceArmShapes: $channels->enumResourceArmShapes,
-            importedCastKeys: $channels->importedCastKeys,
+            casts: $this->castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
+            carried: $channels->carried,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+    }
+
+    /**
+     * The cast entry of each key every branch that sets it casts to one text and import, as only then does the union
+     * publish that cast. It is optional where any branch's cast says so, since the union is; otherwise it keeps a flag
+     * only where every branch's cast sets the same one.
+     *
+     * @param  list<MethodAnalysis>  $analyses
+     * @param  list<array-key>  $names
+     * @return CastMap
+     */
+    private function castsEveryBranchAgrees(array $analyses, array $names): array
+    {
+        $casts = [];
+
+        foreach ($names as $name) {
+            $branchCasts = [];
+
+            foreach ($analyses as $analysis) {
+                if (in_array((string) $name, array_column($analysis->properties, 'name'), true)) {
+                    $branchCasts[] = $analysis->casts[$name] ?? null;
+                }
+            }
+
+            $cast = $branchCasts[0] ?? null;
+
+            if ($cast === null || ! array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast !== null
+                && $branchCast['type'] === $cast['type'] && $branchCast['import'] === $cast['import'])) {
+                continue;
+            }
+
+            $anyOptional = array_any(
+                $branchCasts,
+                static fn (?array $branchCast): bool => ($branchCast['optional'] ?? null) === true,
+            );
+
+            $casts[(string) $name] = match (true) {
+                $anyOptional => ['type' => $cast['type'], 'import' => $cast['import'], 'optional' => true],
+                array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast) => $cast,
+                default => ['type' => $cast['type'], 'import' => $cast['import']],
+            };
+        }
+
+        return $casts;
     }
 
     /**

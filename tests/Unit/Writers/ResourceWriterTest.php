@@ -41,6 +41,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceCastWritesWrapsResou
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\View;
+use Workbench\App\Http\Resources\NestedSignatureResource;
+use Workbench\App\Http\Resources\OptionalSignatureCastResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStateResource;
 use Workbench\App\Http\Resources\WarehouseResource;
@@ -310,8 +314,9 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
     ],
 ]);
 
-// A cast that holds the enum's type name is still rewritten to its wrap, and a key beside a cast key keeps its wrap.
-test('still rewrites a cast holding the enum\'s type, and wraps a key beside one', function (string $resource, array $lines) {
+// A cast that holds the enum's type name publishes as written and imports that type, and a key beside a cast key
+// keeps its wrap.
+test('publishes a cast holding the enum\'s type as written, and wraps a key beside one', function (string $resource, array $lines) {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.use_tolki_package', true);
 
@@ -322,9 +327,8 @@ test('still rewrites a cast holding the enum\'s type, and wraps a key beside one
     'a cast that spells the enum\'s type' => [
         EnumResourceCastSpellsEnumResource::class,
         [
-            "import { type AsEnum } from '@tolki/ts';",
-            "import { Visibility } from '../../../../workbench/app/enums';",
-            '    k: AsEnum<typeof Visibility> | null;',
+            "import type { VisibilityType } from '../../../../workbench/app/enums';",
+            '    k: VisibilityType | null;',
         ],
     ],
     'a wrap of the same enum beside the cast key' => [
@@ -408,4 +412,38 @@ test('resource without TsExtends renders plain interface', function () {
     expect($content)
         ->toContain('export interface PostResource')
         ->not->toContain('extends');
+});
+
+it('prints a nested index signature bare, with its backslash doubled once', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(NestedSignatureResource::class));
+
+    expect($content)
+        ->toContain('    box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };')
+        ->toContain('    units: { [key: `${string}\\\\unit`]: string | undefined };')
+        ->not->toContain('"[key:');
+});
+
+// An optional signature cast is settled before any template sees it, so a template published unguarded still compiles.
+it('keeps a resource template published before this release compiling', function () {
+    $root = sys_get_temp_dir().'/ts-publish-published-'.uniqid();
+    $views = $root.'/resources/views/vendor/laravel-ts-publish';
+    mkdir($views, recursive: true);
+    copy(__DIR__.'/../../views/resource-published-before-signature-guard.blade.php', $views.'/resource.blade.php');
+    View::prependNamespace('laravel-ts-publish', $views);
+    View::getFinder()->flush();
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        $template = View::getFinder()->find('laravel-ts-publish::resource');
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(OptionalSignatureCastResource::class));
+    } finally {
+        File::deleteDirectory($root);
+    }
+
+    expect($template)->toBe($views.'/resource.blade.php')
+        ->and($content)->toContain('    [key: `${string}_tag`]: string | undefined;')
+        ->and($content)->toContain('    [key: `${string}_note`]: number | undefined;')
+        ->and($content)->not->toContain(']?:');
 });

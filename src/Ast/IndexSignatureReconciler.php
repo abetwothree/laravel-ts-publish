@@ -6,12 +6,16 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 
 /**
  * Settles each template-literal index signature against the keys published beside it.
  *
  * TypeScript checks a signature against every key and signature its pattern covers (TS2411, TS2413), so a value the
  * body did not give it — a docblock fill or a same-pattern union — is kept only where no such check can fail.
+ *
+ * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  *
  * @internal
  */
@@ -25,15 +29,28 @@ final class IndexSignatureReconciler
      * @param  array<string, string>  $castKeys  keys a publisher lays over the analysis, by type: each is read in
      *                                           place of the analysis's own type, and its channels are not checked
      * @param  bool  $inheritsUnseenKeys  the published type also extends an interface whose keys no analysis sees
+     * @param  string  $subject  the class or action a warning names, given only where this reconcile is the last one;
+     *                           a matched key that keeps a signature from its union then warns
      */
-    public function reconcile(MethodAnalysis $analysis, array $castKeys = [], bool $inheritsUnseenKeys = false): void
-    {
+    public function reconcile(
+        MethodAnalysis $analysis,
+        array $castKeys = [],
+        bool $inheritsUnseenKeys = false,
+        string $subject = '',
+    ): void {
         $signatures = [];
         $published = [];
 
         foreach ($analysis->properties as $index => $property) {
             if (JsEmitter::isIndexSignatureKey($property['name'])) {
                 $signatures[$property['name']][] = $index;
+
+                // An earlier reconcile put this fill back beside a key a later write or cast may have made joinable.
+                if (isset($property['fillType']) && ! isset($property['bodyType'])
+                    && $property['type'] !== $property['fillType']) {
+                    $analysis->properties[$index]['bodyType'] = $property['type'];
+                    $analysis->properties[$index]['type'] = $property['fillType'];
+                }
             } else {
                 // A later write to a named key replaces the earlier one, so only the last entry is ever published.
                 $published[$property['name']] = $property['type'];
@@ -43,7 +60,7 @@ final class IndexSignatureReconciler
         $segments = [];
 
         foreach (array_keys($signatures) as $name) {
-            $parsed = $this->literalSegments($name);
+            $parsed = IndexSignatureKey::literalSegments($name);
 
             if ($parsed !== null) {
                 $segments[$name] = $parsed;
@@ -59,7 +76,7 @@ final class IndexSignatureReconciler
             }
 
             if ($inheritsUnseenKeys) {
-                $this->restoreBodyTypes($analysis, $indexes);
+                $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
 
                 continue;
             }
@@ -69,7 +86,7 @@ final class IndexSignatureReconciler
             $types = [];
 
             foreach ($indexes as $index) {
-                $types[] = $analysis->properties[$index]['type'];
+                $types[] = $this->ownValue($analysis->properties[$index]);
             }
 
             foreach ($published as $key => $type) {
@@ -87,10 +104,14 @@ final class IndexSignatureReconciler
 
             $arms = $overlaps ? null : $this->unionArms($analysis, $keys, $types, $castKeys);
 
+            if ($arms === null && ! $overlaps && $subject !== '') {
+                $this->warnUnjoinableKeys($analysis, $name, $keys, $types, $castKeys, $subject);
+            }
+
             if ($arms === null) {
-                $this->restoreBodyTypes($analysis, $indexes);
+                $dropped += $this->restoreBodyTypes($analysis, $name, $indexes);
             } else {
-                $dropped += $this->union($analysis, $indexes, $arms);
+                $dropped += $this->union($analysis, $name, $indexes, $arms);
             }
         }
 
@@ -100,24 +121,33 @@ final class IndexSignatureReconciler
     }
 
     /**
-     * Collapse a signature's entries into the first, typed with every arm, keeping the value a name-keyed publish
-     * of the body types would give it so an outer conflict can still put that back.
+     * Collapse a signature's entries into the first, typed with every arm.
+     *
+     * Their body values stay as its `bodyType`, joined, or the last entry's where they cannot join, so an outer
+     * conflict can still put them back. Where any entry has a fill, foldedFill() keeps one as its `fillType`.
      *
      * @param  non-empty-list<int>  $indexes
      * @param  list<string>  $arms
      * @return array<int, true> the later entries, now folded into the first
      */
-    private function union(MethodAnalysis $analysis, array $indexes, array $arms): array
+    private function union(MethodAnalysis $analysis, string $name, array $indexes, array $arms): array
     {
-        $last = $analysis->properties[$indexes[count($indexes) - 1]];
-        $bodyType = $last['bodyType'] ?? $last['type'];
-        $entry = $analysis->properties[$indexes[0]];
+        $entries = array_map(fn (int $index): array => $analysis->properties[$index], $indexes);
+        $bodies = array_map(fn (array $entry): string => $entry['bodyType'] ?? $entry['type'], $entries);
+        $last = $bodies[count($bodies) - 1];
+        $bodyType = count($bodies) > 1 ? ($this->joinedValue($analysis, $name, $bodies) ?? $last) : $last;
+        $fillType = $this->foldedFill($analysis, $name, $entries);
+        $entry = $entries[0];
 
         $entry['type'] = TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
-        unset($entry['bodyType']);
+        unset($entry['bodyType'], $entry['fillType']);
 
         if ($entry['type'] !== $bodyType) {
             $entry['bodyType'] = $bodyType;
+        }
+
+        if ($fillType !== null) {
+            $entry['fillType'] = $fillType;
         }
 
         $analysis->properties[$indexes[0]] = $entry;
@@ -164,6 +194,41 @@ final class IndexSignatureReconciler
         return $arms;
     }
 
+    /**
+     * Warn about each matched named key that alone keeps the signature from its union, once the signature's own
+     * entries could join: TypeScript then checks the key against the value the signature keeps (TS2411).
+     *
+     * @param  non-empty-list<string>  $keys  the signature's name, then the named keys its pattern matches
+     * @param  list<string>  $types  each of the signature's entries' own values, then each matched key's type
+     * @param  array<string, string>  $castKeys
+     */
+    private function warnUnjoinableKeys(
+        MethodAnalysis $analysis,
+        string $name,
+        array $keys,
+        array $types,
+        array $castKeys,
+        string $subject,
+    ): void {
+        $matched = array_slice($keys, 1);
+        $own = array_slice($types, 0, count($types) - count($matched));
+
+        if ($this->unionArms($analysis, [$name], $own, $castKeys) === null) {
+            return;
+        }
+
+        foreach ($matched as $position => $key) {
+            if ($this->unionArms($analysis, [$key], [$types[count($own) + $position]], $castKeys) === null) {
+                AnalysisWarnings::addOnce($subject, sprintf(
+                    'The key "%s" cannot share the index signature "%s" it matches, so the signature keeps its own '
+                        .'value; type the key, or rename it out of the pattern.',
+                    $key,
+                    $name,
+                ));
+            }
+        }
+    }
+
     /** Whether a `'` or `"` in the type is followed by a backslash before the next quote of its kind. */
     private function holdsEscapedLiteral(string $type): bool
     {
@@ -171,18 +236,88 @@ final class IndexSignatureReconciler
     }
 
     /**
-     * Put back the value each entry's body gives it, on the entries a docblock fill or union changed.
+     * Put back the value each entry's body gives it, then fold the entries into the first where those values can join.
      *
-     * @param  list<int>  $indexes
+     * Each entry a docblock fill or union changed goes back to its `bodyType`, and keeps its `fillType` for a later
+     * reconcile that may find every key joinable. Each entry is a runtime key the one published signature covers, so a
+     * later one must not replace an earlier one.
+     *
+     * @param  non-empty-list<int>  $indexes
+     * @return array<int, true> the later entries, now folded into the first
      */
-    private function restoreBodyTypes(MethodAnalysis $analysis, array $indexes): void
+    private function restoreBodyTypes(MethodAnalysis $analysis, string $name, array $indexes): array
     {
+        $types = [];
+
         foreach ($indexes as $index) {
             if (isset($analysis->properties[$index]['bodyType'])) {
                 $analysis->properties[$index]['type'] = $analysis->properties[$index]['bodyType'];
                 unset($analysis->properties[$index]['bodyType']);
             }
+
+            $types[] = $analysis->properties[$index]['type'];
         }
+
+        $joined = count($indexes) > 1 ? $this->joinedValue($analysis, $name, $types) : null;
+
+        if ($joined === null) {
+            return [];
+        }
+
+        $entries = array_map(fn (int $index): array => $analysis->properties[$index], $indexes);
+        $fillType = $this->foldedFill($analysis, $name, $entries);
+        $entry = $entries[0];
+
+        $entry['type'] = $joined;
+        unset($entry['fillType']);
+
+        if ($fillType !== null) {
+            $entry['fillType'] = $fillType;
+        }
+
+        $analysis->properties[$indexes[0]] = $entry;
+
+        return array_fill_keys(array_slice($indexes, 1), true);
+    }
+
+    /**
+     * The fill entries folded into one keep: each one's own value joined, or none where no entry has a fill or the
+     * values cannot join, since the one entry left covers every folded entry's keys.
+     *
+     * @param  non-empty-list<AnalyzedProperty>  $entries
+     */
+    private function foldedFill(MethodAnalysis $analysis, string $name, array $entries): ?string
+    {
+        if (array_column($entries, 'fillType') === []) {
+            return null;
+        }
+
+        $values = array_map($this->ownValue(...), $entries);
+
+        return count($values) > 1 ? $this->joinedValue($analysis, $name, $values) : $values[0];
+    }
+
+    /**
+     * The value an entry gives its signature before any named key joins it: its docblock fill, else the body value a
+     * union kept, else its type. A union re-unions from it, so a matched key's earlier arm never outlives a cast.
+     *
+     * @param  AnalyzedProperty  $property
+     */
+    private function ownValue(array $property): string
+    {
+        return $property['fillType'] ?? $property['bodyType'] ?? $property['type'];
+    }
+
+    /**
+     * One signature's entry values as the single value that covers them all, or null where one of them cannot join.
+     *
+     * @param  list<string>  $types
+     */
+    private function joinedValue(MethodAnalysis $analysis, string $name, array $types): ?string
+    {
+        $arms = $this->unionArms($analysis, [$name], $types, []);
+
+        return $arms === null ? null : TsTypeString::orUndefined(TsTypeString::hoistNull($arms));
     }
 
     /**
@@ -228,33 +363,5 @@ final class IndexSignatureReconciler
         $quoted = array_map(fn (string $segment): string => preg_quote($segment, '/'), $segments);
 
         return '/^'.implode('.*', $quoted).'$/s';
-    }
-
-    /**
-     * A template-literal signature's literal text between its `${string}` placeholders, or null for any other key.
-     *
-     * @return non-empty-list<string>|null
-     */
-    private function literalSegments(string $name): ?array
-    {
-        if (! JsEmitter::isIndexSignatureKey($name) || preg_match('/`(.*)`\]$/s', $name, $template) !== 1) {
-            return null;
-        }
-
-        // `\` is written `\\`, `${` `\${` and a CR `\r`: a `${string}` that no escape consumes is a placeholder.
-        $segments = preg_split('/\\\\.(*SKIP)(*FAIL)|\$\{string\}/s', $template[1]);
-
-        if ($segments === false || $segments === []) {
-            return null; // @codeCoverageIgnore
-        }
-
-        return array_map(
-            fn (string $segment): string => (string) preg_replace_callback(
-                '/\\\\(.)/s',
-                fn (array $escape): string => $escape[1] === 'r' ? "\r" : $escape[1],
-                $segment,
-            ),
-            $segments,
-        );
     }
 }

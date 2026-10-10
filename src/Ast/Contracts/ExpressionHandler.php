@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use PhpParser\Node\Expr;
 
@@ -13,6 +14,7 @@ use PhpParser\Node\Expr;
  * type, or declines so the dispatcher tries the next handler. See ExpressionDispatcher.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type CarriedMap from MethodAnalysis
  *
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
@@ -27,6 +29,7 @@ use PhpParser\Node\Expr;
  *      embeddedResourceFqcns?: list<class-string>,
  *      multiEnumResourceFqcns?: list<class-string>,
  *      customImports?: TypesImportMap,
+ *      carriedFqcns?: CarriedMap,
  *      wrapIsCollection?: bool,
  *      directIsArray?: bool
  * }

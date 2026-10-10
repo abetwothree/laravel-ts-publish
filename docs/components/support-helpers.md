@@ -20,6 +20,8 @@ The helpers and the test that pins them live in these files:
   for aliasing. No facade, and `@internal` like `StringSerialization`.
 - [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
   re-indexes an array into a list. Static and `@internal`, read by `ValueResolver` and the enum-value warning.
+- [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
+  grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -49,7 +51,13 @@ belongs to the engine, however string-shaped its signature looks. Reflection alo
 
 `validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
 only in a type position, so every value-position caller must leave the default alone.
-[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does.
+[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does. The type positions that pass it are
+the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildTypeStringWithOverrides()` methods and
+`BuildsInlineObjectTypes::buildInlineObjectType()`; each prints `?` only after a key `isIndexSignatureKey()` rejects.
+
+`signatureSafeMember()` sits beside `isIndexSignatureKey()` as the one home for the optional-signature rule: each site
+that sets `optional` from a `#[TsCasts]` entry sends it through, so an optional signature publishes required, with a
+value that admits `undefined`.
 
 `castTargets()` decides which published key a `#[TsCasts]` key retypes:
 
@@ -57,12 +65,16 @@ only in a type position, so every value-position caller must leave the default a
 - Failing that, a cast key equal to another spelling of an index signature's name retypes that signature. The other
   spellings are the name with each `\\` read as `\` (a single-quoted paste), with each `\r` read as a raw CR (a
   double-quoted paste), or with both, read escape by escape from the left.
-- Where two cast keys name one signature, the exact spelling wins, else the first. The loser's target is null.
-- A spelling two signatures share retypes neither.
+- Where two cast keys name one signature, the exact spelling wins, else the first, inside one `#[TsCasts]` location;
+  across locations see [`#[TsCasts]` overrides](ts-casts.md#matching-a-key). The loser's target is null.
+- A spelling two signatures share retypes neither; `ambiguousCastKeys()` names it, and every publisher warns.
 
 `retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
-broadcast-event and Inertia paths call them before any cast lookup.
+broadcast-event and Inertia shared-data paths reach `castTargets()` through `TsCastsReader::castTargets()`, one location
+at a time, and an Inertia page calls it per rendered component; each then calls `retargetCasts()`. A method's own casts
+and shared data's docblock-and-cast merge go through `castsByKey()`. What a matched cast then does to the key is in
+[`#[TsCasts]` overrides](ts-casts.md).
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
@@ -73,9 +85,9 @@ metadata keeps `normalizeMetadataValue()`.
 
 ### `TsTypeString`
 
-The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward call is
-`TsTypeShape::splitTopLevel()`. That one-way dependency is what made the class safe to lift out. A new member that
-wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
+`TsTypeShape::splitTopLevel()` and `IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to
+lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
@@ -84,8 +96,10 @@ name two namespaces publish resolves as that file's import does. For a name no F
 `#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
 `GlobalsWriterTest` pins both collection orders.
 
-`JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
-one home for their test or spelling, so a new caller uses them rather than a local regex.
+The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
+point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()` and
+`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather
+than a local regex.
 
 ### `TsNaming`
 

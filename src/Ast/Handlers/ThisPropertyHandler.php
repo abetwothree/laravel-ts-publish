@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -83,7 +84,15 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $analysis->addProperty($keyName, $engine->resolve($item->value), $optional);
+            $result = $engine->resolve($item->value);
+
+            if (JsEmitter::isIndexSignatureKey($keyName)) {
+                $analysis->addSignatureEntry($keyName, $result);
+
+                continue;
+            }
+
+            $analysis->addProperty($keyName, $result, $optional);
         }
 
         return $analysis;

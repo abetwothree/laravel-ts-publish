@@ -273,6 +273,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\ReviewerCastEvent": {
+            "name": "ReviewerCastEvent",
+            "eventName": "ReviewerCastEvent",
+            "broadcastName": ".Workbench.App.Events.ReviewerCastEvent",
+            "properties": [
+                {
+                    "name": "reviewer",
+                    "type": "ReviewerCard | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "Partial<User>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\SameBasenameModelEvent": {
             "name": "SameBasenameModelEvent",
             "eventName": "SameBasenameModelEvent",
@@ -298,6 +315,23 @@
                 {
                     "name": "serverName",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Events\\TaggedPayloadEvent": {
+            "name": "TaggedPayloadEvent",
+            "eventName": "TaggedPayloadEvent",
+            "broadcastName": ".Workbench.App.Events.TaggedPayloadEvent",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
                     "optional": false
                 }
             ]
@@ -11307,6 +11341,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CastRestoredFillResource": {
+            "name": "CastRestoredFillResource",
+            "properties": [
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "main_tag",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CategoryLineageResource": {
             "name": "CategoryLineageResource",
             "properties": [
@@ -13055,6 +13104,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DuplicateKeyCastResource": {
+            "name": "DuplicateKeyCastResource",
+            "properties": [
+                {
+                    "name": "state",
+                    "type": "'draft' | 'published'",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EmptyResource": {
             "name": "EmptyResource",
             "properties": []
@@ -13914,6 +13978,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ImageReviewCastResource": {
+            "name": "ImageReviewCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable",
+                    "type": "ReviewSubject | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ImageReviewResource": {
             "name": "ImageReviewResource",
             "properties": [
@@ -14331,6 +14410,126 @@
                     "name": "user_email",
                     "type": "string",
                     "optional": true
+                },
+                {
+                    "name": "ulid",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "user_id",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "status",
+                    "type": "OrderStatusType",
+                    "optional": true
+                },
+                {
+                    "name": "payment_method",
+                    "type": "PaymentMethodType | null",
+                    "optional": true
+                },
+                {
+                    "name": "currency",
+                    "type": "CurrencyType",
+                    "optional": true
+                },
+                {
+                    "name": "subtotal",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "tax",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "discount",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "total",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "shipping_address",
+                    "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                    "optional": true
+                },
+                {
+                    "name": "billing_address",
+                    "type": "{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }",
+                    "optional": true
+                },
+                {
+                    "name": "notes",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "placed_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "paid_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "shipped_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "delivered_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "cancelled_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "ip_address",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "user_agent",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "deleted_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "user",
+                    "type": "User",
+                    "optional": true
+                },
+                {
+                    "name": "items",
+                    "type": "OrderItem[]",
+                    "optional": true
                 }
             ]
         },
@@ -14415,6 +14614,66 @@
                 {
                     "name": "currency",
                     "type": "CurrencyType",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MergedSignatureKeysResource": {
+            "name": "MergedSignatureKeysResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_note`]",
+                    "type": "string | number | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "main_label",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_label`]",
+                    "type": "number | string | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "color",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "posts",
+                    "type": "Post[]",
+                    "optional": true
+                },
+                {
+                    "name": "products",
+                    "type": "Product[]",
                     "optional": true
                 }
             ]
@@ -14709,6 +14968,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\NestedSignatureResource": {
+            "name": "NestedSignatureResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "box",
+                    "type": "{ [key: `${string}_tag`]: string | number | undefined; price_tag: number }",
+                    "optional": false
+                },
+                {
+                    "name": "units",
+                    "type": "{ [key: `${string}\\\\unit`]: string | undefined }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\NonArrayReturnResource": {
             "name": "NonArrayReturnResource",
             "properties": [
@@ -14766,6 +15045,26 @@
                     "name": "dynamic_category",
                     "type": "Record<string, unknown> | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\OptionalSignatureCastResource": {
+            "name": "OptionalSignatureCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_note`]",
+                    "type": "number | undefined",
+                    "optional": false
                 }
             ]
         },
@@ -15589,6 +15888,36 @@
                     "name": "category_table_name",
                     "type": "string | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostSpelledCastResource": {
+            "name": "PostSpelledCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "VisibilityType",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "StatusType | VisibilityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "StatusType | null",
+                    "optional": false
                 }
             ]
         },
@@ -19085,6 +19414,31 @@
                 {
                     "name": "can_publish",
                     "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WarehouseContactCastResource": {
+            "name": "WarehouseContactCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "manager",
+                    "type": "User | null",
+                    "optional": false
+                },
+                {
+                    "name": "contact",
+                    "type": "{ id: number; name: string } | null",
+                    "optional": false
+                },
+                {
+                    "name": "review_priority",
+                    "type": "string",
                     "optional": false
                 }
             ]

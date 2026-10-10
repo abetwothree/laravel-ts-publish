@@ -53,14 +53,15 @@ every profile, the order handlers run in decides which one answers; see
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
-  branch, as a lone variable is. Otherwise, with no branch read completely holding a key, the sweep declines and the
-  first `return` is read; any other return is skipped.
+  branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
+  entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
+  `return` is read; any other return is skipped.
 - **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
-  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys, a whole re-assignment drops the writes
-  before it, and a key first written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body
-  before its first `break` or `continue`.
+  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys and every signature entry, a whole
+  re-assignment drops the writes before it, and a key first written in a branch, loop, `try` or `switch` publishes
+  optional, except in a `do` body before its first `break` or `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
@@ -72,7 +73,8 @@ every profile, the order handlers run in decides which one answers; see
   recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts. Both can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
+  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
+  after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
@@ -317,7 +319,13 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
-  included, and a returned variable the walk reads completely are branches; a side read as no array is an empty branch.
+  included, a returned variable the walk reads completely, and any other value `mergedValueAnalysis()` reads are
+  branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()`
+  reads, such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges
+  `value($value)`. A side read as no array is an empty branch; one the analysis cannot read also counts as a lenient
+  read, so a variable holding the merge is not read completely. A key set before a merge keeps its value and presence,
+  as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+`
+  alike, keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`.
@@ -520,19 +528,25 @@ exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publ
 
 `ReadsReturnedVariables::collectVariableArrayAssignments()` publishes a key built from literal text around a variable,
 such as `$data["{$name}_label"] = …` or `$data[$name.'_label'] = …`, as a template-literal index signature:
-``[key: `${string}_label`]``. `interpolatedKeyName()` needs both a literal and a dynamic part. It declines a literal
-part holding a backtick, because `JsEmitter::isIndexSignatureKey()` has no escape for one.
+``[key: `${string}_label`]``. `InspectsAstNodes::resolveKeyName()` does the same for such a key written in a returned,
+merged or nested literal. `InspectsAstNodes::interpolatedKeyName()` maps the parts to `IndexSignatureKey::fromParts()`,
+which needs both a literal and a dynamic part and declines a literal part holding a backtick, because
+`IndexSignatureKey::is()` has no escape for one.
 
 Each literal part is escaped the way TypeScript reads template text: a backslash doubled, `${` as `\${`, and a carriage
 return as `\r`. Written raw, a backslash would fail to compile (TS1125, TS1337) or match other text, and a CR would
-read as a line feed. `IndexSignatureReconciler::literalSegments()` undoes all three.
+read as a line feed. `IndexSignatureKey::literalSegments()` undoes all three.
+
+A literal key whose text reads as a signature, `'[key: string]'`, is left out by `InspectsAstNodes::literalKeyName()`
+with a warning, because printed bare it would type other keys.
 
 A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::castTargets()` decides which signature
-it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes. An Inertia page and Inertia
-shared data still emit the losing spelling's import, unused.
+it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes.
 
 The key is never optional, since `[key: T]?:` is a syntax error. Its value gains `| undefined` instead, through
-`TsTypeString::orUndefined()`, for two reasons:
+`ValueResult::asIndexSignatureValue()`; an optional `#[TsCasts]` on a signature is settled the same way, through
+`JsEmitter::signatureSafeMember()`. Nested shapes and broadcast events print a signature bare, as resources do. The
+`| undefined` is there for two reasons:
 
 - **Runtime accuracy**: a key matching the pattern is not guaranteed present.
 - **Consumer builds**: under plain `strict`, without `exactOptionalPropertyTypes`, a signature beside an optional
@@ -544,7 +558,7 @@ evidence the `| undefined` is redundant.
 A value the body cannot type reaches `ReturnShapeRefiner` as `unknown | undefined`. The refiner treats that type as
 unfilled for a signature name only, fills it from `@return array<string, V>`, and adds `| undefined` back. A
 `@return array{…}` shape names literal keys only, so it never fills a signature. The body's own value stays in the
-entry's `bodyType`, for the reconcile below.
+entry's `bodyType` and the fill in its `fillType`, for the reconcile below.
 
 ### Index signatures are reconciled with the keys beside them
 
@@ -555,26 +569,33 @@ beside a signature are all known:
 
 - **In the analyzer**: at the end of `analyzeReturnArray()`, and again after the refiner and `#[TsCasts]` in
   `analyze()` and `analyzeThisMethodSpread()`.
-- **In each publisher, over the keys its casts lay over the analysis**: `ResourceTransformer::runAstAnalysis()` and
-  `BroadcastEventTransformer::transformProperties()` also pass whether the interface has an extends clause, from
-  `#[TsExtends]` or a `ts_extends.*` config entry. `InertiaPageAnalyzer::buildPageData()` and
-  `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
-  must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
-  reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` keeps
-  them while the cast holds the enum's type name, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource`
-  key, and making it drop them like the others would stop that rewrite.
+- **In each publisher, over every cast in force**, method casts included: `ResourceTransformer::runAstAnalysis()`,
+  `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
+  `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
+  transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
+  entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
+  channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
+  fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
+  [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
-an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts. The pattern is
-read back as TypeScript reads it, so `${string}` matches any run of characters, the empty one included. Each signature
-then gets one outcome:
+an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts, with its own
+value: its `fillType`, else its `bodyType`, else its type, so a matched key a cast retypes leaves no earlier arm. The
+pattern is read back as TypeScript reads it, so `${string}` matches any run of characters, the empty one included.
+Each signature then gets one outcome:
 
 - **Union**: when its entries and every key its pattern matches can join, the entries fold into the first, typed with
   every arm plus `| undefined`. The named keys keep their own types.
 - **Put back**: when an entry or a matched key cannot join, when another signature's pattern may overlap its own, or
-  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`.
+  when the interface has an extends clause. Each entry a fill or a union changed goes back to its `bodyType`, which
+  for a union holds its entries' body values joined where they can join; then the entries fold into the first where
+  those values can join. The fill stays in `fillType`, and the next reconcile re-arms it before it decides.
 - **Left alone**: a signature with no other entry, no matching key and no overlapping pattern, unless the interface
   has an extends clause.
+
+A publisher passes its subject, so a matched named key that alone keeps the union out, beside entries that could
+join, warns once: TypeScript checks that key against the value the signature keeps (TS2411). The analyzer passes
+none, since a later write or cast may still make the key joinable.
 
 A key cannot join a union when any of these holds:
 
@@ -586,8 +607,10 @@ A key cannot join a union when any of these holds:
 
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
 one key. `bodyType` is how a later conflict finds the body value. The refiner sets it on a fill, and a union sets it
-to the last entry's body value. `mergeReturnBranches()` unions it across branches, and a method's `#[TsCasts]` clears
-it, since that type is the app's own. `SamePatternKeysResource` pins the unions, and the test-only
+to its entries' body values joined, or to the last entry's where they cannot join. `mergeReturnBranches()` unions it
+across branches, and a method's `#[TsCasts]` clears it, since that type is the app's own. `fillType` follows it: the
+refiner sets it, a union and a put-back fold keep their entries' fills joined, `mergeReturnBranches()` unions it, and
+a method's `#[TsCasts]` clears it. `SamePatternKeysResource` pins the unions, and the test-only
 `IndexSignatureConflictResource` and `SamePatternDeclinedResource` pin the conflicts.
 
 ## Import dispatch rules
@@ -642,18 +665,19 @@ Its import clean-up compares values, so it is right for both kinds.
 steps depend on it:
 
 - **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
-  holds none of the enums' type names, and runs before `pruneOverriddenEnumImports()`, which removes the names it reads.
-  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name and no key
-  reads it bare, since `pruneOverriddenEnumImports()` cannot tell the two apart. `pruneOverriddenAnalysisImports()` and
-  `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
-  clause still spells. The model prune reads class basenames before aliasing, so two same-basename models both stay
-  imported while either is spelled, and one can stay imported unused under its alias.
+  holds none of the enums' type names, as a later spread's key leaves them, and runs before
+  `pruneOverriddenEnumImports()`, which removes the names it reads. `pruneOverriddenAnalysisImports()` and
+  `pruneOverriddenEnumImports()` drop each model, resource, `#[TsType]` and enum type import that no property type or
+  extends clause still spells. Before aliasing, `keepSpelled()` keeps a class for a key whose type spells it only if
+  that key's import channels carry it or no other class of its name, so a class no key reads forces an alias only
+  where a type or an extends clause spells its name with no class of that name behind it.
+  After the `AsEnum` rewrite, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
   every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and
   `resolveMultiEnumAccessorFqcns()` import them back by the key's name, which is the attribute's own. A class or a
-  `#[TsType]` import comes back only while the key's type spells it. The `Stockroom` and `Bulletin` resources pin
-  these reads.
+  `#[TsType]` import comes back only while the key's type spells it, and for a cast key only what its text spells and
+  its import does not bring. The `Stockroom` and `Bulletin` resources pin these reads.
 
 The token test matches a name wherever it stands, inside a string or a comment too, so it can keep an import that ends
 up unused; see
@@ -712,7 +736,7 @@ where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that
 `RoleType[] | Record<string, RoleType>` or a default's extra `string` arm. Rebuilding from the FQCN could express only
 `X`, `X[]` and their nullable forms. The token pattern skips a namespace-qualified `foo.RoleType` and a longer
 `RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
-the same PHP shape, and they must never disagree.
+the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEnum` only for a type that spells it.
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 
@@ -778,6 +802,7 @@ These pages own the rules this page links to:
   `except()`, and the body fallback.
 - [Model attribute resolver](model-attribute-resolver.md), [accessor body analyzer](accessor-body-analyzer.md),
   [import name registry](import-name-registry.md) and [support helpers](support-helpers.md).
+- [`#[TsCasts]` overrides](ts-casts.md): cast precedence, the final-text rule and the imports a cast keeps.
 - [Type-inference gates](../testing/type-inference-gates.md): the CI checks for a type regressing to `unknown` and for
   a token emitted without its import.
 

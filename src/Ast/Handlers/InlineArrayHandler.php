@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -242,6 +243,9 @@ final class InlineArrayHandler implements ExpressionHandler
     {
         $analysis = $engine->returnArrayAnalysis($array);
 
+        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
+
         // `json_encode([])` emits `[]`, not `{}` — only an array whose keys we failed to resolve is
         // honestly a record. `never[]` says the literal can hold nothing, which is what `[]` means.
         if ($array->items === []) {
@@ -309,17 +313,9 @@ final class InlineArrayHandler implements ExpressionHandler
         // With Tolki enabled, enum resources need value imports (const) rather than type imports; direct
         // enum accesses always need type imports.
         if ($useTolki) {
-            $nestedInlineEnumFqcns = $analysis->inlineEnumFqcns === []
-                 ? []
-                 : array_merge(...array_values($analysis->inlineEnumFqcns));
-
             // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
             // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
-            $embeddedEnumFqcns = [
-                ...array_values($analysis->directEnumFqcns),
-                // Propagate any deeply-nested direct enum FQCNs from sub-inline-arrays.
-                ...$nestedInlineEnumFqcns,
-            ];
+            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, false);
 
             $enumResourceFqcns = array_values($analysis->enumResources);
             // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
@@ -334,12 +330,7 @@ final class InlineArrayHandler implements ExpressionHandler
         } else {
             // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
             // deduped, same positional reasoning as the Tolki-on branch above.
-            $embeddedEnumFqcns = [
-                ...array_values($analysis->directEnumFqcns),
-                ...array_values($analysis->enumResources),
-                ...array_merge(...array_values($analysis->inlineEnumFqcns)),
-                ...array_merge(...array_values($analysis->inlineEnumResourceFqcns)),
-            ];
+            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, true);
             $embeddedEnumResourceFqcns = [];
         }
 
@@ -411,6 +402,11 @@ final class InlineArrayHandler implements ExpressionHandler
             $result['customImports'] = $analysis->customImports;
         }
 
+        // A member's carried class travels on its own, never queued: only a text with no class of its name keeps it.
+        if ($analysis->carried !== []) {
+            $result['carriedFqcns'] = $analysis->carried;
+        }
+
         return $result;
     }
 
@@ -441,6 +437,44 @@ final class InlineArrayHandler implements ExpressionHandler
             $shared = $sharedNames[$memberName] ?? [];
 
             array_push($fqcns, ...ClassTokenQueue::perToken($queue, $types[$memberName], $nameOf, $shared));
+        }
+
+        return $fqcns;
+    }
+
+    /**
+     * The enum behind each enum token of the members' types, member by member in the order the inline object type
+     * spells them, then each enum keyed by its own FQCN, which no member owns.
+     *
+     * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
+     * order; with `$withWraps`, a member's `EnumResource` enums join its own, for type imports.
+     *
+     * @return list<class-string>
+     */
+    private function memberEnumFqcns(MethodAnalysis $analysis, bool $withWraps): array
+    {
+        $fqcns = [];
+        $memberNames = array_unique(array_column($analysis->properties, 'name'));
+
+        foreach ($memberNames as $memberName) {
+            $direct = $analysis->directEnumFqcns[$memberName] ?? null;
+            $wrapped = $withWraps ? ($analysis->enumResources[$memberName] ?? null) : null;
+
+            array_push(
+                $fqcns,
+                ...($direct !== null ? [$direct] : []),
+                ...($wrapped !== null ? [$wrapped] : []),
+                ...($analysis->inlineEnumFqcns[$memberName] ?? []),
+                ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
+            );
+        }
+
+        $members = array_flip($memberNames);
+
+        foreach ($analysis->directEnumFqcns as $key => $fqcn) {
+            if (! isset($members[$key])) {
+                $fqcns[] = $fqcn;
+            }
         }
 
         return $fqcns;

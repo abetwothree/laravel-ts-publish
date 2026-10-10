@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use BackedEnum;
 use Closure;
 use InvalidArgumentException;
@@ -56,12 +57,23 @@ class JsEmitter
     }
 
     /**
-     * Whether a key is a generated `[key: number]`/`[key: string]`/template-literal index signature rather than a
-     * property name: it prints unquoted in a type position and can never carry `?:`.
+     * Whether a key is a generated index signature; see IndexSignatureKey::is().
      */
     public function isIndexSignatureKey(string $key): bool
     {
-        return preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key) === 1;
+        return IndexSignatureKey::is($key);
+    }
+
+    /**
+     * Publish an optional index signature, which cannot carry `?`, as a required one whose value admits `undefined`.
+     *
+     * @return array{type: string, optional: bool}
+     */
+    public function signatureSafeMember(string $key, string $type, bool $optional): array
+    {
+        return $optional && $this->isIndexSignatureKey($key)
+            ? ['type' => TsTypeString::orUndefined($type), 'optional' => false]
+            : ['type' => $type, 'optional' => $optional];
     }
 
     /**
@@ -89,20 +101,8 @@ class JsEmitter
      */
     public function castTargets(array $castKeys, array $keys): array
     {
-        $known = [];
-        $spelledBy = [];
-
-        foreach ($keys as $key) {
-            $key = (string) $key;
-            $known[$key] = true;
-
-            if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
-                foreach ($this->castSpellings($key) as $spelling) {
-                    $spelledBy[$spelling][$key] = true;
-                }
-            }
-        }
-
+        $known = array_fill_keys(array_map(strval(...), $keys), true);
+        $spelledBy = $this->signaturesBySpelling($keys);
         $cast = array_fill_keys($castKeys, true);
         $claimed = [];
         $targets = [];
@@ -120,6 +120,40 @@ class JsEmitter
         }
 
         return $targets;
+    }
+
+    /**
+     * The cast keys castTargets() leaves on their own key because each spells more than one signature's name.
+     *
+     * @param  list<string>  $castKeys
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @return list<string>
+     */
+    public function ambiguousCastKeys(array $castKeys, array $keys): array
+    {
+        $known = array_fill_keys(array_map(strval(...), $keys), true);
+        $spelledBy = $this->signaturesBySpelling($keys);
+
+        return array_values(array_filter(
+            $castKeys,
+            fn (int|string $castKey): bool => ! isset($known[$castKey]) && count($spelledBy[$castKey] ?? []) > 1,
+        ));
+    }
+
+    /**
+     * Warn, once per subject, about each cast key ambiguousCastKeys() names.
+     *
+     * @param  list<string>  $castKeys
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     */
+    public function warnAmbiguousCasts(string $subject, array $castKeys, array $keys): void
+    {
+        foreach ($this->ambiguousCastKeys($castKeys, $keys) as $castKey) {
+            AnalysisWarnings::addOnce($subject, sprintf(
+                'The #[TsCasts] key "%s" spells more than one index signature, so it retypes none; cast each by its exact name.',
+                $castKey,
+            ));
+        }
     }
 
     /**
@@ -513,32 +547,25 @@ class JsEmitter
     }
 
     /**
-     * The spellings of a signature's name, other than the name, that a #[TsCasts] key may use for it.
+     * Each other spelling of a backslash signature's name among the keys, mapped to the names it spells.
      *
-     * @return list<string>
+     * @param  array<array-key, int|string>  $keys
+     * @return array<string, array<string, true>>
      */
-    private function castSpellings(string $name): array
+    private function signaturesBySpelling(array $keys): array
     {
-        $spellings = [
-            $this->readEscapes($name, ['\\' => '\\']),
-            $this->readEscapes($name, ['r' => "\r"]),
-            $this->readEscapes($name, ['\\' => '\\', 'r' => "\r"]),
-        ];
+        $spelledBy = [];
 
-        return array_values(array_diff(array_unique($spellings), [$name]));
-    }
+        foreach ($keys as $key) {
+            $key = (string) $key;
 
-    /**
-     * The text with each escape the map names read back, pair by pair from the left, and every other one kept.
-     *
-     * @param  array<string, string>  $as  escaped character => what it reads as
-     */
-    private function readEscapes(string $text, array $as): string
-    {
-        return (string) preg_replace_callback(
-            '/\\\\(.)/s',
-            fn (array $escape): string => $as[$escape[1]] ?? $escape[0],
-            $text,
-        );
+            if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
+                foreach (IndexSignatureKey::castSpellings($key) as $spelling) {
+                    $spelledBy[$spelling][$key] = true;
+                }
+            }
+        }
+
+        return $spelledBy;
     }
 }

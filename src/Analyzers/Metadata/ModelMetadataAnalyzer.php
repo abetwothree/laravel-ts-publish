@@ -239,7 +239,7 @@ class ModelMetadataAnalyzer
         $castTypes = [];
 
         foreach ($method->getAttributes(TsCasts::class) as $attribute) {
-            $castTypes = array_merge($castTypes, $attribute->newInstance()->types);
+            $castTypes = array_replace($castTypes, $attribute->newInstance()->types);
         }
 
         return $this->normalizeTsCasts($castTypes);

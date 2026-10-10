@@ -29,7 +29,7 @@ export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' ex
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 4) !!}
 @endif
-    {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! $property['type'] !!};
+    {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
 }
 @endif

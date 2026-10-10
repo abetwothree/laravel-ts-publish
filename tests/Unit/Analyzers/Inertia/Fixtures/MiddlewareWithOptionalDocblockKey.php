@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 /**
  * parseDocblockReturnArrayShape() folds the optional marker into the map key ('filters?'), so an
  * override lookup by plain prop name misses and the prop gets emitted twice. `appName` additionally
- * proves a #[TsCasts] entry still wins over the optional docblock entry for the same key.
+ * proves a #[TsCasts] entry wins the type over the optional docblock entry for the same key, and keeps its `?`.
  */
 #[TsCasts(['appName' => 'AppName'])]
 class MiddlewareWithOptionalDocblockKey

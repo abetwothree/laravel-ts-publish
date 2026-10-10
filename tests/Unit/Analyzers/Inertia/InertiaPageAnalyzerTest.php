@@ -9,11 +9,14 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
@@ -249,7 +252,7 @@ it('applies #[TsCasts] overrides and their imports', function () {
 test('parseTsCastsFromMethod returns empty arrays for a non-existent class', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -259,13 +262,13 @@ test('parseTsCastsFromMethod returns empty arrays for a non-existent class', fun
     $result = $analyzer->expose('NonExistent\\Controller', 'index');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
 test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts attribute', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -275,13 +278,13 @@ test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts
     $result = $analyzer->expose(InertiaPageAnalyzer::class, '__construct');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
-test('parseTsCastsFromMethod extracts both the overrides and the import map', function () {
+test('parseTsCastsFromMethod extracts both the overrides and each one\'s import path', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -292,7 +295,7 @@ test('parseTsCastsFromMethod extracts both the overrides and the import map', fu
 
     expect($result['overrides'])->toHaveKey('count', 'string')
         ->and($result['overrides'])->toHaveKey('meta', 'PageMeta')
-        ->and($result['importMap'])->toBe(['@workbench/types' => ['PageMeta']]);
+        ->and($result['importPaths'])->toBe(['meta' => '@workbench/types']);
 });
 
 // ─── analyze() paginated Resource::collection() ───────────────────
@@ -487,9 +490,10 @@ describe('a docblock-filled index signature in page props merged from several br
         );
     });
 
+    // The cast says nothing about optional, so the key only one arm sets keeps its `?`.
     test('a ternary arm\'s key the controller method\'s #[TsCasts] retypes joins with its cast type', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternaryCast')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag: number }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag?: number }',
         );
     });
 
@@ -506,7 +510,97 @@ test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted
         ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
 });
 
+test('a controller method\'s cast key that spells more than one signature warns', function () {
+    AnalysisWarnings::reset();
+
+    pageData(ControllerWithAmbiguousCastSpelling::class.'@show');
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => ControllerWithAmbiguousCastSpelling::class.'@show',
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a parser override returning the 2.7 shape builds the page and applies its overrides', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /** @return array{overrides: array<string, string>, importMap: array<string, string>} */
+        protected function parseTsCastsFromMethod(string $controllerClass, string $methodName): array
+        {
+            return ['overrides' => ['heading' => 'Headline'], 'importMap' => ['Headline' => '@/types/headline']];
+        }
+    };
+
+    $data = $analyzer->analyze(['uses' => ControllerWithCastKeyEdges::class.'@numeric']);
+
+    expect($data['pageType'])->toContain('heading: Headline');
+});
+
 test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
+});
+
+// ─── #[TsCasts] key edges ────────────────────────────────────────
+
+test('a page cast on a numeric key lands on that key', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numeric')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "42": boolean }');
+});
+
+test('a losing page cast spelling brings no import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@losing');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }')
+        ->and($data['externalImports'])->toBe([]);
+});
+
+it('keeps a page cast\'s import once when only one rendered component returns its key', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@twoComponents');
+
+    expect($data['component'])->toBe(['Edges/WithMeta', 'Edges/WithoutMeta'])
+        ->and($data['pageType'][0])->toBe('Inertia.SharedData & { meta: PageMeta, id: number }')
+        ->and($data['externalImports'])->toBe(['@/types/meta' => ['PageMeta']]);
+});
+
+it('honors a page cast\'s optional flag, and keeps a prop\'s own ? under a type-only cast', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@optionalCast')['pageType'])
+        ->toBe('Inertia.SharedData & { heading?: Heading, id: number, [key: `${string}_note`]: number | undefined }')
+        ->and(pageData(ControllerWithCastKeyEdges::class.'@typeOnlyCast')['pageType'])
+        ->toBe('Inertia.SharedData & { meta?: PageMeta, note: Note, id: number }');
+});
+
+test('a prop typed from a request\'s import-aware cast carries the import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@validated');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { attributes?: PostAttributes }')
+        ->and($data['externalImports'])->toBe(['@js/types/posts' => ['PostAttributes']]);
+});
+
+it('quotes a page prop key that is not an identifier', function () {
+    expect(pageData(InertiaKeyEdgesController::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
+});
+
+test('the page type prints no ? after a signature, whatever flag reaches it', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /**
+         * The type string the builder prints.
+         *
+         * @param  array<string, array{type: string, optional: bool}>  $props
+         * @param  array<string, string>  $overrides
+         */
+        public function build(array $props, array $overrides): string
+        {
+            return $this->buildTypeStringWithOverrides($props, $overrides);
+        }
+    };
+
+    expect($analyzer->build(
+        ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
+        ['a-b' => 'string'],
+    ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, "a-b": string }');
 });

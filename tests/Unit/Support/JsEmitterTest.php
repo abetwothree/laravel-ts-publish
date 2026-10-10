@@ -44,6 +44,18 @@ describe('validJsObjectKey', function () {
     });
 });
 
+describe('signatureSafeMember', function () {
+    test('an optional index signature is published required, its value admitting undefined', function (string $key, string $type, bool $optional, array $expected) {
+        expect($this->service->signatureSafeMember($key, $type, $optional))->toBe($expected);
+    })->with([
+        'an optional template-literal signature' => ['[key: `${string}_tag`]', 'string', true, ['type' => 'string | undefined', 'optional' => false]],
+        'one whose value already admits undefined' => ['[key: `${string}_tag`]', 'string | undefined', true, ['type' => 'string | undefined', 'optional' => false]],
+        'an optional number signature' => ['[key: number]', 'User', true, ['type' => 'User | undefined', 'optional' => false]],
+        'a required signature' => ['[key: `${string}_tag`]', 'string', false, ['type' => 'string', 'optional' => false]],
+        'an optional property' => ['price_tag', 'number', true, ['type' => 'number', 'optional' => true]],
+    ]);
+});
+
 describe('isIndexSignatureKey', function () {
     test('only a generated index signature is one', function (string $key, bool $expected) {
         expect($this->service->isIndexSignatureKey($key))->toBe($expected);
@@ -56,6 +68,15 @@ describe('isIndexSignatureKey', function () {
         'a symbol key type' => ['[key: symbol]', false],
         'a backtick inside the template' => ['[key: `a`b`]', false],
     ]);
+});
+
+describe('ambiguousCastKeys', function () {
+    test('only a spelling two signatures share is ambiguous', function () {
+        $keys = ['[key: `${string}\\\\\\r`]', '[key: `${string}\\\\\\\\r`]', 'id'];
+
+        expect($this->service->ambiguousCastKeys(['[key: `${string}\\\\r`]', $keys[0], 'id', 'other'], $keys))
+            ->toBe(['[key: `${string}\\\\r`]']);
+    });
 });
 
 describe('castsByKey', function () {

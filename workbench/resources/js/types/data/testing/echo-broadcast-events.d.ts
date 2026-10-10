@@ -12,9 +12,11 @@ import type { PayloadDiffersEvent } from './workbench/app/events/PayloadDiffersE
 import type { PostPublishedEvent } from './workbench/app/events/PostPublishedEvent';
 import type { PureEnumEvent } from './workbench/app/events/PureEnumEvent';
 import type { ReportSynced } from './workbench/app/events/ReportSynced';
+import type { ReviewerCastEvent } from './workbench/app/events/ReviewerCastEvent';
 import type { SameBasenameModelEvent } from './workbench/app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './workbench/app/events/ServerCreated';
 import type { StatusSynced } from './workbench/crm/events/StatusSynced';
+import type { TaggedPayloadEvent } from './workbench/app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './workbench/app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './workbench/app/events/TeamRosterSynced';
 import type { UserNotification } from './workbench/app/events/UserNotification';
@@ -38,9 +40,11 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.PostPublishedEvent": PostPublishedEvent;
         ".Workbench.App.Events.PureEnumEvent": PureEnumEvent;
         ".Workbench.App.Events.ReportSynced": ReportSynced;
+        ".Workbench.App.Events.ReviewerCastEvent": ReviewerCastEvent;
         ".Workbench.App.Events.SameBasenameModelEvent": SameBasenameModelEvent;
         "server.created": ServerCreated;
         ".Workbench.Crm.Events.StatusSynced": StatusSynced;
+        ".Workbench.App.Events.TaggedPayloadEvent": TaggedPayloadEvent;
         ".Workbench.App.Events.TeamMessageSent": TeamMessageSent;
         ".Workbench.App.Events.TeamRosterSynced": TeamRosterSynced;
         ".Workbench.App.Events.UserNotification": UserNotification;

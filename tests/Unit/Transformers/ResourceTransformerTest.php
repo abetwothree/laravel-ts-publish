@@ -16,6 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedModelSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -23,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastSettingsReadResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassCastTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentQuoteCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ContinuationCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedNameCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendsEnumCastResource;
@@ -3127,9 +3132,12 @@ describe('a union of two models that share a name', function () {
             ->toBe('CrmUser | null');
     });
 
+    // The first write's class is read by no key, so it is not imported and forces no alias on the last write's.
     test('names a key written twice by its last write\'s class', function () {
-        expect((new ResourceTransformer(HandoverRewrittenKeyResource::class))->properties['who']['type'])
-            ->toBe('{ p: WorkbenchUser | null }');
+        $transformer = new ResourceTransformer(HandoverRewrittenKeyResource::class);
+
+        expect($transformer->properties['who']['type'])->toBe('{ p: User | null }')
+            ->and($transformer->typeImports)->toBe(['../../../../workbench/app/models' => ['User']]);
     });
 });
 
@@ -3326,4 +3334,38 @@ describe('ResourceTransformer with ProductSalesResource', function () {
             'has_items' => ['boolean', true],
         ]);
     });
+});
+
+// Spelling targets are re-decided from the #[TsCasts] attributes, so a cast with none behind it must keep its own key.
+it('publishes a cast a transformer subclass injects with no attribute behind it', function () {
+    $properties = new InjectedCastResourceTransformer(AddressResource::class)->properties;
+
+    expect($properties['injected'])->toBe(['type' => 'string', 'optional' => false, 'description' => ''])
+        ->and($properties['coordinates']['type'])->toBe('GeoPoint');
+});
+
+// No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
+it('lets a cast a transformer subclass injects under another spelling of a signature retype it', function () {
+    $properties = new InjectedSignatureCastResourceTransformer(EscapedKeyResource::class)->properties;
+
+    expect($properties['[key: `${string}\\\\unit`]']['type'])->toBe('number')
+        ->and($properties)->not->toHaveKey('[key: `${string}\\unit`]');
+});
+
+// The model's casts are re-decided over the analysis keys too, so an injected model cast finds the signature it spells.
+it('lets a model cast a transformer subclass injects under another spelling of a signature retype it', function () {
+    $properties = new InjectedModelSignatureCastResourceTransformer(EscapedKeyResource::class)->properties;
+
+    expect($properties['[key: `${string}\\\\unit`]']['type'])->toBe('number')
+        ->and($properties)->not->toHaveKey('[key: `${string}\\unit`]');
+});
+
+// docs/components/ts-casts.md: an API resource's class-level cast on `42` adds `"42": T`, as a method cast does.
+test('a class-level cast on a numeric key adds that key to an API resource', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = new ResourceTransformer(NumericCastKeyResource::class);
+
+    expect($transformer->properties[42])->toBe(['type' => 'boolean', 'optional' => false, 'description' => ''])
+        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toContain('    "42": boolean;');
 });

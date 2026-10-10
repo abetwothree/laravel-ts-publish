@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
+use Closure;
 use Illuminate\Support\Facades\Config;
 
 /**
@@ -65,9 +66,15 @@ final class AnalysisComposer
     {
         $this->namespacePath = $fromNamespacePath;
 
+        // No publisher lays another cast over this one, so a method's own cast is the one in force; its key counts with
+        // the cast's text, as each publisher's reconcile counts it, before fit() settles its import channels.
+        resolve(IndexSignatureReconciler::class)
+            ->reconcile($analysis, array_map(fn (array $cast): string => $cast['type'], $analysis->casts));
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
         $this->collectProperties($analysis);
         $this->collectNameMaps($analysis);
         $this->propertyFqcnQueues = $this->buildPropertyFqcnQueues($analysis);
+        $this->registerCarried($analysis);
 
         $this->resolveImportConflicts($analysis->customImports);
         $this->rewriteEnumResourceTypes($analysis);
@@ -146,6 +153,56 @@ final class AnalysisComposer
         foreach ($analysis->modelFqcns as $fqcn) {
             $this->modelFqcnMap[$fqcn] = class_basename($fqcn);
         }
+    }
+
+    /**
+     * Register each class a cast carried that a property type spells with no class of its name behind it.
+     */
+    private function registerCarried(MethodAnalysis $analysis): void
+    {
+        $enumTypeName = static fn (string $fqcn): string => LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
+            ?? class_basename($fqcn).'Type';
+
+        foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
+            $this->enumFqcnMap[$fqcn] ??= $name;
+            $this->enumConstMap[$fqcn] ??= LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
+        }
+
+        foreach ($this->carriedInUse($analysis->carried['models'] ?? [], $this->modelFqcnMap, class_basename(...)) as $fqcn => $name) {
+            $this->modelFqcnMap[$fqcn] ??= $name;
+        }
+
+        $resourceName = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+
+        foreach ($this->carriedInUse($analysis->carried['resources'] ?? [], $this->resourceFqcnMap, $resourceName) as $fqcn => $name) {
+            $this->resourceFqcnMap[$fqcn] ??= $name;
+        }
+    }
+
+    /**
+     * Each carried class of one kind a property type spells with no class of its name behind it, by that name.
+     *
+     * @param  list<class-string>  $carried
+     * @param  array<string, string>  $map  FQCN => unaliased name, of this kind's registered classes
+     * @param  Closure(class-string): string  $nameOf
+     * @return array<class-string, string>
+     */
+    private function carriedInUse(array $carried, array $map, Closure $nameOf): array
+    {
+        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
+        $ownNames = array_map(
+            static fn (array $fqcns): array => array_values(array_intersect_key($map, array_flip($fqcns))),
+            $this->propertyFqcnQueues,
+        );
+        $inUse = [];
+
+        foreach ($carried as $fqcn) {
+            if (CastChannels::spelledUnclaimed($nameOf($fqcn), $types, $ownNames)) {
+                $inUse[$fqcn] = $nameOf($fqcn);
+            }
+        }
+
+        return $inUse;
     }
 
     /**
@@ -425,8 +482,7 @@ final class AnalysisComposer
             }
         }
 
-        // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
-        return array_diff_key($queues, $analysis->importedCastKeys);
+        return $queues;
     }
 
     /**

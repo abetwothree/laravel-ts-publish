@@ -32,6 +32,26 @@ trait ParsesTsCasts
      */
     protected function parseTsCastsFromReflection(ReflectionClass $reflection): array
     {
+        /** @var TsCastsUnpacked $unpacked */
+        $unpacked = resolve(TsCastsReader::class)->unpack($this->tsCastsAttributes($reflection));
+
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
+    }
+
+    /**
+     * The class's #[TsCasts] instances in precedence order: the class, its $casts property, then its casts() method.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @return list<TsCasts>
+     */
+    protected function tsCastsAttributes(ReflectionClass $reflection): array
+    {
         $attributes = [];
 
         // Class-level (Laravel 13+ style, or when there is no $casts property/method)
@@ -53,14 +73,7 @@ trait ParsesTsCasts
             }
         }
 
-        /** @var TsCastsUnpacked $unpacked */
-        $unpacked = resolve(TsCastsReader::class)->unpack($attributes);
-
-        return [
-            'overrides' => $unpacked['overrides'],
-            'importPaths' => $unpacked['importPaths'],
-            'optionalOverrides' => $unpacked['optionalOverrides'],
-        ];
+        return $attributes;
     }
 
     /**

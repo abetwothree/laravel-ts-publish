@@ -9,6 +9,7 @@ export {}
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
+import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
@@ -2795,6 +2796,11 @@ declare global {
             id: number;
             case_title: string;
         }
+        /** A docblock-filled signature beside a same-pattern key only the class-level cast types, so the fill joins the cast. */
+        export interface CastRestoredFillResource {
+            [key: `${string}_tag`]: string | number | undefined;
+            main_tag: number;
+        }
         /**
          * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
          * `children`, a HasMany that loads as a collection, then every resource built around `parent`. Laravel returns null for
@@ -3316,6 +3322,14 @@ declare global {
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
         }
+        /**
+         * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
+         * must retype the entry that publishes, not only the first.
+         */
+        export interface DuplicateKeyCastResource {
+            state: 'draft' | 'published';
+            title: string;
+        }
         /** Resource with no toArray override — tests guard clause. */
         export interface EmptyResource {
         }
@@ -3591,6 +3605,14 @@ declare global {
             height?: number;
         }
         /**
+         * Casts the key that reads two resources named `UserResource` to a type of the app's own, so neither resource is
+         * imported.
+         */
+        export interface ImageReviewCastResource {
+            id: number;
+            reviewable?: ReviewSubject | null;
+        }
+        /**
          * Exposes a morphTo whose targets' resources share a basename: Crm's UserResource and this namespace's UserResource
          * must each be named by its own alias, inside an inline array as well.
          */
@@ -3793,6 +3815,30 @@ declare global {
             id: number;
             user_name?: string;
             user_email?: string;
+            ulid?: string;
+            user_id?: number;
+            status?: app.enums.OrderStatusType;
+            payment_method?: app.enums.PaymentMethodType | null;
+            currency?: app.enums.CurrencyType;
+            subtotal?: string;
+            tax?: string;
+            discount?: string;
+            total?: string;
+            shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes?: string | null;
+            placed_at?: string | null;
+            paid_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
+            cancelled_at?: string | null;
+            ip_address?: string | null;
+            user_agent?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            deleted_at?: string | null;
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
         }
         /**
          * Exercises mergeWhen() and mergeUnless() with a default, which Laravel merges when the condition fails. A key only
@@ -3821,6 +3867,23 @@ declare global {
             archived_at?: string | null;
             total?: string;
             currency?: app.enums.CurrencyType;
+        }
+        /**
+         * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
+         * value covers every key it matches, and merges of a helper's keys and of the model itself.
+         */
+        export interface MergedSignatureKeysResource {
+            id: number;
+            [key: `${string}_note`]: string | number | undefined;
+            main_label: string;
+            [key: `${string}_label`]: number | string | undefined;
+            name?: string;
+            slug?: string;
+            color?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
         }
         export interface MiscCollection {
             data: unknown;
@@ -3942,6 +4005,12 @@ declare global {
             members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof app.models.User | keyof UserResource> & Omit<app.models.User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
             owner_relation_spread: Omit<app.models.User, 'flag'> & { flag: boolean };
         }
+        /** Index signatures inside nested shapes: one beside a named key its pattern matches, one whose text holds a backslash. */
+        export interface NestedSignatureResource {
+            id: number;
+            box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };
+            units: { [key: `${string}\\unit`]: string | undefined };
+        }
         export interface NonArrayReturnResource {
             id: number;
             name: string;
@@ -3968,6 +4037,12 @@ declare global {
             category?: Pick<app.models.Category, 'id' | 'name'> | null;
             dynamic: Record<string, unknown>;
             dynamic_category?: Record<string, unknown> | null;
+        }
+        /** Optional casts on two index signatures, one on the class and one on toArray(): neither can carry `?:`. */
+        export interface OptionalSignatureCastResource {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
+            [key: `${string}_note`]: number | undefined;
         }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
@@ -4203,6 +4278,17 @@ declare global {
             post_table_name: string;
             category_class_name?: string | null;
             category_table_name?: string | null;
+        }
+        /**
+         * Lays a cast that spells an enum's own type over each key that holds an enum resource: each key publishes its cast
+         * and imports the enum types it spells, never the `AsEnum` wrap.
+         */
+        export interface PostSpelledCastResource {
+            id: number;
+            status: app.enums.StatusType;
+            visibility: app.enums.VisibilityType;
+            either: app.enums.StatusType | app.enums.VisibilityType | null;
+            mixed: app.enums.StatusType | null;
         }
         /**
          * Reads a single-model accessor inside an inline member and under a key that differs from the
@@ -5277,6 +5363,16 @@ declare global {
             can_publish: boolean;
         }
         /**
+         * Casts away the CRM `User` of `contact` and both enums of the `review_priority` accessor, so the only class left to
+         * import is the app's own `User`, under its own name.
+         */
+        export interface WarehouseContactCastResource {
+            id: number;
+            manager: app.models.User | null;
+            contact: { id: number; name: string } | null;
+            review_priority: string;
+        }
+        /**
          * Resource with no @mixin or TsResource — tests convention-based model guess.
          * Also tests multiple TsExtends in parent class, trait, and locally.
          */
@@ -5819,12 +5915,20 @@ declare global {
             salesReport: Partial<app.models.sales.report.Report>;
             marketingReport: Partial<app.models.marketing.report.Report>;
         }
+        export interface ReviewerCastEvent {
+            reviewer: ReviewerCard | null;
+            contact: Partial<crm.models.User>;
+        }
         export interface SameBasenameModelEvent {
             actor: app.models.User | crm.models.User;
         }
         export interface ServerCreated extends BroadcastableEvent {
             serverId: number;
             serverName: string;
+        }
+        export interface TaggedPayloadEvent {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
         }
         export interface TeamMessageSent {
             teamId: number;

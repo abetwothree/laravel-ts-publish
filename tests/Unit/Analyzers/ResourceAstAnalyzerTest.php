@@ -11,6 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousMethodSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastAliasedEnumResource;
@@ -27,9 +31,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NestedSignatureTextKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextConstantKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SignatureTextKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpellingsAcrossLocationsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StackedAttributeDigestCollection;
@@ -115,6 +124,7 @@ use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\CustomImportChannelResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
+use Workbench\App\Http\Resources\DuplicateKeyCastResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
@@ -3819,15 +3829,17 @@ describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a
     ]);
 });
 
-// A side the analysis cannot read as an array merges no key it knows, as the MissingValue an omitted default leaves.
-it('reads a merge side it cannot read as an array as an empty branch', function () {
+// A side read as no array merges no key it knows, as the MissingValue an omitted default leaves; the model and a
+// helper call merge their keys, as a closure returning them would.
+it('reads the model and a helper call as merge sides, and a side read as no array as an empty branch', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeUnreadableDefaultResource::class), Post::class);
     $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toBe([
+    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toMatchArray([
         'id' => 'number',
         'null_default' => '?string',
-        'call_default' => '?string',
+        'call_default' => 'string',
+        'title' => '?string',
         'default_only' => '?number',
         'spread_default' => '?string',
         'needs_arg_default' => '?string',
@@ -6446,11 +6458,12 @@ describe('ResourceTransformer with a #[TsCasts] entry that brings no import', fu
         expect($transformer->properties['status']['type'])->toBe('WorkbenchStatusType | null');
     });
 
-    test('a resource cast without an import, over its model\'s cast with an import, is aliased', function () {
+    // The cast spells one `User`, so only the first class the key read stays, and with no second `User` no alias.
+    test('a resource cast without an import, over its model\'s cast with an import, names the key\'s own class', function () {
         $transformer = new ResourceTransformer(CastOverModelCastResource::class);
 
-        expect($transformer->properties['reviewable']['type'])->toBe('CrmUser | null')
-            ->and($transformer->typeImports)->not->toHaveKey('@js/types/user');
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports)->toBe(['../../../../workbench/crm/models' => ['User']]);
     });
 
     test('a class-level cast without an import, over a method-level one with an import, is aliased', function () {
@@ -6472,7 +6485,7 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
         $reflection = new ReflectionClass(BranchedCastSpreadResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
 
-        expect($analysis->importedCastKeys)->toBe(['reviewable' => true])
+        expect($analysis->casts)->toBe(['reviewable' => ['type' => 'UserResource | null', 'import' => '@js/types/user']])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
             ->toBe('UserResource | null');
     });
@@ -6931,7 +6944,7 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         $props = ($this->shape)('nestedBranches');
 
         expect($props['[key: `${string}_tag`]']['type'])
-            ->toBe('string | { "[key: `${string}_tag`]": string | undefined } | number | undefined')
+            ->toBe('string | { [key: `${string}_tag`]: string | undefined } | number | undefined')
             ->and($props['box_tag']['optional'])->toBeTrue()
             ->and($props['price_tag']['optional'])->toBeTrue();
     });
@@ -7026,3 +7039,125 @@ it('reflects a Carbon method on a date cast, never on a timestamp cast', functio
     'a timestamp cast' => ['$this->deleted_at->format("Y")', 'unknown'],
     'the timestamp cast itself' => ['$this->deleted_at', 'number | null'],
 ]);
+
+// Printed bare, `[key: string]` would type every other key (TS2411) and the `\_x` text would sit beside the real
+// `\\_x` signature (TS2413); a literal key is never a signature, so it is left out.
+it('a literal key whose text reads as an index signature is left out with a warning, and the real signature stays', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['id', '[key: `${string}\\\\_x`]'])
+        ->and($properties['[key: `${string}\\\\_x`]']['type'])->toBe('string | undefined')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: `${string}\\_x`]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: number]" reads as an index signature, so it is left out; rename it.',
+        ])
+        ->and(array_unique(array_column(AnalysisWarnings::all(), 'subject')))->toBe([SignatureTextKeyResource::class]);
+
+    AnalysisWarnings::reset();
+});
+
+// A nested signature prints bare, so a nested literal key spelled like one must be left out as a top-level one is.
+it('leaves out a nested literal key that reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(NestedSignatureTextKeyResource::class)->properties;
+
+    expect($properties['box']['type'])->toBe('{ x: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
+
+    AnalysisWarnings::reset();
+});
+
+// A constant's text is a literal key too, so one spelled like a signature is left out as a written one is.
+it('leaves out a constant key whose text reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextConstantKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['x'])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
+
+    AnalysisWarnings::reset();
+});
+
+// Every reader of a key the array names twice reads its last entry, so the method's cast must retype each one.
+test('a toArray() cast retypes every entry of a key the returned array names twice', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(DuplicateKeyCastResource::class), Post::class)->analyze();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['state' => "'draft' | 'published'", 'title' => 'string'])
+        ->and(new ResourceTransformer(DuplicateKeyCastResource::class)->properties['state']['type'])->toBe("'draft' | 'published'");
+});
+
+test('a cast key that spells more than one index signature warns, retypes none and adds the key as it does any other', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(AmbiguousSpellingResource::class)->properties;
+
+    expect(array_column($properties, 'type'))->toBe(['number', 'number | undefined', 'number | undefined', 'string'])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => AmbiguousSpellingResource::class,
+            'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+        ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a toArray() cast key that spells more than one index signature warns once for the resource', function () {
+    AnalysisWarnings::reset();
+
+    new ResourceTransformer(AmbiguousMethodSpellingResource::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => AmbiguousMethodSpellingResource::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a model cast key that spells more than one index signature warns once for the resource', function () {
+    AnalysisWarnings::reset();
+
+    new ResourceTransformer(AmbiguousModelCastResource::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => AmbiguousModelCastResource::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+describe('a cast across its locations', function () {
+    test('a casts() spelling of a signature outranks the class\'s exact name', function () {
+        expect(new ResourceTransformer(SpellingsAcrossLocationsResource::class)->properties['[key: `${string}\\\\_x`]']['type'])
+            ->toBe('number');
+    });
+
+    // The fit joins the toArray() cast and the class casts on the key, so each must reach it under the published name.
+    test('a method cast and the class casts for one signature reach the fit as one entry, under its published key', function () {
+        $transformer = new class(SpellingsAcrossLocationsResource::class) extends ResourceTransformer
+        {
+            /** @return array<string, array{type: string, import: string|null}> */
+            public function exposedCastsInForce(): array
+            {
+                return $this->castsInForce;
+            }
+        };
+
+        expect($transformer->exposedCastsInForce())->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null]]);
+    });
+
+    test('a numeric cast key from a spread helper reaches the parent analysis on its own key', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericCastSpreadResource::class), Post::class)->analyze();
+
+        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
+    });
+});

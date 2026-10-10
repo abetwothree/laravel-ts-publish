@@ -35,10 +35,14 @@ final class ReturnShapeRefiner
             $docType = $shape[$name] ?? $shape[$name.'?'] ?? $valueType;
             $rawType = $rawShape[$name] ?? $rawShape[$name.'?'] ?? null;
 
-            if ($property['type'] === 'unknown') {
+            $isSignature = JsEmitter::isIndexSignatureKey($name);
+
+            // A signature fills only through the branch below, which keeps the floor a reconcile can put back; a spread
+            // helper's own fill, kept beside a put-back floor, outranks this method's docblock.
+            if ($property['type'] === 'unknown' && ! $isSignature) {
                 $property['type'] = $this->resolvedType($docType, $rawType, $method, $keepsUnresolvedNames)
                     ?? $property['type'];
-            } elseif ($property['type'] === $untypedSignature && JsEmitter::isIndexSignatureKey($name)) {
+            } elseif ($property['type'] === $untypedSignature && $isSignature && ! isset($property['fillType'])) {
                 $resolved = $this->resolvedType($docType, $rawType, $method, $keepsUnresolvedNames);
 
                 // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`;
@@ -46,6 +50,7 @@ final class ReturnShapeRefiner
                 if ($resolved !== null) {
                     $property['bodyType'] = $property['type'];
                     $property['type'] = TsTypeString::orUndefined($resolved);
+                    $property['fillType'] = $property['type'];
                 }
             }
 

@@ -109,19 +109,45 @@ it('appends inlineResourceFqcns per property WITHOUT deduping, same as inlineMod
     expect($target->inlineResourceFqcns)->toBe(['reviewable' => [$crm, $app, $crm], 'owner' => [$app]]);
 });
 
-it('unions importedCastKeys across a merge', function () {
-    $target = new MethodAnalysis(importedCastKeys: ['reviewable' => true]);
-    $target->merge(new MethodAnalysis(importedCastKeys: ['reviewable' => true, 'owner' => true]));
+// A later spread's cast is the one the key publishes, so its entry wins, with or without an import.
+it('merges casts with the source winning for a key both cast', function () {
+    $target = new MethodAnalysis(casts: ['k' => ['type' => 'A', 'import' => '@/a'], 'kept' => ['type' => 'K', 'import' => '@/k']]);
+    $target->merge(new MethodAnalysis(casts: ['k' => ['type' => 'B', 'import' => null], 'owner' => ['type' => 'D', 'import' => '@/d']]));
 
-    expect($target->importedCastKeys)->toBe(['reviewable' => true, 'owner' => true]);
+    expect($target->casts)->toBe([
+        'k' => ['type' => 'B', 'import' => null],
+        'kept' => ['type' => 'K', 'import' => '@/k'],
+        'owner' => ['type' => 'D', 'import' => '@/d'],
+    ]);
 });
 
-it('forgets the cast mark of a key another value took over, and no other key\'s', function () {
-    $analysis = new MethodAnalysis(importedCastKeys: ['taken_over' => true, 'kept' => true]);
+// The source's value takes the key, and a cast entry describes only the value it was written for.
+it('clears the cast entry of a key the source sets without one', function () {
+    $target = new MethodAnalysis(casts: ['owner' => ['type' => 'string', 'import' => null], 'kept' => ['type' => 'K', 'import' => null]]);
+    $target->merge(new MethodAnalysis(properties: [['name' => 'owner', 'type' => 'User', 'optional' => false, 'description' => '']]));
+
+    expect($target->casts)->toBe(['kept' => ['type' => 'K', 'import' => null]]);
+});
+
+it('merges carried classes once per kind', function () {
+    $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
+    $target->merge(new MethodAnalysis(carried: [
+        'enums' => ['Workbench\App\Enums\Status', 'Workbench\Crm\Enums\Status'],
+        'models' => ['Workbench\App\Models\User'],
+    ]));
+
+    expect($target->carried)->toBe([
+        'enums' => ['Workbench\App\Enums\Status', 'Workbench\Crm\Enums\Status'],
+        'models' => ['Workbench\App\Models\User'],
+    ]);
+});
+
+it('forgets the cast entry of a key another value took over, and no other key\'s', function () {
+    $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => '@/a'], 'kept' => ['type' => 'B', 'import' => null]]);
 
     $analysis->forgetChannels('taken_over');
 
-    expect($analysis->importedCastKeys)->toBe(['kept' => true]);
+    expect($analysis->casts)->toBe(['kept' => ['type' => 'B', 'import' => null]]);
 });
 
 it('forgets every channel keyed by a property another value took over, and nothing keyed by another', function () {

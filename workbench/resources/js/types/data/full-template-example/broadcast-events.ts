@@ -12,9 +12,11 @@ import type { PayloadDiffersEvent } from './app/events/PayloadDiffersEvent';
 import type { PostPublishedEvent } from './app/events/PostPublishedEvent';
 import type { PureEnumEvent } from './app/events/PureEnumEvent';
 import type { ReportSynced } from './app/events/ReportSynced';
+import type { ReviewerCastEvent } from './app/events/ReviewerCastEvent';
 import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
+import type { TaggedPayloadEvent } from './app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
 import type { TeamRosterSynced } from './app/events/TeamRosterSynced';
 import type { UserNotification } from './app/events/UserNotification';
@@ -37,9 +39,11 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.PostPublishedEvent'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
+    | '.Workbench.App.Events.ReviewerCastEvent'
     | '.Workbench.App.Events.SameBasenameModelEvent'
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
+    | '.Workbench.App.Events.TaggedPayloadEvent'
     | '.Workbench.App.Events.TeamMessageSent'
     | '.Workbench.App.Events.TeamRosterSynced'
     | '.Workbench.App.Events.UserNotification'
@@ -62,9 +66,11 @@ export const BroadcastEvents = Object.freeze({
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
+    ReviewerCastEvent: '.Workbench.App.Events.ReviewerCastEvent',
     SameBasenameModelEvent: '.Workbench.App.Events.SameBasenameModelEvent',
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
+    TaggedPayloadEvent: '.Workbench.App.Events.TaggedPayloadEvent',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
     TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
     UserNotification: '.Workbench.App.Events.UserNotification',
@@ -88,9 +94,11 @@ export type {
     PostPublishedEvent,
     PureEnumEvent,
     ReportSynced,
+    ReviewerCastEvent,
     SameBasenameModelEvent,
     ServerCreated,
     StatusSynced,
+    TaggedPayloadEvent,
     TeamMessageSent,
     TeamRosterSynced,
     UserNotification,
