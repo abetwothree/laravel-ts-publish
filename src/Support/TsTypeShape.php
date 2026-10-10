@@ -36,27 +36,57 @@ final class TsTypeShape
                 return $arguments[1] ?? null;
             }
 
-            if (! str_starts_with($arm, '{') || ! str_ends_with($arm, '}')) {
-                continue;
-            }
-
-            foreach (self::splitTopLevel(substr($arm, 1, -1), [';', ',']) as $member) {
-                $colon = self::topLevelPosition($member, ':');
-
-                if ($colon === null) {
-                    continue;
-                }
-
-                $name = trim(substr($member, 0, $colon));
-
+            foreach (self::members($arm) ?? [] as [$name, $value]) {
                 // `[key: string]: T` answers every key; a literal key may be quoted and/or optional.
                 if (str_starts_with($name, '[') || trim(rtrim($name, '?'), '\'"') === $key) {
-                    return trim(substr($member, $colon + 1));
+                    return $value;
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * Each member of one object literal as its printed key and its value, or null when the type is not one object
+     * literal or a member has no key.
+     *
+     * @return list<array{string, string}>|null
+     */
+    public static function members(string $object): ?array
+    {
+        if (! self::isWrapped($object, '{', '}')) {
+            return null;
+        }
+
+        $members = [];
+
+        foreach (self::splitTopLevel(substr($object, 1, -1), [';', ',']) as $member) {
+            $colon = self::topLevelPosition($member, ':');
+
+            if ($colon === null) {
+                return null;
+            }
+
+            $members[] = [trim(substr($member, 0, $colon)), trim(substr($member, $colon + 1))];
+        }
+
+        return $members;
+    }
+
+    /**
+     * Whether a type opens with $open and only its last character closes that bracket, as `( … )` does.
+     */
+    public static function isWrapped(string $type, string $open, string $close): bool
+    {
+        if (! str_starts_with($type, $open) || ! str_ends_with($type, $close)) {
+            return false;
+        }
+
+        $last = strlen($type) - 1;
+        $outside = array_keys(self::depths($type), 0, true);
+
+        return $outside === [0, $last];
     }
 
     /**
@@ -108,43 +138,22 @@ final class TsTypeShape
     /**
      * Split on any of $separators that sit outside brackets, braces, parentheses, angle brackets, and quotes.
      *
-     * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator().
-     *
      * @param  list<string>  $separators  Single characters.
      * @return list<string> Trimmed, non-empty parts.
      */
     public static function splitTopLevel(string $type, array $separators): array
     {
         $parts = [];
-        $current = '';
-        $depth = 0;
-        $quote = null;
+        $start = 0;
 
-        foreach (str_split($type) as $char) {
-            if ($quote !== null) {
-                $current .= $char;
-                $quote = $char === $quote ? null : $quote;
-
-                continue;
+        foreach (self::depths($type) as $offset => $depth) {
+            if ($depth === 0 && in_array($type[$offset], $separators, true)) {
+                $parts[] = substr($type, $start, $offset - $start);
+                $start = $offset + 1;
             }
-
-            if ($char === '\'' || $char === '"') {
-                $quote = $char;
-            } elseif (str_contains('{[(<', $char)) {
-                $depth++;
-            } elseif (str_contains('}])>', $char)) {
-                $depth = max(0, $depth - 1);
-            } elseif ($depth === 0 && in_array($char, $separators, true)) {
-                $parts[] = $current;
-                $current = '';
-
-                continue;
-            }
-
-            $current .= $char;
         }
 
-        $parts[] = $current;
+        $parts[] = substr($type, $start);
 
         return array_values(array_filter(array_map(trim(...), $parts), static fn (string $part): bool => $part !== ''));
     }
@@ -154,28 +163,45 @@ final class TsTypeShape
      */
     private static function topLevelPosition(string $type, string $needle): ?int
     {
+        foreach (self::depths($type) as $offset => $depth) {
+            if ($depth === 0 && $type[$offset] === $needle) {
+                return $offset;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The bracket depth of each character outside quotes, by offset; a bracket sits at the depth outside the pair it
+     * opens or closes.
+     *
+     * Depth floors at zero so malformed input fails toward splitting, matching hasTopLevelSeparator(), and the `>` of
+     * `=>` closes nothing.
+     *
+     * @return array<int, int>
+     */
+    private static function depths(string $type): array
+    {
+        $depths = [];
         $depth = 0;
         $quote = null;
 
         foreach (str_split($type) as $offset => $char) {
             if ($quote !== null) {
                 $quote = $char === $quote ? null : $quote;
-
-                continue;
-            }
-
-            if ($char === '\'' || $char === '"') {
+            } elseif ($char === '\'' || $char === '"') {
                 $quote = $char;
             } elseif (str_contains('{[(<', $char)) {
-                $depth++;
-            } elseif (str_contains('}])>', $char)) {
-                $depth = max(0, $depth - 1);
-            } elseif ($depth === 0 && $char === $needle) {
-                return $offset;
+                $depths[$offset] = $depth++;
+            } elseif (str_contains('}])>', $char) && ! ($char === '>' && $offset > 0 && $type[$offset - 1] === '=')) {
+                $depths[$offset] = $depth = max(0, $depth - 1);
+            } else {
+                $depths[$offset] = $depth;
             }
         }
 
-        return null;
+        return $depths;
     }
 
     /**

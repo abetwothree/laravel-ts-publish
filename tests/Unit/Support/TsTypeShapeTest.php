@@ -53,6 +53,14 @@ describe('splitTopLevel', function () {
         'escaped single quotes around a placeholder' => ['`\\\'${string}\\\'` | null', ['`\\\'${string}\\\'`', 'null']],
     ]);
 
+    // The `>` of `=>` closes no bracket.
+    test('keeps an arrow function whole', function (string $type, array $expected) {
+        expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
+    })->with([
+        'an arrow function returning a union' => ['{ fn: () => void | null } | null', ['{ fn: () => void | null }', 'null']],
+        'a generic holding an arrow function' => ['Foo<() => A | B> | null', ['Foo<() => A | B>', 'null']],
+    ]);
+
     test('reads a backtick as template text, so one inside a placeholder cannot close a span', function (string $type, array $expected) {
         expect(TsTypeShape::splitTopLevel($type, ['|']))->toBe($expected);
     })->with([
@@ -118,5 +126,38 @@ describe('listType', function () {
         'an intersection element' => [['A & B'], '(A & B)[]'],
         'a function element' => [['() => void'], '(() => void)[]'],
         'an untyped element beside a typed one' => [['string', 'unknown'], 'unknown[]'],
+    ]);
+});
+
+describe('isWrapped', function () {
+    test('answers whether only the last character closes the opening bracket', function (string $type, string $open, string $close, bool $wrapped) {
+        expect(TsTypeShape::isWrapped($type, $open, $close))->toBe($wrapped);
+    })->with([
+        'an object literal' => ['{ a: string }', '{', '}', true],
+        'an object holding an arrow function' => ['{ a: () => void; b: string }', '{', '}', true],
+        'a quoted closer' => ['{ "}": string }', '{', '}', true],
+        'two objects intersected' => ['{ a: string } & { b: number }', '{', '}', false],
+        'parentheses around a union' => ['(string | null)', '(', ')', true],
+        'an arrow function between parentheses' => ['(a: string) => (b)', '(', ')', false],
+        'an unclosed bracket' => ['{ { a: string }', '{', '}', false],
+        'another opener' => ['string[]', '{', '}', false],
+    ]);
+});
+
+describe('members', function () {
+    test('splits an object literal into its printed keys and values', function (string $object, ?array $members) {
+        expect(TsTypeShape::members($object))->toBe($members);
+    })->with([
+        'named and quoted keys' => ['{ id: number; "42"?: string }', [['id', 'number'], ['"42"?', 'string']]],
+        'a nested object and an arrow function' => [
+            '{ a: () => void; inner: { b: string } }',
+            [['a', '() => void'], ['inner', '{ b: string }']],
+        ],
+        'a quoted key holding a colon' => ['{ "a:b": string }', [['"a:b"', 'string']]],
+        'an index signature' => ['{ [key: number]: User }', [['[key: number]', 'User']]],
+        'an empty object' => ['{}', []],
+        'a member with no key' => ['{ a: string; b }', null],
+        'an intersection' => ['{ a: string } & { b: number }', null],
+        'no object' => ['Record<string, number>', null],
     ]);
 });

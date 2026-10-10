@@ -55,7 +55,8 @@ final class ResourceReindexing
         if (count($arms) > 1) {
             $rewritten = array_map(self::reindexedType(...), $arms);
 
-            return $rewritten === $arms ? $type : implode(' | ', $rewritten);
+            // Two arrays a resource lists alike are one arm once re-indexed.
+            return $rewritten === $arms ? $type : implode(' | ', array_unique($rewritten));
         }
 
         $parts = TsTypeShape::splitTopLevel($type, ['&']);
@@ -81,7 +82,7 @@ final class ResourceReindexing
      */
     private static function reindexedArm(string $arm): string
     {
-        if (self::isWrapped($arm, '(', ')')) {
+        if (TsTypeShape::isWrapped($arm, '(', ')')) {
             return '('.self::reindexedType(substr($arm, 1, -1)).')';
         }
 
@@ -99,8 +100,10 @@ final class ResourceReindexing
      */
     private static function reindexedMembers(string $part): string
     {
-        if (self::isWrapped($part, '{', '}')) {
-            return self::reindexedObject($part);
+        $members = TsTypeShape::members($part);
+
+        if ($members !== null) {
+            return self::reindexedObject($part, $members);
         }
 
         foreach ([self::STRING_RECORD, self::NUMBER_RECORD] as $prefix) {
@@ -117,19 +120,21 @@ final class ResourceReindexing
 
     /**
      * An object literal with a named key, its member values rewritten.
+     *
+     * @param  list<array{string, string}>  $members
      */
-    private static function reindexedObject(string $object): string
+    private static function reindexedObject(string $object, array $members): string
     {
         $changed = false;
-        $members = [];
+        $printed = [];
 
-        foreach (self::members($object) as [$key, $value]) {
+        foreach ($members as [$key, $value]) {
             $rewritten = self::reindexedType($value);
             $changed = $changed || $rewritten !== $value;
-            $members[] = $key.': '.$rewritten;
+            $printed[] = $key.': '.$rewritten;
         }
 
-        return $changed ? '{ '.implode('; ', $members).' }' : $object;
+        return $changed ? '{ '.implode('; ', $printed).' }' : $object;
     }
 
     /**
@@ -150,7 +155,7 @@ final class ResourceReindexing
                 continue;
             }
 
-            $members = self::isWrapped($part, '{', '}') ? self::members($part) : [];
+            $members = TsTypeShape::members($part) ?? [];
 
             if ($members === [] || ! array_all(array_column($members, 0), self::isNumericKey(...))) {
                 return null;
@@ -178,84 +183,5 @@ final class ResourceReindexing
         $unquoted = preg_match('/^([\'"])(.*)\1$/s', $key, $match) === 1 ? stripcslashes($match[2]) : $key;
 
         return is_numeric($unquoted);
-    }
-
-    /**
-     * Each member of an object literal as its printed key and its value, or none when a member has no key.
-     *
-     * @return list<array{string, string}>
-     */
-    private static function members(string $object): array
-    {
-        $members = [];
-
-        foreach (TsTypeShape::splitTopLevel(substr($object, 1, -1), [';', ',']) as $member) {
-            $colon = self::keyEnd($member);
-
-            if ($colon === null) {
-                return [];
-            }
-
-            $members[] = [trim(substr($member, 0, $colon)), trim(substr($member, $colon + 1))];
-        }
-
-        return $members;
-    }
-
-    /**
-     * The offset of the first colon outside brackets and quotes, which ends a member's key.
-     */
-    private static function keyEnd(string $member): ?int
-    {
-        $depth = 0;
-        $quote = null;
-
-        foreach (str_split($member) as $offset => $char) {
-            if ($quote !== null) {
-                $quote = $char === $quote ? null : $quote;
-            } elseif ($char === '\'' || $char === '"' || $char === '`') {
-                $quote = $char;
-            } elseif (str_contains('{[(<', $char)) {
-                $depth++;
-            } elseif (str_contains('}])>', $char)) {
-                $depth--;
-            } elseif ($char === ':' && $depth === 0) {
-                return $offset;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Whether a type opens with one bracket that only its last character closes.
-     */
-    private static function isWrapped(string $type, string $open, string $close): bool
-    {
-        if (! str_starts_with($type, $open) || ! str_ends_with($type, $close)) {
-            return false;
-        }
-
-        $depth = 0;
-        $quote = null;
-        $last = strlen($type) - 1;
-
-        foreach (str_split($type) as $offset => $char) {
-            if ($quote !== null) {
-                $quote = $char === $quote ? null : $quote;
-            } elseif ($char === '\'' || $char === '"' || $char === '`') {
-                $quote = $char;
-            } elseif (str_contains('{[(<', $char)) {
-                $depth++;
-            } elseif (str_contains('}])>', $char)) {
-                $depth--;
-
-                if ($depth === 0 && $offset !== $last) {
-                    return false;
-                }
-            }
-        }
-
-        return $depth === 0;
     }
 }

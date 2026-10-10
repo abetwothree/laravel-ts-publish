@@ -32,6 +32,9 @@ it('rewrites each array a resource re-indexes into the list it sends, at any dep
     'a collection spread beside a numeric key' => ['Record<number, User> & { "0": boolean }', '(User | boolean)[]'],
     'a numeric index signature' => ['{ [key: number]: User }', 'User[]'],
     'an untyped member beside a typed one' => ['{ "1": unknown; "2": string }', 'unknown[]'],
+    'a nested array beside an arrow function' => ['{ a: () => void; inner: { "7": string } }', '{ a: () => void; inner: string[] }'],
+    'two arrays that list alike' => ['{ "1": string } | { "2": string }', 'string[]'],
+    'an array beside the list it sends and null' => ['{ "1": string } | string[] | null', 'string[] | null'],
 ]);
 
 it('keeps every array that holds a named key, and every named type', function (string $type) {
