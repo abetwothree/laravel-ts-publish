@@ -298,6 +298,25 @@ describe('ValueResult::unionResults() over arms that keep their keys', function 
     test('keeps no keys for a union of null alone', function () {
         expect(ValueResult::unionResults([['type' => 'null', 'optional' => false]]))->not->toHaveKey('keepsKeys');
     });
+
+    // The re-index leaves a scalar or an empty list as it is, so neither decides whether the union keeps keys.
+    test('keeps the keys beside an arm holding no object', function (string $other) {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => $other, 'optional' => false],
+        ]);
+
+        expect($result)->toBe(['type' => '{ "200": string } | '.$other, 'optional' => false, 'keepsKeys' => true]);
+    })->with(['string', 'never[]', 'Record<string, number>']);
+
+    test('drops the keys beside a list of objects that does not keep them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => '{ "1": string }[]', 'optional' => false],
+        ]);
+
+        expect($result)->not->toHaveKey('keepsKeys');
+    });
 });
 
 describe('ValueResult::enumTypeName()', function () {

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -533,8 +534,8 @@ final class ValueResult
             $result['carriedFqcns'] = $carried;
         }
 
-        // A resource's re-index skips the union only when no arm is an array its filter enters; `null` has no keys.
-        $keyed = array_filter($branchResults, fn (array $inner): bool => $inner['type'] !== 'null');
+        // A resource's re-index skips the union only when every arm it could rewrite keeps its keys.
+        $keyed = array_filter($branchResults, fn (array $inner): bool => TsTypeShape::holdsKeyedObject($inner['type']));
 
         if ($keyed !== [] && array_all($keyed, fn (array $inner): bool => $inner['keepsKeys'] ?? false)) {
             $result['keepsKeys'] = true;

@@ -25,6 +25,18 @@ final class TsTypeShape
     }
 
     /**
+     * Whether an object literal or a `Record<number, …>` sits anywhere in the type, outside quotes.
+     *
+     * A template literal's `${…}` reads as an object, so an unsure answer is yes.
+     */
+    public static function holdsKeyedObject(string $type): bool
+    {
+        $unquoted = preg_replace('/([\'"])(?:\\\\.|(?!\1).)*\1/s', '', $type) ?? $type;
+
+        return str_contains($unquoted, '{') || preg_match('/\bRecord<\s*number\s*,/', $unquoted) === 1;
+    }
+
+    /**
      * The declared type of $key inside an object literal or Record, or null when the type is opaque.
      */
     public static function memberType(string $type, string $key): ?string

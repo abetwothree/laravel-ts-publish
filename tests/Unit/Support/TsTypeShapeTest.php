@@ -161,3 +161,23 @@ describe('members', function () {
         'no object' => ['Record<string, number>', null],
     ]);
 });
+
+describe('holdsKeyedObject', function () {
+    test('answers whether an object literal or a number-keyed Record sits anywhere in the type', function (string $type, bool $holds) {
+        expect(TsTypeShape::holdsKeyedObject($type))->toBe($holds);
+    })->with([
+        'an object literal' => ['{ "200": string }', true],
+        'an object in a list' => ['{ a: string }[]', true],
+        'an empty object' => ['{}', true],
+        'a number-keyed Record' => ['Record<number, string>', true],
+        'a Record holding an object' => ['Record<string, { "1": string }>', true],
+        'a template literal, read as an object to be safe' => ['`${string}_label`', true],
+        'a scalar' => ['string', false],
+        'an empty list' => ['never[]', false],
+        'a scalar list' => ['(string | number)[]', false],
+        'a string-keyed Record of scalars' => ['Record<string, string>', false],
+        'null' => ['null', false],
+        'a named type' => ['UserResource', false],
+        'a quoted brace' => ["'{' | \"Record<number, x>\"", false],
+    ]);
+});
