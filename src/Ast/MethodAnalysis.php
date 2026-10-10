@@ -16,16 +16,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type ClassMapType = array<string, class-string>
+ * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
- * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
- * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
- * @phpstan-type InlineResourceFqcnsMap = array<string, list<class-string>>
- * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type InlineEnumFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
- * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
+ * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
  * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
- * @phpstan-type CastMap = array<string, CastInForce>
+ * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{
  *     enums?: list<class-string>,
  *     models?: list<class-string>,

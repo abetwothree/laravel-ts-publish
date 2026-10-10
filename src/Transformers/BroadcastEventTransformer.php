@@ -113,21 +113,21 @@ class BroadcastEventTransformer extends CoreTransformer
     /**
      * TsCasts attribute overrides: property name => TypeScript type string.
      *
-     * @var array<string, string>
+     * @var array<array-key, string>
      */
     protected array $tsTypeOverrides = [];
 
     /**
      * Import paths declared alongside TsCasts overrides: property name => import path.
      *
-     * @var array<string, string>
+     * @var array<array-key, string>
      */
     protected array $tsCastsImportPaths = [];
 
     /**
      * Optional overrides from #[TsCasts]: property name => optional flag.
      *
-     * @var array<string, bool>
+     * @var array<array-key, bool>
      */
     protected array $optionalOverrides = [];
 

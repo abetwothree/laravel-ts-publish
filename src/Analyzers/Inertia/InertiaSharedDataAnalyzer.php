@@ -37,7 +37,7 @@ use ReflectionClass;
  *     valueImports: TypesImportMap,
  * }
  * @phpstan-type OverrideEntry = array{type: string, optional: bool}
- * @phpstan-type SharedPropMap = array<string, OverrideEntry>
+ * @phpstan-type SharedPropMap = array<array-key, OverrideEntry>
  */
 class InertiaSharedDataAnalyzer
 {
@@ -409,10 +409,10 @@ class InertiaSharedDataAnalyzer
      * against the inferred plain property names — otherwise `filters?` misses `filters` and the entry
      * is emitted twice, which TypeScript rejects as a duplicate identifier. Also settles an optional signature.
      *
-     * @param  array<string, string>  $overrides
-     * @param  array<string, bool>  $optionalOverrides  a #[TsCasts] entry's own `optional` flag, which outranks a `?`
-     * @param  array<string, bool>  $propFlags  each prop's own flag, which a cast that says nothing keeps unless an
-     *                                          earlier entry decides
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, bool>  $optionalOverrides  a #[TsCasts] entry's own `optional` flag, over a `?`
+     * @param  array<array-key, bool>  $propFlags  each prop's own flag, which a cast that says nothing keeps unless an
+     *                                             earlier entry decides
      * @return SharedPropMap
      */
     protected function normalizeOverrideKeys(array $overrides, array $optionalOverrides = [], array $propFlags = []): array

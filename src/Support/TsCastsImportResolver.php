@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
  * Resolve TsCasts type imports and type-name collisions.
  *
  * @phpstan-type ResolvedImports = array{
- *     overrides: array<string, string>,
+ *     overrides: array<array-key, string>,
  *     typeImports: TypesImportMap,
  * }
  */
@@ -22,8 +22,8 @@ class TsCastsImportResolver
     /**
      * Resolve import aliases for TsCasts overrides and collect their type imports.
      *
-     * @param  array<string, string>  $overrides
-     * @param  array<string, string>  $importPaths
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, string>  $importPaths
      * @return ResolvedImports
      */
     public function resolve(array $overrides, array $importPaths): array

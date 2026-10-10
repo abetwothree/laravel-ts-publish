@@ -233,8 +233,8 @@ final class CastChannels
     /**
      * Queue a cast key's kept classes as the names its text spells, each self-keyed too, as an embedded class is.
      *
-     * @param  array<string, list<class-string>>  $queues
-     * @param  array<string, class-string>  $embedded
+     * @param  array<array-key, list<class-string>>  $queues
+     * @param  array<array-key, class-string>  $embedded
      * @param  list<class-string>  $kept
      */
     private function queue(array &$queues, array &$embedded, string $name, array $kept): void

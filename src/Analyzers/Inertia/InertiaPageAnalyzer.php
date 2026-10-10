@@ -53,7 +53,7 @@ use Throwable;
  *     externalImports?: array<string, list<string>>,
  * }
  * @phpstan-type PagePropEntry = array{type: string, optional: bool}
- * @phpstan-type PagePropMap = array<string, PagePropEntry>
+ * @phpstan-type PagePropMap = array<array-key, PagePropEntry>
  */
 class InertiaPageAnalyzer
 {
@@ -339,9 +339,9 @@ class InertiaPageAnalyzer
      * Build the InertiaPageData contract from the per-component branch analyses.
      *
      * @param  array<string, list<ResourceAnalysis>>  $branches
-     * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
+     * @param  array<array-key, string>  $overrides  TsCasts overrides from the controller method
      * @param  array<string, string>  $importPaths  each override's `import` path, by its key
-     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      * @param  string  $subject  the `Controller@method` action a warning names
      * @return InertiaPageData
      */
@@ -437,7 +437,7 @@ class InertiaPageAnalyzer
      * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
      *
      * @param  PagePropMap  $props
-     * @param  array<string, string>  $casts
+     * @param  array<array-key, string>  $casts
      * @return array<string, string>
      */
     protected function renumberTopLevel(array $props, array $casts, string $subject): array
@@ -452,8 +452,8 @@ class InertiaPageAnalyzer
      * Build a TypeScript object type string, applying TsCasts overrides for specific props.
      *
      * @param  PagePropMap  $props
-     * @param  array<string, string>  $overrides
-     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      */
     protected function buildTypeStringWithOverrides(array $props, array $overrides, array $optionalOverrides = []): string
     {
@@ -484,7 +484,7 @@ class InertiaPageAnalyzer
     /**
      * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
      *
-     * @param  array<string, string>  $overrides
+     * @param  array<array-key, string>  $overrides
      */
     protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
     {

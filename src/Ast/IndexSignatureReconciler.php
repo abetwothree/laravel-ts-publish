@@ -26,8 +26,8 @@ final class IndexSignatureReconciler
      * signature's pattern may overlap its own, or the published type inherits keys no analysis sees, put back the
      * value its body alone gives it.
      *
-     * @param  array<string, string>  $castKeys  keys a publisher lays over the analysis, by type: each is read in
-     *                                           place of the analysis's own type, and its channels are not checked
+     * @param  array<array-key, string>  $castKeys  keys a publisher lays over the analysis, by type: each is read in
+     *                                              place of the analysis's own type, and its channels are not checked
      * @param  bool  $inheritsUnseenKeys  the published type also extends an interface whose keys no analysis sees
      * @param  string  $subject  the class or action a warning names, given only where this reconcile is the last one;
      *                           a matched key that keeps a signature from its union then warns
@@ -162,7 +162,7 @@ final class IndexSignatureReconciler
      *
      * @param  list<string>  $keys  the signature's name and the named keys its pattern matches
      * @param  list<string>  $types  the signature's entries' types and those keys' types
-     * @param  array<string, string>  $castKeys  keys whose published type is a cast, so no channel of theirs counts
+     * @param  array<array-key, string>  $castKeys  keys whose published type is a cast, so no channel of theirs counts
      * @return list<string>|null
      */
     private function unionArms(MethodAnalysis $analysis, array $keys, array $types, array $castKeys): ?array
@@ -200,7 +200,7 @@ final class IndexSignatureReconciler
      *
      * @param  non-empty-list<string>  $keys  the signature's name, then the named keys its pattern matches
      * @param  list<string>  $types  each of the signature's entries' own values, then each matched key's type
-     * @param  array<string, string>  $castKeys
+     * @param  array<array-key, string>  $castKeys
      */
     private function warnUnjoinableKeys(
         MethodAnalysis $analysis,

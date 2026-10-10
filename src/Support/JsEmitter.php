@@ -81,9 +81,9 @@ class JsEmitter
      *
      * @template TCast
      *
-     * @param  array<string, TCast>  $casts
+     * @param  array<array-key, TCast>  $casts
      * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
-     * @return array<string, TCast>
+     * @return array<array-key, TCast>
      */
     public function castsByKey(array $casts, array $keys): array
     {
@@ -161,9 +161,9 @@ class JsEmitter
      *
      * @template TCast
      *
-     * @param  array<string, TCast>  $casts
+     * @param  array<array-key, TCast>  $casts
      * @param  array<string, string|null>  $targets
-     * @return array<string, TCast>
+     * @return array<array-key, TCast>
      */
     public function retargetCasts(array $casts, array $targets): array
     {

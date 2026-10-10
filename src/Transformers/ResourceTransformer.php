@@ -81,7 +81,7 @@ class ResourceTransformer extends CoreTransformer
     /** @var ValuesImportMap */
     public protected(set) array $valueImports = [];
 
-    /** @var array<string, string> property name => custom type override */
+    /** @var array<array-key, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
 
     /** @var ImportMapType custom import path => list of type names */
@@ -90,10 +90,10 @@ class ResourceTransformer extends CoreTransformer
     /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
     protected array $analysisCustomImports = [];
 
-    /** @var array<string, bool> property name => optional override */
+    /** @var array<array-key, bool> property name => optional override */
     protected array $optionalOverrides = [];
 
-    /** @var array<string, string> property name => import path from the resource's #[TsCasts] */
+    /** @var array<array-key, string> property name => import path from the resource's #[TsCasts] */
     protected array $tsCastsImportPaths = [];
 
     /** @var CastMap property name => the cast in force for a key any #[TsCasts] retypes */
@@ -111,62 +111,62 @@ class ResourceTransformer extends CoreTransformer
     /**
      * Property => enum info for EnumResource::make()/::collection() properties.
      *
-     * @var array<string, EnumResourcePropertyInfo>
+     * @var array<array-key, EnumResourcePropertyInfo>
      */
     protected array $enumResourceProperties = [];
 
     /** @var array<class-string, string> FQCN => model interface name */
     protected array $modelFqcnMap = [];
 
-    /** @var array<string, class-string> property name => model FQCN (from bare whenLoaded) */
+    /** @var array<array-key, class-string> property name => model FQCN (from bare whenLoaded) */
     protected array $propertyModelFqcns = [];
 
-    /** @var array<string, list<class-string>> property name => list of model FQCNs for union accessor types */
+    /** @var array<array-key, list<class-string>> property name => list of model FQCNs for union accessor types */
     protected array $propertyModelFqcnsList = [];
 
-    /** @var array<string, list<class-string>> property name => list of enum FQCNs for union enum accessor types */
+    /** @var array<array-key, list<class-string>> property name => list of enum FQCNs for union enum accessor types */
     protected array $propertyEnumFqcnsList = [];
 
-    /** @var array<string, list<class-string>> property name => enum FQCNs embedded in inline object type strings */
+    /** @var array<array-key, list<class-string>> property name => enum FQCNs embedded in inline object type strings */
     protected array $propertyInlineEnumFqcns = [];
 
-    /** @var array<string, list<class-string>> property name => model FQCNs embedded in inline object type strings */
+    /** @var array<array-key, list<class-string>> property name => model FQCNs embedded in inline object type strings */
     protected array $propertyInlineModelFqcns = [];
 
     /**
      * Property name => the resource FQCN behind each resource token, in type order.
      *
-     * @var array<string, list<class-string>>
+     * @var array<array-key, list<class-string>>
      */
     protected array $propertyInlineResourceFqcns = [];
 
-    /** @var array<string, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
+    /** @var array<array-key, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
     protected array $propertyInlineEnumResourceFqcns = [];
 
-    /** @var array<string, class-string> property name => resource FQCN (from nested resources) */
+    /** @var array<array-key, class-string> property name => resource FQCN (from nested resources) */
     protected array $propertyResourceFqcns = [];
 
-    /** @var array<string, class-string> property name => enum FQCN (from direct enum access) */
+    /** @var array<array-key, class-string> property name => enum FQCN (from direct enum access) */
     protected array $propertyEnumFqcns = [];
 
     /**
      * Enum FQCNs reachable without an EnumResource wrap, in two entry kinds sharing one map.
      *
-     * @var array<string, class-string> property name => FQCN for a ternary/union direct-access branch;
-     *                                  FQCN => FQCN for an embedded enum from dispatchFqcnResults()
+     * @var array<array-key, class-string> property name => FQCN for a ternary/union direct-access branch;
+     *                                     FQCN => FQCN for an embedded enum from dispatchFqcnResults()
      */
     protected array $directEnumProperties = [];
 
-    /** @var array<string, list<class-string>> property name => ordered list of enum FQCNs for ternary/union where ALL non-null branches are EnumResource calls with different FQCNs */
+    /** @var array<array-key, list<class-string>> property name => ordered list of enum FQCNs for ternary/union where ALL non-null branches are EnumResource calls with different FQCNs */
     protected array $multiEnumResourceProperties = [];
 
-    /** @var array<string, string> property name => TS type override from model's #[TsCasts] */
+    /** @var array<array-key, string> property name => TS type override from model's #[TsCasts] */
     protected array $modelTsCastsOverrides = [];
 
-    /** @var array<string, string> property name => import path from model's #[TsCasts] */
+    /** @var array<array-key, string> property name => import path from model's #[TsCasts] */
     protected array $modelTsCastsImportPaths = [];
 
-    /** @var array<string, bool> property name => optional flag from model's #[TsCasts] */
+    /** @var array<array-key, bool> property name => optional flag from model's #[TsCasts] */
     protected array $modelTsCastsOptionalOverrides = [];
 
     /** @var list<string> TypeScript extends clauses */
@@ -439,7 +439,7 @@ class ResourceTransformer extends CoreTransformer
      * The keys applyOverrides() will publish over the analysis: every resource #[TsCasts] key, and each model one
      * modelCastsOver() lays over the analysis's keys.
      *
-     * @return array<string, string>
+     * @return array<array-key, string>
      */
     protected function castKeys(MethodAnalysis $analysis): array
     {
@@ -450,7 +450,7 @@ class ResourceTransformer extends CoreTransformer
      * The cast in force for every key a cast retypes, with the text it publishes and the path of its own import:
      * the resource's class-level cast, else the last method cast the analysis reports, else the model's.
      *
-     * @param  array<string, string>  $castKeys  castKeys()'s resource casts, and model casts over keys no method casts
+     * @param  array<array-key, string>  $castKeys  resource casts, and model casts over keys no method casts
      * @return CastMap
      */
     protected function collectCastsInForce(array $castKeys, MethodAnalysis $analysis): array
@@ -536,7 +536,7 @@ class ResourceTransformer extends CoreTransformer
      * the class or on one of its methods.
      *
      * @param  array<array-key, mixed>  $keys  the analysis's keys, as array keys
-     * @return array<string, string>
+     * @return array<array-key, string>
      */
     protected function modelCastsOver(array $keys): array
     {
@@ -1245,11 +1245,11 @@ class ResourceTransformer extends CoreTransformer
      * FQCN queue: a property in more than one map gets each map's entries concatenated, so its length can
      * exceed real occurrences; aliasPropertyType() consumes only the matching prefix — never dedupe it.
      *
-     * @return array<string, list<class-string>>
+     * @return array<array-key, list<class-string>>
      */
     protected function mergePropertyFqcnMaps(): array
     {
-        /** @var array<string, list<class-string>> $merged */
+        /** @var array<array-key, list<class-string>> $merged */
         $merged = [];
 
         foreach ([$this->propertyEnumFqcns, $this->propertyResourceFqcns, $this->propertyModelFqcns] as $map) {

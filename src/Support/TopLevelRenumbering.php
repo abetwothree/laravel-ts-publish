@@ -36,9 +36,9 @@ final class TopLevelRenumbering
      *
      * @template TValue
      *
-     * @param  array<string, TValue>  $map
+     * @param  array<array-key, TValue>  $map
      * @param  array<string, string>  $renumbered
-     * @return array<string, TValue>
+     * @return array<array-key, TValue>
      */
     public static function rekey(array $map, array $renumbered): array
     {
