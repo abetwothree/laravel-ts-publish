@@ -27,15 +27,23 @@ import subprocess
 import sys
 
 ROOT = "workbench/resources/js/types/data"
-PROP = re.compile(r"^\s*([A-Za-z_$][\w$]*)\??:\s*(.+?);\s*$")
-ALIAS = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_$][\w$]*)\s*=\s*(.+?);\s*$")
-MEMBER = re.compile(r"^([A-Za-z_$][\w$]*)\??:\s*(.+)$")
+# A property name is an identifier or a quoted key (`"42"`, `'tags.*'`); the quotes are not part of the name.
+NAME = r"""(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<name>[A-Za-z_$][\w$]*))"""
+PROP = re.compile(rf"^\s*{NAME}\??:\s*(?P<value>.+?);\s*$")
+ALIAS = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<value>.+?);\s*$")
+MEMBER = re.compile(rf"^{NAME}\??:\s*(?P<value>.+)$")
 BLOCK = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(interface|namespace|module)\s+([^\s{]+)")
 OPENERS, CLOSERS = "{[(<", "}])>"
 
 
 def git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+
+
+def name_of(match: re.Match) -> str:
+    """The property name a PROP, ALIAS or MEMBER match spells, without its quotes."""
+    groups = match.groupdict()
+    return groups.get("dq") or groups.get("sq") or groups["name"]
 
 
 def scan_objects(value: str) -> list[tuple[int, int]]:
@@ -102,7 +110,7 @@ def expand(name: str, value: str) -> dict[str, str]:
         for part in split_members(value[s + 1:e]):
             member = MEMBER.match(part)
             if member:
-                out.update(expand(f"{prefix}.{member.group(1)}", member.group(2)))
+                out.update(expand(f"{prefix}.{name_of(member)}", member.group("value")))
     return out
 
 
@@ -120,7 +128,7 @@ def parse_source(body: str) -> dict[tuple[str, str], str]:
             match = PROP.match(raw) or ALIAS.match(raw)
             if match:
                 scope = ".".join(n for n, _ in stack) or "<root>"
-                for key, val in expand(match.group(1), match.group(2)).items():
+                for key, val in expand(name_of(match), match.group("value")).items():
                     out[(scope, key)] = val
         opens = line.count("{")
         # Push only once the brace is seen: this repo puts `interface Foo` and `{` on separate
@@ -215,6 +223,16 @@ PARSE_CASES = [
             ("<root>", "variants[0].name"): "string",
             ("<root>", "variants[1].email"): "string",
         },
+    ),
+    (
+        "quoted property names, either quote (store-post-request.ts:11)",
+        "export interface A {\n    'tags.*': string[];\n    \"42\"?: string;\n}\n",
+        {("A", "tags.*"): "string[]", ("A", "42"): "string"},
+    ),
+    (
+        "quoted inline object member",
+        "    labelled: { name: string; \"42\": boolean };",
+        {("<root>", "labelled.name"): "string", ("<root>", "labelled.42"): "boolean"},
     ),
 ]
 

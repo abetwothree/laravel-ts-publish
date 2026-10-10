@@ -46,8 +46,9 @@ first 40 regressed properties with their base and head types.
 ### How properties are keyed
 
 A key is the file, the enclosing interface or namespace path, and the property name, so `Invoice.status` and
-`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. Single-line
-`type X = …;` aliases are keyed like properties, including one inside `declare global`.
+`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. A quoted name,
+`"42"` or `'tags.*'`, is keyed by its text without the quotes. Single-line `type X = …;` aliases are keyed like
+properties, including one inside `declare global`.
 
 An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
 `prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
@@ -329,3 +330,5 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
   is accepted. Do not fix it with content-hashed arm keys.
+- **A sibling whose quoted name holds a `.` or `[`**: `'tags.*'` reads as a member of `tags`, so `detect_regressions()`
+  skips `tags`'s own key whenever `'tags.*'` existed at the base.
