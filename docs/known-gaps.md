@@ -492,10 +492,11 @@ otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep thei
 and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
 known statically. Use a string key.
 
-### An Inertia page or `broadcastWith()` payload whose top-level keys are all int publishes an object
+### A `broadcastWith()` payload whose top-level keys are all int publishes an object
 
-The page or payload is sent as a JSON list where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) and as an
-object on Redis and Ably, yet publishes `{ "0": … }`.
+Where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) the payload is sent as a JSON list, and as an object
+on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int: `Middleware::share()` always adds
+`errors`. Use a string key.
 
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 

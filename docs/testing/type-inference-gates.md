@@ -328,5 +328,7 @@ The gates miss these cases:
 - **An object that already holds an `unknown` member**: `detect_regressions()` tests the base side with
   `"unknown" not in b[k]` on the parent's whole rendered value, so one `unknown` member disarms the parent key, and
   when the object then collapses to `unknown` no member key is left to match.
+- **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
+  sibling among `x`'s members, so a regression of `x` itself can still be masked.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
   is accepted. Do not fix it with content-hashed arm keys.
