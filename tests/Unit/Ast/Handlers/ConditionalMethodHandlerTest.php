@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
@@ -833,6 +834,7 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
     'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
+    'when(), a Collection, which json_encode() writes as its items' => ['$this->when($this->rating, 1, fn ($d = new \\Illuminate\\Support\\Collection(["z"])) => $d)', 'number | string[]'],
 ]);
 
 // A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth:
@@ -871,7 +873,7 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
     'a global constant and an enum ->value in a list' => ['[PHP_INT_MAX, \\Workbench\\App\\Enums\\Status::Published->value]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
-    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
+    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a ?string serialization returning null' => ['new \\'.NullableStringJson::class.'()', 'string | null'],
     'a ?string serialization returning a string' => ['new \\'.NullableStringJson::class.'("x")', 'string | null'],
     '__TRAIT__ as a key, whose value depends on where it appears' => ['[__TRAIT__ => 1]', 'unknown'],

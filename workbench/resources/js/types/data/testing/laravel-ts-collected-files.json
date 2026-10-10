@@ -242,6 +242,7 @@
     "app\/Http\/Resources\/PostEnumCaseResource.php",
     "app\/Http\/Resources\/PostEnumTrioResource.php",
     "app\/Http\/Resources\/PostFlatCollection.php",
+    "app\/Http\/Resources\/PostNewValueResource.php",
     "app\/Http\/Resources\/PostNullWrapResource.php",
     "app\/Http\/Resources\/PostPinnedCommentsResource.php",
     "app\/Http\/Resources\/PostResource.php",

@@ -13,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use BackedEnum;
 use DateTimeInterface;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node\Expr;
@@ -219,12 +221,37 @@ final class ValueResolver
     }
 
     /**
+     * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
+     *
+     * A model and an Arrayable decline: a fresh model holds no attributes yet, and an Arrayable sends its public
+     * properties from a resource but its toArray() from Inertia.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveSerializedNew(New_ $new): ?array
+    {
+        $string = $this->resolveStringSerializedNew($new);
+
+        if ($string !== null || ! $new->class instanceof Name) {
+            return $string;
+        }
+
+        $class = $new->class->toString();
+
+        if (! class_exists($class) || is_a($class, Model::class, true) || is_a($class, Arrayable::class, true)) {
+            return null;
+        }
+
+        return resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class));
+    }
+
+    /**
      * Type `new X(...)` by the string json_encode() writes X as, whatever TS name the package publishes X under:
      * `string`, or `string | null` for a nullable one; null for any other class. A date takes `toTsType()`'s type.
      *
      * @return ValueExpressionResult|null
      */
-    public function resolveStringSerializedNew(New_ $new): ?array
+    private function resolveStringSerializedNew(New_ $new): ?array
     {
         if (! $new->class instanceof Name) {
             return null;

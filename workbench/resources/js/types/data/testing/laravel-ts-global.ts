@@ -4328,6 +4328,22 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /** A `new` of a class that is not a resource, in place and as a parameter default. */
+        export interface PostNewValueResource {
+            error: Record<string, never>;
+            markup: Record<string, never>;
+            opened: { date: string; timezone_type: number; timezone: string };
+            opened_immutable: { date: string; timezone_type: number; timezone: string };
+            stamped: string;
+            dock: string;
+            reading: { date: string; timezone_type: number; timezone: string };
+            reading_returned: { date: string; timezone_type: number; timezone: string };
+            error_default?: Record<string, never>;
+            opened_default?: { date: string; timezone_type: number; timezone: string };
+            stamped_default?: string;
+            dock_default?: string;
+            reading_default?: { date: string; timezone_type: number; timezone: string };
+        }
         /** Resources built around a payload that is only null, which JsonResource::filter() sends as null. */
         export interface PostNullWrapResource {
             null_new: null;

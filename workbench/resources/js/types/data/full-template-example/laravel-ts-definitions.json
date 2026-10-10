@@ -16080,6 +16080,76 @@
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
         },
+        "Workbench\\App\\Http\\Resources\\PostNewValueResource": {
+            "name": "PostNewValueResource",
+            "properties": [
+                {
+                    "name": "error",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "markup",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "opened",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "opened_immutable",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "dock",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "reading",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_returned",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "error_default",
+                    "type": "Record<string, never>",
+                    "optional": true
+                },
+                {
+                    "name": "opened_default",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": true
+                },
+                {
+                    "name": "stamped_default",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "dock_default",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "reading_default",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostNullWrapResource": {
             "name": "PostNullWrapResource",
             "properties": [

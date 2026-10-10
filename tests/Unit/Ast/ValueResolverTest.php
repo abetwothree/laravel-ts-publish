@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonDate;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
@@ -12,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StringJsonArrayable;
 use Carbon\Carbon as CarbonCarbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Fluent;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Stringable;
 use PhpParser\ConstExprEvaluationException;
@@ -25,6 +28,11 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\ClassConstantResource;
 use Workbench\App\Models\User;
 use Workbench\App\Services\ChannelDefaults;
+use Workbench\App\ValueObjects\ArrayableData;
+use Workbench\App\ValueObjects\Coordinate;
+use Workbench\App\ValueObjects\Money;
+use Workbench\App\ValueObjects\OpaqueHandle;
+use Workbench\App\ValueObjects\StampedDate;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
@@ -275,29 +283,37 @@ it('keeps one element per enum in a constant list of two enums that share a name
         ->toBe(['type' => 'StatusType[]', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]);
 });
 
-it('types a new default as string only when the class publishes and encodes as one', function (string $class, ?string $type) {
-    $new = new New_(new Name($class));
-
-    expect(new ValueResolver()->resolveStringSerializedNew($new)['type'] ?? null)->toBe($type);
+it('types a new of a class that is not a resource as json_encode() writes it', function (string $class, ?string $type) {
+    expect(new ValueResolver()->resolveSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe($type);
 })->with([
+    'an exception, which json_encode() writes as {}' => [RuntimeException::class, 'Record<string, never>'],
+    'a __toString() class json_encode() writes as {}' => [HtmlString::class, 'Record<string, never>'],
+    'a DateTime, which json_encode() writes as an object' => [DateTime::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
+    'a DateTimeImmutable' => [DateTimeImmutable::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a Carbon date' => [Carbon::class, 'string'],
-    'a DateTime, published as string but written by json_encode() as an object' => [DateTime::class, null],
-    'a model' => [User::class, null],
-    'a class that is not a string' => [stdClass::class, null],
-    'a __toString() class json_encode() writes as an object' => [HtmlString::class, null],
     'a Stringable, which json_encode() writes as a string' => [Stringable::class, 'string'],
-    'a DateTime whose jsonSerialize() returns an array' => [ArrayJsonDate::class, null],
-    'a Carbon date whose jsonSerialize() override returns an array' => [ArrayJsonCarbon::class, null],
     'an Arrayable whose jsonSerialize() returns a string, which json_encode() prefers' => [StringJsonArrayable::class, 'string'],
     'a ?string jsonSerialize()' => [NullableStringJson::class, 'string | null'],
+    'a DateTime whose jsonSerialize() returns an array' => [ArrayJsonDate::class, '{ date: string }'],
+    'a Carbon date whose jsonSerialize() override returns an array' => [ArrayJsonCarbon::class, '{ iso: string }'],
+    'a plain class with typed public properties' => [Coordinate::class, '{ lat: number; lng: number }'],
+    'a Carbon subclass whose mixed jsonSerialize() says string' => [StampedDate::class, 'string'],
+    'a model, which a fresh instance writes as no attributes' => [User::class, null],
+    'a class json_encode() writes as {} with no __toString()' => [stdClass::class, null],
+    'an Arrayable, whose JSON depends on who serializes it' => [ArrayableData::class, null],
+    'an Arrayable with a toArray() shape' => [Money::class, null],
+    'a Collection, an Arrayable' => [Collection::class, null],
+    'a Fluent, an Arrayable' => [Fluent::class, null],
+    'a class toTsType() leaves as its token' => [OpaqueHandle::class, null],
 ]);
 
 it('types a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {
     config()->set('ts-publish.timestamps_as_date', true);
 
-    expect(new ValueResolver()->resolveStringSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('Date');
+    expect(new ValueResolver()->resolveSerializedNew(new New_(new Name($class)))['type'] ?? null)->toBe('Date');
 })->with([
     'Illuminate\\Support\\Carbon' => [Carbon::class],
     'Carbon\\Carbon' => [CarbonCarbon::class],
     'Carbon\\CarbonImmutable' => [CarbonImmutable::class],
+    'a Carbon subclass whose mixed jsonSerialize() says string' => [StampedDate::class],
 ]);

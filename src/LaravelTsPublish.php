@@ -358,12 +358,12 @@ class LaravelTsPublish
         }
 
         // 5b. A class json_encode() writes as a string, `string` or `string | null`, as jsonSerialize() declares it or
-        //     a `mixed` one's `@return` says; never by __toString(), which json_encode() never calls. A date, such as
-        //     CarbonInterface or a Carbon subclass, follows Carbon's own date-map entry.
-        $jsonString = StringSerialization::jsonStringType($phpType) ?? $this->docblockJsonStringType($phpType);
+        //     a `mixed` one's `@return` says, which may name PHP's date object instead; never by __toString(). A date
+        //     writing a string, such as CarbonInterface or a Carbon subclass, follows Carbon's own date-map entry.
+        $jsonString = StringSerialization::jsonStringType($phpType) ?? $this->docblockJsonSerializeType($phpType);
 
         if ($jsonString !== null) {
-            $result['type'] = is_a($phpType, DateTimeInterface::class, true)
+            $result['type'] = is_a($phpType, DateTimeInterface::class, true) && ! str_contains($jsonString, self::DATE_TIME_OBJECT_TYPE)
                 ? $this->carbonDateType().(str_ends_with($jsonString, ' | null') ? ' | null' : '')
                 : $jsonString;
 
@@ -539,11 +539,12 @@ class LaravelTsPublish
     }
 
     /**
-     * The string json_encode() writes for a jsonSerialize() declaring `mixed` or nothing, as its `@return` says.
+     * What json_encode() writes for a jsonSerialize() declaring `mixed` or nothing, as its `@return` says.
      *
-     * Only `string` or a Carbon date counts, with or without `null`; anything else, or no `@return`, answers null.
+     * Only `string`, a Carbon date or PHP's date object counts, with or without `null`; anything else, or no
+     * `@return`, answers null.
      */
-    protected function docblockJsonStringType(string $phpType): ?string
+    protected function docblockJsonSerializeType(string $phpType): ?string
     {
         if (! is_a($phpType, JsonSerializable::class, true) || is_a($phpType, Model::class, true)) {
             return null;
@@ -557,13 +558,13 @@ class LaravelTsPublish
         }
 
         $arms = TsTypeString::splitTopLevelUnion($this->docblockReturnTypes($method)['type']);
-        $strings = array_values(array_diff($arms, ['null']));
+        $written = array_values(array_diff($arms, ['null']));
 
-        if ($strings === [] || array_diff($strings, ['string', $this->carbonDateType()]) !== []) {
+        if ($written === [] || array_diff($written, ['string', $this->carbonDateType(), self::DATE_TIME_OBJECT_TYPE]) !== []) {
             return null;
         }
 
-        return implode(' | ', $strings).(in_array('null', $arms, true) ? ' | null' : '');
+        return implode(' | ', $written).(in_array('null', $arms, true) ? ' | null' : '');
     }
 
     /**

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -422,10 +423,15 @@ final class AnalysisScope
                 return ['type' => $default instanceof Line ? 'number' : 'string', 'optional' => false];
             }
 
-            $stringDefault = $default instanceof New_ ? $resolver->resolveStringSerializedNew($default) : null;
+            $newDefault = $default instanceof New_ ? $resolver->resolveSerializedNew($default) : null;
 
-            if ($stringDefault !== null) {
-                return $stringDefault;
+            if ($newDefault !== null) {
+                return $newDefault;
+            }
+
+            // `new Collection([...])` types as collect([...]) does, which reads its own list: it skips the check below.
+            if ($default instanceof New_ && NewResourceHandler::collectCall($default) !== null) {
+                return $engine->resolve($default);
             }
 
             // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`,

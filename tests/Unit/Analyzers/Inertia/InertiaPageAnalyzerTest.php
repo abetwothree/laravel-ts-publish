@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
@@ -614,11 +615,11 @@ it('quotes a page prop key that is not an identifier', function () {
         ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
 });
 
-it('types a bare enum case prop as its enum, and imports it once', function () {
+it('types a bare enum case prop as its enum, and imports it once, beside a new value', function () {
     $data = pageData(InertiaEnumCaseController::class.'@show');
 
     expect($data['pageType'])
-        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[] }')
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
         ->and($data['classFqcns'])->toBe([Status::class]);
 });
 

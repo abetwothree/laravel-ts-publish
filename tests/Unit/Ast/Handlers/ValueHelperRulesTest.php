@@ -58,6 +58,20 @@ it('marks every collect() value as a Collection\'s, whose keys a resource never 
     'a record expression' => ['collect(["title" => $this->title])'],
 ]);
 
+it('types new Collection($items) as collect($items), keys kept', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['keepsKeys'] ?? false)->toBe($type !== 'unknown');
+})->with([
+    'a list' => ['new \\Illuminate\\Support\\Collection(["z"])', 'string[]'],
+    'a record keyed by numbers' => ['new \\Illuminate\\Support\\Collection([200 => "OK"])', '{ "200": string }'],
+    'a named argument' => ['new \\Illuminate\\Support\\Collection(items: [1])', 'number[]'],
+    'no argument' => ['new \\Illuminate\\Support\\Collection()', 'unknown'],
+    'a spread' => ['new \\Illuminate\\Support\\Collection(...$this->tags)', 'unknown'],
+]);
+
 it('leaves the value helpers it cannot type, and __(), to unknown', function (string $php) {
     expect(valueHelperRuleType($php))->toBe('unknown');
 })->with([

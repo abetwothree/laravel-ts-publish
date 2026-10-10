@@ -16,13 +16,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Collection;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
 use ReflectionClass;
 
 /**
- * `new SomeResource(...)`, `new EnumResource($this->prop)`, and `new SomeCollection($this->items)`.
+ * `new SomeResource(...)`, `new EnumResource($this->prop)`, `new SomeCollection($this->items)`,
+ * `new Collection($items)` and a `new` of any other class.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -35,6 +39,23 @@ final class NewResourceHandler implements ExpressionHandler
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
+
+    /**
+     * The `collect($items)` call `new Collection($items)` encodes as, or null for any other `new`.
+     */
+    public static function collectCall(New_ $new): ?FuncCall
+    {
+        if (! $new->class instanceof Name || $new->class->toString() !== Collection::class || count($new->args) !== 1) {
+            return null;
+        }
+
+        $arg = $new->args[0];
+
+        // Passed by position: a named argument is `items:` here, but `value:` to collect().
+        return $arg instanceof Arg && ! $arg->unpack
+            ? new FuncCall(new Name('collect'), [new Arg($arg->value)], $new->getAttributes())
+            : null;
+    }
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -100,9 +121,15 @@ final class NewResourceHandler implements ExpressionHandler
             }
         }
 
-        // Any other class reaches JSON as whatever json_encode() writes, and only a string is typed in place.
+        $collect = self::collectCall($expr);
+
+        if ($collect !== null) {
+            return $engine->resolve($collect);
+        }
+
+        // Any other class reaches JSON as whatever json_encode() writes for it.
         if (! $this->isResourceClass($className)) {
-            return resolve(ValueResolver::class)->resolveStringSerializedNew($expr) ?? $result;
+            return resolve(ValueResolver::class)->resolveSerializedNew($expr) ?? $result;
         }
 
         $type = $this->resourceWrapType($expr, $className, TsNaming::resourceTypeName($className), $scope, $engine);

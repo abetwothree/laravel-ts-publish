@@ -406,7 +406,15 @@ publishes `unknown`, a class that allows dynamic properties or extends `ArrayObj
 `Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
 `@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
 `SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says
-what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`.
+what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`, and
+`@return \DateTime` publishes PHP's date object.
+
+### A `new` of an `Arrayable` class, a model or a class with no public property publishes `unknown`
+
+What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: an API resource or a
+broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). `new Collection($items)`
+is the exception, typed as `collect($items)` is. A fresh model, and a class `json_encode()` writes as `{}` with no
+`__toString()`, such as `stdClass`, publish `unknown` too. Type such a key with `#[TsCasts]`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
