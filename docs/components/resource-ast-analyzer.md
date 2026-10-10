@@ -560,9 +560,9 @@ beside a signature are all known:
   `#[TsExtends]` or a `ts_extends.*` config entry. `InertiaPageAnalyzer::buildPageData()` and
   `InertiaSharedDataAnalyzer::buildResult()` pass their casts. A publisher that adds or retypes keys after analysis
   must pass them. The reconcile ignores a cast key's FQCN channels, since the cast type is what publishes. After the
-  reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` keeps
-  them while the cast holds the enum's type name, so `rewriteEnumResourceTypes()` still rewrites a cast `EnumResource`
-  key, and making it drop them like the others would stop that rewrite.
+  reconcile, `BroadcastEventTransformer` and both Inertia analyzers drop those channels. `ResourceTransformer` fits
+  them to the cast's text through `CastChannels::fit()`; see
+  [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
 an earlier one, and a cast key counts with its cast type. Every entry of a signature's own name counts. The pattern is
@@ -642,18 +642,18 @@ Its import clean-up compares values, so it is right for both kinds.
 steps depend on it:
 
 - **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
-  holds none of the enums' type names, and runs before `pruneOverriddenEnumImports()`, which removes the names it reads.
-  `rewriteEnumResourceTypes()` removes a dropped enum's type import only where two enums share its type name and no key
-  reads it bare, since `pruneOverriddenEnumImports()` cannot tell the two apart. `pruneOverriddenAnalysisImports()` and
+  holds none of the enums' type names, as a later spread's key leaves them, and runs before
+  `pruneOverriddenEnumImports()`, which removes the names it reads. `pruneOverriddenAnalysisImports()` and
   `pruneOverriddenEnumImports()` drop each model, `#[TsType]` and enum type import that no property type or extends
-  clause still spells. The model prune reads class basenames before aliasing, so two same-basename models both stay
-  imported while either is spelled, and one can stay imported unused under its alias.
+  clause still spells. Both read names before aliasing, so two same-basename models both stay imported up to
+  aliasing while either is spelled, and the alias can outlive the collision. After the `AsEnum` rewrite,
+  `pruneUnspelledImports()` drops each enum, model, resource and custom import whose local name no type still spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
   analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
   every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and
   `resolveMultiEnumAccessorFqcns()` import them back by the key's name, which is the attribute's own. A class or a
-  `#[TsType]` import comes back only while the key's type spells it. The `Stockroom` and `Bulletin` resources pin
-  these reads.
+  `#[TsType]` import comes back only while the key's type spells it, and for a cast key only a class its text spells
+  and its import does not bring. The `Stockroom` and `Bulletin` resources pin these reads.
 
 The token test matches a name wherever it stands, inside a string or a comment too, so it can keep an import that ends
 up unused; see
@@ -778,6 +778,7 @@ These pages own the rules this page links to:
   `except()`, and the body fallback.
 - [Model attribute resolver](model-attribute-resolver.md), [accessor body analyzer](accessor-body-analyzer.md),
   [import name registry](import-name-registry.md) and [support helpers](support-helpers.md).
+- [`#[TsCasts]` overrides](ts-casts.md): cast precedence, the final-text rule and the imports a cast keeps.
 - [Type-inference gates](../testing/type-inference-gates.md): the CI checks for a type regressing to `unknown` and for
   a token emitted without its import.
 

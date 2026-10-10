@@ -1027,16 +1027,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     ];
                 }
 
-                // An import makes the text the app's own, which no queue may alias; a cast without one, here or in a
-                // later method, spells the package's names and is aliased as before.
-                if (is_array($value) && isset($value['import'])) {
-                    $analysis->importedCastKeys[$property] = true;
+                // The publisher fits the key's import channels to this text once it knows which cast is in force.
+                $analysis->casts[$property] = ['type' => $type, 'import' => is_array($value) && isset($value['import'])];
 
+                if (is_array($value) && isset($value['import'])) {
                     foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                         $analysis->customImports[$value['import']][] = $importName;
                     }
-                } else {
-                    unset($analysis->importedCastKeys[$property]);
                 }
             }
         }
@@ -1256,7 +1253,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
             inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
             enumResourceArmShapes: $channels->enumResourceArmShapes,
-            importedCastKeys: $channels->importedCastKeys,
+            casts: $channels->casts,
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );

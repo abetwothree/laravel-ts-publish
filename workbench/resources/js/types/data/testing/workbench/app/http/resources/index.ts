@@ -131,6 +131,7 @@ export * from './post-enum-trio-resource';
 export * from './post-flat-collection';
 export * from './post-pinned-comments-resource';
 export * from './post-resource';
+export * from './post-spelled-cast-resource';
 export * from './post-spotlight-resource';
 export * from './post-state-cast-resource';
 export * from './post-state-resource';

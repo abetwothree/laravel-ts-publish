@@ -62,7 +62,8 @@ only in a type position, so every value-position caller must leave the default a
 
 `retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
-broadcast-event and Inertia paths call them before any cast lookup.
+broadcast-event and Inertia paths call them before any cast lookup. What a matched cast then does to the key is in
+[`#[TsCasts]` overrides](ts-casts.md).
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`

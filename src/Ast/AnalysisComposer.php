@@ -65,6 +65,8 @@ final class AnalysisComposer
     {
         $this->namespacePath = $fromNamespacePath;
 
+        // No publisher lays another cast over this one, so a method's own cast is the one in force.
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
         $this->collectProperties($analysis);
         $this->collectNameMaps($analysis);
         $this->propertyFqcnQueues = $this->buildPropertyFqcnQueues($analysis);
@@ -425,8 +427,7 @@ final class AnalysisComposer
             }
         }
 
-        // A cast that brings its own import is the app's own text: no queue of the value it replaced may alias it.
-        return array_diff_key($queues, $analysis->importedCastKeys);
+        return $queues;
     }
 
     /**

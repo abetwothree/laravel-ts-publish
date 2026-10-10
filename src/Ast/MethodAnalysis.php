@@ -23,7 +23,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
- * @phpstan-type ImportedCastKeyMap = array<string, true>
+ * @phpstan-type CastInForce = array{type: string, import: bool}
+ * @phpstan-type CastMap = array<string, CastInForce>
  * @phpstan-type AnalyzedProperty = array{
  *     name: string,
  *     type: string,
@@ -55,8 +56,8 @@ class MethodAnalysis
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
      *                                                          for a mixed EnumResource/direct-access ternary or match
-     * @param  ImportedCastKeyMap  $importedCastKeys  property name => true, for a key whose method-level #[TsCasts]
-     *                                                entry brings its own import: that text is the app's own
+     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, and whether
+     *                          it brings its own import; a publisher fits the key's import channels to that text
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */
@@ -73,7 +74,7 @@ class MethodAnalysis
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
         public array $enumResourceArmShapes = [],
-        public array $importedCastKeys = [],
+        public array $casts = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -129,7 +130,7 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps spread-merge with the source winning on
+     * `properties` appends; the single-value class maps and `casts` spread-merge with the source winning on
      * collision. `inlineModelFqcns`, `inlineResourceFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append
      * WITHOUT deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
      */
@@ -142,7 +143,7 @@ class MethodAnalysis
         $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
         $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
         $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
-        $this->importedCastKeys = [...$this->importedCastKeys, ...$source->importedCastKeys];
+        $this->casts = [...$this->casts, ...$source->casts];
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
@@ -179,9 +180,9 @@ class MethodAnalysis
     }
 
     /**
-     * Forget every channel entry and cast mark keyed by this property name, when another value takes the key over: an
-     * entry left behind would alias the new type by the old one's classes, or keep an import nothing spells, and a
-     * mark would keep the new type from being aliased.
+     * Forget every import channel entry and cast entry keyed by this property name, when another value takes the key
+     * over: an import channel entry left behind would alias the new type by the old one's classes or keep an import
+     * nothing spells, and a cast entry would fit the new value to a text the key no longer publishes.
      */
     public function forgetChannels(string $name): void
     {
@@ -189,7 +190,7 @@ class MethodAnalysis
             $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->importedCastKeys[$name],
+            $this->enumResourceArmShapes[$name], $this->casts[$name],
         );
     }
 }

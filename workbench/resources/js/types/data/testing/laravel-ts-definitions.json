@@ -15592,6 +15592,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostSpelledCastResource": {
+            "name": "PostSpelledCastResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "VisibilityType",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "StatusType | VisibilityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "StatusType | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostSpotlightResource": {
             "name": "PostSpotlightResource",
             "properties": [

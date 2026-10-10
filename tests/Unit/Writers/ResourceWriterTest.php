@@ -310,8 +310,9 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
     ],
 ]);
 
-// A cast that holds the enum's type name is still rewritten to its wrap, and a key beside a cast key keeps its wrap.
-test('still rewrites a cast holding the enum\'s type, and wraps a key beside one', function (string $resource, array $lines) {
+// A cast that holds the enum's type name publishes as written and imports that type, and a key beside a cast key
+// keeps its wrap.
+test('publishes a cast holding the enum\'s type as written, and wraps a key beside one', function (string $resource, array $lines) {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.use_tolki_package', true);
 
@@ -322,9 +323,8 @@ test('still rewrites a cast holding the enum\'s type, and wraps a key beside one
     'a cast that spells the enum\'s type' => [
         EnumResourceCastSpellsEnumResource::class,
         [
-            "import { type AsEnum } from '@tolki/ts';",
-            "import { Visibility } from '../../../../workbench/app/enums';",
-            '    k: AsEnum<typeof Visibility> | null;',
+            "import type { VisibilityType } from '../../../../workbench/app/enums';",
+            '    k: VisibilityType | null;',
         ],
     ],
     'a wrap of the same enum beside the cast key' => [

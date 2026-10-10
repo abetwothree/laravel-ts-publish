@@ -109,19 +109,24 @@ it('appends inlineResourceFqcns per property WITHOUT deduping, same as inlineMod
     expect($target->inlineResourceFqcns)->toBe(['reviewable' => [$crm, $app, $crm], 'owner' => [$app]]);
 });
 
-it('unions importedCastKeys across a merge', function () {
-    $target = new MethodAnalysis(importedCastKeys: ['reviewable' => true]);
-    $target->merge(new MethodAnalysis(importedCastKeys: ['reviewable' => true, 'owner' => true]));
+// A later spread's cast is the one the key publishes, so its entry wins, with or without an import.
+it('merges casts with the source winning for a key both cast', function () {
+    $target = new MethodAnalysis(casts: ['k' => ['type' => 'A', 'import' => true], 'kept' => ['type' => 'K', 'import' => true]]);
+    $target->merge(new MethodAnalysis(casts: ['k' => ['type' => 'B', 'import' => false], 'owner' => ['type' => 'D', 'import' => true]]));
 
-    expect($target->importedCastKeys)->toBe(['reviewable' => true, 'owner' => true]);
+    expect($target->casts)->toBe([
+        'k' => ['type' => 'B', 'import' => false],
+        'kept' => ['type' => 'K', 'import' => true],
+        'owner' => ['type' => 'D', 'import' => true],
+    ]);
 });
 
 it('forgets the cast mark of a key another value took over, and no other key\'s', function () {
-    $analysis = new MethodAnalysis(importedCastKeys: ['taken_over' => true, 'kept' => true]);
+    $analysis = new MethodAnalysis(casts: ['taken_over' => ['type' => 'A', 'import' => true], 'kept' => ['type' => 'B', 'import' => false]]);
 
     $analysis->forgetChannels('taken_over');
 
-    expect($analysis->importedCastKeys)->toBe(['kept' => true]);
+    expect($analysis->casts)->toBe(['kept' => ['type' => 'B', 'import' => false]]);
 });
 
 it('forgets every channel keyed by a property another value took over, and nothing keyed by another', function () {

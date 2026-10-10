@@ -4205,6 +4205,17 @@ declare global {
             category_table_name?: string | null;
         }
         /**
+         * Lays a cast that spells an enum's own type over each key that holds an enum resource: each key publishes its cast
+         * and imports the enum types it spells, never the `AsEnum` wrap.
+         */
+        export interface PostSpelledCastResource {
+            id: number;
+            status: app.enums.StatusType;
+            visibility: app.enums.VisibilityType;
+            either: app.enums.StatusType | app.enums.VisibilityType | null;
+            mixed: app.enums.StatusType | null;
+        }
+        /**
          * Reads a single-model accessor inside an inline member and under a key that differs from the
          * accessor name, so neither the top-level fallback nor the inline import gatherer rescues it.
          */
