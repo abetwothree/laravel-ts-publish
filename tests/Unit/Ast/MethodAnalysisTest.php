@@ -232,6 +232,25 @@ it('merges properties without letting the source flat-type alias overwrite the t
         ->and($target->flatTypeAliasFqcn)->toBe('App\\Foo');
 });
 
+it('rewrites each property\'s type, body type and fill, except a key a cast holds and a value that keeps its keys', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'a', 'type' => 'A', 'optional' => false, 'description' => '', 'bodyType' => 'B', 'fillType' => 'F'],
+            ['name' => '42', 'type' => 'A', 'optional' => false, 'description' => ''],
+            ['name' => 'kept', 'type' => 'A', 'optional' => false, 'description' => '', 'keepsKeys' => true],
+        ],
+        casts: [42 => ['type' => 'A', 'import' => null]],
+    );
+
+    $analysis->rewritePropertyTypes(strtolower(...));
+
+    expect($analysis->properties)->toBe([
+        ['name' => 'a', 'type' => 'a', 'optional' => false, 'description' => '', 'bodyType' => 'b', 'fillType' => 'f'],
+        ['name' => '42', 'type' => 'A', 'optional' => false, 'description' => ''],
+        ['name' => 'kept', 'type' => 'A', 'optional' => false, 'description' => '', 'keepsKeys' => true],
+    ]);
+});
+
 describe('MethodAnalysis::addProperty()', function () {
     test('routes every channel a resolved value can carry', function () {
         $analysis = new MethodAnalysis;

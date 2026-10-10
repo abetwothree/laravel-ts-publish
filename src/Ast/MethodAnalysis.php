@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use Closure;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -273,5 +274,29 @@ class MethodAnalysis
         }
 
         $this->properties = $kept;
+    }
+
+    /**
+     * Rewrite every property's type, body type and fill, except a key a cast types and a value that keeps its keys.
+     *
+     * @param  Closure(string): string  $rewrite
+     */
+    public function rewritePropertyTypes(Closure $rewrite): void
+    {
+        foreach ($this->properties as &$property) {
+            if (isset($this->casts[$property['name']]) || ($property['keepsKeys'] ?? false)) {
+                continue;
+            }
+
+            $property['type'] = $rewrite($property['type']);
+
+            foreach (['bodyType', 'fillType'] as $field) {
+                if (isset($property[$field])) {
+                    $property[$field] = $rewrite($property[$field]);
+                }
+            }
+        }
+
+        unset($property);
     }
 }

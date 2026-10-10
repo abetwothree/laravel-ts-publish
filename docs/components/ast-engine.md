@@ -418,8 +418,9 @@ or to `null`. Read the published property before you call an entry a bug.
 `MethodContext` or `AnalysisScope`, and the signature rule skips a tagged method. [Known gaps][gap-non-goals] records
 why the engine offers no extension point.
 
-`analyze()` hands `analyzeMethod()`'s DTO to [`AnalysisComposer`], which aliases same-basename collisions, rewrites
-`EnumResource` wraps to `AsEnum<typeof X>`, and imports only the names the rewritten types spell.
+`analyze()` re-indexes an API resource's `toArray()` as `ts:publish` does, then hands `analyzeMethod()`'s DTO to
+[`AnalysisComposer`], which aliases same-basename collisions, rewrites `EnumResource` wraps to `AsEnum<typeof X>`, and
+imports only the names the rewritten types spell.
 
 `AnalysisComposer` tests each name with `TsTypeString::typeNameOccursIn()`, which keeps the import of a name only a
 string or a comment spells, unused at worst. See [known gaps][gap-spelled-name]. Where its identifier boundary departs

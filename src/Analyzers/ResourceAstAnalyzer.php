@@ -345,27 +345,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  ReflectionClass<T>  $resource
      */
-    public function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
+    public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
     {
-        if (! $resource->isSubclassOf(JsonResource::class) || $this->collectionPreservesKeys($resource)) {
-            return;
+        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
+            $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
         }
-
-        foreach ($analysis->properties as &$property) {
-            if (isset($analysis->casts[$property['name']]) || ($property['keepsKeys'] ?? false)) {
-                continue;
-            }
-
-            $property['type'] = ResourceReindexing::reindexedType($property['type']);
-
-            foreach (['bodyType', 'fillType'] as $field) {
-                if (isset($property[$field])) {
-                    $property[$field] = ResourceReindexing::reindexedType($property[$field]);
-                }
-            }
-        }
-
-        unset($property);
     }
 
     /**
@@ -676,7 +660,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
 
         // resolve() runs the spread resource's own filter.
-        $this->reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
+        self::reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
 
         return $analysis;
     }

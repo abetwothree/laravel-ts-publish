@@ -79,6 +79,8 @@ final class AstEngine
      * broadcast events) keep calling analyzeMethod() and AnalysisImports::build() themselves; this
      * method is the answer for everyone else.
      *
+     * An API resource's `toArray()` comes back re-indexed as `ts:publish` publishes it.
+     *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass
      */
@@ -88,10 +90,14 @@ final class AstEngine
         ?string $modelClass = null,
         string $fromNamespacePath = '',
     ): AnalysisResult {
-        return new AnalysisComposer()->compose(
-            $this->analyzeMethod($class, $method, $modelClass),
-            $fromNamespacePath,
-        );
+        $analysis = $this->analyzeMethod($class, $method, $modelClass);
+
+        // Laravel's filter runs over what toArray() returns, and over no other method's value.
+        if ($method === 'toArray') {
+            ResourceAstAnalyzer::reindexNumericKeyedArrays($analysis, new ReflectionClass($class));
+        }
+
+        return new AnalysisComposer()->compose($analysis, $fromNamespacePath);
     }
 
     /**
