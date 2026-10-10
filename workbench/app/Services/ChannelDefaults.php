@@ -58,7 +58,7 @@ class ChannelDefaults
     public const array BROKEN = [1 => CHANNEL_DEFAULTS_UNDEFINED_CONSTANT];
 
     /**
-     * 201 flat elements — one past MAX_CONSTANT_ARRAY_ELEMENTS. Must degrade to unknown.
+     * 201 flat elements — one past MAX_CONSTANT_ARRAY_ELEMENTS, which a flat list is exempt from: it types as number[].
      *
      * @var list<int>
      */

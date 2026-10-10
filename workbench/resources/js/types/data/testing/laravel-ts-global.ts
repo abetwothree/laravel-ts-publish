@@ -2889,7 +2889,7 @@ declare global {
             mixed_tags: (string | number)[];
             nested_tags: { primary: string[]; secondary: string[] };
             broken_channels: unknown;
-            over_element_limit: unknown;
+            over_element_limit: number[];
             over_depth_limit: unknown;
             status_map: { status: workbench.app.enums.OrderStatusType };
             status_list: workbench.app.enums.OrderStatusType[];
@@ -3321,6 +3321,18 @@ declare global {
             owned_teams?: workbench.app.models.Team[];
             images?: workbench.app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+        }
+        /**
+         * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
+         * Depot column: PHP reads the declared property before JsonResource::__get() reaches the model, so the key sends null.
+         */
+        export interface DepotDefaultsResource {
+            id: number;
+            name: null;
+            stage: workbench.app.enums.StatusType;
+            limits: { daily: number; codes: string[] };
+            tags: (string | number)[];
+            notes: never[];
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {

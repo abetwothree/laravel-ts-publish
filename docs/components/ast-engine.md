@@ -280,9 +280,14 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
 `AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's literal default. The default counts only while no method the class runs writes the property, an
-ancestor's or a trait's included, and in application code a computed `$this->{$name}` write counts as one. The check
-cannot see a subclass's write or a by-reference one, such as `array_push($this->tags, 5)`.
+an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A
+non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
+the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
+trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
+by-reference parameter of a callee the scan can name, such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. The check cannot see a subclass's write, including a child's that
+inherits `toArray()` and so publishes its parent's analysis (#79), a by-reference parameter on a receiver it cannot
+resolve, or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With

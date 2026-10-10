@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollecti
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
@@ -78,6 +79,7 @@ use Workbench\App\Http\Resources\ChildSharedResource;
 use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
+use Workbench\App\Http\Resources\DepotDefaultsResource;
 use Workbench\App\Http\Resources\DepotTierKeyedResource;
 use Workbench\App\Http\Resources\DepotTierResource;
 use Workbench\App\Http\Resources\EmptyResource;
@@ -3424,6 +3426,28 @@ it('publishes a spread resource\'s arrays as that resource sends them, beside th
     expect($properties['tiers']['type'])->toBe('string[]')
         ->and($properties['labelled']['type'])->toBe('{ name: string; "42": boolean }')
         ->and($properties['own']['type'])->toBe('{ "1": string }');
+});
+
+// StatusCodesDefaultEvent publishes the same default as { "200": string }: only an API resource re-indexes.
+it('re-indexes the int keys of an untyped default the resource reads', function () {
+    expect(new ResourceTransformer(StatusCodesDefaultResource::class)->properties['codes']['type'])->toBe('string[]');
+});
+
+// PHP reads a declared property before JsonResource::__get() reaches the model, so `name` publishes its default.
+it('types the resource\'s own untyped properties from their defaults, over a same-named model column', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = new ResourceTransformer(DepotDefaultsResource::class);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'id' => 'number',
+        'name' => 'null',
+        'stage' => 'StatusType',
+        'limits' => '{ daily: number; codes: string[] }',
+        'tags' => '(string | number)[]',
+        'notes' => 'never[]',
+    ])
+        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusType \\} from '[^']+';$/m");
 });
 
 // A method cast is final for its key, so the publisher's re-index leaves its text as written.

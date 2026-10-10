@@ -510,6 +510,14 @@ adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
 resource drops `label`, finds only numeric keys left, and sends `["y"]`. Keep numeric keys apart from a conditional
 named key.
 
+### An untyped property's default ignores writes the scan cannot see
+
+An untyped property publishes its default's type while nothing in the class, its ancestors or its traits writes it. A
+subclass's write, including a child's that inherits `toArray()` and so publishes its parent's types, a by-reference
+parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class
+all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
+it a `@var` docblock.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

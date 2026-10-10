@@ -11684,7 +11684,7 @@
                 },
                 {
                     "name": "over_element_limit",
-                    "type": "unknown",
+                    "type": "number[]",
                     "optional": false
                 },
                 {
@@ -13150,6 +13150,41 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DepotDefaultsResource": {
+            "name": "DepotDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "stage",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "limits",
+                    "type": "{ daily: number; codes: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "tags",
+                    "type": "(string | number)[]",
+                    "optional": false
+                },
+                {
+                    "name": "notes",
+                    "type": "never[]",
+                    "optional": false
                 }
             ]
         },

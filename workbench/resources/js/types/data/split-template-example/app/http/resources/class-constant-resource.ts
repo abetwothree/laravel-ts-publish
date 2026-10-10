@@ -22,7 +22,7 @@ export interface ClassConstantResource
     mixed_tags: (string | number)[];
     nested_tags: { primary: string[]; secondary: string[] };
     broken_channels: unknown;
-    over_element_limit: unknown;
+    over_element_limit: number[];
     over_depth_limit: unknown;
     status_map: { status: OrderStatusType };
     status_list: OrderStatusType[];

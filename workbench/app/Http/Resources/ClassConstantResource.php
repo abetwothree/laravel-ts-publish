@@ -50,7 +50,7 @@ class ClassConstantResource extends AbstractVersionedResource
             // Negative case: references an undefined constant, degrading to unknown at read time
             // rather than aborting the whole generation run.
             'broken_channels' => ChannelDefaults::BROKEN,
-            // Negative case: one element past MAX_CONSTANT_ARRAY_ELEMENTS.
+            // A flat list one element past MAX_CONSTANT_ARRAY_ELEMENTS, which caps only a record or a list of arrays.
             'over_element_limit' => ChannelDefaults::OVER_ELEMENT_LIMIT,
             // Negative case: one level past MAX_CONSTANT_ARRAY_DEPTH.
             'over_depth_limit' => ChannelDefaults::OVER_DEPTH_LIMIT,

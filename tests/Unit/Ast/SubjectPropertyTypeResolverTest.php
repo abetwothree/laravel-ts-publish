@@ -4,25 +4,68 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnFillableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReassignedDefaultsSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SortedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnloadableDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedDefaultsSubject;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
 use Workbench\App\Models\Post;
 
 describe('SubjectPropertyTypeResolver::resolve()', function () {
-    test('an untyped property default types itself only when it is uniform', function () {
-        $subject = new ReflectionClass(UntypedDefaultsSubject::class);
+    test('an untyped property default types itself as a parameter default does', function (string $property, ?string $type) {
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(UntypedDefaultsSubject::class), $property)['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        'a list' => ['extensions', 'string[]'],
+        'a scalar' => ['limit', 'number'],
+        'a mixed list' => ['mixed', '(string | number)[]'],
+        'no value, which PHP reads as null' => ['pending', 'null'],
+        'an enum case' => ['stage', 'StatusType'],
+        'a record holding a list' => ['limits', '{ daily: number; codes: string[] }'],
+        'an empty array' => ['notes', 'never[]'],
+        'int keys, kept here and re-indexed by the API resource publisher' => ['positions', '{ "1": string; "2": string }'],
+        // Code outside the class fills a public property declared without a value.
+        'a public property with no value' => ['slot', null],
+    ]);
+
+    test('an enum case default carries the enum for its import', function () {
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(UntypedDefaultsSubject::class), 'stage'))
+            ->toBe(['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+    });
+
+    // end() only moves the pointer, and a method PHP routes to __call() or __callStatic() takes its arguments by value.
+    // A receiver the scan cannot resolve is read as passing by value.
+    test('an argument passed to a by-reference parameter counts as a write', function (string $property, ?string $type) {
+        expect(resolve(SubjectPropertyTypeResolver::class)->resolve(new ReflectionClass(ByReferenceDefaultsSubject::class), $property)['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        'array_push()' => ['queue', null],
+        'a named preg_match() argument' => ['matches', null],
+        'a method of $this' => ['filled', null],
+        'a self:: method' => ['stashed', null],
+        'a parent:: method' => ['parentFilled', null],
+        'a constructor of a named class' => ['constructed', null],
+        'a variadic parameter' => ['parsed', null],
+        'end(), which only moves the pointer' => ['cursor', 'string[]'],
+        'count(), which takes it by value' => ['counted', 'string[]'],
+        'a receiver the scan cannot resolve' => ['opaque', 'string[]'],
+        'a self:: method the class does not declare' => ['missing', 'string[]'],
+    ]);
+
+    // A method called on the property is not passed the property by reference.
+    test('a by-reference function writes the property, and a call on the property does not', function () {
+        $subject = new ReflectionClass(SortedDefaultsSubject::class);
         $resolver = resolve(SubjectPropertyTypeResolver::class);
 
-        expect($resolver->resolve($subject, 'extensions')['type'] ?? null)->toBe('string[]')
-            ->and($resolver->resolve($subject, 'limit')['type'] ?? null)->toBe('number')
-            ->and($resolver->resolve($subject, 'mixed'))->toBeNull();
+        expect($resolver->resolve($subject, 'tags'))->toBeNull()
+            ->and($resolver->resolve($subject, 'items')['type'] ?? null)->toBe('string[]');
     });
 
     // A write in any method the class runs, an ancestor's included, means a read may not hold the default.

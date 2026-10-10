@@ -5992,8 +5992,8 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // Negative case: an undefined-constant reference degrades to unknown at read time
         // instead of throwing and aborting the whole generation run.
         ->and($props['broken_channels']['type'])->toBe('unknown')
-        // Negative case: one element past MAX_CONSTANT_ARRAY_ELEMENTS.
-        ->and($props['over_element_limit']['type'])->toBe('unknown')
+        // A flat list one past MAX_CONSTANT_ARRAY_ELEMENTS: the cap counts only arrays that inline a shape per element.
+        ->and($props['over_element_limit']['type'])->toBe('number[]')
         // Negative case: one level past MAX_CONSTANT_ARRAY_DEPTH.
         ->and($props['over_depth_limit']['type'])->toBe('unknown')
         // An enum case nested inside a keyed constant — the FQCN must survive embedding.

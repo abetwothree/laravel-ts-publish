@@ -132,15 +132,17 @@ it('propagates an embedded enum case FQCN out of a nested list/record constant',
         ->and($recordResult['embeddedEnumFqcns'] ?? null)->not->toBeNull();
 });
 
-// resolveClassConstant() — bails to null past the array limits
+// resolveClassConstant() and resolveConstantValue() — the array limits
 
-it('declines an over-element-count constant array', function () {
+// A flat list types as one `T[]` however long; a record or a list of arrays inlines a shape per element.
+it('types a flat scalar list past the element cap, and declines a record past it', function () {
     $resolver = new ValueResolver;
     $expr = valueResolverClassConstFetch(ChannelDefaults::class, 'OVER_ELEMENT_LIMIT');
+    $record = array_combine(array_map(fn (int $i): string => "k{$i}", range(1, 201)), range(1, 201));
 
-    $result = $resolver->resolveClassConstant($expr, valueResolverTestScope());
-
-    expect($result)->toBeNull();
+    expect($resolver->resolveClassConstant($expr, valueResolverTestScope()))->toBe(['type' => 'number[]', 'optional' => false])
+        ->and($resolver->resolveConstantValue($record))->toBeNull()
+        ->and($resolver->resolveConstantValue(array_fill(0, 101, [1])))->toBeNull();
 });
 
 it('declines an over-depth constant array', function () {

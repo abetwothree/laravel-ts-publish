@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
@@ -711,6 +712,13 @@ test('a collection keyed by numbers keeps its keys in a payload', function () {
     $properties = app(BroadcastEventTransformer::class, ['findable' => NumericPayloadKeyBroadcastEvent::class])->properties;
 
     expect($properties['statuses'])->toBe(['type' => '{ "200": string; "404": string }', 'optional' => false]);
+});
+
+// Only an API resource re-indexes; StatusCodesDefaultResource reads the same default as string[].
+test('an untyped default keeps its int keys in a payload', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => StatusCodesDefaultEvent::class])->properties;
+
+    expect($properties['codes'])->toBe(['type' => '{ "200": string }', 'optional' => false]);
 });
 
 // No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
