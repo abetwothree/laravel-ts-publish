@@ -1073,7 +1073,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
         foreach ($method->getAttributes(TsCasts::class) as $attr) {
-            $types = JsEmitter::castsByKey($attr->newInstance()->types, array_column($analysis->properties, 'name'));
+            $keys = array_column($analysis->properties, 'name');
+            $types = JsEmitter::castsByKey($attr->newInstance()->types, $keys);
+
+            JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
 
             foreach ($types as $property => $value) {
                 $type = is_array($value) ? $value['type'] : $value;
@@ -1274,7 +1277,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Add each key only a skipped branch sets, optional; a key the read branches set keeps their type and presence.
+     * Add each key and signature entry only a skipped branch sets, optional; a key the read branches set keeps
+     * their type and presence.
      */
     private function addKeysOnlySkippedBranchSets(ResourceAnalysis $merged, ResourceAnalysis $skipped): void
     {

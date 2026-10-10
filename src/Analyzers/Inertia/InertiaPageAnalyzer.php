@@ -164,7 +164,7 @@ class InertiaPageAnalyzer
             $branches,
             $analyzer,
             $parsed['overrides'],
-            $parsed['importPaths'],
+            $parsed['importPaths'] ?? [], // @phpstan-ignore nullCoalesce.offset (a 2.7-shaped override omits it)
             $parsed['optionalOverrides'] ?? [],
             $controllerClass.'@'.$methodName,
         );

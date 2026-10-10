@@ -98,7 +98,8 @@ name two namespaces publish resolves as that file's import does. For a name no F
 
 The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
 point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()` and
-`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather than a local regex.
+`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather
+than a local regex.
 
 ### `TsNaming`
 

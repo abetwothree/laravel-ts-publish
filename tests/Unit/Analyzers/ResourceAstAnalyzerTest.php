@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AmbiguousSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
@@ -7104,6 +7105,19 @@ test('a cast key that spells more than one index signature warns, retypes none a
             'subject' => AmbiguousSpellingResource::class,
             'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
         ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a toArray() cast key that spells more than one index signature warns once for the resource', function () {
+    AnalysisWarnings::reset();
+
+    new ResourceTransformer(AmbiguousMethodSpellingResource::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => AmbiguousMethodSpellingResource::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
 
     AnalysisWarnings::reset();
 });

@@ -67,8 +67,8 @@ class MethodAnalysis
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
      *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
      *                          to that text
-     * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: in no import
-     *                               channel, and imported only for a text with no class of its name behind it
+     * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: kept apart from
+     *                               every queue, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
      * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
      */

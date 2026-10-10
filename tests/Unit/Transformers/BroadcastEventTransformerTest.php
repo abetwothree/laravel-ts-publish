@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastE
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FlaggedClassCastUnderCastsMethodBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MethodMissingKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
@@ -656,6 +657,13 @@ test('an ambiguous spelling warns, retypes none and adds no key', function () {
         ]]);
 
     AnalysisWarnings::reset();
+});
+
+test('a broadcastWith() cast on a key the payload lacks adds the key and imports its type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => MethodMissingKeyBroadcastEvent::class]);
+
+    expect($transformer->properties['methodMissing'])->toMatchArray(['type' => 'Voucher', 'optional' => false])
+        ->and($transformer->typeImports)->toBe(['@/types/voucher' => ['Voucher']]);
 });
 
 test('an event cast on a numeric key lands on that key', function () {

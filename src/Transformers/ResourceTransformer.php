@@ -102,7 +102,7 @@ class ResourceTransformer extends CoreTransformer
     /** @var CastMap property name => the cast one of the resource's own methods declares for the key */
     protected array $methodCasts = [];
 
-    /** @var CarriedMap the classes the casts displaced and no import channel holds, registered only while spelled */
+    /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
     protected array $carried = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */

@@ -53,9 +53,9 @@ every profile, the order handlers run in decides which one answers; see
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
-  branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key no read
-  branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first `return` is
-  read; any other return is skipped.
+  branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
+  entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
+  `return` is read; any other return is skipped.
 - **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
@@ -73,8 +73,8 @@ every profile, the order handlers run in decides which one answers; see
   recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key after the
-  merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
+  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
+  after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
@@ -537,8 +537,8 @@ Each literal part is escaped the way TypeScript reads template text: a backslash
 return as `\r`. Written raw, a backslash would fail to compile (TS1125, TS1337) or match other text, and a CR would
 read as a line feed. `IndexSignatureKey::literalSegments()` undoes all three.
 
-A literal key whose text reads as a signature, `'[key: string]'`, is left out by `InspectsAstNodes::literalKeyName()` with a
-warning, because printed bare it would type other keys.
+A literal key whose text reads as a signature, `'[key: string]'`, is left out by `InspectsAstNodes::literalKeyName()`
+with a warning, because printed bare it would type other keys.
 
 A `#[TsCasts]` key may name such a signature by another spelling. `JsEmitter::castTargets()` decides which signature
 it retypes, as [support helpers § `JsEmitter`](support-helpers.md#jsemitter) describes.
@@ -573,7 +573,7 @@ beside a signature are all known:
   `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
   `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
   transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
-  entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's FQCN
+  entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
   channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
   fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).

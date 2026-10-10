@@ -523,6 +523,21 @@ test('a controller method\'s cast key that spells more than one signature warns'
     AnalysisWarnings::reset();
 });
 
+test('a parser override returning the 2.7 shape builds the page and applies its overrides', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /** @return array{overrides: array<string, string>, importMap: array<string, string>} */
+        protected function parseTsCastsFromMethod(string $controllerClass, string $methodName): array
+        {
+            return ['overrides' => ['heading' => 'Headline'], 'importMap' => ['Headline' => '@/types/headline']];
+        }
+    };
+
+    $data = $analyzer->analyze(['uses' => ControllerWithCastKeyEdges::class.'@numeric']);
+
+    expect($data['pageType'])->toContain('heading: Headline');
+});
+
 test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
