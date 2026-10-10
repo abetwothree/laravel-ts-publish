@@ -148,7 +148,8 @@ transformed is never registered.
 ### `BroadcastEventTransformer`
 
 It has no const registry. Broadcast payloads reference enums as types, never as `AsEnum<typeof Const>` values, so its
-`$enumConstMap` is always empty and no const alias is ever resolved.
+`$enumConstMap` is always empty and no const alias is ever resolved. Before aliasing, it reserves every name its custom
+imports bring: its casts' imports, its `#[TsExtends]` imports and the analysis's own custom imports.
 
 ## Related
 

@@ -25,7 +25,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoClassAccessorOnlyResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTypeofWithoutWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastCarriedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastEnumEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMixedTernaryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastModelEvent;
@@ -291,6 +295,22 @@ describe('a cast a spread helper declares', function () {
                 '    crm: CrmUser | null;',
             ],
         ],
+        'a helper spread inside an inline array, before a sibling enum of its type name' => [
+            InlineSpreadCastEnumResource::class,
+            [
+                "import type { StatusType as WorkbenchStatusType } from '../../../../workbench/app/enums';",
+                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                '    nested: { status: WorkbenchStatusType | null; crm: CrmStatusType | null };',
+            ],
+        ],
+        'a helper spread inside an inline array, over the enum its key wraps' => [
+            InlineSpreadCastWrapResource::class,
+            ["import type { StatusType } from '../../../../workbench/app/enums';", '    nested: { status: StatusType | null };'],
+        ],
+        'a helper spread inside an inline array, whose cast on another key spells the enum it displaced' => [
+            InlineSpreadCastCarriedEnumResource::class,
+            ["import type { StatusType } from '../../../../workbench/app/enums';", '    nested: { status: string; label: StatusType[] };'],
+        ],
         'two helpers, the later one without an import' => [
             SiblingSpreadCastsResource::class,
             [
@@ -310,6 +330,14 @@ describe('a cast a spread helper declares', function () {
             ],
         ],
     ]);
+
+    it('keeps an inline cast member\'s enum before a sibling enum of its type name, with the tolki package off', function () {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        expect(castInForceLines(InlineSpreadCastEnumResource::class))->toContain(
+            '    nested: { status: WorkbenchStatusType | null; crm: CrmStatusType | null };',
+        );
+    });
 
     it('publishes an inline array\'s spread cast as written through AstEngine::analyze()', function () {
         $result = resolve(AstEngine::class)->analyze(InlineSpreadCastResource::class, 'toArray', null, 'tests/fixtures');
@@ -364,6 +392,16 @@ describe('a cast on a broadcast event', function () {
             ['../../../../workbench/app/models' => ['User as AppUser'], '../../../../workbench/crm/models' => ['User as CrmUser']],
         ],
     ]);
+
+    it('aliases an inline cast member\'s enum apart from a sibling enum of its type name', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => InlineSpreadCastEnumEvent::class]);
+
+        expect(array_column($transformer->properties, 'type'))->toBe(['{ status: AppStatusType | null; crm: CrmStatusType | null }'])
+            ->and($transformer->typeImports)->toBe([
+                '../../../../workbench/app/enums' => ['StatusType as AppStatusType'],
+                '../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            ]);
+    });
 
     it('imports no resource a cast displaced', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => CastResourceEvent::class]);
