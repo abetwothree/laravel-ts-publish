@@ -18,10 +18,10 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityRoster;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RosterEntry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 

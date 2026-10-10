@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceUntypedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;

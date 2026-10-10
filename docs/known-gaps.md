@@ -197,7 +197,7 @@ and barrel ownership holds only while the two agree. `Runner::validateModelMetad
 alone, which cannot see that. Redefining `FILENAME_SUFFIX` keeps them in step, but overriding only `filenameFor()`
 orphans the file when a run skips the metadata phase, and overriding only `isMetadataFilename()` claims exports the
 phase never wrote. Override both, as the test fixture
-[`PrefixedModelMetadataTransformer`](../tests/Fixtures/PrefixedModelMetadataTransformer.php) does.
+[`PrefixedModelMetadataTransformer`](../tests/Fixtures/TsPublish/Transformers/PrefixedModelMetadataTransformer.php) does.
 
 ### Overriding a moved helper on a `LaravelTsPublish` subclass does not change what the package emits
 

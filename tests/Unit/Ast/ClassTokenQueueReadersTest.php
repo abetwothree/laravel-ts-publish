@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverLedger;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverLedgerExceptResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverLedgerOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverLedgerResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SameNameAddressResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverLedgerExceptResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverLedgerOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverLedgerResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNameAddressResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverLedger;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 

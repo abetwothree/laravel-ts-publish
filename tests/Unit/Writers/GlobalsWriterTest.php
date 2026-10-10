@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\LiteralKindPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralKindPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostResource;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;

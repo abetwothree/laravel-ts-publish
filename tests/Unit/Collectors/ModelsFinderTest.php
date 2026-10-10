@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use Illuminate\Support\Collection;
 
 use function Orchestra\Testbench\workbench_path;

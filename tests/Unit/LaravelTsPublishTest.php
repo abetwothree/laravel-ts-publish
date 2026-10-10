@@ -6,15 +6,15 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DateTimeListCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockDateCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelListCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NullableSerializedLabelCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SerializedLabelCastable;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StaleDocblockDateCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\StringableLabelListCast;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
@@ -1582,7 +1582,7 @@ describe('resolveReflectionType', function () {
 
 describe('parseFileUseStatements', function () {
     test('resolves plain and aliased group-use members and excludes function/const imports', function () {
-        require_once __DIR__.'/../Fixtures/GroupUseFixture.php.stub';
+        require_once __DIR__.'/../Fixtures/Stubs/GroupUseFixture.php.stub';
 
         $map = $this->service->parseFileUseStatements(new ReflectionClass(GroupUseFixture::class));
 
@@ -1596,7 +1596,7 @@ describe('parseFileUseStatements', function () {
     test('excludes a function import from the use-statement map', function () {
         // Guards the trap this task exists to avoid: a `use function` import must never
         // enter the map, or a docblock type could silently resolve to a function FQCN.
-        require_once __DIR__.'/../Fixtures/GroupUseFixture.php.stub';
+        require_once __DIR__.'/../Fixtures/Stubs/GroupUseFixture.php.stub';
 
         $map = $this->service->parseFileUseStatements(new ReflectionClass(GroupUseFixture::class));
 
@@ -1608,7 +1608,7 @@ describe('parseFileUseStatements', function () {
     test('records the file as a cache dependency even on a cache hit', function () {
         // Guards the same cache-hit-must-still-record contract AstParserTest pins for AstParser:
         // useStatementsCache sits above it and must not swallow the recording on a hit.
-        require_once __DIR__.'/../Fixtures/GroupUseFixture.php.stub';
+        require_once __DIR__.'/../Fixtures/Stubs/GroupUseFixture.php.stub';
 
         $reflection = new ReflectionClass(GroupUseFixture::class);
         $file = (string) $reflection->getFileName();

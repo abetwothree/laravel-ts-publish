@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
 
 beforeEach(function () {
     $this->service = new TsTypeString;

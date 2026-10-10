@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HookedPropertiesEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HookedPropertiesEnum;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
 use Workbench\App\Enums\FreightClass;

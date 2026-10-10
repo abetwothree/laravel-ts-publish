@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 

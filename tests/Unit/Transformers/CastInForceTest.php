@@ -5,64 +5,64 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchCastsOptionalApartResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchOptionalCastOverRequiredModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CarriedSpelledResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastBareBesideWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastCarriedModelEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastCarriedSpelledEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDisplacedOwnNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastDroppedEnumBesideSharedNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastKeyofTypeofImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastModelEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastModelNoImportEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOneOfTwoWrapsResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverAttributeImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastResourceEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoClassAccessorOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastSpelledTwoEnumAccessorKeyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastStringMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastStringTwoEnumAccessorOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoClassAccessorOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumAccessorOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTypeofWithoutWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastWrapTypeImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineCarriedEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineCarriedModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastCarriedEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastEnumEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InlineSpreadCastWrapResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastDisplacedOwnNameResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMixedTernaryResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastModelEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastModelNoImportEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastOverAttributeImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoClassAccessorResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumAccessorOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastWrapTypeImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodSameBasenameOverrideResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsClassCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsMethodCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelOptionalVsRequiredMethodCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelVsMethodCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NonPayloadCastImportEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OneBranchCastSpreadResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OverriddenMethodCastImportEvent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RewrittenSpreadKeyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SameBasenameOverrideResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SiblingSpreadCastsReversedResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadOverCastSpreadResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadOverSpreadEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedModelEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedSpelledEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastModelEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastModelNoImportEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastOverAttributeImportEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastResourceEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\InlineSpreadCastEnumEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\MethodCastModelEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\MethodCastModelNoImportEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NonPayloadCastImportEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\OverriddenMethodCastImportEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchCastsOptionalApartResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchOptionalCastOverRequiredModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CarriedSpelledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastBareBesideWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDisplacedOwnNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDroppedEnumBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastKeyofTypeofImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOneOfTwoWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastSpelledMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastSpelledTwoClassAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastSpelledTwoEnumAccessorKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastStringMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastStringTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoClassAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTypeofWithoutWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastCarriedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastDisplacedOwnNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMixedTernaryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastOverAttributeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoClassAccessorResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodSameBasenameOverrideResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelOptionalVsClassCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelOptionalVsMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelOptionalVsRequiredMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelVsMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OneBranchCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenSpreadKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameOverrideResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SiblingSpreadCastsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SiblingSpreadCastsReversedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverSpreadEnumResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
@@ -120,11 +120,11 @@ describe('a cast that spells an enum resource\'s own type', function () {
         ],
         'the cast spells one of the two enums its ternary wraps' => [
             CastOneOfTwoWrapsResource::class,
-            ["import type { StatusType } from '../../../../workbench/app/enums';", '    k: StatusType | null;'],
+            ["import type { StatusType } from '../../../../../../workbench/app/enums';", '    k: StatusType | null;'],
         ],
         'the cast writes the const after `typeof` without the wrap' => [
             CastTypeofWithoutWrapResource::class,
-            ["import { Status } from '../../../../workbench/app/enums';", '    k: (typeof Status)[keyof typeof Status];'],
+            ["import { Status } from '../../../../../../workbench/app/enums';", '    k: (typeof Status)[keyof typeof Status];'],
         ],
         'the cast writes `keyof typeof` with its own import' => [
             CastKeyofTypeofImportResource::class,
@@ -183,14 +183,14 @@ describe('a cast over a key whose classes it displaces', function () {
         ],
         'a cast without an import that spells the name a resource union\'s resources share' => [
             CastSpelledMorphUnionResource::class,
-            ["import type { UserResource } from '../../../../workbench/crm/http/resources';", '    reviewable?: UserResource | null;'],
+            ["import type { UserResource } from '../../../../../../workbench/crm/http/resources';", '    reviewable?: UserResource | null;'],
         ],
         'a method-level cast with an import over a two-enum accessor' => [
             MethodCastTwoEnumResource::class,
             [
                 "import type { StatusType } from '@js/types/status';",
-                "import type { Image } from '../../../../workbench/app/models';",
-                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                "import type { Image } from '../../../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
                 '    id: number;',
                 '    review_priority: StatusType | null;',
                 '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
@@ -200,8 +200,8 @@ describe('a cast over a key whose classes it displaces', function () {
             CastTwoEnumAccessorOnlyResource::class,
             [
                 "import type { StatusType } from '@js/types/status';",
-                "import type { Image } from '../../../../workbench/app/models';",
-                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                "import type { Image } from '../../../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
                 '    review_priority: StatusType | null;',
                 '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
             ],
@@ -210,8 +210,8 @@ describe('a cast over a key whose classes it displaces', function () {
             MethodCastTwoEnumAccessorOnlyResource::class,
             [
                 "import type { StatusType } from '@js/types/status';",
-                "import type { Image } from '../../../../workbench/app/models';",
-                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                "import type { Image } from '../../../../../../workbench/app/models';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
                 '    review_priority: StatusType | null;',
                 '    crm_contact_partial: { status: CrmStatusType; images: Image[] } | null;',
             ],
@@ -224,7 +224,7 @@ describe('a cast over a key whose classes it displaces', function () {
         'a cast without an import that adds a two-enum accessor\'s key and spells the name its enums share' => [
             CastSpelledTwoEnumAccessorKeyResource::class,
             [
-                "import type { StatusType } from '../../../../workbench/app/enums';",
+                "import type { StatusType } from '../../../../../../workbench/app/enums';",
                 '    id: number;',
                 '    review_priority: StatusType | null;',
             ],
@@ -241,7 +241,7 @@ describe('a cast over a key whose classes it displaces', function () {
         'a cast without an import that spells the name a two-model `only()` accessor\'s models share' => [
             CastSpelledTwoClassAccessorOnlyResource::class,
             [
-                "import type { User } from '../../../../workbench/crm/models';",
+                "import type { User } from '../../../../../../workbench/crm/models';",
                 '    last_user_activity_by_typed: User | null;',
             ],
         ],
@@ -269,7 +269,7 @@ describe('a cast over a key whose classes it displaces', function () {
             CastBareBesideWrapResource::class,
             [
                 "import { type AsEnum } from '@tolki/ts';",
-                "import { Status } from '../../../../workbench/app/enums';",
+                "import { Status } from '../../../../../../workbench/app/enums';",
                 '    k: string;',
                 '    a: AsEnum<typeof Status>;',
             ],
@@ -280,7 +280,7 @@ describe('a cast over a key whose classes it displaces', function () {
         config()->set('ts-publish.enums.use_tolki_package', false);
 
         expect(castInForceLines(CastDroppedEnumBesideSharedNameResource::class))->toBe([
-            "import type { StatusType } from '../../../../workbench/crm/enums';",
+            "import type { StatusType } from '../../../../../../workbench/crm/enums';",
             '    k: string;',
             '    crm: StatusType | null;',
         ]);
@@ -296,7 +296,7 @@ describe('a cast a spread helper declares', function () {
             SpreadCastResource::class,
             [
                 "import type { User } from '@js/types/user';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    manager: User | null;',
                 '    crm: CrmUser | null;',
             ],
@@ -305,7 +305,7 @@ describe('a cast a spread helper declares', function () {
             InlineSpreadCastResource::class,
             [
                 "import type { User } from '@js/types/user';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    nested: { manager: User | null; x: number };',
                 '    crm: CrmUser | null;',
             ],
@@ -313,24 +313,24 @@ describe('a cast a spread helper declares', function () {
         'a helper spread inside an inline array, before a sibling enum of its type name' => [
             InlineSpreadCastEnumResource::class,
             [
-                "import type { StatusType as WorkbenchStatusType } from '../../../../workbench/app/enums';",
-                "import type { StatusType as CrmStatusType } from '../../../../workbench/crm/enums';",
+                "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
                 '    nested: { status: WorkbenchStatusType | null; crm: CrmStatusType | null };',
             ],
         ],
         'a helper spread inside an inline array, over the enum its key wraps' => [
             InlineSpreadCastWrapResource::class,
-            ["import type { StatusType } from '../../../../workbench/app/enums';", '    nested: { status: StatusType | null };'],
+            ["import type { StatusType } from '../../../../../../workbench/app/enums';", '    nested: { status: StatusType | null };'],
         ],
         'a helper spread inside an inline array, whose cast on another key spells the enum it displaced' => [
             InlineSpreadCastCarriedEnumResource::class,
-            ["import type { StatusType } from '../../../../workbench/app/enums';", '    nested: { status: string; label: StatusType[] };'],
+            ["import type { StatusType } from '../../../../../../workbench/app/enums';", '    nested: { status: string; label: StatusType[] };'],
         ],
         'two helpers, the later one without an import' => [
             SiblingSpreadCastsResource::class,
             [
-                "import type { User as WorkbenchUser } from '../../../../workbench/app/models';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    manager: WorkbenchUser | null;',
                 '    crm: CrmUser | null;',
             ],
@@ -339,7 +339,7 @@ describe('a cast a spread helper declares', function () {
             SiblingSpreadCastsReversedResource::class,
             [
                 "import type { User } from '@js/types/user';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    manager: User | null;',
                 '    crm: CrmUser | null;',
             ],
@@ -389,22 +389,22 @@ describe('a cast on a broadcast event', function () {
         'a class-level cast with an import' => [
             CastModelEvent::class,
             ['User | null', 'Partial<CrmUser>'],
-            ['@js/types/user' => ['User'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+            ['@js/types/user' => ['User'], '../../../../../workbench/crm/models' => ['User as CrmUser']],
         ],
         'a class-level cast without an import' => [
             CastModelNoImportEvent::class,
             ['AppUser | null', 'Partial<CrmUser>'],
-            ['../../../../workbench/app/models' => ['User as AppUser'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+            ['../../../../../workbench/app/models' => ['User as AppUser'], '../../../../../workbench/crm/models' => ['User as CrmUser']],
         ],
         'a `broadcastWith()` cast with an import' => [
             MethodCastModelEvent::class,
             ['User | null', 'Partial<CrmUser>'],
-            ['@js/types/user' => ['User'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+            ['@js/types/user' => ['User'], '../../../../../workbench/crm/models' => ['User as CrmUser']],
         ],
         'a `broadcastWith()` cast without an import' => [
             MethodCastModelNoImportEvent::class,
             ['AppUser | null', 'Partial<CrmUser>'],
-            ['../../../../workbench/app/models' => ['User as AppUser'], '../../../../workbench/crm/models' => ['User as CrmUser']],
+            ['../../../../../workbench/app/models' => ['User as AppUser'], '../../../../../workbench/crm/models' => ['User as CrmUser']],
         ],
     ]);
 
@@ -413,8 +413,8 @@ describe('a cast on a broadcast event', function () {
 
         expect(array_column($transformer->properties, 'type'))->toBe(['{ status: AppStatusType | null; crm: CrmStatusType | null }'])
             ->and($transformer->typeImports)->toBe([
-                '../../../../workbench/app/enums' => ['StatusType as AppStatusType'],
-                '../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+                '../../../../../workbench/app/enums' => ['StatusType as AppStatusType'],
+                '../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
             ]);
     });
 
@@ -435,8 +435,8 @@ describe('a cast entry and the value it describes', function () {
         'a later spread sets the key without a cast' => [
             SpreadOverCastSpreadResource::class,
             [
-                "import type { User as WorkbenchUser } from '../../../../workbench/app/models';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    owner: WorkbenchUser | null;',
                 '    crm: CrmUser | null;',
             ],
@@ -444,8 +444,8 @@ describe('a cast entry and the value it describes', function () {
         'only one of two return branches casts the key' => [
             OneBranchCastSpreadResource::class,
             [
-                "import type { User as WorkbenchUser } from '../../../../workbench/app/models';",
-                "import type { User as CrmUser } from '../../../../workbench/crm/models';",
+                "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+                "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
                 '    owner: WorkbenchUser | string | null;',
                 '    crm: CrmUser | null;',
             ],
@@ -461,13 +461,13 @@ describe('a class a cast carries', function () {
     })->with([
         'an inline member\'s carried enum beside a sibling enum of its type name' => [
             InlineCarriedEnumResource::class,
-            ["import type { StatusType } from '../../../../workbench/crm/enums';", '    nested: { status: string; crm: StatusType | null };'],
+            ["import type { StatusType } from '../../../../../../workbench/crm/enums';", '    nested: { status: string; crm: StatusType | null };'],
         ],
         'an inline member\'s carried class, spelled by a sibling cast without an import' => [
             InlineCarriedModelResource::class,
             [
-                "import type { StatusType } from '../../../../workbench/app/enums';",
-                "import type { User } from '../../../../workbench/app/models';",
+                "import type { StatusType } from '../../../../../../workbench/app/enums';",
+                "import type { User } from '../../../../../../workbench/app/models';",
                 '    nested: { owner: string; label: User | null };',
                 '    maybe: { state: string; tag: StatusType } | null;',
             ],
@@ -476,10 +476,10 @@ describe('a class a cast carries', function () {
             CarriedSpelledResource::class,
             [
                 "import { type AsEnum } from '@tolki/ts';",
-                "import { Status } from '../../../../workbench/app/enums';",
-                "import type { StatusType } from '../../../../workbench/app/enums';",
-                "import type { TeamResource } from '../../../../workbench/app/http/resources';",
-                "import type { User } from '../../../../workbench/app/models';",
+                "import { Status } from '../../../../../../workbench/app/enums';",
+                "import type { StatusType } from '../../../../../../workbench/app/enums';",
+                "import type { TeamResource } from '../../../../../../workbench/app/http/resources';",
+                "import type { User } from '../../../../../../workbench/app/models';",
                 '    owner: string;',
                 '    state: string;',
                 '    team: string;',
@@ -511,9 +511,9 @@ describe('a class a cast carries', function () {
         $transformer = app(BroadcastEventTransformer::class, ['findable' => CastCarriedSpelledEvent::class]);
 
         expect($transformer->typeImports)->toBe([
-            '../../../../workbench/app/enums' => ['StatusType'],
-            '../../../../workbench/app/http/resources' => ['TeamResource'],
-            '../../../../workbench/app/models' => ['User'],
+            '../../../../../workbench/app/enums' => ['StatusType'],
+            '../../../../../workbench/app/http/resources' => ['TeamResource'],
+            '../../../../../workbench/app/models' => ['User'],
         ]);
     });
 
@@ -523,7 +523,7 @@ describe('a class a cast carries', function () {
         expect(array_column($transformer->properties, 'type'))->toBe(['ReviewerCard | null', 'Partial<User>'])
             ->and($transformer->typeImports)->toBe([
                 '@js/types/reviews' => ['ReviewerCard'],
-                '../../../../workbench/crm/models' => ['User'],
+                '../../../../../workbench/crm/models' => ['User'],
             ]);
     });
 });
@@ -590,7 +590,7 @@ describe('two same-basename models, one of them displaced', function () {
         'a class-level cast' => [
             SameBasenameOverrideResource::class,
             [
-                "import type { User } from '../../../../workbench/app/models';",
+                "import type { User } from '../../../../../../workbench/app/models';",
                 '    manager: User | null;',
                 '    contact: { id: number } | null;',
             ],
@@ -598,7 +598,7 @@ describe('two same-basename models, one of them displaced', function () {
         'a method-level cast' => [
             MethodSameBasenameOverrideResource::class,
             [
-                "import type { User } from '../../../../workbench/app/models';",
+                "import type { User } from '../../../../../../workbench/app/models';",
                 '    manager: User | null;',
                 '    contact: { id: number } | null;',
             ],
@@ -606,7 +606,7 @@ describe('two same-basename models, one of them displaced', function () {
         'a key that overrides a spread helper\'s key' => [
             RewrittenSpreadKeyResource::class,
             [
-                "import type { User } from '../../../../workbench/app/models';",
+                "import type { User } from '../../../../../../workbench/app/models';",
                 '    who: string;',
                 '    manager: User | null;',
             ],

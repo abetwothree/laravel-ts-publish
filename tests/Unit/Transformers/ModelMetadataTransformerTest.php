@@ -4,32 +4,32 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedCastsAndInferredEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstEmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingCastAndInferredEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DecimalPriceMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidMetadataPayloadProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingRequiredMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrecedenceModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TemplateLiteralModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TupleShapeMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnimportableMetadataTypeProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerBackedStatus;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsupportedMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AliasedCastsAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstEmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BranchedAstModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingCastAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetadataPayloadProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnimportableMetadataTypeProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnsafeIntegerMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FreshObjectJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\JsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnsupportedMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
 use Illuminate\Database\ClassMorphViolationException;
@@ -301,7 +301,7 @@ test('rejects unsupported metadata values with the model and nested property pat
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(
             InvalidArgumentException::class,
-            'model [Workbench\\App\\Models\\User] property [value.nested] returned unsupported value [AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\UnsupportedMetadataValue]',
+            'model [Workbench\\App\\Models\\User] property [value.nested] returned unsupported value [AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ValueObjects\\UnsupportedMetadataValue]',
         );
 });
 

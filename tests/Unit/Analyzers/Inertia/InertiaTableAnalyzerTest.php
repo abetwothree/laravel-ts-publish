@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaTableAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTraitTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTraitTableController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Models\Post;
 

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadge;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportsModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -1718,10 +1718,10 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
         $data = (new ModelTransformer(ShadowedEnumParcel::class))->data();
 
         expect($data->shadowedKeys)->toBe(['handler', 'courier'])
-            ->and($data->typeImports['../../../../workbench/app/models'])->toBe(['Order', 'User'])
+            ->and($data->typeImports['../../../../../workbench/app/models'])->toBe(['Order', 'User'])
             ->and($data->combinedEnums)->toBe([])
             ->and($data->combinedValueImports)->toBe([])
-            ->and($data->combinedTypeImports)->toBe(['../../../../workbench/app/models' => ['User']])
+            ->and($data->combinedTypeImports)->toBe(['../../../../../workbench/app/models' => ['User']])
             ->and($data->relationCountKeys)->toBe([])
             ->and($data->relationExistsKeys)->toBe([]);
     });
@@ -1871,7 +1871,7 @@ describe('ModelTransformer with a const and a type that share a name', function 
 
         expect($data->columns['label']['type'])->toBe('Clearance')
             ->and($data->typeImports['@js/types/clearance'])->toBe(['Clearance'])
-            ->and($data->valueImports['../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
+            ->and($data->valueImports['../../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
             ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
     });
 
@@ -1906,8 +1906,8 @@ describe('ModelTransformer with accessors that union two models sharing a name',
             ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
             ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
             ->and($data->typeImports)->toBe([
-                '../../../../workbench/app/models' => ['User as SenderUser'],
-                '../../../../workbench/crm/models' => ['User as CrmUser'],
+                '../../../../../workbench/app/models' => ['User as SenderUser'],
+                '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
     });
 });

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\IdiomPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;

@@ -77,7 +77,7 @@ A `barrel_writer_class` subclass inherits `writeModularPreserving()`, so partial
 A subclass that overrides `writeModular()` to change the output format must override `writeModularPreserving()` the
 same way. Partial runs call the preserving method, and the inherited one emits the base format. `writeModularBarrels()`
 and `existingExports()` are `protected` so such a subclass can reuse the merge, as
-`tests/Fixtures/HeaderedBarrelWriter.php` does.
+`tests/Fixtures/TsPublish/Writers/HeaderedBarrelWriter.php` does.
 
 ## Related
 

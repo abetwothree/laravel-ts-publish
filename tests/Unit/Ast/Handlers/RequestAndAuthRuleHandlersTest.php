@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Analyzers\FormRequest\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;

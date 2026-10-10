@@ -4,22 +4,22 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeMergeResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClosureReturnBeforeSpreadResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadgeResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceArmsWarehouseResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceBodyFallbackResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceUntypedHelperResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumResourceWrapTrioResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewOnlyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrewResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverKeyedRosterResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverRewrittenKeyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedCastResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedModelSignatureCastResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InjectedSignatureCastResourceTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\NumericCastKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CustomImportBadgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverCrewResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverKeyedRosterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewrittenKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedModelSignatureCastResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingImageResource;
@@ -3086,7 +3086,7 @@ test('an EnumResource const steps aside for a name the resource\'s own cast impo
     expect($transformer->properties['label']['type'])->toBe('ClearanceType')
         ->and($transformer->properties['clearance_type']['type'])->toBe('AsEnum<typeof CrmClearanceType>')
         ->and($transformer->typeImports['@js/types/clearance'])->toBe(['ClearanceType'])
-        ->and($transformer->valueImports['../../../../workbench/crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
+        ->and($transformer->valueImports['../../../../../../workbench/crm/enums'])->toBe(['ClearanceType as CrmClearanceType']);
 });
 
 test('a morph union over two resources that share a name spells each one by its own alias', function () {
@@ -3137,7 +3137,7 @@ describe('a union of two models that share a name', function () {
         $transformer = new ResourceTransformer(HandoverRewrittenKeyResource::class);
 
         expect($transformer->properties['who']['type'])->toBe('{ p: User | null }')
-            ->and($transformer->typeImports)->toBe(['../../../../workbench/app/models' => ['User']]);
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/app/models' => ['User']]);
     });
 });
 
@@ -3168,7 +3168,7 @@ describe('a closure that returns an array before the method\'s own return', func
 // A bare `{ }` block runs its statements in place, so a `return` inside it is the method's or the closure's own.
 describe('a return inside a bare block', function () {
     beforeEach(function () {
-        require_once __DIR__.'/../../Fixtures/BareBlockReturnResources.php.stub';
+        require_once __DIR__.'/../../Fixtures/Stubs/BareBlockReturnResources.php.stub';
     });
 
     test('publishes the keys a spread helper and a closure return from one', function () {
@@ -3220,8 +3220,8 @@ describe('a member typed by a docblock union whose arms render alike for two mod
 
         expect($transformer->properties['keyed_crew']['type'])->toBe('{ crew: WorkbenchUser[] | CrmUser[]; sender: WorkbenchUser | null }')
             ->and($transformer->typeImports)->toBe([
-                '../../../../workbench/app/models' => ['User as WorkbenchUser'],
-                '../../../../workbench/crm/models' => ['User as CrmUser'],
+                '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+                '../../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
     });
 });
