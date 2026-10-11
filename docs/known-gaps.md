@@ -461,7 +461,7 @@ helper method the action calls, are read as that method's own values, so a first
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
 
-### Inside an API resource, a `Collection` beside an array the resource lists, or the arrays one holds, publish as lists
+### A `Collection` beside an array an API resource lists or under numeric keys, and the arrays one holds, publish as lists
 
 An API resource re-indexes only the arrays it reaches, so a `collect()` value keeps its numeric keys, alone or under a
 named key, but `['inner' => collect(['6' => $this->title]), 'ids' => [1 => 2]]` publishes
@@ -469,7 +469,7 @@ named key, but `['inner' => collect(['6' => $this->title]), 'ids' => [1 => 2]]` 
 `Collection` holds list the same way: `->map(fn () => ['1' => …])` publishes `string[][]`, though Laravel sends
 `{ "1": string }[]`. Type the key with `#[TsCasts]`.
 
-### An object's own JSON beside an array an API resource lists publishes as lists
+### An object's own JSON beside an array an API resource lists, under numeric keys or in a spread, publishes as lists
 
 Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
 `['week' => $this->schedule(), 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`,

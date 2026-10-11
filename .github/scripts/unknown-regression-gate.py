@@ -162,11 +162,9 @@ def detect_regressions(b: dict, h: dict) -> list:
     head_keys = list(h)
 
     def exhausted(k: tuple) -> bool:
-        # True when k has head members and every one already existed in base: member-level
-        # comparison is then exhaustive for k, so the parent is skipped rather than double-reported.
-        # A member new in head has no base counterpart, so it falls through and the parent stays checked.
-        # A parent that is no inline object has no members, so a quoted sibling such as `'tags.*'` cannot mask it; an
-        # inline-object parent counts it as a member, since it shares the `tags.` prefix (type-inference-gates.md).
+        # True when every head member of k existed in base, so members alone are compared; a new member keeps k checked.
+        # An inline-object parent counts a quoted `'tags.*'` sibling as a member, since it shares the `tags.` prefix, so
+        # the sibling can mask it (type-inference-gates.md); a parent that is no inline object has no members.
         if "{" not in h[k]:
             return False
         members = [
