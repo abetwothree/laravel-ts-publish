@@ -144,6 +144,7 @@ it('keeps both arms of a nested mixed EnumResource ternary that rendered the sam
     expect($result)->toBe([
         'type' => '{ history: AsEnum<typeof Status>[] | StatusType[] }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedEnumFqcns' => [Status::class],
         'embeddedEnumResourceFqcns' => [Status::class],
     ]);
@@ -204,6 +205,7 @@ it('claims no type import for a nested mixed enum whose bare name the rewrite sp
     expect($result)->toBe([
         'type' => '{ history: AsEnum<typeof Status>[] }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedEnumResourceFqcns' => [Status::class],
     ]);
 });
@@ -237,6 +239,7 @@ it('queues one resource per token in the order the object spells them, never ded
     expect($result)->toBe([
         'type' => '{ subject: UserResource | UserResource; again: UserResource; label: string }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedResourceFqcns' => [$crm, $app, $crm],
     ]);
 });
@@ -401,6 +404,20 @@ it('types a keyless list literal as the list it encodes as, as collect() does', 
     'a spread of a list' => ['[...explode(",", $this->title), 1]', '(string | number)[]'],
     'a spread of a constant list' => ['[...["a"], "b"]', 'string[]'],
     'an element no rule types' => ['[$this->id, json_decode("{}")]', 'unknown[]'],
+]);
+
+// A resource's filter keeps every key beside a named one, so it rewrites only the members, and only those that list.
+it('keeps a keyed literal\'s keys when no member the re-index could rewrite drops them', function (string $php, bool $keeps) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['keepsKeys'] ?? false)->toBe($keeps);
+})->with([
+    'a collection under a named key' => ['["inner" => collect([6 => $this->title])]', true],
+    'scalars under named keys' => ['["a" => 1, "b" => $this->title]', true],
+    'only numeric keys, which the filter lists' => ['[6 => collect([6 => $this->title])]', false],
+    'an array member beside a collection' => ['["a" => collect([6 => 1]), "b" => [6 => 2]]', false],
+    'a spread' => ['[...["a" => 1], "b" => 2]', false],
 ]);
 
 it('keeps a missing when() element out of a list, which a resource re-indexes', function () {

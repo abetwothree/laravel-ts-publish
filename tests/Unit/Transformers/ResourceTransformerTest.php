@@ -3480,10 +3480,14 @@ it('keeps the numeric keys of a collect() value, on every branch that sets it an
             'kept' => '{ "6": string }',
             'kept_int' => '{ "42": string }',
             'listed' => 'string[]',
+            'nested_kept' => '{ inner: { "6": string } }',
+            // docs/known-gaps.md: the arrays map() puts in the Collection list, though the filter never enters them.
+            'mapped_rows' => 'string[][]',
             'codes' => '{ "200": string; "404": string }',
             'codes_or_none' => '{ "200": string; "404": string } | null',
             'codes_or_text' => '{ "200": string; "404": string } | string',
             'codes_or_empty' => '{ "200": string; "404": string } | never[]',
+            'codes_or_shape' => '{ "200": string } | { label: string }',
             'rows' => '{ "1": string }[]',
             'rows_listed' => 'string[][]',
             'order_codes' => '{ "5": CurrencyType }[]',
@@ -3499,13 +3503,15 @@ it('keeps the numeric keys of a value object\'s own JSON wherever a key holds th
         new ResourceTransformer($resource)->properties,
     );
 
-    expect(array_slice($types(WeekScheduleResource::class), 0, 6))->toBe([
+    expect(array_slice($types(WeekScheduleResource::class), 0, 8))->toBe([
         'schedule' => '{ 1: string; 2: string }',
         'schedule_new' => '{ 1: string; 2: string }',
         'schedule_property' => '{ 1: string; 2: string } | null',
         'schedule_cast' => '{ 1: string; 2: string } | null',
         'schedule_default' => '{ 1: string; 2: string }',
         'listed' => 'string[]',
+        'by_week' => '{ week: { 1: string; 2: string } }',
+        'weeks' => '{ week: { 1: string; 2: string }[] }',
     ]);
 
     foreach ([SchedulePostResource::class, SchedulePostSpreadResource::class] as $resource) {
@@ -3516,12 +3522,12 @@ it('keeps the numeric keys of a value object\'s own JSON wherever a key holds th
     }
 });
 
-// docs/known-gaps.md: one key's flag cannot keep an object's keys under a key of an array, or beside an array arm the
-// resource lists, so the whole value re-indexes, though Laravel sends the object as `{"1":"mon","2":"tue"}`.
-it('re-indexes an object\'s own JSON under an array key or beside an array the resource lists', function () {
+// docs/known-gaps.md: one key's flag cannot keep an object's keys beside a sibling array or a union arm the resource
+// lists, so the whole value re-indexes, though Laravel sends the object as `{"1":"mon","2":"tue"}`.
+it('re-indexes an object\'s own JSON beside an array the resource lists', function () {
     $properties = new ResourceTransformer(WeekScheduleResource::class)->properties;
 
-    expect($properties['by_week']['type'])->toBe('{ week: string[] }')
+    expect($properties['week_and_days']['type'])->toBe('{ week: string[]; days: string[] }')
         ->and($properties['schedule_or_listed']['type'])->toBe('string[]');
 });
 

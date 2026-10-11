@@ -46,7 +46,7 @@ it('merges array literal arguments into one inline object', function () {
     $expr = arrayMergeCall([arrayMergeLiteral('id', 1), arrayMergeLiteral('name', 'Ada')]);
 
     expect((new ArrayMergeHandler)->resolve($expr, new AnalysisScope(new ReflectionClass(stdClass::class)), arrayMergeTestEngine()))
-        ->toBe(['type' => '{ id: number; name: string }', 'optional' => false]);
+        ->toBe(['type' => '{ id: number; name: string }', 'optional' => false, 'keepsKeys' => true]);
 });
 
 it('lets a later argument overwrite an earlier key, keeping its position', function () {

@@ -11,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * A test-only resource reading a value object keyed by numbers every way a key can, which its filter never enters,
- * beside an array it lists, and the object under a key or beside such an array, which one key's flag cannot keep.
+ * beside an array it lists, and the object beside such an array, which one key's flag cannot keep.
  *
  * @mixin SchedulePost
  */
@@ -30,6 +30,8 @@ final class WeekScheduleResource extends JsonResource
             'schedule_default' => $this->when($this->id > 0, fn ($schedule = new WeekSchedule) => $schedule),
             'listed' => [1 => 'mon', 2 => 'tue'],
             'by_week' => ['week' => $this->schedule()],
+            'weeks' => ['week' => [$this->schedule()]],
+            'week_and_days' => ['week' => $this->schedule(), 'days' => [1 => 'mon', 2 => 'tue']],
             'schedule_or_listed' => $this->id > 5 ? $this->schedule() : [1 => 'mon', 2 => 'tue'],
         ];
     }

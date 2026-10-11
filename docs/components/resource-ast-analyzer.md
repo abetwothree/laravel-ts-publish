@@ -555,7 +555,8 @@ A numeric key goes through two layers:
   `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable` value as an
   array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
   it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
-  since the re-index rewrites no other arm.
+  since the re-index rewrites no other arm. So does an inline literal with a key that is not a number and no spread,
+  when each member holding one does (`InlineArrayHandler::keepsMemberKeys()`): the filter keeps a named key's keys.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 

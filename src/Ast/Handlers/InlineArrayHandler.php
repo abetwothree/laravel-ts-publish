@@ -352,6 +352,10 @@ final class InlineArrayHandler implements ExpressionHandler
 
         $result = ['type' => $type, 'optional' => false];
 
+        if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
+            $result['keepsKeys'] = true;
+        }
+
         // Propagate import metadata so FQCNs referenced inside the inline object reach the outer analysis.
         // With Tolki enabled, enum resources need value imports (const) rather than type imports; direct
         // enum accesses always need type imports.
@@ -568,6 +572,20 @@ final class InlineArrayHandler implements ExpressionHandler
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * Whether an API resource's re-index leaves the literal's object as it is: a key that is not a number keeps every
+     * key, and each member holding an object keeps its own.
+     */
+    private function keepsMemberKeys(MethodAnalysis $analysis): bool
+    {
+        // Keyed by name, a later member replacing an earlier one, as buildInlineObjectType() prints them.
+        $members = array_column($analysis->properties, null, 'name');
+
+        return ! array_all(array_keys($members), fn (int|string $name): bool => TsTypeShape::isNumericKey((string) $name))
+            && array_all($members, fn (array $member): bool => ($member['keepsKeys'] ?? false)
+                || ! TsTypeShape::holdsKeyedObject($member['type']));
     }
 
     /**

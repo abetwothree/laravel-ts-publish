@@ -60,6 +60,23 @@ final class TsTypeShape
     }
 
     /**
+     * Whether a member's key, as printed or as written, names a key that passes is_numeric(), a `[key: number]`
+     * signature included.
+     */
+    public static function isNumericKey(string $key): bool
+    {
+        $key = rtrim($key, '?');
+
+        if (preg_match('/^\[\s*\w+\s*:\s*number\s*\]$/', $key) === 1) {
+            return true;
+        }
+
+        $unquoted = preg_match('/^([\'"])(.*)\1$/s', $key, $match) === 1 ? stripcslashes($match[2]) : $key;
+
+        return is_numeric($unquoted);
+    }
+
+    /**
      * Each member of one object literal as its printed key and its value, or null when the type is not one object
      * literal or a member has no key.
      *

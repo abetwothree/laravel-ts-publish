@@ -157,7 +157,7 @@ final class ResourceReindexing
 
             $members = TsTypeShape::members($part) ?? [];
 
-            if ($members === [] || ! array_all(array_column($members, 0), self::isNumericKey(...))) {
+            if ($members === [] || ! array_all(array_column($members, 0), TsTypeShape::isNumericKey(...))) {
                 return null;
             }
 
@@ -167,21 +167,5 @@ final class ResourceReindexing
         }
 
         return $values;
-    }
-
-    /**
-     * Whether a member's key, as printed, names a key that passes is_numeric(), a `[key: number]` signature included.
-     */
-    private static function isNumericKey(string $key): bool
-    {
-        $key = rtrim($key, '?');
-
-        if (preg_match('/^\[\s*\w+\s*:\s*number\s*\]$/', $key) === 1) {
-            return true;
-        }
-
-        $unquoted = preg_match('/^([\'"])(.*)\1$/s', $key, $match) === 1 ? stripcslashes($match[2]) : $key;
-
-        return is_numeric($unquoted);
     }
 }

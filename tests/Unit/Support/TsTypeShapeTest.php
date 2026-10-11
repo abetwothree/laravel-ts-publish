@@ -181,3 +181,16 @@ describe('holdsKeyedObject', function () {
         'a quoted brace' => ["'{' | \"Record<number, x>\"", false],
     ]);
 });
+
+describe('isNumericKey', function () {
+    test('answers whether a printed or written key passes is_numeric()', function (string $key, bool $numeric) {
+        expect(TsTypeShape::isNumericKey($key))->toBe($numeric);
+    })->with([
+        'a quoted int' => ['"42"', true],
+        'a written int' => ['42', true],
+        'an optional quoted decimal' => ["'1.5'?", true],
+        'a number signature' => ['[key: number]', true],
+        'a name' => ['week', false],
+        'a string signature' => ['[key: string]', false],
+    ]);
+});
