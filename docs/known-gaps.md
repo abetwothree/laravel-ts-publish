@@ -477,6 +477,14 @@ Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
 Laravel sends the object with its keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the
 key with `#[TsCasts]`.
 
+### A model's `toArray()` keeps the numeric keys of an `Arrayable` value whose class the package cannot name
+
+`Model::toArray()` writes an `Arrayable` cast or accessor value as its `toArray()` array, which an API resource lists.
+A resource that sends its model's `toArray()`, or spreads a related model's, lists it only where the value's class can
+be named: a `get(): mixed` cast documented `@return Rota`, a native union of such classes or
+`AsCollection::using(Collection::class, Rota::class)` keeps the numeric keys, as earlier releases did. Declare the
+cast's native return type, or type the key with `#[TsCasts]`.
+
 ### A collection that does not preserve keys lists the arrays of an element that does
 
 A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
@@ -498,8 +506,8 @@ known statically. Use a string key.
 ### A `broadcastWith()` payload whose top-level keys are all int publishes an object
 
 Where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) the payload is sent as a JSON list, and as an object
-on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int: `Middleware::share()` always adds
-`errors`. Use a string key.
+on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int while the app's middleware merges
+`parent::share()`, which always adds `errors`. Use a string key.
 
 ### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
 

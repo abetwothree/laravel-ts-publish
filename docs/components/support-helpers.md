@@ -46,6 +46,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
+| Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
