@@ -3483,6 +3483,9 @@ it('keeps the numeric keys of a collect() value, on every branch that sets it an
             'nested_kept' => '{ inner: { "6": string } }',
             // docs/known-gaps.md: the arrays map() puts in the Collection list, though the filter never enters them.
             'mapped_rows' => 'string[][]',
+            'spread_rows' => 'string[][]',
+            'spread_nested' => '{ a: string[][] }',
+            'spread_keyed' => '{ a: { k: string[] }[] }',
             'codes' => '{ "200": string; "404": string }',
             'codes_or_none' => '{ "200": string; "404": string } | null',
             'codes_or_text' => '{ "200": string; "404": string } | string',
@@ -3523,12 +3526,14 @@ it('keeps the numeric keys of a value object\'s own JSON wherever a key holds th
 });
 
 // docs/known-gaps.md: one key's flag cannot keep an object's keys beside a sibling array or a union arm the resource
-// lists, so the whole value re-indexes, though Laravel sends the object as `{"1":"mon","2":"tue"}`.
-it('re-indexes an object\'s own JSON beside an array the resource lists', function () {
+// lists, or among a collection's items a spread yields, so the whole value re-indexes, though Laravel sends the object
+// as `{"1":"mon","2":"tue"}`.
+it('re-indexes an object\'s own JSON beside an array the resource lists, or spread out of a collection', function () {
     $properties = new ResourceTransformer(WeekScheduleResource::class)->properties;
 
     expect($properties['week_and_days']['type'])->toBe('{ week: string[]; days: string[] }')
-        ->and($properties['schedule_or_listed']['type'])->toBe('string[]');
+        ->and($properties['schedule_or_listed']['type'])->toBe('string[]')
+        ->and($properties['spread_schedules']['type'])->toBe('{ o: string[][] }');
 });
 
 // docs/known-gaps.md: a false when() element is removed and the rest keep their keys, so a resource that preserves keys

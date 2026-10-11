@@ -207,6 +207,8 @@ final class ValueResolver
                     return null;
                 }
 
+                // A spread copies a collection's items into this array, where a resource's filter enters each one.
+                unset($element['keepsKeys']);
                 $element = [...$element, 'type' => $elementType];
             }
 

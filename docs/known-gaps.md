@@ -473,9 +473,9 @@ named key, but `['inner' => collect(['6' => $this->title]), 'ids' => [1 => 2]]` 
 
 Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
 `['week' => $this->schedule(), 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`,
-`[1 => $this->schedule()]` publishes `string[][]` and `$c ? $this->schedule() : [1 => 'a']` publishes `string[]`, though
-Laravel sends the object with its keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the
-key with `#[TsCasts]`.
+`[1 => $this->schedule()]` publishes `string[][]`, `$c ? $this->schedule() : [1 => 'a']` publishes `string[]` and
+`['o' => [...collect([$this->schedule()])]]` publishes `{ o: string[][] }`, though Laravel sends the object with its
+keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the key with `#[TsCasts]`.
 
 ### A model's `toArray()` keeps the numeric keys of an `Arrayable` value whose class the package cannot name
 

@@ -10,8 +10,8 @@ use Workbench\App\Models\Depot;
 
 /**
  * A test-only resource holding collections keyed by numbers, which its filter never enters, alone, under a named key
- * or beside null, a string, an empty or a keyed array, beside an array it lists, the array a collection's all() hands
- * back and the arrays a map() returns.
+ * or beside null, a string, an empty or a keyed array, beside an array it lists, the arrays a collection's all() or a
+ * spread hands back, which it enters, and the arrays a map() returns.
  *
  * @mixin Depot
  */
@@ -30,6 +30,9 @@ class CollectedNumericKeysResource extends JsonResource
             'listed' => ['6' => $this->name],
             'nested_kept' => ['inner' => collect(['6' => $this->name])],
             'mapped_rows' => collect([$this->name])->map(fn ($name) => ['1' => $name]),
+            'spread_rows' => [...collect([[6 => $this->name]])],
+            'spread_nested' => ['a' => [...collect([[6 => $this->name]])]],
+            'spread_keyed' => ['a' => [...collect([['k' => [6 => $this->name]]])]],
             'codes' => collect([200 => 'OK', 404 => 'Not Found']),
             'codes_or_none' => $this->id > 1 ? collect([200 => 'OK', 404 => 'Not Found']) : null,
             'codes_or_text' => $this->id > 2 ? collect([200 => 'OK', 404 => 'Not Found']) : 'none',
