@@ -68,6 +68,16 @@ test('a helper passed a model no row backs yet reads its key as possibly null', 
     ]);
 });
 
+// A narrower argument is the class the body runs with, so the body reads its members; one nothing types is not.
+test('a helper declaring an abstract class or a union reads the narrower class its call passes', function () {
+    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'declared'))->toBe([
+        'model_post' => '{ title: string }',
+        'model_unknown' => '{ title: unknown }',
+        'by_model' => '?{ model_name: string }',
+        'by_union' => '?{ union_name: string }',
+    ]);
+});
+
 test('the signature is empty for a call that binds nothing, and one for two arguments that bind alike', function () {
     $binder = resolve(ParameterBinder::class);
     $held = $binder->passedBinding(['type' => 'unknown', 'optional' => false], ReceiverType::of(Post::class));
@@ -76,7 +86,7 @@ test('the signature is empty for a call that binds nothing, and one for two argu
 
     expect(CallSite::signature([]))->toBe('')
         ->and($binder->passedBinding(['type' => 'unknown', 'optional' => false], null))->toBeNull()
-        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'value' => null, 'unsaved' => false])
+        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => false])
         ->and(CallSite::signature(['post' => $held]))->toBe(CallSite::signature(['post' => $typed]))
         ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $nullable]));
 });

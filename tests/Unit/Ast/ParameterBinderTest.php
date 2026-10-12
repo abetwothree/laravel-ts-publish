@@ -119,7 +119,7 @@ test('each kind of declared parameter binds as the value a call passes it', func
         'nm_post' => 'Post | null',
         'nullable_model' => '{ nm_title: string | null; nm_post: unknown }',
         'un_id' => 'number',
-        'un_owner' => 'Post | User',
+        'un_owner' => 'Post',
         'union' => '{ un_id: number; un_owner: unknown }',
         'va_posts' => 'Post[]',
         'variadic' => '{ va_posts: unknown }',

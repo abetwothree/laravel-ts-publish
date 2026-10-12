@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
 use ReflectionMethod;
+use ReflectionParameter;
 
 /**
  * A call read where it is written, so the method it runs can be read with what the call passes: how each argument
- * binds a parameter whose declaration binds nothing.
+ * binds a parameter whose declaration binds nothing, or one declaring an abstract class, interface or union it narrows.
  *
  * @phpstan-import-type PassedBinding from ParameterBinder
  *
@@ -47,8 +49,9 @@ final readonly class CallSite
     }
 
     /**
-     * How this call's arguments bind each parameter of the method it runs whose declaration binds nothing, read in the
-     * caller's scope; an unpacked or first-class call, and an argument nothing can type, bind nothing.
+     * How this call's arguments bind each parameter of the method it runs whose declaration binds nothing, or which an
+     * argument narrows, read in the caller's scope; an unpacked or first-class call, and an argument nothing can type,
+     * bind nothing.
      *
      * @return array<string, PassedBinding>
      */
@@ -64,20 +67,11 @@ final readonly class CallSite
             return [];
         }
 
-        $binder = resolve(ParameterBinder::class);
         $passed = [];
 
         foreach ($method->getParameters() as $parameter) {
             $argument = $arguments->named($parameter->getName());
-
-            if ($argument === null || ! $binder->takesPassedValue($parameter, $method)) {
-                continue;
-            }
-
-            $binding = $binder->passedBinding(
-                $this->engine->resolve($argument->value),
-                resolve(ReceiverClassResolver::class)->resolve($argument->value, $this->scope),
-            );
+            $binding = $argument === null ? null : $this->bindingFor($parameter, $method, $argument->value);
 
             if ($binding !== null) {
                 $passed[$parameter->getName()] = $binding;
@@ -85,5 +79,30 @@ final readonly class CallSite
         }
 
         return $passed;
+    }
+
+    /**
+     * How one argument binds its parameter: whatever it holds where the declaration binds nothing, else the narrower
+     * classes it holds where the declaration names an abstract class, interface or union; null otherwise.
+     *
+     * @return PassedBinding|null
+     */
+    private function bindingFor(ReflectionParameter $parameter, ReflectionMethod $method, Expr $argument): ?array
+    {
+        $binder = resolve(ParameterBinder::class);
+        $takes = $binder->takesPassedValue($parameter, $method);
+        $declared = $takes ? null : $binder->narrowableClasses($parameter);
+
+        if (! $takes && $declared === null) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
+
+        if ($declared !== null && ! $binder->narrows($declared, $receiver)) {
+            return null;
+        }
+
+        return $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
     }
 }

@@ -151,7 +151,8 @@ test('a reused body analysis still records every file it read as a cache depende
         ->and($paths)->toContain((new ReflectionClass(PostSummaryDetail::class))->getFileName());
 });
 
-test('an untyped helper body is analyzed once per binding its calls pass, a typed one once in all', function () use ($countLookups) {
+// A concrete model's declaration binds whatever its calls pass; an abstract one is narrowed by each argument's class.
+test('an untyped helper body is analyzed once per binding its calls pass, a typed one once per class they narrow it to', function () use ($countLookups) {
     $lookups = $countLookups();
 
     $properties = resolve(AstEngine::class)->analyzeMethod(PostRowResource::class)->properties;
@@ -162,9 +163,12 @@ test('an untyped helper body is analyzed once per binding its calls pass, a type
         'author' => '{ title: unknown }',
         'typed' => '{ key: unknown }',
         'typed_author' => '{ key: unknown }',
+        'titled' => '{ title: string }',
+        'titled_new' => '{ title: string }',
     ])
         ->and($lookups['own:'.PostRowFormatter::class.'::row'] ?? 0)->toBe(2)
-        ->and($lookups['own:'.PostRowFormatter::class.'::typed'] ?? 0)->toBe(1);
+        ->and($lookups['own:'.PostRowFormatter::class.'::typed'] ?? 0)->toBe(2)
+        ->and($lookups['own:'.PostRowFormatter::class.'::titled'] ?? 0)->toBe(1);
 });
 
 test('an answer reused for a call that binds the same still records every file it read', function () use ($countLookups) {

@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
+use Workbench\App\Models\Post;
 
-/** Static helpers two resources read as values, one parameter untyped and one typed. */
+/** Static helpers two resources read as values: one parameter untyped, one an abstract class, one a concrete model. */
 final class PostRowFormatter
 {
     /**
@@ -28,5 +29,15 @@ final class PostRowFormatter
     public static function typed(Model $model): array
     {
         return ['key' => $model->getKey()];
+    }
+
+    /**
+     * A title read off the post.
+     *
+     * @return array<string, mixed>
+     */
+    public static function titled(Post $post): array
+    {
+        return ['title' => $post->title];
     }
 }

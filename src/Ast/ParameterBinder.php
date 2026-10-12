@@ -22,8 +22,8 @@ use ReflectionUnionType;
 
 /**
  * Binds the parameters of a method whose body is read apart from its call, such as a subject's helper: by the types
- * they declare, which every call passes, so one reading holds for all of them; and each parameter whose declaration
- * binds nothing by what the call's argument binds, which a value read's memos key on (CallSite::signature()).
+ * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows, by what
+ * that argument binds, which a value read's memos key on (CallSite::signature()).
  *
  * A body write that replaces a parameter ends its class binding there: the caller runs endBindingsAtWrites() once the
  * body's locals are seeded. A written parameter binds no value, since a value binding outlives a write naming no class,
@@ -36,6 +36,7 @@ use ReflectionUnionType;
  *     classes: non-empty-list<class-string>|null,
  *     value: ValueExpressionResult|null,
  *     unsaved: bool,
+ *     refines: bool,
  * }
  *
  * @internal
@@ -102,7 +103,8 @@ final class ParameterBinder
      * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, other classes
      * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
      *
-     * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark.
+     * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark. An
+     * argument narrowing a declared abstract class, interface or union replaces the declared binding.
      *
      * @param  array<Stmt>  $stmts  the method's body
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -111,8 +113,10 @@ final class ParameterBinder
     {
         $written = $passed === [] ? [] : $this->collectWrittenVariableNames($stmts, $scope);
 
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved]) {
-            if ($scope->bindsName($name)) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+            if ($refines && isset($scope->varDeclaredBindings[$name])) {
+                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            } elseif ($scope->bindsName($name)) {
                 continue;
             }
 
@@ -138,10 +142,12 @@ final class ParameterBinder
      * How an argument binds the parameter it is passed: the one concrete model it holds, never null, by its class;
      * other classes and its value otherwise; null when it binds nothing. A `?->` can end it as null: no class binds.
      *
+     * A binding that refines a declared class names a class, or is null, since its value alone would lose the class.
+     *
      * @param  ValueExpressionResult  $value
      * @return PassedBinding|null
      */
-    public function passedBinding(array $value, ?ReceiverType $receiver): ?array
+    public function passedBinding(array $value, ?ReceiverType $receiver, bool $refines = false): ?array
     {
         $held = $receiver === null || $receiver->shortCircuits ? null : $receiver;
         $unsaved = $held !== null && $held->unsaved && $held->models() !== [];
@@ -152,25 +158,59 @@ final class ParameterBinder
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false];
+            return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
         }
 
         $value = $value['type'] === 'unknown' ? null : [...$value, 'optional' => false];
 
-        return $classes === null && $value === null
+        return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved];
+            : ['model' => null, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
     }
 
     /**
-     * Whether any parameter of a method takes the value its call passes, so a read of its body depends on the call.
+     * Whether any parameter of a method takes what its call passes, so a read of its body depends on the call.
      */
     public function takesPassedValues(ReflectionMethod $method): bool
     {
         return array_any(
             $method->getParameters(),
-            fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method),
+            fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method)
+                || $this->narrowableClasses($parameter) !== null,
         );
+    }
+
+    /**
+     * The abstract class, interface or union of classes a parameter declares, which a narrower argument refines; null
+     * for any other declaration, such as one concrete class, a Request or a variadic list.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public function narrowableClasses(ReflectionParameter $parameter): ?array
+    {
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+
+        if ($classes === null || array_any($classes, fn (string $class): bool => is_a($class, Request::class, true))) {
+            return null;
+        }
+
+        $reflection = new ReflectionClass($classes[0]);
+
+        return count($classes) > 1 || $reflection->isAbstract() || $reflection->isInterface() ? $classes : null;
+    }
+
+    /**
+     * Whether an argument holds narrower classes than a parameter declares: each within a declared one, and not every
+     * declared class within them. A `?->` can end it as null, so it narrows nothing.
+     *
+     * @param  non-empty-list<class-string>  $declared
+     */
+    public function narrows(array $declared, ?ReceiverType $receiver): bool
+    {
+        return $receiver !== null
+            && ! $receiver->shortCircuits
+            && $receiver->within($declared)
+            && ! new ReceiverType($declared)->within($receiver->classes);
     }
 
     /**
