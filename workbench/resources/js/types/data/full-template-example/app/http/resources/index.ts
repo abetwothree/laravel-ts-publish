@@ -143,6 +143,7 @@ export * from './post-comment-authors-resource';
 export * from './post-enum-case-resource';
 export * from './post-enum-trio-resource';
 export * from './post-flat-collection';
+export * from './post-helper-params-resource';
 export * from './post-new-value-resource';
 export * from './post-null-wrap-resource';
 export * from './post-pinned-comments-resource';

@@ -281,6 +281,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
+        $scope->varDeclaredBindings[$name] = [stdClass::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $outer;

@@ -64,8 +64,9 @@ answers:
 2. `varGuardBindings`: an early-exit guard's class, for a read past the guard.
 3. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file. See [AST engine § Declared locals](ast-engine.md#declared-locals).
-4. `varModelBindings`, `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, then `requestVarNames`,
-   then a `varValueBindings` value bound to one enum case, such as a parameter's default, as that enum.
+4. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
+   `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, then `requestVarNames`, then a
+   `varValueBindings` value bound to one enum case, such as a parameter's default, as that enum.
 5. `closureParamExprBindings`, else `localVarBindings`, resolved recursively under the `resolvingLocalVars` guard.
 
 Steps 1, 4 and 5's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's

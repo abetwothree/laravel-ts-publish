@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
@@ -59,6 +60,7 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -82,6 +84,7 @@ use ReflectionNamedType;
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type PassedArgument from ParameterBinder
  *
  * @internal
  */
@@ -115,6 +118,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
     protected ?string $sharedDataShareClass = null;
 
+    /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
+    private readonly bool $ownsScope;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -145,6 +151,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->requestVarNames = $this->resolveRequestVarNames($this->methodName);
             $this->scope->carriesImports = $carriesImports;
         }
+
+        $this->ownsScope = $scope === null;
 
         if ($this->scope->modelClass !== null) {
             $this->loadModelInspectorData();
@@ -313,6 +321,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $this->scope->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
         $this->scope->forwardsUndeclaredMembersTo = $this->proxyTarget();
 
+        // A scope AstEngine::bindingsFor() seeded already holds the parameters it binds.
+        if ($this->ownsScope && $this->scope->subjectReflection->hasMethod($this->methodName)) {
+            resolve(ParameterBinder::class)->bindDeclared($this->scope->subjectReflection->getMethod($this->methodName), $this->scope);
+        }
+
         $this->seedVarBindings($toArrayMethod->stmts);
 
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
@@ -480,14 +493,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Seed the scope's variable bindings from a method body: single-write assignments, then the
-     * relation-typed foreach loop variables that only a model-backed scope can resolve.
+     * Seed the scope's variable bindings from a method body: single-write assignments, the end of each parameter's
+     * binding at the write that replaces it, then the relation-typed foreach loop variables that only a model-backed
+     * scope can resolve.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function seedVarBindings(array $stmts): void
     {
         $this->collectLocalVarBindings($stmts, $this->scope);
+        $this->endBindingsAtWrites($stmts, $this->scope);
         $this->collectInstanceofGuards($stmts, $this->scope);
         $this->bindForeachLoopVariables($stmts);
     }
@@ -572,6 +587,23 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
+                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
+
+                if ($spreadAnalysis !== null) {
+                    $analysis->merge($spreadAnalysis);
+                }
+
+                continue;
+            }
+
+            // ...self::helper() or ...static::helper() spreads the subject's own method, as ...$this->helper() does.
+            if ($item->key === null && $item->unpack
+                && $item->value instanceof StaticCall
+                && $item->value->class instanceof Name
+                && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
+                && $item->value->name instanceof Identifier
+                && $this->scope->subjectReflection->hasMethod($item->value->name->toString())
+            ) {
                 $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
 
                 if ($spreadAnalysis !== null) {
@@ -1054,15 +1086,23 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousBindings = $this->scope->nameBindings();
         $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
         $previousDeclaringFileClass = $this->scope->declaringFileClass;
+        $previousRelationModel = $this->scope->closureRelationModelClass;
         $proofs = $this->proofsAcrossCall($this->scope, $call);
         try {
+            // Read in the caller's tables, before they are set aside.
+            $passed = $this->passedToUntypedParameters($method, $call);
             $this->scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
             $this->scope->resolvingLocalVars = [];
             $this->scope->nonNullReads = $proofs;
+            // The helper's `$this` is the subject, whatever relation closure the call sits in.
+            $this->scope->closureRelationModelClass = null;
             $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
             $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
+            $binder = resolve(ParameterBinder::class);
+            $binder->bindDeclared($method, $this->scope);
+            $binder->bindPassed($passed, $this->scope);
             $this->seedVarBindings($targetMethod->stmts);
 
             $branches = [];
@@ -1085,6 +1125,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->restoreNameBindings($previousBindings);
             $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
             $this->scope->declaringFileClass = $previousDeclaringFileClass;
+            $this->scope->closureRelationModelClass = $previousRelationModel;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }
 
@@ -1095,6 +1136,50 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
+    }
+
+    /**
+     * The value a spread call passes each parameter that declares no type or `mixed`, read in the caller's bindings;
+     * a variadic or by-reference parameter, and an unpacked or first-class call, pass nothing here.
+     *
+     * @return array<string, PassedArgument>
+     */
+    private function passedToUntypedParameters(ReflectionMethod $method, ?Expr $call): array
+    {
+        if ((! $call instanceof MethodCall && ! $call instanceof FuncCall && ! $call instanceof StaticCall)
+            || $call->isFirstClassCallable()
+        ) {
+            return [];
+        }
+
+        $arguments = null;
+        $passed = [];
+
+        foreach ($method->getParameters() as $parameter) {
+            if ($parameter->isVariadic()
+                || $parameter->isPassedByReference()
+                || ($parameter->hasType() && (string) $parameter->getType() !== 'mixed')
+            ) {
+                continue;
+            }
+
+            $arguments ??= CallArguments::for($call, $method);
+
+            if ($arguments->hasUnpack()) {
+                return [];
+            }
+
+            $argument = $arguments->named($parameter->getName());
+
+            if ($argument !== null) {
+                $passed[$parameter->getName()] = [
+                    'value' => $this->analyzeValueExpression($argument->value),
+                    'receiver' => resolve(ReceiverClassResolver::class)->resolve($argument->value, $this->scope),
+                ];
+            }
+        }
+
+        return $passed;
     }
 
     /**

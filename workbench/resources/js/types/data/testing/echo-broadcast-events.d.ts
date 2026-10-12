@@ -10,6 +10,7 @@ import type { MixedTypesEvent } from './workbench/app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
 import type { OrderShipped } from './workbench/app/events/OrderShipped';
 import type { PayloadDiffersEvent } from './workbench/app/events/PayloadDiffersEvent';
+import type { PostHelperPayloadEvent } from './workbench/app/events/PostHelperPayloadEvent';
 import type { PostPublishedEvent } from './workbench/app/events/PostPublishedEvent';
 import type { PostStatusBroadcast } from './workbench/app/events/PostStatusBroadcast';
 import type { PureEnumEvent } from './workbench/app/events/PureEnumEvent';
@@ -40,6 +41,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.MultiModelEvent": MultiModelEvent;
         ".Workbench.App.Events.OrderShipped": OrderShipped;
         ".Workbench.App.Events.PayloadDiffersEvent": PayloadDiffersEvent;
+        ".Workbench.App.Events.PostHelperPayloadEvent": PostHelperPayloadEvent;
         ".Workbench.App.Events.PostPublishedEvent": PostPublishedEvent;
         ".Workbench.App.Events.PostStatusBroadcast": PostStatusBroadcast;
         ".Workbench.App.Events.PureEnumEvent": PureEnumEvent;

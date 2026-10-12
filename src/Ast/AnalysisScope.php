@@ -61,6 +61,7 @@ use ReflectionClass;
  *      nonNullReads: NonNullReadsMap,
  *      varDocBindings: VarDocBindingsMap,
  *      varModelBindings: VarModelBindingsMap,
+ *      varDeclaredBindings: VarClassBindingsMap,
  *      varCollectionBindings: VarCollectionBindingsMap,
  *      varValueBindings: VarValueBindingsMap,
  *      localVarBindings: LocalVarBindingsMap,
@@ -81,6 +82,7 @@ final class AnalysisScope
         'nonNullReads' => [],
         'varDocBindings' => [],
         'varModelBindings' => [],
+        'varDeclaredBindings' => [],
         'varCollectionBindings' => [],
         'varValueBindings' => [],
         'localVarBindings' => [],
@@ -169,11 +171,19 @@ final class AnalysisScope
     /**
      * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against it: a to-one whenLoaded,
      * map or transform() closure param, scoped to its closure's body, and, method-wide, a foreach variable over a
-     * many-relation or a `Model`-typed parameter AstEngine::bindingsFor() seeds.
+     * many-relation or a `Model`-typed parameter AstEngine::bindingsFor() or ParameterBinder seeds.
      *
      * @var VarModelBindingsMap
      */
     public array $varModelBindings = [];
+
+    /**
+     * Parameters a method read apart from its call declares, or is passed, a class-only type for, other than the one
+     * concrete model varModelBindings holds: the floor every narrowing refines, so it is read after them.
+     *
+     * @var VarClassBindingsMap
+     */
+    public array $varDeclaredBindings = [];
 
     /**
      * Closure params bound to a whole relation collection rather than one element — a to-many
@@ -334,6 +344,7 @@ final class AnalysisScope
             'nonNullReads' => $this->nonNullReads,
             'varDocBindings' => $this->varDocBindings,
             'varModelBindings' => $this->varModelBindings,
+            'varDeclaredBindings' => $this->varDeclaredBindings,
             'varCollectionBindings' => $this->varCollectionBindings,
             'varValueBindings' => $this->varValueBindings,
             'localVarBindings' => $this->localVarBindings,
@@ -356,6 +367,7 @@ final class AnalysisScope
         $this->nonNullReads = $snapshot['nonNullReads'];
         $this->varDocBindings = $snapshot['varDocBindings'];
         $this->varModelBindings = $snapshot['varModelBindings'];
+        $this->varDeclaredBindings = $snapshot['varDeclaredBindings'];
         $this->varCollectionBindings = $snapshot['varCollectionBindings'];
         $this->varValueBindings = $snapshot['varValueBindings'];
         $this->localVarBindings = $snapshot['localVarBindings'];
@@ -447,6 +459,10 @@ final class AnalysisScope
 
             if (isset($snapshot['varModelBindings'][$from])) {
                 $this->varModelBindings[$to] = $snapshot['varModelBindings'][$from];
+            }
+
+            if (isset($snapshot['varDeclaredBindings'][$from])) {
+                $this->varDeclaredBindings[$to] = $snapshot['varDeclaredBindings'][$from];
             }
 
             if (isset($snapshot['varCollectionBindings'][$from])) {
@@ -543,6 +559,7 @@ final class AnalysisScope
     {
         return [
             $this->varModelBindings,
+            $this->varDeclaredBindings,
             $this->varCollectionBindings,
             $this->varClassBindings,
             $this->varValueBindings,
@@ -573,6 +590,7 @@ final class AnalysisScope
                 $this->nonNullReads[$name],
                 $this->varDocBindings[$name],
                 $this->varModelBindings[$name],
+                $this->varDeclaredBindings[$name],
                 $this->varCollectionBindings[$name],
                 $this->varValueBindings[$name],
                 $this->localVarBindings[$name],

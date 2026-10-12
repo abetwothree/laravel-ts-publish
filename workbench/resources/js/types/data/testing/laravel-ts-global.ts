@@ -2771,6 +2771,7 @@ declare global {
             when_label?: string;
             label_or_zero: number | string;
             supervisor?: UserResource | null;
+            supervisor_card?: { name: string } | null;
         }
         /**
          * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
@@ -4352,6 +4353,26 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /**
+         * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
+         * nested call, a static helper and a trait's.
+         */
+        export interface PostHelperParamsResource {
+            id: number;
+            title: string;
+            extra: number;
+            summary: { id: number; title: string; extra: number };
+            card: { card_id: number; card_title: string };
+            nested: { inner: { card_id: number; card_title: string } };
+            static_card: { static_id: number };
+            headline_id: number;
+            headline: string;
+            maybe: { maybe_title: string | null };
+            status_label: { label: string; value: number };
+            status_payload: { payload_status: unknown; payload_name: string };
+            payload_status: workbench.app.enums.StatusType;
+            payload_name: string;
+        }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
             error: Record<string, never>;
@@ -4969,6 +4990,8 @@ declare global {
             has_t?: { v: number; k: number };
             transform_t?: { v: number };
             loaded_t?: { v: number };
+            author_named?: { n: unknown };
+            author_passed?: { n: string };
             v: number;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
@@ -6069,6 +6092,11 @@ declare global {
             team: number;
             kind: string;
             count: number;
+        }
+        export interface PostHelperPayloadEvent {
+            post_id: number;
+            post_title: string;
+            row: { post_id: number; post_title: string };
         }
         export interface PostPublishedEvent {
             post: Partial<workbench.app.models.Post>;

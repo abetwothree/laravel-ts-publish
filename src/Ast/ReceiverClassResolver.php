@@ -290,12 +290,17 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a variable through its model, collection, request, closure-parameter or local-assignment binding.
+     * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
+     * local-assignment binding.
      */
     private function fromBindings(string $name, AnalysisScope $scope): ?ReceiverType
     {
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
+        }
+
+        if (isset($scope->varDeclaredBindings[$name])) {
+            return new ReceiverType($scope->varDeclaredBindings[$name]);
         }
 
         if (isset($scope->varCollectionBindings[$name])) {

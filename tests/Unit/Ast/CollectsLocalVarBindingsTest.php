@@ -146,6 +146,19 @@ it('keeps a loaded collection\'s binding across a write naming no other element 
     'a single model' => ['$p = new \\Workbench\\App\\Models\\Comment; return $p;', [true, false]],
 ]);
 
+// A declared binding stands for every class the parameter declares: a write holding fewer, or others, ends it, so the
+// local reads the narrower value the body wrote.
+it('ends a declared binding at a write holding other classes, or fewer than it declares', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
+        $scope->varDeclaredBindings['p'] = [User::class, Post::class];
+    }))->toBe($holding);
+})->with([
+    'a write holding every declared class' => ['$p = $p; return $p;', [true, true, true]],
+    'a write holding one of them' => ['$p = new \\Workbench\\App\\Models\\User; return $p;', [true, false]],
+    'a write holding another class' => ['$p = new \\Workbench\\App\\Models\\Profile; return $p;', [true, false]],
+    'a write whose value names no class' => ['$p = $p->comments->first(); return $p;', [true, true, true]],
+]);
+
 // A value binding names no class, so only a value that names one ends it; the local then reads what was assigned.
 it('ends a value binding only at a write whose value names a class', function (string $body, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {

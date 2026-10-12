@@ -10,6 +10,7 @@ import type { MixedTypesEvent } from './workbench/app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './workbench/app/events/MultiModelEvent';
 import type { OrderShipped } from './workbench/app/events/OrderShipped';
 import type { PayloadDiffersEvent } from './workbench/app/events/PayloadDiffersEvent';
+import type { PostHelperPayloadEvent } from './workbench/app/events/PostHelperPayloadEvent';
 import type { PostPublishedEvent } from './workbench/app/events/PostPublishedEvent';
 import type { PostStatusBroadcast } from './workbench/app/events/PostStatusBroadcast';
 import type { PureEnumEvent } from './workbench/app/events/PureEnumEvent';
@@ -39,6 +40,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.MultiModelEvent'
     | '.Workbench.App.Events.OrderShipped'
     | '.Workbench.App.Events.PayloadDiffersEvent'
+    | '.Workbench.App.Events.PostHelperPayloadEvent'
     | '.Workbench.App.Events.PostPublishedEvent'
     | '.Workbench.App.Events.PostStatusBroadcast'
     | '.Workbench.App.Events.PureEnumEvent'
@@ -68,6 +70,7 @@ export const BroadcastEvents = Object.freeze({
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
     OrderShipped: '.Workbench.App.Events.OrderShipped',
     PayloadDiffersEvent: '.Workbench.App.Events.PayloadDiffersEvent',
+    PostHelperPayloadEvent: '.Workbench.App.Events.PostHelperPayloadEvent',
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
     PostStatusBroadcast: '.Workbench.App.Events.PostStatusBroadcast',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
@@ -98,6 +101,7 @@ export type {
     MultiModelEvent,
     OrderShipped,
     PayloadDiffersEvent,
+    PostHelperPayloadEvent,
     PostPublishedEvent,
     PostStatusBroadcast,
     PureEnumEvent,

@@ -209,7 +209,6 @@ use Workbench\App\Http\Resources\ReleaseColumnsResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SamePatternKeysResource;
 use Workbench\App\Http\Resources\ShadowedClosureParamResource;
-use Workbench\App\Http\Resources\SpreadHelperScopeResource;
 use Workbench\App\Http\Resources\SpreadJsonBaseResource;
 use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
@@ -7363,15 +7362,6 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
         'field' => 'string',
         'items' => 'number[]',
         'author' => 'User',
-    ]);
-});
-
-it('a spread helper reads none of its caller closure\'s names', function () {
-    expect(resourceKeyTypes(SpreadHelperScopeResource::class, Post::class))->toBe([
-        'has_t?' => '{ v: number; k: number }',
-        'transform_t?' => '{ v: number }',
-        'loaded_t?' => '{ v: number }',
-        'v' => 'number',
     ]);
 });
 

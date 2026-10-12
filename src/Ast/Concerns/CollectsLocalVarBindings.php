@@ -244,9 +244,9 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether a write leaves a binding standing. An operator such as `.=` or `++` keeps the kind of value held, and an
-     * assignment or `??=` keeps it unless its value names a class: for a class binding one it does not hold, for a
-     * collection one with another element. An inline `@var` on an assignment answers where its value names none.
+     * Whether a write leaves a binding standing. `.=` or `++` keeps the kind of value held; an assignment or `??=`
+     * keeps it unless its value names a class the binding does not hold, other or fewer classes than a declared one,
+     * or a collection of another element. An inline `@var` on an assignment answers where its value names none.
      */
     private function keepsBinding(string $name, Node $node, AnalysisScope $scope): bool
     {
@@ -273,10 +273,16 @@ trait CollectsLocalVarBindings
             isset($scope->requestVarNames[$name]) => [$scope->requestVarNames[$name]],
             default => null,
         };
+        $declared = $scope->varDeclaredBindings[$name] ?? null;
 
         return match (true) {
             $held === null => true,
             $classes !== null => $held->within($classes),
+            // A write holding fewer of a declared union's classes ends it, so a later read takes the narrower value.
+            $declared !== null => $held->within($declared) && array_all(
+                $declared,
+                fn (string $class): bool => array_any($held->classes, fn (string $heldClass): bool => is_a($class, $heldClass, true)),
+            ),
             // A re-sorted or re-filtered collection names no element class, so the element binding stands.
             $element !== null => $held->within([Enumerable::class])
                 && ($held->elementModel === null || is_a($held->elementModel, $element, true)),

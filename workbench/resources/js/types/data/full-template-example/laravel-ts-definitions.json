@@ -244,6 +244,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\PostHelperPayloadEvent": {
+            "name": "PostHelperPayloadEvent",
+            "eventName": "PostHelperPayloadEvent",
+            "broadcastName": ".Workbench.App.Events.PostHelperPayloadEvent",
+            "properties": [
+                {
+                    "name": "post_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "post_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "row",
+                    "type": "{ post_id: number; post_title: string }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\PostPublishedEvent": {
             "name": "PostPublishedEvent",
             "eventName": "PostPublishedEvent",
@@ -11317,6 +11339,11 @@
                     "name": "supervisor",
                     "type": "UserResource | null",
                     "optional": true
+                },
+                {
+                    "name": "supervisor_card",
+                    "type": "{ name: string } | null",
+                    "optional": true
                 }
             ]
         },
@@ -16165,6 +16192,81 @@
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
         },
+        "Workbench\\App\\Http\\Resources\\PostHelperParamsResource": {
+            "name": "PostHelperParamsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "extra",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ id: number; title: string; extra: number }",
+                    "optional": false
+                },
+                {
+                    "name": "card",
+                    "type": "{ card_id: number; card_title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: { card_id: number; card_title: string } }",
+                    "optional": false
+                },
+                {
+                    "name": "static_card",
+                    "type": "{ static_id: number }",
+                    "optional": false
+                },
+                {
+                    "name": "headline_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "headline",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "maybe",
+                    "type": "{ maybe_title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "status_label",
+                    "type": "{ label: string; value: number }",
+                    "optional": false
+                },
+                {
+                    "name": "status_payload",
+                    "type": "{ payload_status: unknown; payload_name: string }",
+                    "optional": false
+                },
+                {
+                    "name": "payload_status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "payload_name",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostNewValueResource": {
             "name": "PostNewValueResource",
             "properties": [
@@ -18153,6 +18255,16 @@
                 {
                     "name": "loaded_t",
                     "type": "{ v: number }",
+                    "optional": true
+                },
+                {
+                    "name": "author_named",
+                    "type": "{ n: unknown }",
+                    "optional": true
+                },
+                {
+                    "name": "author_passed",
+                    "type": "{ n: string }",
                     "optional": true
                 },
                 {

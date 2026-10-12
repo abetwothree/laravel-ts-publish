@@ -130,7 +130,7 @@ pairs, and the matrix does not run this profile.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These three facts span other classes:
+docblocks say what each binding table holds. These four facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
@@ -141,6 +141,9 @@ docblocks say what each binding table holds. These three facts span other classe
   committed resource output.
 - **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback, and a getter that
   `AstEngine::analyzeModelClosure()` reads without imports. See [Receiver types § The body fallback][body-fallback].
+- **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
+  `ReceiverClassResolver` reads it after `varModelBindings` and below the narrowing tables. In `varClassBindings` it
+  would outrank an early-exit guard, as `GuardWritePostResource` pins.
 
 ### Writing a scope binding
 
@@ -209,6 +212,21 @@ These rules settle the cases the table leaves open:
 
 `ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
 green with either mechanism alone, so it pins neither.
+
+#### A called method's parameters
+
+A method body read apart from its call, such as a spread helper, the body fallback, `SubjectHelperReturnResolver`'s
+helper or any analyzer that builds its own scope, binds its parameters with [`ParameterBinder`]'s `bindDeclared()`, by
+the type they declare: the native type, else a whitelisted `@phpstan-param`, `@psalm-param` or `@param` where the native
+type is vague. One concrete, non-null model goes in `varModelBindings`; any other parameter puts its classes, when it
+names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` and a name already bound
+stay as they are.
+
+A parameter the body writes is bound too, and its binding ends at the write as [Declared locals](#declared-locals) says;
+a write holding fewer of a declared union's classes ends it as well. The binding reads only the declaration, so the
+`analysis:` and `method-return:` keys stay valid. A spread call also binds an untyped or `mixed` parameter to the
+argument it passes, through `bindPassed()`, read before the caller's tables are set aside. A value read does not, since
+its memo is keyed per method.
 
 ### Narrowing
 
@@ -511,6 +529,7 @@ These pages cover the engine's neighbors:
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
 [`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/MethodLocator.php
+[`ParameterBinder`]: ../../src/Ast/ParameterBinder.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php

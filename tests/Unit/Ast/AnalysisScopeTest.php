@@ -70,6 +70,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
+        $scope->varDeclaredBindings[$name] = [User::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
@@ -140,6 +141,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
         ->and($scope->varDocBindings['param'])->toBe($captured['varDocBindings']['item'])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
+        ->and($scope->varDeclaredBindings['param'])->toBe([User::class])
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
@@ -165,7 +167,7 @@ it('binds a name a parameter or a seeded binding holds, never one only the body\
     $bodyOnly->varDocBindings['item'] = $scope->varDocBindings['item'];
     $bodyOnly->varGuardBindings['item'] = $scope->varGuardBindings['item'];
     $bodyOnly->nonNullReads['item'] = $scope->nonNullReads['item'];
-    $tables = ['varModelBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
+    $tables = ['varModelBindings', 'varDeclaredBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
 
     foreach ($tables as $table) {
         $one = new AnalysisScope(new ReflectionClass(stdClass::class));

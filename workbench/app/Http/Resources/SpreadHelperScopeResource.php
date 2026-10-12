@@ -24,6 +24,8 @@ final class SpreadHelperScopeResource extends JsonResource
             'has_t' => $this->whenHas('title', fn ($t) => [...$this->ownId(), 'k' => 1]),
             'transform_t' => $this->transform($this->title, fn ($t) => [...$this->ownId()]),
             'loaded_t' => $this->whenLoaded('comments', fn ($t) => [...$this->ownId()]),
+            'author_named' => $this->whenLoaded('author', fn ($author) => [...$this->named($this->resource)]),
+            'author_passed' => $this->whenLoaded('author', fn ($author) => [...$this->named($author)]),
             ...$this->ownId(),
         ];
     }
@@ -38,5 +40,16 @@ final class SpreadHelperScopeResource extends JsonResource
         $t = $this->id;
 
         return ['v' => $t];
+    }
+
+    /**
+     * A name read off an untyped parameter, which the caller passes the post or its author.
+     *
+     * @param  mixed  $subject
+     * @return array<string, mixed>
+     */
+    private function named($subject): array
+    {
+        return ['n' => $subject->name];
     }
 }
