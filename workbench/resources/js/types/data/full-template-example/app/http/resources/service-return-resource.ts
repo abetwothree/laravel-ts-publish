@@ -7,5 +7,5 @@
 export interface ServiceReturnResource
 {
     quote: { unit: string; minimum: number; discounted: { unit: string } };
-    tiers: { "1": string; "2": string };
+    tiers: string[];
 }

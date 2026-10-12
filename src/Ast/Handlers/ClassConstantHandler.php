@@ -14,9 +14,8 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
- * `SomeClass::CONSTANT` / `self::CONSTANT` / `static::CONSTANT` as a value. `Foo::class` and
- * enum-case fetches are excluded inside ValueResolver, so this never diverts those paths
- * (EnumResource::make(), toResource(SomeResource::class), #[Collects]).
+ * `SomeClass::CONSTANT` / `self::CONSTANT` / `static::CONSTANT` / `SomeEnum::Case` as a value. `Foo::class` types as a
+ * string; EnumResource::make(), toResource(SomeResource::class) and #[Collects] read their arguments before this runs.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -36,7 +35,7 @@ final class ClassConstantHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof ClassConstFetch && $expr->class instanceof Name && $expr->name instanceof Identifier) {
-            $constantResult = $this->resolver->resolveClassConstant($expr, $scope, $engine);
+            $constantResult = $this->resolver->resolveClassConstant($expr, $scope);
 
             if ($constantResult !== null) {
                 return $constantResult;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
@@ -12,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\BulletinArchive;
 use Workbench\App\Models\BulletinBoard;
 use Workbench\App\Models\BulletinFeed;
@@ -19,6 +21,7 @@ use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Release;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
     test('types accessors from their getter bodies', function (string $attribute, string $expected) {
@@ -237,12 +240,24 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(AuthoredPost::class, $attribute)['type'])->toBe('unknown');
     })->with(['author_resource', 'author_to_resource']);
 
-    test('two enums sharing a name decline, since one token cannot name both', function () {
+    test('two enums sharing a name publish under a token each, as a native union of them does', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
         $resolved = resolve(ModelAttributeResolver::class)->resolveAttribute(TwoStatusPost::class, 'status_or_lead');
 
-        expect($resolved['type'])->toBe('unknown')
-            ->and($resolved['enumFqcns'])->toBe([])
-            ->and((new ModelTransformer(TwoStatusPost::class))->data()->mutators['status_or_lead']['type'])->toBe('unknown');
+        expect($resolved['type'])->toBe('StatusType | StatusType | null')
+            ->and($resolved['enumFqcns'])->toBe([Status::class, CrmStatus::class])
+            ->and((new ModelTransformer(TwoStatusPost::class))->data()->mutators['status_or_lead']['type'])
+            ->toBe('EnumsStatusType | CrmStatusType | null');
+    });
+
+    test('an untyped getter returning a case publishes its enum', function () {
+        expect(array_map(fn (array $mutator): string => $mutator['type'], (new ModelTransformer(EnumCaseGetterModel::class))->data()->mutators))
+            ->toBe([
+                'default_state' => 'WorkbenchStatusType',
+                'either_state' => 'WorkbenchStatusType | CrmStatusType',
+                'state_shape' => '{ s: WorkbenchStatusType; n: number }',
+            ]);
     });
 
     test('a shape, list or union around an enum keeps its own type in the model file', function (string $attribute, string $type) {

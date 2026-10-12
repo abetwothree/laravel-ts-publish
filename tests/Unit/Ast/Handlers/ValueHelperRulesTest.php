@@ -38,6 +38,38 @@ it('types the value helpers as json_encode() writes what they return', function 
     'collect() with a record of columns' => ['collect(["title" => $this->title])', '{ title: string }'],
     'collect() with a list-typed expression' => ['collect(explode(",", $this->title))', 'string[]'],
     'collect() with an optional list-typed expression' => ['collect($this->when($this->title, explode(",", $this->title)))', 'string[]'],
+    'collect() with a list holding an untypable element, still a list' => ['collect([$this->title, json_decode("{}")])', 'unknown[]'],
+    'collect() with a list and the spread of a list' => ['collect([...explode(",", $this->title), 1])', '(string | number)[]'],
+    'collect() with a record keyed by numbers' => ['collect([200 => "OK", 404 => "Not Found"])', '{ "200": string; "404": string }'],
+]);
+
+// A Collection's keys reach JSON as written: an API resource's filter never enters one to re-index it.
+it('marks every collect() value as a Collection\'s, whose keys a resource never re-indexes', function (string $php) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['keepsKeys'] ?? false)
+        ->toBeTrue();
+})->with([
+    'no items' => ['collect()'],
+    'a constant list' => ['collect([1, 2])'],
+    'a constant record keyed by numbers' => ['collect([200 => "OK"])'],
+    'a list expression' => ['collect([$this->title])'],
+    'a list of records keyed by numbers' => ['collect([["1" => $this->title]])'],
+    'a record expression' => ['collect(["title" => $this->title])'],
+]);
+
+it('types new Collection($items) as collect($items), keys kept', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['keepsKeys'] ?? false)->toBe($type !== 'unknown');
+})->with([
+    'a list' => ['new \\Illuminate\\Support\\Collection(["z"])', 'string[]'],
+    'a record keyed by numbers' => ['new \\Illuminate\\Support\\Collection([200 => "OK"])', '{ "200": string }'],
+    'a named argument' => ['new \\Illuminate\\Support\\Collection(items: [1])', 'number[]'],
+    'no argument' => ['new \\Illuminate\\Support\\Collection()', 'unknown'],
+    'a spread' => ['new \\Illuminate\\Support\\Collection(...$this->tags)', 'unknown'],
 ]);
 
 it('leaves the value helpers it cannot type, and __(), to unknown', function (string $php) {
@@ -46,8 +78,6 @@ it('leaves the value helpers it cannot type, and __(), to unknown', function (st
     'url() with no path returns the UrlGenerator' => ['url()'],
     'url() with null returns the UrlGenerator' => ['url(null)'],
     'collect() of a scalar' => ['collect("abc")'],
-    'collect() of a list holding an untypable element' => ['collect([$this->title, json_decode("{}")])'],
-    'collect() of a numeric-keyed record, declined conservatively' => ['collect([1 => "a"])'],
     'collect() of a keyed when() value, which encodes as {}' => ['collect(["a" => $this->when($this->title, 1)])'],
     'collect() of a listed when() value, which encodes as {}' => ['collect([$this->when($this->title, 1)])'],
     'collect() of a column' => ['collect($this->title)'],

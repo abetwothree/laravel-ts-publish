@@ -41,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -49,6 +50,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -239,6 +241,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
+     * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
+     *
+     * The publishing class decides, not the one declaring the body: an inherited toArray() runs under the subclass's
+     * own `$preserveKeys`.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
+    {
+        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
+            $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
+        }
+    }
+
+    /**
      * Analyze the subject's $this->methodName body and return the resulting property/type analysis.
      */
     public function analyze(): ResourceAnalysis
@@ -364,8 +384,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call to the
-     * method itself, an `array_merge()` of those, an own-model `only()`/`except()` or a `$this->method()` call; null
-     * for any other expression.
+     * method itself, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call or a `+`
+     * of any of them; null for any other expression.
      */
     protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -380,6 +400,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
         if ($expr instanceof FuncCall) {
             return $this->analyzeReturnArrayMerge($expr, $topLevel);
+        }
+
+        // `$a + $b` keeps every key $a sets, as `+=` does.
+        if ($expr instanceof Plus) {
+            $left = $this->readsAsArray($expr) ? $this->analyzeArrayExpression($expr->left, $topLevel) : null;
+            $right = $left === null ? null : $this->analyzeArrayExpression($expr->right, $topLevel);
+
+            if ($left === null || $right === null) {
+                return null;
+            }
+
+            $right->dropKeysHeldBy($left);
+            $left->merge($right);
+
+            return $left;
         }
 
         if (! $expr instanceof MethodCall || ! $expr->name instanceof Identifier) {
@@ -400,10 +435,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function readsAsArray(Expr $expr): bool
     {
+        if ($expr instanceof Plus) {
+            return $this->readsAsArray($expr->left) && $this->readsAsArray($expr->right);
+        }
+
         if (! $expr instanceof MethodCall) {
             return $expr instanceof Array_
                 || $this->isParentCallTo($expr, $this->methodName)
-                || ($expr instanceof FuncCall && $this->mergedArrayLiteral($expr, $this->methodName) !== null);
+                || ($expr instanceof FuncCall
+                    && $this->mergedArrayLiteral($expr, $this->scope->subjectReflection, $this->methodName) !== null);
         }
 
         if (! $expr->name instanceof Identifier) {
@@ -602,13 +642,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
      * and flatten its shape into this resource's own properties. Null for anything the classifier
-     * declines, so the caller falls through to $this->merge()'s own handling.
+     * declines, or takes only by its type, so the caller falls through to $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {
         $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
 
-        if ($arm === null) {
+        if ($arm === null || isset($arm['type'])) {
             return null;
         }
 
@@ -638,7 +678,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         DependencyRecorder::recordClass($resourceFqcn);
 
-        return resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+        $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
+
+        // resolve() runs the spread resource's own filter.
+        self::reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
+
+        return $analysis;
     }
 
     /**
@@ -696,7 +741,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            $analysis->addProperty($column, ValueResult::withAttributeChannels(['type' => $tsInfo['type'], 'optional' => $optional], $tsInfo));
+            // Model::toArray() writes an Arrayable value as its toArray() array, which the filter enters.
+            $keepsKeys = ($tsInfo['keepsKeys'] ?? false) && ! $resolver->serializesAsArray($modelFqcn, $column);
+
+            $analysis->addProperty($column, ValueResult::withAttributeChannels(
+                ['type' => $tsInfo['type'], 'optional' => $optional],
+                [...$tsInfo, 'keepsKeys' => $keepsKeys],
+            ));
         }
 
         return $analysis;
@@ -732,7 +783,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
     {
-        $merged = $this->mergedArrayLiteral($call, $this->methodName);
+        $merged = $this->mergedArrayLiteral($call, $this->scope->subjectReflection, $this->methodName);
 
         return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
     }
@@ -1079,12 +1130,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
 
             foreach ($types as $property => $value) {
+                // PHP stores a numeric cast key as an int, while a property names its key as a string.
+                $property = (string) $property;
                 $type = is_array($value) ? $value['type'] : $value;
                 $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
                 $import = is_array($value) ? ($value['import'] ?? null) : null;
 
                 if ($optional === true) {
-                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember((string) $property, $type, true);
+                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember($property, $type, true);
                 }
 
                 $found = false;
@@ -1307,7 +1360,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     ): ResourceAnalysis {
         $branchCount = count($analyses);
 
-        /** @var array<string, list<AnalyzedProperty>> */
+        /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
         $propertyMap = [];
 
         // Only the channels collapse onto merge(): a property name several branches set has to be
@@ -1343,6 +1396,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
 
             $presentInAll = count($entries) === $branchCount;
+            $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
             // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
             // error — regardless of whether every branch produced it.
@@ -1360,12 +1414,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             $properties[] = [
-                'name' => $name,
+                'name' => (string) $name,
                 'type' => $type,
                 'optional' => $optional,
                 'description' => $description,
                 ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
                 ...($fillType === null ? [] : ['fillType' => $fillType]),
+                ...($keepsKeys ? ['keepsKeys' => true] : []),
             ];
         }
 

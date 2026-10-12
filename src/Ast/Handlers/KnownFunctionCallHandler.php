@@ -300,13 +300,26 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     /**
      * Resolve `collect($items)` as the list or object its items encode as.
      *
-     * None or null is `never[]`, a constant array is typed as a parameter default's value is, a list literal is a list
-     * of its elements, and an expression typed as a list or an object shape keeps that type. A literal holding a
-     * `when*()` value declines: Laravel's filter never recurses into a Collection, so the value encodes as `{}`.
+     * None or null is `never[]`, a constant array is typed as a parameter default is, and an expression typed as a list
+     * or an object shape keeps that type. A literal holding a `when*()` value declines: Laravel's filter never recurses
+     * into a Collection, so the value encodes as `{}`.
      *
      * @return ValueExpressionResult|null
      */
     private function collectRule(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->collectedItemsResult($args, $scope, $engine);
+
+        // The value is a Collection, whose keys json_encode() writes as they are, so a resource's re-index skips it.
+        return $result === null ? null : [...$result, 'keepsKeys' => true];
+    }
+
+    /**
+     * The list or object `collect($items)` encodes as, before it is marked as a Collection's.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function collectedItemsResult(CallArguments $args, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $items = $args->named('value')?->value;
 
@@ -322,7 +335,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             // Arr::wrap() turns null into no items, and a scalar into one, which no caller writes.
             return match (true) {
                 $value === null => ['type' => 'never[]', 'optional' => false],
-                is_array($value) => $resolver->resolveConstantValue($value, $engine),
+                is_array($value) => $resolver->resolveConstantValue($value),
                 default => null,
             };
         } catch (ConstExprEvaluationException) {
@@ -332,34 +345,15 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return null;
         }
 
-        if ($items instanceof Array_ && array_all($items->items, fn (ArrayItem $item): bool => $item->key === null && ! $item->unpack)) {
-            return $this->listLiteralResult($items, $engine);
-        }
-
         $result = $engine->resolve($items);
 
-        return count(TsTypeString::splitTopLevelUnion($result['type'])) === 1
-            && (str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{'))
-            ? [...$result, 'optional' => false]
-            : null;
-    }
-
-    /**
-     * A list literal as a list of its element types, or null when one of them does not type.
-     *
-     * @return ValueExpressionResult|null
-     */
-    private function listLiteralResult(Array_ $list, ExpressionEngine $engine): ?array
-    {
-        $elements = array_values(array_map(fn (ArrayItem $item): array => $engine->resolve($item->value), $list->items));
-
-        if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
+        if (count(TsTypeString::splitTopLevelUnion($result['type'])) !== 1) {
             return null;
         }
 
-        $union = ValueResult::unionResults($elements);
-
-        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
+        return str_ends_with($result['type'], '[]') || str_starts_with($result['type'], '{')
+            ? [...$result, 'optional' => false]
+            : null;
     }
 
     /**

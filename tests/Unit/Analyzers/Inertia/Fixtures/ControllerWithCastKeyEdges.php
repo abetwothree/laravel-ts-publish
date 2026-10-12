@@ -11,7 +11,8 @@ use Workbench\App\Http\Requests\UpdatePostRequest;
 
 /**
  * Page casts on a numeric key, under a losing spelling, over two components only one of which returns the key, and
- * with or without an `optional` flag; and a prop typed from a request's import-aware cast.
+ * with or without an `optional` flag; int keys Laravel renumbers at the top level, and a collection keyed by numbers;
+ * and a prop typed from a request's import-aware cast.
  */
 class ControllerWithCastKeyEdges
 {
@@ -20,6 +21,25 @@ class ControllerWithCastKeyEdges
     public function numeric(): Response
     {
         return Inertia::render('Edges/Numeric', ['heading' => 'x', 42 => 1]);
+    }
+
+    /** Renders the int key `42` uncast at the top level, and `7` inside a nested array. */
+    public function numericBody(): Response
+    {
+        return Inertia::render('Edges/NumericBody', ['heading' => 'x', 42 => true, 'codes' => [7 => 'a']]);
+    }
+
+    /** Renders a collection keyed by numbers, which keeps its keys. */
+    public function collectedCodes(): Response
+    {
+        return Inertia::render('Edges/CollectedCodes', ['codes' => collect([200 => 'OK', 404 => 'Not Found'])]);
+    }
+
+    /** Casts the int key `7`, which the props lack, beside the props' own `42`. */
+    #[TsCasts(['7' => 'string'])]
+    public function numericCastAdded(): Response
+    {
+        return Inertia::render('Edges/NumericCastAdded', ['heading' => 'x', 42 => true]);
     }
 
     /** Casts the `\_cast` signature under both spellings; the losing one names an import. */

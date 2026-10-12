@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 /**
  * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
  *
- * One key per recording site; the audit proves each fires and pins these lines: the plain ternary and the Elvis go
- * through analyzeClosureUnion(), 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through
- * KnownFunctionCallHandler, 'conditional_default' through ConditionalMethodHandler, 'match_arm' through MatchHandler.
+ * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
+ * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
+ * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
  *
  * @mixin Post
  */
@@ -34,6 +34,7 @@ final class UnionHonestyResource extends JsonResource
             'match_arm' => match (true) {
                 $this->id > 1 => $this->title, default => $this->opaqueValue()
             },
+            'coalesce_right' => $this->title ?? $this->opaqueValue(),
         ];
     }
 

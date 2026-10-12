@@ -215,6 +215,7 @@ class ModelMetadataAnalyzer
         $optionalKeys = [];
 
         foreach (LaravelTsPublish::parseDocblockReturnArrayShape($method) as $property => $type) {
+            $property = (string) $property;
             $optional = str_ends_with($property, '?');
             $property = $optional ? substr($property, 0, -1) : $property;
             $types[$property] = $type;
@@ -255,13 +256,13 @@ class ModelMetadataAnalyzer
     protected function mergeTypes(array $inferred, array $declared, array $casts): ModelMetadataAnalysis
     {
         $inferredOnly = array_diff_key($inferred, $declared['overrides'], $casts['overrides']);
-        $types = [...$inferredOnly, ...$declared['overrides']];
+        $types = array_replace($inferredOnly, $declared['overrides']);
 
         /** @var array<string, TypeSource> $sources */
-        $sources = [
-            ...array_fill_keys(array_keys($inferredOnly), 'inferred'),
-            ...array_fill_keys(array_keys($declared['overrides']), 'docblock'),
-        ];
+        $sources = array_replace(
+            array_fill_keys(array_keys($inferredOnly), 'inferred'),
+            array_fill_keys(array_keys($declared['overrides']), 'docblock'),
+        );
         $requiredKeys = $declared['requiredKeys'];
 
         foreach ($casts['overrides'] as $property => $type) {

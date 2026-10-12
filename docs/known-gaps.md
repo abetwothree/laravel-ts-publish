@@ -26,6 +26,12 @@ accessor's getter body left with only that `null` publishes `unknown` instead, w
 `null` still publishes `null`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes
 back.
 
+### A list literal holding an element no rule types publishes `unknown[]`
+
+`[$this->id, json_decode('{}')]` publishes `unknown[]`, not `number[]`. A list element is in every response, so unlike a
+union arm it is never left out ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms)). Type
+the element with a return type or a `@return` docblock, or the key with `#[TsCasts]`, and the list takes its type.
+
 ### `config()` on an absent key with no default types as null
 
 `config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A
@@ -136,7 +142,8 @@ metadata companion that would import both throws at publish time ("imports [Stat
 because its inferred imports (`ModelMetadataAnalyzer::inferredTypeImports()`) skip the alias resolver its cast imports
 use. A route file with two such page props ships two `import type { StatusType }` lines, TS2300 in the consumer's
 build, since `RouteTransformer::resolvePageTypeImports()` has no alias resolver or collision guard, and no workbench
-route has this shape. The fix, carrying the FQCN beside the rendered name, changes the import channel.
+route has this shape. A bare case, such as `'status' => CrmStatus::Lead`, reaches it as an enum-cast read does. The
+fix, carrying the FQCN beside the rendered name, changes the import channel.
 
 Give one enum a distinct `#[TsEnum]` name, as `Workbench\Shipping\Enums\Status` does. In a companion you can instead
 cast one key to a distinct name its module exports, such as `['type' => 'AppStatusType', 'import' =>
@@ -314,6 +321,12 @@ type it. Inside a ternary or another union the `unknown` arm is left out instead
 `whenCounted()` and `whenAggregated()` still publish their flag or aggregate type for an untypable closure, so such a
 key can claim a type the closure does not return.
 
+### A global constant types from its value where `ts:publish` runs
+
+`PHP_EOL`, `E_ALL` or a user-defined constant, in place or as a parameter default, types by the value's PHP type on the
+machine that ran the publish. A user constant built from `env()` or config can change type between machines, and one
+defined only at runtime, or only on another OS or extension, leaves the value `unknown`. Built-in constants are stable.
+
 ### On a class that is not an API resource, `$this->when()` publishes `unknown`
 
 Only a `JsonResource` subject runs [`ConditionalMethodHandler`](../src/Ast/Handlers/ConditionalMethodHandler.php), as
@@ -399,7 +412,17 @@ publishes `unknown`, a class that allows dynamic properties or extends `ArrayObj
 `Record<string, unknown>`, and a `jsonSerialize(): array` publishes `unknown[] | Record<string, unknown>` until a
 `@return array{...}` shapes it. A `jsonSerialize()` that declares `mixed` or nothing and has no `@return`, a
 `SimpleXMLElement` and a plain `DateInterval` publish `unknown`, because only a method body or the runtime value says
-what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`.
+what they write. Declaring `jsonSerialize(): string`, or `@return string` on it, publishes `string`, and
+`@return \DateTime` publishes PHP's date object.
+
+### A `new` of an `Arrayable` or `Responsable` class, a model or a class with no public property publishes `unknown`
+
+What `'summary' => new Summary` sends depends on who serializes it when `Summary` is `Arrayable`: an API resource or a
+broadcast event writes its public properties, and an Inertia prop its `toArray()` shape (#117). The same holds for a
+`Responsable`, which an Inertia prop sends as its `toResponse()` data, and for an Inertia `ProvidesInertiaProperty`,
+sent as its `toInertiaProperty()` value. `new Collection($items)` is the exception, typed as `collect($items)` is. A
+model, whose JSON depends on its runtime attributes, and a class `json_encode()` writes as `{}` with no `__toString()`,
+such as `stdClass`, publish `unknown` too. Type such a key with `#[TsCasts]`.
 
 ### A Carbon date publishes `string` or `Date`, whatever `serializeUsing()` or `serializeDate()` writes
 
@@ -437,6 +460,93 @@ helper method the action calls, are read as that method's own values, so a first
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
+
+### A `Collection` beside an array an API resource lists or under numeric keys, and the arrays one holds, publish as lists
+
+An API resource re-indexes only the arrays it reaches, so a `collect()` value keeps its numeric keys, alone or under a
+named key, but `['inner' => collect(['6' => $this->title]), 'ids' => [1 => 2]]` publishes
+`{ inner: string[]; ids: number[] }`, and `[6 => collect(['6' => $this->title])]` publishes `string[][]`. The arrays a
+`Collection` holds list the same way: `->map(fn () => ['1' => …])` publishes `string[][]`, though Laravel sends
+`{ "1": string }[]`. Type the key with `#[TsCasts]`.
+
+### An object's own JSON beside an array an API resource lists, under numeric keys or in a spread, publishes as lists
+
+Where `schedule()` returns a `JsonSerializable` keyed only by numbers,
+`['week' => $this->schedule(), 'days' => [1 => 'mon']]` publishes `{ week: string[]; days: string[] }`,
+`[1 => $this->schedule()]` publishes `string[][]`, `$c ? $this->schedule() : [1 => 'a']` publishes `string[]` and
+`['o' => [...collect([$this->schedule()])]]` publishes `{ o: string[][] }`, though Laravel sends the object with its
+keys. Alone, under a named key, or beside `null` or a scalar, it keeps them. Type the key with `#[TsCasts]`.
+
+### A model's `toArray()` keeps the numeric keys of an `Arrayable` value whose class the package cannot name
+
+`Model::toArray()` writes an `Arrayable` cast or accessor value as its `toArray()` array, which an API resource lists.
+A resource that sends its model's `toArray()`, or spreads a related model's, lists it only where the value's class can
+be named: a `get(): mixed` cast documented `@return Rota`, a native union of such classes or
+`AsCollection::using(Collection::class, Rota::class)` keeps the numeric keys, as earlier releases did. Declare the
+cast's native return type, or type the key with `#[TsCasts]`.
+
+### A collection that does not preserve keys lists the arrays of an element that does
+
+A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
+re-indexes the numeric-keyed arrays of an element resource that preserves keys. The element's interface still shows
+them keyed. Give the collection `$preserveKeys` too, or collect through the element's own `collection()`.
+
+### An API resource whose top-level keys are all numeric publishes an interface of quoted keys
+
+`toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.
+
+### A `$wrap = null` API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
+
+`toArray()` returning `['id' => 1, 42 => 'a']` on a resource with `public static $wrap = null` publishes
+`{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or `additional` data;
+otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is `array_merge_recursive()`d
+and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
+known statically. Use a string key.
+
+### A `broadcastWith()` payload whose top-level keys are all int publishes an object
+
+Where the broadcaster pulls `socket` out (Pusher/Reverb, Mercure) the payload is sent as a JSON list, and as an object
+on Redis and Ably, yet publishes `{ "0": … }`. An Inertia page is never all int while the app's middleware merges
+`parent::share()`, which always adds `errors`. Use a string key.
+
+### A resolved resource that preserves keys, inside one that does not, shows keys the outer filter lists
+
+`'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
+outer resource's `filter()` enters the array `resolve()` returns and re-indexes it.
+
+### An explicit key written before a spread publishes its own type, though the spread's value wins
+
+`['id' => 'x', ...$arm]` publishes `Omit<Arm, 'id'> & { id: string }`, though PHP lets the later spread write the
+arm's own `id`. Every explicit key is subtracted from every spread arm, whatever their order. An array union reads as
+that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
+or on the left of `+`.
+
+### An operand of `+` not typed as one object adds no keys beside a keyed literal
+
+`$this->resource->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
+left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
+as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
+adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
+
+### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
+
+`['label' => $this->when($c, 'x'), 42 => 'y']` publishes `{ label?: string; "42": string }`. When `$c` is false the API
+resource drops `label`, finds only numeric keys left, and sends `["y"]`. Keep numeric keys apart from a conditional
+named key.
+
+### A list holding a `when*()` value publishes a list, where a resource that preserves keys or a `collect()` keeps the gap
+
+In an API resource that preserves keys, `[$this->when($c, 'x'), 'y']` publishes `string[]`, though a false `$c` sends
+`{"1":"y"}`. `collect([[$this->when($c, 'x')]])` publishes `string[][]` in any resource, though the filter never enters
+a `Collection`, so the missing value encodes as `{}`. Keep conditional values out of lists there.
+
+### An untyped property's default ignores writes the scan cannot see
+
+An untyped property publishes its default's type while nothing in the class, its ancestors or its traits writes it. A
+subclass's write, including a child's that inherits `toArray()` and so publishes its parent's types, a by-reference
+parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class
+all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
+it a `@var` docblock.
 
 ## Deliberate non-goals
 

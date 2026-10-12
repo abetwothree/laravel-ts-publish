@@ -75,6 +75,10 @@ class NestedResourceSpreadResource extends JsonResource
             // index, so nothing string-keyed in the literal can ever collide with them.
             'members_collection_spread' => $this->whenLoaded('members', fn ($members) => [...$members->toArray(), 'flag' => true]),
 
+            // '0' is the key 0, which overwrites the first member, and every key stays numeric, so the resource
+            // re-indexes the array into the list [true, {...}].
+            'members_zero_key_spread' => $this->whenLoaded('members', fn ($members) => [...$members->toArray(), '0' => true]),
+
             // Two resource spreads plus a sibling key — intersect each in order.
             'members_double_spread' => $this->whenLoaded('members', fn ($members) => $members->map(
                 fn (User $member) => [

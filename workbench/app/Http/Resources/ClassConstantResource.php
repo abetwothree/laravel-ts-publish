@@ -45,13 +45,12 @@ class ClassConstantResource extends AbstractVersionedResource
             'channel_tags' => ChannelDefaults::CHANNEL_TAGS,
             // A list whose elements don't agree — resolves to a union element array.
             'mixed_tags' => ChannelDefaults::MIXED_TAGS,
-            // A list nested inside a keyed constant — each value must resolve to string[], not
-            // the Record<string, unknown> a keyless item would misreport through the AST pipeline.
+            // A list nested inside a keyed constant — each value resolves to string[], as a top-level list does.
             'nested_tags' => ChannelDefaults::NESTED_TAGS,
             // Negative case: references an undefined constant, degrading to unknown at read time
             // rather than aborting the whole generation run.
             'broken_channels' => ChannelDefaults::BROKEN,
-            // Negative case: one element past MAX_CONSTANT_ARRAY_ELEMENTS.
+            // A flat list one element past MAX_CONSTANT_ARRAY_ELEMENTS, which caps only a record or a list of arrays.
             'over_element_limit' => ChannelDefaults::OVER_ELEMENT_LIMIT,
             // Negative case: one level past MAX_CONSTANT_ARRAY_DEPTH.
             'over_depth_limit' => ChannelDefaults::OVER_DEPTH_LIMIT,
@@ -59,10 +58,9 @@ class ClassConstantResource extends AbstractVersionedResource
             'status_map' => ChannelDefaults::STATUS_MAP,
             // An enum case nested inside a list constant — same requirement, list shape.
             'status_list' => ChannelDefaults::STATUS_LIST,
-            // All-int, non-sequential keys — every member is dropped, not a regression (see
-            // ChannelDefaults::ALL_INT_KEYS).
+            // All-int, non-sequential keys, which the resource re-indexes into a list.
             'all_int_keys' => ChannelDefaults::ALL_INT_KEYS,
-            // A mixed string/int-keyed constant — the int-keyed member is silently dropped.
+            // A mixed string/int-keyed constant keeps both keys, the int one written `"5"`.
             'mixed_keys' => ChannelDefaults::MIXED_KEYS,
             // New behaviour: `Foo::class` now types as a plain string, not a resource/model type —
             // the four risky call sites (EnumResource::make(), toResource(...), #[Collects], the

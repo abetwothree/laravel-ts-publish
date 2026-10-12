@@ -16,10 +16,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InlineEnumCaseMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetadataPayloadProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
@@ -52,6 +54,7 @@ test('infers default metadata types from the provider return shape', function ()
 });
 
 test('falls back to body inference for a provider with a generic array declaration', function () {
+    config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $data = (new ModelMetadataTransformer(User::class))->data();
@@ -64,14 +67,18 @@ test('falls back to body inference for a provider with a generic array declarati
             'maximum' => null,
         ],
         'role' => 'Admin',
+        'regions' => ['north', 'south'],
     ])->and($data->propertyTypes)->toBe([
         'morphClass' => 'string',
         'enabled' => 'boolean',
         'limits' => '{ minimum: number; maximum: null }',
         'role' => 'RoleType',
+        'regions' => 'string[]',
     ])->and($data->typeImports)->toBe([
         '../enums' => ['RoleType'],
-    ]);
+    ])->and((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
+        ->toContain("    regions: ['north', 'south'],")
+        ->toContain('    regions: string[];');
 });
 
 test('imports the enum a body-inferred value names', function () {
@@ -82,6 +89,17 @@ test('imports the enum a body-inferred value names', function () {
     expect($data->propertyTypes)->toBe(['role' => 'RoleType'])
         ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
         ->and($data->properties)->toBe(['role' => 'Admin']);
+});
+
+// JsEmitter writes a pure case's name, which the enum's alias spells; a backed case writes its value.
+test('types an enum case a provider writes inline', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InlineEnumCaseMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['visibility' => 'Public', 'status' => 1])
+        ->and($data->propertyTypes)->toBe(['visibility' => 'VisibilityType', 'status' => 'StatusType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType', 'VisibilityType']]);
 });
 
 test('does not import a model for a model-typed value', function () {
@@ -227,6 +245,14 @@ test('rejects metadata payloads without string property keys', function () {
             InvalidArgumentException::class,
             'model [Workbench\\App\\Models\\User] must use string keys; got integer keys: [0]',
         );
+});
+
+// A payload cannot hold an int key, so a required numeric shape key is one it always lacks; an optional one never errs.
+test('names a required numeric @return shape key the payload lacks instead of throwing a TypeError', function () {
+    config()->set('ts-publish.model_metadata.provider_class', NumericShapeKeyMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(InvalidArgumentException::class, 'model [Workbench\App\Models\User] is missing required keys: [7]');
 });
 
 test('rejects returned metadata keys without inferred or declared types', function () {

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Config;
  * Shared enum FQCN/const tracking properties for transformers.
  *
  * @phpstan-type EnumPropertyFqcnInfo = array{fqcn: string, nullable: bool, isCollection?: bool}
- * @phpstan-type EnumPropertyFqcnMap = array<string, EnumPropertyFqcnInfo>
+ * @phpstan-type EnumPropertyFqcnMap = array<array-key, EnumPropertyFqcnInfo>
  */
 trait TracksEnumImports
 {

@@ -26,7 +26,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()` |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
-| [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps |
+| [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
 | [`ReturnShapeRefiner`](../../src/Ast/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
 | [`IndexSignatureReconciler`](../../src/Ast/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
@@ -354,9 +354,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 
 `InspectsResourceCalls::$conditionalMethods` names the family a second time, for a resource constructed around a
 conditional call, such as `Resource::make($this->whenLoaded(...))`, which publishes optional.
-`ReadsNullablePayloads::wrapsNullablePayload()` adds `| null` to a resource built around a payload that can be `null`,
-such as `Resource::make($this->parent)`, inside a resource only; a collection never takes it, and neither does a payload
-a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
+`ReadsNullablePayloads::resourceWrapType()` adds `| null` to a resource built around a payload that can be `null`,
+such as `Resource::make($this->parent)`, and publishes `null` alone for a payload that is only ever `null`, such as
+`new Resource(null)` or a parameter holding a `null` default, inside a resource only; a collection never takes either,
+and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -382,7 +383,8 @@ since the elements could come from either arm. Each handler tracks in its own `m
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
 [`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
-or list literal is its element types.
+is its element types. A list literal, bare or collected, is typed by
+[`ValueResolver::resolveListLiteral()`](../../src/Ast/ValueResolver.php).
 
 The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
 a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:
@@ -405,17 +407,20 @@ agrees with `CollectionPipelineHandler`.
 ## Inline-array spreads become intersection arms
 
 In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) turns a spread into an
-arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes three kinds:
+arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes four kinds:
 
 - **Resource arm**: a spread of one named resource, such as `UserResource::make($m)->resolve($request)`, never an
   array or collection of one.
 - **Model arm**: `$var->toArray()` on a closure-bound model, or `$this->relation->toArray()` along real relations.
 - **Collection arm**: `$var->toArray()` on a to-many `whenLoaded()` parameter, or a relation chain that ends to-many.
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
+- **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
+  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
-a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member.
+a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member. An object
+arm names no class to flatten, so it is left out there.
 
 Each arm is `Omit<>`'d against every explicit key and every later arm's `keyof`. PHP's `[...$a, 'k' => $v]` lets the
 later write win, while TypeScript's `&` intersects both and makes a disagreeing key `never`. Three rules follow:
@@ -423,13 +428,22 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
 - **The subtraction is unconditional**: `Omit<T, K>` does not require `K extends keyof T`, so
   `buildSpreadArmTypes()` needs only a later arm's name, never its shape.
 - **A collection arm is never subtracted, and never subtracts**: its keys are indexes, and every other key is a
-  string. The one collision left is a numeric string key beside it. In a resource, `InspectsAstNodes::resolveKeyName()`
-  drops an int key but keeps `'0'`. So `[...$members->toArray(), '0' => true]` publishes
-  `Record<number, User> & { "0": boolean }`, though PHP overwrites index 0.
-- **Arm order is source order**: all three kinds travel in one list, split by kind only when imports are dispatched.
-  Resource arms go on `embeddedResourceFqcns`, and model and collection arms on `embeddedModelFqcns`. Grouping by kind
-  any earlier would subtract against the wrong arm. `NestedResourceSpreadResource`'s
-  `members_model_then_resource_spread` and `members_resource_then_model_spread` pin both directions.
+  string. The one collision left is a numeric key beside it: the arm keeps
+  `[...$members->toArray(), '0' => true]` as `Record<number, User> & { "0": boolean }`, and the publisher's
+  [re-index](#numeric-keys) sends `(User | boolean)[]`.
+- **Arm order is source order**: every kind travels in one list, split by kind only when imports are dispatched.
+  Resource arms go on `embeddedResourceFqcns`, model and collection arms on `embeddedModelFqcns`, and an object arm's
+  classes on the import channels its value carried. Grouping by kind any earlier would subtract against the wrong
+  arm. `NestedResourceSpreadResource`'s `members_model_then_resource_spread` and `members_resource_then_model_spread`
+  pin both directions.
+
+PHP's array union `$a + $b` keeps every key `$a` sets. In value position
+[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
+`InspectsAstNodes::arrayUnionLiteral()` builds. With every key a literal, that literal holds the items PHP keeps, in
+PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
+cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
+one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
+`+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them as `+=` does.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations
@@ -523,6 +537,28 @@ Only the analyzer's own class is in scope, because `spreadAnalysis()` can analyz
 floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that. `resolve()` is
 exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
 `SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+
+## Numeric keys
+
+A numeric key goes through two layers:
+
+- **Key spelling**: every literal key publishes as the key `json_encode()` writes, whatever the subject, so `42 =>`
+  and `'6' =>` print `"42"` and `"6"`. A literal whose stored keys run 0 to n-1 is a list, which
+  `ValueResolver::resolveListLiteral()` types.
+- **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
+  every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher,
+  with the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's
+  `$preserveKeys`. `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()`
+  and a spread `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a
+  key whose result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as
+  does `ValueResolver::resolveSerializedNew()`, and `toTsType()` sets it on a class's own JSON shape, which
+  `ReflectedTypeAcceptor` and the model attribute reads carry. `Model::toArray()` writes an `Arrayable` value as an
+  array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
+  it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
+  since the re-index rewrites no other arm. So does an inline literal with a key that is not a number and no spread,
+  when each member holding one does (`InlineArrayHandler::keepsMemberKeys()`): the filter keeps a named key's keys.
+
+`DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 
 ## Interpolated keys
 
@@ -702,13 +738,15 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`, which
-reads it by class through [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
-[Import name registry](import-name-registry.md#rewriting-aliased-type-references). `CoalesceHandler`,
-`ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through `unionResults()`.
-`mergeReturnBranches()` still merges by text, for return branches and a merge call's value and default alike.
-`HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
-and `whenNull()` ones.
+`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`: one name
+spells two models, two resources or two enums read directly. `withMembersByClass()` reads it by class through
+[`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references). A union holding an `EnumResource`
+arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
+`CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
+`unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
+default alike. `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource`
+the `when()` and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
@@ -781,10 +819,10 @@ stands for two different things, so it stays two references.
 ### An enum reached through a local or a helper
 
 `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
-parameter, so `$case = Status::Draft` wraps a case the engine alone reads as `unknown`. Any other payload, such as a
-coalesce or a method's return, goes to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that
-holds one enum and nothing else, or a list of it for `::collection()`. Two enums, even two that share a name, stay
-`unknown`. The payload's own `| null` stays in every subject: an enum branch returns before `wrapsNullablePayload()`.
+parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
+to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
+list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
+in every subject: an enum branch returns before `resourceWrapType()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a

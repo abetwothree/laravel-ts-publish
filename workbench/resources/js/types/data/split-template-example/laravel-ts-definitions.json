@@ -107,6 +107,33 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\HandoverListed": {
+            "name": "HandoverListed",
+            "eventName": "HandoverListed",
+            "broadcastName": ".Workbench.App.Events.HandoverListed",
+            "properties": [
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "{ \"200\": string; \"404\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "override",
+                    "type": "{ code: string; lane: number }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\ManifestAssembled": {
             "name": "ManifestAssembled",
             "eventName": "ManifestAssembled",
@@ -230,6 +257,28 @@
                 {
                     "name": "message",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Events\\PostStatusBroadcast": {
+            "name": "PostStatusBroadcast",
+            "eventName": "PostStatusBroadcast",
+            "broadcastName": ".Workbench.App.Events.PostStatusBroadcast",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "AppStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "crm_status",
+                    "type": "CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "kept",
+                    "type": "AppStatusType",
                     "optional": false
                 }
             ]
@@ -11635,7 +11684,7 @@
                 },
                 {
                     "name": "over_element_limit",
-                    "type": "unknown",
+                    "type": "number[]",
                     "optional": false
                 },
                 {
@@ -11655,12 +11704,12 @@
                 },
                 {
                     "name": "all_int_keys",
-                    "type": "Record<string, unknown>",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
                     "name": "mixed_keys",
-                    "type": "{ a: number }",
+                    "type": "{ a: number; \"5\": string }",
                     "optional": false
                 },
                 {
@@ -13104,6 +13153,146 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DepotDefaultsResource": {
+            "name": "DepotDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "stage",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "limits",
+                    "type": "{ daily: number; codes: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "tags",
+                    "type": "(string | number)[]",
+                    "optional": false
+                },
+                {
+                    "name": "notes",
+                    "type": "never[]",
+                    "optional": false
+                },
+                {
+                    "name": "stage_name",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DepotTierKeyedResource": {
+            "name": "DepotTierKeyedResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tiers",
+                    "type": "{ \"1\": string; \"2\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "{ \"06\": string; \"1.5\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "surcharges",
+                    "type": "{ \"3\": number }",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "{ \"200\": string; \"404\": string }",
+                    "optional": false
+                },
+                {
+                    "name": "labelled",
+                    "type": "{ name: string; \"42\": boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: { \"7\": string } }",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_orders",
+                    "type": "{ \"10\": string; \"20\": string }",
+                    "optional": true
+                },
+                {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DepotTierResource": {
+            "name": "DepotTierResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "tiers",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "codes",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "surcharges",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "labelled",
+                    "type": "{ name: string; \"42\": boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_orders",
+                    "type": "string[]",
+                    "optional": true
+                },
+                {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DuplicateKeyCastResource": {
             "name": "DuplicateKeyCastResource",
             "properties": [
@@ -13583,12 +13772,102 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\HandoverDefaultsResource": {
+            "name": "HandoverDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "sender_id",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\HandoverDigestCollection": {
             "name": "HandoverDigestCollection",
             "properties": [
                 {
                     "name": "handovers",
                     "type": "HandoverSummaryResource[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverListResource": {
+            "name": "HandoverListResource",
+            "properties": [
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "stamps",
+                    "type": "(number | string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "lanes",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "route",
+                    "type": "{ stops: string[]; hops: number }",
+                    "optional": false
+                },
+                {
+                    "name": "empty",
+                    "type": "never[]",
+                    "optional": false
+                },
+                {
+                    "name": "stops",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "OrderStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "senders",
+                    "type": "(UserResource | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "legs",
+                    "type": "({ from: string; to: string } | { from: string; to: number })[]",
+                    "optional": false
+                },
+                {
+                    "name": "grid",
+                    "type": "number[][]",
+                    "optional": false
+                },
+                {
+                    "name": "flags",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "opaque",
+                    "type": "unknown[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected",
+                    "type": "(number | string | null)[]",
                     "optional": false
                 }
             ]
@@ -13735,6 +14014,36 @@
                     "name": "crm_watchers",
                     "type": "CrmUser[]",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\HandoverUnionResource": {
+            "name": "HandoverUnionResource",
+            "properties": [
+                {
+                    "name": "with_defaults",
+                    "type": "{ note: string; id: number; sender_id: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "override",
+                    "type": "{ code: string; lane: number }",
+                    "optional": false
+                },
+                {
+                    "name": "lanes",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "chained",
+                    "type": "{ a: number; b: string; c: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "total",
+                    "type": "number",
+                    "optional": false
                 }
             ]
         },
@@ -14932,6 +15241,11 @@
                     "optional": true
                 },
                 {
+                    "name": "members_zero_key_spread",
+                    "type": "(User | boolean)[]",
+                    "optional": true
+                },
+                {
                     "name": "members_double_spread",
                     "type": "(Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[]",
                     "optional": true
@@ -15712,6 +16026,81 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostEnumCaseResource": {
+            "name": "PostEnumCaseResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "crm_status",
+                    "type": "CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "kept_status",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "priority_or_low",
+                    "type": "PriorityType",
+                    "optional": false
+                },
+                {
+                    "name": "flagged",
+                    "type": "EnumsStatusType | null",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "EnumsStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "when_published",
+                    "type": "EnumsStatusType",
+                    "optional": true
+                },
+                {
+                    "name": "when_default",
+                    "type": "string | EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "matched",
+                    "type": "EnumsStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "pair",
+                    "type": "{ app: EnumsStatusType; crm: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "cases",
+                    "type": "EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "case_list",
+                    "type": "EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped",
+                    "type": "AsEnum<typeof EnumsStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_kept",
+                    "type": "AsEnum<typeof EnumsStatus>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostEnumTrioResource": {
             "name": "PostEnumTrioResource",
             "properties": [
@@ -15730,6 +16119,111 @@
         "Workbench\\App\\Http\\Resources\\PostFlatCollection": {
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
+        },
+        "Workbench\\App\\Http\\Resources\\PostNewValueResource": {
+            "name": "PostNewValueResource",
+            "properties": [
+                {
+                    "name": "error",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "markup",
+                    "type": "Record<string, never>",
+                    "optional": false
+                },
+                {
+                    "name": "opened",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "opened_immutable",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "dock",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "reading",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_returned",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": false
+                },
+                {
+                    "name": "error_default",
+                    "type": "Record<string, never>",
+                    "optional": true
+                },
+                {
+                    "name": "opened_default",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": true
+                },
+                {
+                    "name": "stamped_default",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "dock_default",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "reading_default",
+                    "type": "{ date: string; timezone_type: number; timezone: string }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostNullWrapResource": {
+            "name": "PostNullWrapResource",
+            "properties": [
+                {
+                    "name": "null_new",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "null_make",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "null_default",
+                    "type": "null",
+                    "optional": true
+                },
+                {
+                    "name": "null_local",
+                    "type": "null",
+                    "optional": false
+                },
+                {
+                    "name": "author_new",
+                    "type": "UserResource",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ author: null }",
+                    "optional": false
+                }
+            ]
         },
         "Workbench\\App\\Http\\Resources\\PostPinnedCommentsResource": {
             "name": "PostPinnedCommentsResource",
@@ -16638,6 +17132,11 @@
                     "optional": false
                 },
                 {
+                    "name": "42",
+                    "type": "string",
+                    "optional": false
+                },
+                {
                     "name": "flag",
                     "type": "unknown",
                     "optional": true
@@ -17478,7 +17977,7 @@
                 },
                 {
                     "name": "tiers",
-                    "type": "{ \"1\": string; \"2\": string }",
+                    "type": "string[]",
                     "optional": false
                 }
             ]
@@ -18963,6 +19462,11 @@
                 },
                 {
                     "name": "match_arm",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "coalesce_right",
                     "type": "string",
                     "optional": false
                 }

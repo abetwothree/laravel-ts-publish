@@ -5,9 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WeekRota;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\WeekSchedule;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ArrayJsonCarbon;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSettings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PublicLabelStringable;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializationProbeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SerializedDateModel;
@@ -33,6 +36,9 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'a jsonSerialize(): mixed whose @return is string' => [DocStringJsonProbe::class, 'string'],
     'a jsonSerialize(): mixed whose @return is ?string' => [DocNullableStringJsonProbe::class, 'string | null'],
     'an untyped jsonSerialize() whose @return is string' => [UntypedDocStringJsonProbe::class, 'string'],
+    'a jsonSerialize(): mixed whose @return is a DateTime' => [DocDateTimeJsonProbe::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
+    'a jsonSerialize(): mixed whose @return is ?DateTimeImmutable' => [DocNullableDateJsonProbe::class, LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' | null'],
+    'an untyped jsonSerialize() whose @return is DateTimeInterface' => [UntypedDocInterfaceDateJsonProbe::class, 'string | '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a __toString() class with no public property' => [HtmlString::class, 'Record<string, never>'],
     'an Exception' => [Exception::class, 'Record<string, never>'],
     'an UploadedFile' => [UploadedFile::class, 'Record<string, never>'],
@@ -60,6 +66,19 @@ it('publishes a class as what json_encode() writes for it, never what __toString
     'a class cast returning ?DateTime, which Model::toArray() runs through serializeDate()' => [DateTimeCast::class, 'string | null'],
 ]);
 
+// An API resource's filter enters arrays only, so the JSON a class declares keeps the numeric keys it spells.
+it('marks the JSON a class declares for itself as keeping its keys, and no other type', function (string $type, bool $keeps) {
+    expect(LaravelTsPublish::toTsType($type)['keepsKeys'] ?? false)->toBe($keeps);
+})->with([
+    'a jsonSerialize() shape' => [WeekSchedule::class, true],
+    'the same class, nullable' => ['?'.WeekSchedule::class, true],
+    'a toArray() shape' => [WeekRota::class, true],
+    'typed public properties' => [PostSettings::class, true],
+    'a __toString() class written as its properties' => [PublicLabelStringable::class, true],
+    'a class written as a string' => [NullableStringJson::class, false],
+    'a scalar' => ['int', false],
+]);
+
 it('keeps the class token where only a method body or the runtime value says what json_encode() writes', function (string $class) {
     expect(LaravelTsPublish::toTsType($class)['type'])->toBe($class);
 })->with([
@@ -67,6 +86,7 @@ it('keeps the class token where only a method body or the runtime value says wha
     'an internal class that writes its own properties' => [SimpleXMLElement::class],
     'a model, whose mixed jsonSerialize() says string' => [DocStringJsonModelProbe::class],
     'a mixed jsonSerialize() whose @return is only null' => [DocNullJsonProbe::class],
+    'a mixed jsonSerialize() whose @return is a DateTime or an int' => [DocDateOrIntJsonProbe::class],
 ]);
 
 it('keeps the class token of a class with no __toString() whose properties or array have no type', function (string $class) {
@@ -127,6 +147,10 @@ it('types a resource key as json_encode() writes it on every path the engine rea
         'checked_at' => 'string | null',
         'default_checked_at' => 'string | null',
         'default_note' => 'string | null',
+        'new_error' => 'Record<string, never>',
+        'new_opened' => LaravelTsPublishService::DATE_TIME_OBJECT_TYPE,
+        'default_error' => 'Record<string, never>',
+        'new_summary' => 'unknown',
     ]);
 });
 
@@ -216,6 +240,71 @@ class UntypedDocStringJsonProbe implements JsonSerializable
     public function jsonSerialize()
     {
         return 'x';
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() returns a plain DateTime, which json_encode() writes as PHP's date object.
+ */
+class DocDateTimeJsonProbe implements JsonSerializable
+{
+    /**
+     * The date json_encode() writes.
+     *
+     * @return DateTime
+     */
+    public function jsonSerialize(): mixed
+    {
+        return new DateTime('2026-01-01');
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() returns a plain DateTimeImmutable or null.
+ */
+class DocNullableDateJsonProbe implements JsonSerializable
+{
+    /**
+     * The date or null json_encode() writes.
+     *
+     * @return ?DateTimeImmutable
+     */
+    public function jsonSerialize(): mixed
+    {
+        return null;
+    }
+}
+
+/**
+ * A value whose untyped jsonSerialize() returns a DateTimeInterface: a Carbon string or PHP's date object.
+ */
+class UntypedDocInterfaceDateJsonProbe implements JsonSerializable
+{
+    /**
+     * The date json_encode() writes.
+     *
+     * @return DateTimeInterface
+     */
+    #[ReturnTypeWillChange]
+    public function jsonSerialize()
+    {
+        return new DateTime('2026-01-01');
+    }
+}
+
+/**
+ * A value whose `mixed` jsonSerialize() returns a date or an int, which no date-or-string rule covers.
+ */
+class DocDateOrIntJsonProbe implements JsonSerializable
+{
+    /**
+     * The date or count json_encode() writes.
+     *
+     * @return DateTime|int
+     */
+    public function jsonSerialize(): mixed
+    {
+        return 1;
     }
 }
 

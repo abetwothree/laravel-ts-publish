@@ -645,10 +645,11 @@ class ModelTransformer extends CoreTransformer
     /**
      * A keyed list without the keys a relation shares, which a combined interface leaves to the relation.
      *
+     * @template TKey of array-key
      * @template TEntry
      *
-     * @param  array<string, TEntry>  $list
-     * @return array<string, TEntry>
+     * @param  array<TKey, TEntry>  $list
+     * @return array<TKey, TEntry>
      */
     protected function withoutShadowed(array $list): array
     {

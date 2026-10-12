@@ -164,7 +164,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $name = TsNaming::resourceTypeName($singular);
 
-        $type = $this->collectionPreservesKeys($reflection)
+        $type = self::collectionPreservesKeys($reflection)
             ? "Omit<JsonResourcePaginator<{$name}>, 'data'> & { data: Record<string, {$name}> }"
             : 'JsonResourcePaginator<'.$name.'>';
 

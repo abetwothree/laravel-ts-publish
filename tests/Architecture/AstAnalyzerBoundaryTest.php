@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
@@ -25,3 +26,8 @@ arch('the AST engine depends on no analyzer')
         ThisPropertyHandler::class,
         ToResourceHandler::class,
     ]);
+
+// Handlers read the scope; a scope reading a handler would reach the analyzer traits that handler uses.
+arch('the analysis scope depends on no handler')
+    ->expect(AnalysisScope::class)
+    ->not->toUse('AbeTwoThree\LaravelTsPublish\Ast\Handlers');

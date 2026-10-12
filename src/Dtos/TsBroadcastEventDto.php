@@ -13,7 +13,7 @@ use JsonSerializable;
  * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type PropertyInfo = array{type: string, optional: bool}
- * @phpstan-type PropertiesList = array<string, PropertyInfo>
+ * @phpstan-type PropertiesList = array<array-key, PropertyInfo>
  * @phpstan-type BroadcastEventData = array{
  *     eventName: string,
  *     broadcastName: string,

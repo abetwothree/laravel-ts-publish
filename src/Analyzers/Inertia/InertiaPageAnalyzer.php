@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
@@ -52,7 +53,7 @@ use Throwable;
  *     externalImports?: array<string, list<string>>,
  * }
  * @phpstan-type PagePropEntry = array{type: string, optional: bool}
- * @phpstan-type PagePropMap = array<string, PagePropEntry>
+ * @phpstan-type PagePropMap = array<array-key, PagePropEntry>
  */
 class InertiaPageAnalyzer
 {
@@ -279,7 +280,7 @@ class InertiaPageAnalyzer
                 return [$compacted];
             }
 
-            $merged = $this->mergedArrayLiteral($propsArg, null, $scope->localVarBindings);
+            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->localVarBindings);
 
             if ($merged !== null) {
                 return [$merged];
@@ -338,9 +339,9 @@ class InertiaPageAnalyzer
      * Build the InertiaPageData contract from the per-component branch analyses.
      *
      * @param  array<string, list<ResourceAnalysis>>  $branches
-     * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
+     * @param  array<array-key, string>  $overrides  TsCasts overrides from the controller method
      * @param  array<string, string>  $importPaths  each override's `import` path, by its key
-     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      * @param  string  $subject  the `Controller@method` action a warning names
      * @return InertiaPageData
      */
@@ -382,12 +383,13 @@ class InertiaPageAnalyzer
             $this->forgetOverriddenChannels($analysis, $casts);
 
             $props = $this->collectProps($analysis);
+            $renumbered = $this->renumberTopLevel($props, $casts, $subject);
             $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
                 : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides(
-                    $props,
-                    $casts,
-                    JsEmitter::retargetCasts($optionalOverrides, $targets),
+                    TopLevelRenumbering::rekey($props, $renumbered),
+                    TopLevelRenumbering::rekey($casts, $renumbered),
+                    TopLevelRenumbering::rekey(JsEmitter::retargetCasts($optionalOverrides, $targets), $renumbered),
                 );
 
             $pageTypes[] = $pageType;
@@ -432,11 +434,26 @@ class InertiaPageAnalyzer
     }
 
     /**
+     * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
+     *
+     * @param  PagePropMap  $props
+     * @param  array<array-key, string>  $casts
+     * @return array<array-key, string>
+     */
+    protected function renumberTopLevel(array $props, array $casts, string $subject): array
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys(array_replace($props, $casts))));
+        TopLevelRenumbering::warnRenumbered($subject, 'a page', $renumbered);
+
+        return $renumbered;
+    }
+
+    /**
      * Build a TypeScript object type string, applying TsCasts overrides for specific props.
      *
      * @param  PagePropMap  $props
-     * @param  array<string, string>  $overrides
-     * @param  array<string, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      */
     protected function buildTypeStringWithOverrides(array $props, array $overrides, array $optionalOverrides = []): string
     {
@@ -467,7 +484,7 @@ class InertiaPageAnalyzer
     /**
      * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
      *
-     * @param  array<string, string>  $overrides
+     * @param  array<array-key, string>  $overrides
      */
     protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
     {

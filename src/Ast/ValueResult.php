@@ -9,9 +9,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -27,7 +29,8 @@ use ReflectionClass;
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string>,
- *      customImports?: TypesImportMap
+ *      customImports?: TypesImportMap,
+ *      keepsKeys?: bool
  * }
  *
  * @internal
@@ -174,6 +177,10 @@ final class ValueResult
             $result['customImports'] = $attribute['customImports'];
         }
 
+        if ($attribute['keepsKeys'] ?? false) {
+            $result['keepsKeys'] = true;
+        }
+
         return $result;
     }
 
@@ -317,7 +324,16 @@ final class ValueResult
     }
 
     /**
-     * Whether one name spells two different models, or two different resources, among the given results.
+     * The name an enum's type is spelled with.
+     */
+    public static function enumTypeName(string $fqcn): string
+    {
+        return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+    }
+
+    /**
+     * Whether one name spells two different models, two different resources or two different enums read directly,
+     * among the given results.
      *
      * @param  list<ValueExpressionResult>  $results
      */
@@ -327,14 +343,18 @@ final class ValueResult
         $models = [];
         /** @var list<class-string> $resources */
         $resources = [];
+        /** @var list<class-string> $enums */
+        $enums = [];
 
         foreach ($results as $result) {
             array_push($models, ...self::modelChannelFqcns($result));
             array_push($resources, ...self::resourceChannelFqcns($result));
+            array_push($enums, ...self::directEnumChannelFqcns($result));
         }
 
         return self::sharesAName($models, class_basename(...))
-            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn));
+            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn))
+            || (! self::wrapsAnEnum($results) && self::sharesAName($enums, self::enumTypeName(...)));
     }
 
     /**
@@ -355,6 +375,28 @@ final class ValueResult
         }
 
         return false;
+    }
+
+    /**
+     * The FQCNs a result carries on its direct and embedded enum channels.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>
+     */
+    private static function directEnumChannelFqcns(array $result): array
+    {
+        return [...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...($result['embeddedEnumFqcns'] ?? [])];
+    }
+
+    /**
+     * Whether an arm wraps an enum resource. Its token holds no queue entry, since the AsEnum rewrite spells it by its
+     * own import channel, so the union's enums cannot be read by class.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     */
+    private static function wrapsAnEnum(array $results): bool
+    {
+        return array_any($results, fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']));
     }
 
     /**
@@ -497,6 +539,13 @@ final class ValueResult
             $result['carriedFqcns'] = $carried;
         }
 
+        // A resource's re-index skips the union only when every arm it could rewrite keeps its keys.
+        $keyed = array_filter($branchResults, fn (array $inner): bool => TsTypeShape::holdsKeyedObject($inner['type']));
+
+        if ($keyed !== [] && array_all($keyed, fn (array $inner): bool => $inner['keepsKeys'] ?? false)) {
+            $result['keepsKeys'] = true;
+        }
+
         return $result;
     }
 
@@ -518,6 +567,10 @@ final class ValueResult
         $modelFqcns = [];
         /** @var list<class-string> $resourceFqcns */
         $resourceFqcns = [];
+        /** @var list<class-string> $enumFqcns */
+        $enumFqcns = [];
+        // A union wrapping an enum resource keeps the enum queue mergeUnion() built for the AsEnum rewrite.
+        $wraps = self::wrapsAnEnum($arms);
 
         foreach ($arms as $arm) {
             $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
@@ -525,6 +578,7 @@ final class ValueResult
                 self::resourceChannelFqcns($arm),
                 static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
             );
+            $enums = new ClassTokenQueue($wraps ? [] : self::directEnumChannelFqcns($arm), self::enumTypeName(...));
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
                 if ($member === 'null') {
@@ -535,7 +589,8 @@ final class ValueResult
 
                 $memberModels = $models->take($member);
                 $memberResources = $resources->take($member);
-                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources]);
+                $memberEnums = $enums->take($member);
+                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources, '', ...$memberEnums]);
 
                 if (isset($members[$identity])) {
                     continue;
@@ -544,16 +599,21 @@ final class ValueResult
                 $members[$identity] = $member;
                 array_push($modelFqcns, ...$memberModels);
                 array_push($resourceFqcns, ...$memberResources);
+                array_push($enumFqcns, ...$memberEnums);
             }
 
             // An arm that queues a name for two classes more often than it spells it holds a class behind another's
             // token, and does not say which token is whose (a merge by text is such an arm): the merge by text stands.
-            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens()) {
+            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens() || $enums->outrunsItsTokens()) {
                 return $union;
             }
         }
 
         unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
+
+        if ($enumFqcns !== []) {
+            $union['embeddedEnumFqcns'] = $enumFqcns;
+        }
 
         $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
 

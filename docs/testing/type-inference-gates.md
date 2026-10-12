@@ -46,8 +46,9 @@ first 40 regressed properties with their base and head types.
 ### How properties are keyed
 
 A key is the file, the enclosing interface or namespace path, and the property name, so `Invoice.status` and
-`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. Single-line
-`type X = …;` aliases are keyed like properties, including one inside `declare global`.
+`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. A quoted name,
+`"42"` or `'tags.*'`, is keyed by its text without the quotes. Single-line `type X = …;` aliases are keyed like
+properties, including one inside `declare global`.
 
 An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
 `prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
@@ -327,5 +328,7 @@ The gates miss these cases:
 - **An object that already holds an `unknown` member**: `detect_regressions()` tests the base side with
   `"unknown" not in b[k]` on the parent's whole rendered value, so one `unknown` member disarms the parent key, and
   when the object then collapses to `unknown` no member key is left to match.
+- **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
+  sibling among `x`'s members, so a regression of `x` itself can still be masked.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
   is accepted. Do not fix it with content-hashed arm keys.

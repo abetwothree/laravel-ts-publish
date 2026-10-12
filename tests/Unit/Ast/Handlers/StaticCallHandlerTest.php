@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -709,6 +710,13 @@ it('types a wrap\'s null arm: kept through a fluent self-returning call, dropped
     'new around a new that serializes as null' => ['new self(new self($this->parent))', 'FluentSelfResource'],
     'make() around a new that serializes as null' => ['self::make(new self($this->parent))', 'FluentSelfResource'],
     'make() around a whenLoaded() that returns null' => ['self::make($this->whenLoaded("parent", fn ($p) => new self($p)))', 'FluentSelfResource | null'],
+    'make() around null' => ['self::make(null)', 'null'],
+    'new around null' => ['new self(null)', 'null'],
+    'a key holding new around null' => ['["p" => new self(null)]', '{ p: null }'],
+    'a default parameter holding new around null' => ['$this->when($this->name, fn ($p = new self(null)) => $p)', 'null'],
+    'make() around a make() around null' => ['self::make(self::make(null))', 'FluentSelfResource'],
+    'static make() around a static make() around null' => ['static::make(static::make(null))', 'FluentSelfResource'],
+    'new around a make() that is not a resource\'s and returns only null' => ['new self(\\'.NullOnlyMaker::class.'::make())', 'null'],
     'resolve() on make()' => ['self::make($this->parent)->resolve()', 'FluentSelfResource'],
     'resolve() on new' => ['new self($this->parent)->resolve()', 'FluentSelfResource'],
     'collection() over a to-many' => ['self::collection($this->children)', 'FluentSelfResource[]'],
@@ -815,7 +823,7 @@ it('keeps a wrap\'s null arm where no guard proves its payload non-null', functi
     'mergeUnless(), a truthy read' => ['[$this->mergeUnless($this->parent, ["p" => self::make($this->parent)])]', '{ p?: FluentSelfResource | null }'],
     'transform(), its default' => ['$this->transform($this->parent, fn ($p) => 1, fn ($p) => self::make($p))', 'number | FluentSelfResource | null'],
     'a closure body that writes the guarded read' => ['$this->when($this->parent, function () { $this->parent = null; return self::make($this->parent); })', 'FluentSelfResource | null'],
-    'a closure parameter named like the guarded read' => ['$this->whenHas("parent", fn ($p) => $this->when($p, fn ($p = null) => self::make($p)))', 'FluentSelfResource | null'],
+    'a closure parameter named like the guarded read' => ['$this->whenHas("parent", fn ($p) => $this->when($p, fn ($p = null) => self::make($p)))', 'null'],
     'a return inside an early exit' => ['$this->when(true, function () { if ($this->parent === null) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],
     'an early exit the body writes past' => ['$this->when(true, function () { if ($this->parent === null) { return "none"; } $this->parent = null; return self::make($this->parent); })', 'string | FluentSelfResource | null'],
     'a closure\'s if on another read' => ['$this->when(true, function () { if ($this->name) { return self::make($this->parent); } return "none"; })', 'FluentSelfResource | string | null'],

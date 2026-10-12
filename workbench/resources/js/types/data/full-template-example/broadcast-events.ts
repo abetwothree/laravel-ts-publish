@@ -4,12 +4,14 @@ import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { HandoverListed } from './app/events/HandoverListed';
 import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
 import type { OrderShipped } from './app/events/OrderShipped';
 import type { PayloadDiffersEvent } from './app/events/PayloadDiffersEvent';
 import type { PostPublishedEvent } from './app/events/PostPublishedEvent';
+import type { PostStatusBroadcast } from './app/events/PostStatusBroadcast';
 import type { PureEnumEvent } from './app/events/PureEnumEvent';
 import type { ReportSynced } from './app/events/ReportSynced';
 import type { ReviewerCastEvent } from './app/events/ReviewerCastEvent';
@@ -31,12 +33,14 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.FacilityAudited'
+    | '.Workbench.App.Events.HandoverListed'
     | '.Workbench.App.Events.ManifestAssembled'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
     | '.Workbench.App.Events.OrderShipped'
     | '.Workbench.App.Events.PayloadDiffersEvent'
     | '.Workbench.App.Events.PostPublishedEvent'
+    | '.Workbench.App.Events.PostStatusBroadcast'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
     | '.Workbench.App.Events.ReviewerCastEvent'
@@ -58,12 +62,14 @@ export const BroadcastEvents = Object.freeze({
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
+    HandoverListed: '.Workbench.App.Events.HandoverListed',
     ManifestAssembled: '.Workbench.App.Events.ManifestAssembled',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
     OrderShipped: '.Workbench.App.Events.OrderShipped',
     PayloadDiffersEvent: '.Workbench.App.Events.PayloadDiffersEvent',
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
+    PostStatusBroadcast: '.Workbench.App.Events.PostStatusBroadcast',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
     ReviewerCastEvent: '.Workbench.App.Events.ReviewerCastEvent',
@@ -86,12 +92,14 @@ export type {
     DocblockShapedEvent,
     EnumBroadcastEvent,
     FacilityAudited,
+    HandoverListed,
     ManifestAssembled,
     MixedTypesEvent,
     MultiModelEvent,
     OrderShipped,
     PayloadDiffersEvent,
     PostPublishedEvent,
+    PostStatusBroadcast,
     PureEnumEvent,
     ReportSynced,
     ReviewerCastEvent,

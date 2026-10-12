@@ -192,7 +192,8 @@ These rules settle the cases the table leaves open:
 - **An unpassed parameter holds its default**: every conditional and merge writer calls
   `AnalysisScope::bindUnpassedParameters()`, which binds an optional one to its default's type, evaluated as PHP does,
   so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
-  `never[]`, and leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
+  `never[]`, a static closure or first-class callable default to `Record<string, never>`, the `{}` Laravel sends, and
+  leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
   `whenNotNull()` or `whenNull()` value closure's, stay unbound.
 - **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and a
   `morphTo` `whenLoaded()` binds the list of its targets, its element never `null`. The map writers skip one, since
@@ -280,9 +281,14 @@ outside that set, because Laravel reads it with `property_exists()` rather than 
 
 [`SubjectPropertyTypeResolver`] is the one home for how such a property types, for
 `AstEngine::analyzePublicProperties()` and both handler arms. It reads the `@var` docblock, then the native type, then
-an untyped property's literal default. The default counts only while no method the class runs writes the property, an
-ancestor's or a trait's included, and in application code a computed `$this->{$name}` write counts as one. The check
-cannot see a subclass's write or a by-reference one, such as `array_push($this->tags, 5)`.
+an untyped property's default, typed by `ValueResolver::resolveConstantValue()` as a parameter default is. A
+non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
+the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
+trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
+by-reference parameter of a callee the scan can name, such as `array_push($this->tags, 5)`, except the pointer
+functions `end()`, `next()`, `prev()` and `reset()`. The check cannot see a subclass's write, including a child's that
+inherits `toArray()` and so publishes its parent's analysis (#79), a by-reference parameter on a receiver it cannot
+resolve, or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -346,6 +352,9 @@ the result carries. Every collector goes through it, so a channel added to `Valu
 at once. A collector that built rows by hand would miss a new channel silently. Nothing throws, the property still
 types, and only the generated TypeScript shows the missing import or alias.
 
+The row also keeps the result's `keepsKeys`: the value is an object, such as a `Collection`, whose keys `json_encode()`
+writes as they are, so a resource's re-index skips it.
+
 Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
 `inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
 branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `aliasTypeofConst()` for
@@ -378,6 +387,7 @@ A union arm the engine cannot type is left out, never widened to `unknown`, so `
 the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
 see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
 makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
@@ -417,8 +427,9 @@ or to `null`. Read the published property before you call an entry a bug.
 `MethodContext` or `AnalysisScope`, and the signature rule skips a tagged method. [Known gaps][gap-non-goals] records
 why the engine offers no extension point.
 
-`analyze()` hands `analyzeMethod()`'s DTO to [`AnalysisComposer`], which aliases same-basename collisions, rewrites
-`EnumResource` wraps to `AsEnum<typeof X>`, and imports only the names the rewritten types spell.
+`analyze()` re-indexes an API resource's `toArray()` as `ts:publish` does, then hands `analyzeMethod()`'s DTO to
+[`AnalysisComposer`], which aliases same-basename collisions, rewrites `EnumResource` wraps to `AsEnum<typeof X>`, and
+imports only the names the rewritten types spell.
 
 `AnalysisComposer` tests each name with `TsTypeString::typeNameOccursIn()`, which keeps the import of a name only a
 string or a comment spells, unused at worst. See [known gaps][gap-spelled-name]. Where its identifier boundary departs

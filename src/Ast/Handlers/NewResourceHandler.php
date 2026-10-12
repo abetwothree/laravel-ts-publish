@@ -22,7 +22,8 @@ use PhpParser\Node\Name;
 use ReflectionClass;
 
 /**
- * `new SomeResource(...)`, `new EnumResource($this->prop)`, and `new SomeCollection($this->items)`.
+ * `new SomeResource(...)`, `new EnumResource($this->prop)`, `new SomeCollection($this->items)`,
+ * `new Collection($items)` and a `new` of any other class.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -53,7 +54,8 @@ final class NewResourceHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `new SomeResource(...)` — resolve as a nested resource.
+     * Type `new X(...)`: a resource as itself or null, an EnumResource or a resource collection as what it wraps,
+     * `new Collection($items)` as collect($items), and any other class as json_encode() writes it.
      *
      * @return ValueExpressionResult
      */
@@ -100,20 +102,26 @@ final class NewResourceHandler implements ExpressionHandler
             }
         }
 
-        // Any other class reaches JSON as whatever json_encode() writes, and only a string is typed in place.
-        if (! $this->isResourceClass($className)) {
-            return resolve(ValueResolver::class)->resolveStringSerializedNew($expr) ?? $result;
+        $collect = resolve(ValueResolver::class)->collectCall($expr);
+
+        if ($collect !== null) {
+            return $engine->resolve($collect);
         }
 
-        $resourceName = TsNaming::resourceTypeName($className);
+        // Any other class reaches JSON as whatever json_encode() writes for it.
+        if (! $this->isResourceClass($className)) {
+            return resolve(ValueResolver::class)->resolveSerializedNew($expr) ?? $result;
+        }
+
+        $type = $this->resourceWrapType($expr, $className, TsNaming::resourceTypeName($className), $scope, $engine);
         $optional = $this->hasConditionalNewArgument($expr, $className);
 
         /** @var class-string $className */
         return [
             ...$result,
-            'type' => $this->wrapsNullablePayload($expr, $className, $scope, $engine) ? ValueResult::withNullArm($resourceName) : $resourceName,
+            'type' => $type,
             'optional' => $optional,
-            'resourceFqcn' => $className,
+            ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
         ];
     }
 }

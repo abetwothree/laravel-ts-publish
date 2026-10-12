@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnly
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNumericKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueBesideReadableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueHelperResource;
@@ -174,6 +175,12 @@ test('a variable with a write the walk does not read never turns a literal\'s ke
     'a nested key' => [ReturnedNestedKeyResource::class],
     'a ??= of a key it does not hold' => [ReturnedCoalesceKeyResource::class],
 ]);
+
+// A written int key is read as resolveKeyName() reads a literal's; beside a named key, a resource keeps it.
+test('a variable write to an int or int-constant key publishes that key', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(ReturnedNumericKeyResource::class)->properties))
+        ->toBe(['id' => 'number', 42 => 'string', 3 => 'boolean']);
+});
 
 test('a variable with an unset() key keeps the literal\'s keys required, and adds a key only it sets optional', function () {
     expect(returnedVariableMembers(ReturnedUnsetKeyResource::class))->toBe('id: number; name: string; slug?: string');

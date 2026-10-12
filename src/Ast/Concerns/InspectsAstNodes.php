@@ -6,13 +6,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
-use Illuminate\Http\Resources\Json\JsonResource;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -47,6 +48,18 @@ use ReflectionClass;
  */
 trait InspectsAstNodes
 {
+    /**
+     * The int PHP stores a literal key as, a numeric string such as `'6'` included, or null for any other key.
+     */
+    protected static function storedIntKey(Expr $key): ?int
+    {
+        return match (true) {
+            $key instanceof Int_ => $key->value,
+            $key instanceof String_ => PhpArrayKey::storedInt($key->value),
+            default => null,
+        };
+    }
+
     /**
      * Whether an expression is `$this->{$methodName}(...)`, called directly on `$this`.
      */
@@ -92,8 +105,9 @@ trait InspectsAstNodes
     /**
      * The name an array key spells, or null when it is not a literal this can read.
      *
-     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list. A key built
-     * from literal text around a value is named by the template-literal index signature that covers it.
+     * An int key is named as `json_encode()` writes it, `"1"`, whatever the subject: only a resource publisher
+     * re-indexes an array whose keys are all numeric. A key built from literal text around a value is named by the
+     * template-literal index signature that covers it.
      *
      * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
@@ -104,24 +118,40 @@ trait InspectsAstNodes
         }
 
         if ($key instanceof Int_) {
-            return $this->publishableKeyName((string) $key->value, $subject);
+            return (string) $key->value;
         }
 
-        if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
-            $parent = $subject->getParentClass();
-            $class = match ($key->class->toLowerString()) {
-                'self', 'static' => $subject->getName(),
-                'parent' => $parent === false ? null : $parent->getName(),
-                default => $key->class->toString(),
-            };
-            $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
-            $value = $constant !== null && defined($constant) ? constant($constant) : null;
+        if ($key instanceof ClassConstFetch) {
+            $value = $this->constantKeyValue($key, $subject);
             $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
-            return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
+            return $value === null ? null : (string) $value;
         }
 
         return $this->interpolatedKeyName($key);
+    }
+
+    /**
+     * The int or string a class-constant key holds, or null when it holds neither or cannot be read.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent`
+     */
+    protected function constantKeyValue(ClassConstFetch $key, ReflectionClass $subject): int|string|null
+    {
+        if (! $key->class instanceof Name || ! $key->name instanceof Identifier) {
+            return null;
+        }
+
+        $parent = $subject->getParentClass();
+        $class = match ($key->class->toLowerString()) {
+            'self', 'static' => $subject->getName(),
+            'parent' => $parent === false ? null : $parent->getName(),
+            default => $key->class->toString(),
+        };
+        $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
+        $value = $constant !== null && defined($constant) ? constant($constant) : null;
+
+        return is_int($value) || is_string($value) ? $value : null;
     }
 
     /**
@@ -163,18 +193,6 @@ trait InspectsAstNodes
     }
 
     /**
-     * Drop a numeric key when the analyzed subject is a resource, and keep every other one: PHP stores a numeric
-     * string key as an int, which the transformer's `array<string, …>` property maps cannot hold. The test is the
-     * subject, not the position, so a numeric key nested inside a resource is dropped as well.
-     *
-     * @param  ReflectionClass<object>  $subject
-     */
-    private function publishableKeyName(string $name, ReflectionClass $subject): ?string
-    {
-        return is_numeric($name) && $subject->isSubclassOf(JsonResource::class) ? null : $name;
-    }
-
-    /**
      * The class name a static call is made on, or null when the class is an expression.
      */
     protected function resolveStaticCallClassName(StaticCall $call): ?string
@@ -191,15 +209,25 @@ trait InspectsAstNodes
      * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
      * only a single walk lets a later key clear the FQCN channels an earlier one registered.
      *
+     * array_merge() renumbers every int key from 0, so a literal int key, or a constant holding one, takes its new
+     * number until a spread, a `parent::` call or a constant that cannot be read, whose int keys cannot be counted.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
-    protected function mergedArrayLiteral(FuncCall $call, ?string $parentMethodName = null, array $localVarBindings = []): ?Array_
-    {
+    protected function mergedArrayLiteral(
+        FuncCall $call,
+        ReflectionClass $subject,
+        ?string $parentMethodName = null,
+        array $localVarBindings = [],
+    ): ?Array_ {
         if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
             return null;
         }
 
         $items = [];
+        $keyless = [];
+        $next = 0;
 
         foreach ($call->getArgs() as $arg) {
             $value = $arg->value;
@@ -209,7 +237,34 @@ trait InspectsAstNodes
             }
 
             if ($value instanceof Array_) {
-                $items = [...$items, ...$value->items];
+                foreach ($value->items as $item) {
+                    $constant = $item->key instanceof ClassConstFetch
+                        ? $this->constantKeyValue($item->key, $subject)
+                        : null;
+                    $intKey = match (true) {
+                        $item->key === null => null,
+                        $constant !== null => is_int($constant) ? $constant : PhpArrayKey::storedInt($constant),
+                        default => self::storedIntKey($item->key),
+                    };
+
+                    if ($next !== null && $intKey !== null) {
+                        $items[] = new ArrayItem($item->value, new Int_($next++), $item->byRef, $item->getAttributes());
+
+                        continue;
+                    }
+
+                    if ($next !== null && $item->key === null && ! $item->unpack) {
+                        $keyless[count($items)] = new ArrayItem($item->value, new Int_($next), $item->byRef, $item->getAttributes());
+                    }
+
+                    $next = match (true) {
+                        $next === null || $item->unpack => null,
+                        $item->key === null => $next + 1,
+                        $item->key instanceof ClassConstFetch && $constant === null => null,
+                        default => $next,
+                    };
+                    $items[] = $item;
+                }
 
                 continue;
             }
@@ -219,9 +274,39 @@ trait InspectsAstNodes
             }
 
             $items[] = new ArrayItem($value, byRef: false, unpack: true);
+            $next = null;
+        }
+
+        // A keyless item keeps the key it gets at runtime only beside a keyed one; an all-keyless literal stays a list.
+        if ($keyless !== [] && array_filter($items, fn (ArrayItem $item): bool => $item->key !== null) !== []) {
+            $items = array_values(array_replace($items, $keyless));
         }
 
         return new Array_($items);
+    }
+
+    /**
+     * Re-express PHP's array union `$left + $right` as one literal. A literal operand, or a local holding one, gives
+     * its items; a nested `+` its own; anything else one spread.
+     *
+     * With every key a literal, the items run as PHP builds them: the left's, then each right one under a key the left
+     * lacks, a keyless item under the int key PHP gives it.
+     *
+     * A spread hides its keys, so the literal is then `[...$right, ...$left]`, whose later spread wins a key as the
+     * left operand does, though an int key can land out of PHP's order.
+     *
+     * @param  array<string, Expr>  $localVarBindings  substituted for a variable operand
+     */
+    protected function arrayUnionLiteral(Plus $union, array $localVarBindings = []): Array_
+    {
+        $left = $this->unionOperandItems($union->left, $localVarBindings);
+        $right = $this->unionOperandItems($union->right, $localVarBindings);
+        $storedLeft = $this->itemsByStoredKey($left);
+        $storedRight = $this->itemsByStoredKey($right);
+
+        return new Array_($storedLeft === null || $storedRight === null
+            ? [...$right, ...$left]
+            : array_values($storedLeft + $storedRight));
     }
 
     /**
@@ -356,5 +441,60 @@ trait InspectsAstNodes
         }
 
         return $returns;
+    }
+
+    /**
+     * The items one operand of `+` gives the union literal.
+     *
+     * @param  array<string, Expr>  $localVarBindings
+     * @return list<ArrayItem>
+     */
+    private function unionOperandItems(Expr $operand, array $localVarBindings): array
+    {
+        if ($operand instanceof Variable && is_string($operand->name)) {
+            $operand = $localVarBindings[$operand->name] ?? $operand;
+        }
+
+        return match (true) {
+            $operand instanceof Array_ => array_values($operand->items),
+            $operand instanceof Plus => array_values($this->arrayUnionLiteral($operand, $localVarBindings)->items),
+            default => [new ArrayItem($operand, byRef: false, unpack: true)],
+        };
+    }
+
+    /**
+     * A literal's items as PHP stores them: a key written twice keeps its first place and its last value, and a keyless
+     * item takes its int key; null when an item is a spread or its key is no literal.
+     *
+     * @param  list<ArrayItem>  $items
+     * @return array<array-key, ArrayItem>|null
+     */
+    private function itemsByStoredKey(array $items): ?array
+    {
+        $stored = [];
+        $next = null;
+
+        foreach ($items as $item) {
+            $key = match (true) {
+                $item->key === null => $next ?? 0,
+                $item->key instanceof Int_ => $item->key->value,
+                $item->key instanceof String_ => self::storedIntKey($item->key) ?? $item->key->value,
+                default => null,
+            };
+
+            if ($key === null || $item->unpack) {
+                return null;
+            }
+
+            $stored[$key] = $item->key === null
+                ? new ArrayItem($item->value, new Int_($key), $item->byRef, $item->getAttributes())
+                : $item;
+
+            if (is_int($key)) {
+                $next = max($next ?? $key + 1, $key + 1);
+            }
+        }
+
+        return $stored;
     }
 }

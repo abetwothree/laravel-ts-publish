@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalar
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
@@ -200,6 +201,15 @@ test('the default provider still infers its cast morph class', function () {
 
     expect($analysis->types)->toBe(['morphClass' => 'string'])
         ->and($analysis->sources)->toBe(['morphClass' => 'docblock']);
+});
+
+// PHP stores `42` as an int, which str_ends_with() once received under strict types, and a spread renumbered.
+test('reads a numeric @return shape key on its own key instead of stopping the run', function () {
+    $analysis = analyzeMetadataTypesFor(NumericShapeKeyMetadataProvider::class, ['label']);
+
+    expect($analysis->types)->toBe(['label' => 'string', 42 => 'string', 7 => 'string'])
+        ->and($analysis->sources)->toBe(['label' => 'docblock', 42 => 'docblock', 7 => 'docblock'])
+        ->and($analysis->requiredKeys)->toBe(['label' => true, 7 => true]);
 });
 
 test('keeps a numeric provide() cast key on its own key', function () {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
@@ -16,6 +17,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use Workbench\App\Enums\Status;
+use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
@@ -545,9 +548,37 @@ test('a controller method\'s cast key holding a raw CR retypes the CR signature'
 
 // ─── #[TsCasts] key edges ────────────────────────────────────────
 
-test('a page cast on a numeric key lands on that key', function () {
+// PropsResolver::resolve() array_merge()s the props over shared data, which renumbers their int keys from 0.
+test('a page cast on a numeric key lands on the key Laravel renumbers it to, and warns', function () {
     expect(pageData(ControllerWithCastKeyEdges::class.'@numeric')['pageType'])
-        ->toBe('Inertia.SharedData & { heading: string, "42": boolean }');
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => ControllerWithCastKeyEdges::class.'@numeric',
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ]]);
+});
+
+test('a top-level int key of a page publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numericBody')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean, codes: { "7": string } }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => ControllerWithCastKeyEdges::class.'@numericBody',
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ]]);
+});
+
+test('a collection keyed by numbers keeps its keys in a page prop', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@collectedCodes')['pageType'])
+        ->toBe('Inertia.SharedData & { codes: { "200": string; "404": string } }');
+});
+
+test('an int key a page cast adds renumbers after the props\' own', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numericCastAdded')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean, "1": string }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+            'The key "7" is renumbered to "1" by Laravel at the top level of a page; use a string key.',
+        ]);
 });
 
 test('a losing page cast spelling brings no import', function () {
@@ -582,6 +613,14 @@ test('a prop typed from a request\'s import-aware cast carries the import', func
 it('quotes a page prop key that is not an identifier', function () {
     expect(pageData(InertiaKeyEdgesController::class.'@show')['pageType'])
         ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
+});
+
+it('types a bare enum case prop as its enum, and imports it once, beside a new value', function () {
+    $data = pageData(InertiaEnumCaseController::class.'@show');
+
+    expect($data['pageType'])
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
+        ->and($data['classFqcns'])->toBe([Status::class]);
 });
 
 test('the page type prints no ? after a signature, whatever flag reaches it', function () {

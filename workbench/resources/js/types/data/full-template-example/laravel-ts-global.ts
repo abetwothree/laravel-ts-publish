@@ -2889,12 +2889,12 @@ declare global {
             mixed_tags: (string | number)[];
             nested_tags: { primary: string[]; secondary: string[] };
             broken_channels: unknown;
-            over_element_limit: unknown;
+            over_element_limit: number[];
             over_depth_limit: unknown;
             status_map: { status: app.enums.OrderStatusType };
             status_list: app.enums.OrderStatusType[];
-            all_int_keys: Record<string, unknown>;
-            mixed_keys: { a: number };
+            all_int_keys: string[];
+            mixed_keys: { a: number; "5": string };
             resource_marker: string;
             status_marker: app.enums.StatusType;
         }
@@ -3323,6 +3323,46 @@ declare global {
             notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
+         * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
+         * Depot column: PHP reads the declared property before JsonResource::__get() reaches the model, so the key sends null.
+         */
+        export interface DepotDefaultsResource {
+            id: number;
+            name: null;
+            stage: app.enums.StatusType;
+            limits: { daily: number; codes: string[] };
+            tags: (string | number)[];
+            notes: never[];
+            stage_name?: string;
+        }
+        /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
+        export interface DepotTierKeyedResource {
+            id: number;
+            tiers: { "1": string; "2": string };
+            codes: { "06": string; "1.5": string };
+            surcharges: { "3": number };
+            statuses: { "200": string; "404": string };
+            labelled: { name: string; "42": boolean };
+            nested: { inner: { "7": string } };
+            loaded_orders?: { "10": string; "20": string };
+            "42": string;
+        }
+        /**
+         * Numeric keys, which a resource's filter re-indexes into a list wherever every key of an array passes is_numeric(),
+         * and keeps beside a named key.
+         */
+        export interface DepotTierResource {
+            id: number;
+            tiers: string[];
+            codes: string[];
+            surcharges: number[];
+            statuses: string[];
+            labelled: { name: string; "42": boolean };
+            nested: { inner: string[] };
+            loaded_orders?: string[];
+            "42": string;
+        }
+        /**
          * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
          * must retype the entry that publishes, not only the first.
          */
@@ -3474,11 +3514,39 @@ declare global {
             handovers: HandoverResource[];
         }
         /**
+         * Returns an array union whole: the filtered attributes keep their own types, and the defaults add only the keys the
+         * filter leaves out.
+         */
+        export interface HandoverDefaultsResource {
+            id: number;
+            sender_id: number | null;
+            note: string;
+        }
+        /**
          * Stacked on a body-less collection and body-less itself: Laravel collects its own `$collects`, under the inherited
          * `handovers` wrap.
          */
         export interface HandoverDigestCollection {
             handovers: HandoverSummaryResource[];
+        }
+        /**
+         * Keyless list literals publish the JSON arrays they encode as: a constant one by its values, any other by its
+         * elements' types, a spread of a list adding its elements, and an element no rule types leaving the element `unknown`.
+         */
+        export interface HandoverListResource {
+            stages: string[];
+            stamps: (number | string | null)[];
+            lanes: number[];
+            route: { stops: string[]; hops: number };
+            empty: never[];
+            stops: string[];
+            statuses: app.enums.OrderStatusType[];
+            senders: (UserResource | null)[];
+            legs: ({ from: string; to: string } | { from: string; to: number })[];
+            grid: number[][];
+            flags: string[];
+            opaque: unknown[];
+            collected: (number | string | null)[];
         }
         /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
         export interface HandoverNoticeResource {
@@ -3524,6 +3592,17 @@ declare global {
             receiver?: crm.models.User | null;
             watchers?: app.models.User[];
             crm_watchers?: crm.models.User[];
+        }
+        /**
+         * `+` on arrays publishes PHP's array union, where the left operand's keys win and the right one adds the rest, and
+         * `+` on numbers stays a number.
+         */
+        export interface HandoverUnionResource {
+            with_defaults: { note: string; id: number; sender_id: number | null };
+            override: { code: string; lane: number };
+            lanes: number[];
+            chained: { a: number; b: string; c: boolean };
+            total: number;
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
@@ -3997,6 +4076,7 @@ declare global {
             members_bare?: UserResource[];
             members_model_spread?: (Omit<app.models.User, 'flag'> & { flag: boolean })[];
             members_collection_spread?: Record<number, app.models.User> & { flag: boolean };
+            members_zero_key_spread?: (app.models.User | boolean)[];
             members_double_spread?: (Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[];
             members_with_profile_untyped?: (Omit<UserResource, 'profile'> & { profile: ProfileResource })[];
             owner_map_untyped?: unknown;
@@ -4231,6 +4311,26 @@ declare global {
             authors: ({ id: number; who: string | null; who_or: string | null })[];
             loaded?: ({ who: string | null })[];
         }
+        /**
+         * A bare enum case in every position a resource key reads one, with two enums that share a basename. A backed case
+         * sends its value; a pure case would make the response throw, so none is here.
+         */
+        export interface PostEnumCaseResource {
+            status: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            kept_status: app.enums.StatusType;
+            priority_or_low: app.enums.PriorityType;
+            flagged: app.enums.StatusType | null;
+            either: app.enums.StatusType | crm.enums.StatusType;
+            when_published?: app.enums.StatusType;
+            when_default: string | app.enums.StatusType;
+            matched: app.enums.StatusType;
+            pair: { app: app.enums.StatusType; crm: crm.enums.StatusType };
+            cases: app.enums.StatusType[];
+            case_list: app.enums.StatusType[];
+            wrapped: app.enums.StatusType;
+            wrapped_kept: app.enums.StatusType;
+        }
         /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
         export interface PostEnumTrioResource {
             id: number;
@@ -4241,6 +4341,31 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /** A `new` of a class that is not a resource, in place and as a parameter default. */
+        export interface PostNewValueResource {
+            error: Record<string, never>;
+            markup: Record<string, never>;
+            opened: { date: string; timezone_type: number; timezone: string };
+            opened_immutable: { date: string; timezone_type: number; timezone: string };
+            stamped: string;
+            dock: string;
+            reading: { date: string; timezone_type: number; timezone: string };
+            reading_returned: { date: string; timezone_type: number; timezone: string };
+            error_default?: Record<string, never>;
+            opened_default?: { date: string; timezone_type: number; timezone: string };
+            stamped_default?: string;
+            dock_default?: string;
+            reading_default?: { date: string; timezone_type: number; timezone: string };
+        }
+        /** Resources built around a payload that is only null, which JsonResource::filter() sends as null. */
+        export interface PostNullWrapResource {
+            null_new: null;
+            null_make: null;
+            null_default?: null;
+            null_local: null;
+            author_new: UserResource;
+            nested: { author: null };
+        }
         /**
          * A relation loaded under a name the model does not declare, so only the local's inline `@var` names the collection
          * it holds.
@@ -4509,6 +4634,7 @@ declare global {
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
             id: number;
+            "42": string;
             flag?: unknown;
             extra: string;
             dynamic?: string;
@@ -4789,7 +4915,7 @@ declare global {
          */
         export interface ServiceReturnResource {
             quote: { unit: string; minimum: number; discounted: { unit: string } };
-            tiers: { "1": string; "2": string };
+            tiers: string[];
         }
         /**
          * Guards against the regression narrowing collectWrittenVariableNames() could introduce: a closure
@@ -5216,9 +5342,9 @@ declare global {
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site; the audit proves each fires and pins these lines: the plain ternary and the Elvis go
-         * through analyzeClosureUnion(), 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through
-         * KnownFunctionCallHandler, 'conditional_default' through ConditionalMethodHandler, 'match_arm' through MatchHandler.
+         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
+         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
+         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -5228,6 +5354,7 @@ declare global {
             data_get_default: string | null;
             conditional_default: string;
             match_arm: string;
+            coalesce_right: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
@@ -5877,6 +6004,12 @@ declare global {
             trail: Partial<app.packages.audit.models.AuditTrail>;
             record: unknown;
         }
+        export interface HandoverListed {
+            stages: string[];
+            ids: number[];
+            codes: { "200": string; "404": string };
+            override: { code: string; lane: number };
+        }
         export interface ManifestAssembled {
             parcelId: number;
             carrier: string;
@@ -5905,6 +6038,11 @@ declare global {
         export interface PostPublishedEvent {
             post: Partial<app.models.Post>;
             message: string;
+        }
+        export interface PostStatusBroadcast {
+            status: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            kept: app.enums.StatusType;
         }
         export interface PureEnumEvent {
             role: app.enums.RoleType;

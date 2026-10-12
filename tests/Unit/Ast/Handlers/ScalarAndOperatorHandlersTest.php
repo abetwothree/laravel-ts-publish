@@ -35,8 +35,12 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\TeamResource;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
 
 /**
  * A throwaway scope for tests that never inspect its contents.
@@ -268,14 +272,19 @@ it('resolves true/false constant fetches to boolean', function () {
         ->toBe(['type' => 'boolean', 'optional' => false]);
 });
 
-it('declines a user-defined constant fetch', function () {
-    $handler = new ConstFetchHandler;
-    $expr = new ConstFetch(new Name('PHP_EOL'));
+it('types a global constant fetch by its value\'s type, as a parameter default does', function (string $name, ?string $type) {
+    $result = (new ConstFetchHandler)->resolve(new ConstFetch(new Name($name)), handlerTestScope(), throwingEngine());
 
-    $result = $handler->resolve($expr, handlerTestScope(), throwingEngine());
-
-    expect($result)->toBeNull();
-});
+    expect($result)->toBe($type === null ? null : ['type' => $type, 'optional' => false]);
+})->with([
+    'PHP_EOL' => ['PHP_EOL', 'string'],
+    'PHP_INT_MAX' => ['PHP_INT_MAX', 'number'],
+    'M_PI' => ['M_PI', 'number'],
+    'E_ALL' => ['E_ALL', 'number'],
+    'true' => ['true', 'boolean'],
+    'null' => ['null', 'null'],
+    'an undefined constant' => ['DEFINED_ONLY_AT_RUNTIME', null],
+]);
 
 // BinaryOpHandler
 
@@ -287,6 +296,69 @@ it('resolves arithmetic operators to number', function () {
 
     expect($result)->toBe(['type' => 'number', 'optional' => false]);
 });
+
+/**
+ * The type a `+` expression resolves to on an API resource over its model, PostResource over a Post unless named.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ */
+function arrayUnionType(string $php, string $resource = PostResource::class, string $model = Post::class): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->resolve($expr)['type'];
+}
+
+it('types + on arrays as the array union, the left operand\'s keys winning', function (string $php, string $type) {
+    expect(arrayUnionType($php))->toBe($type);
+})->with([
+    'two literals' => ['["a" => 1] + ["b" => "x"]', '{ a: number; b: string }'],
+    'a key both set keeps the left value' => ['["a" => 1] + ["a" => "x", "b" => true]', '{ a: number; b: boolean }'],
+    'an attribute filter plus a literal' => ['$this->only(["id"]) + ["x" => 1]', '{ x: number; id: number }'],
+    'a list plus a list literal' => ['explode(",", $this->title) + ["z"]', 'string[]'],
+    'two lists' => ['[1, 2] + [3, 4, 5]', 'number[]'],
+    'a nested union' => ['["a" => 1] + ["b" => "x"] + ["c" => true]', '{ a: number; b: string; c: boolean }'],
+    'a resource payload plus a literal' => [
+        '(new \\'.UserResource::class.'($this->author))->resolve() + ["extra" => 1]',
+        "Omit<UserResource, 'extra'> & { extra: number }",
+    ],
+    'a bare enum case' => ['["s" => \\'.Status::class.'::Draft] + ["t" => 1]', '{ s: StatusType; t: number }'],
+]);
+
+// PHP keeps the left's keys in place and appends each right key the left lacks, so int keys follow the runtime's order.
+it('types + on int-keyed literals with the keys and order PHP gives the union', function (string $php, string $type) {
+    expect(arrayUnionType($php))->toBe($type);
+})->with([
+    'keys running 0 to n-1 across both sides' => ['[0 => "All"] + [1 => "A", 2 => "B"]', 'string[]'],
+    'a left key above the right one' => ['[1 => "b"] + [0 => "a"]', '{ "1": string; "0": string }'],
+    'a keyless left item keeps key 0' => ['[true] + [0 => "z", "k" => 1]', '{ "0": boolean; k: number }'],
+]);
+
+it('types + on two enum lists as the list, not as a scalar', function () {
+    expect(arrayUnionType('$this->status_history + $this->status_history', TeamResource::class, Team::class))
+        ->toBe('StatusType[]');
+});
+
+it('keeps + on numbers a number', function (string $php) {
+    expect(arrayUnionType($php))->toBe('number');
+})->with([
+    'a column plus a literal' => ['$this->word_count + 1'],
+    'two columns' => ['$this->word_count + $this->id'],
+    'a subject method plus a column' => ['$this->publishable() + $this->id'],
+    'a literal on the left, resolved without the engine' => ['1 + $this->title'],
+    'two operands neither of which is provably an array' => ['json_decode("{}") + json_decode("[]")'],
+]);
+
+// PHP's `+` throws unless both sides are arrays, so an operand beside an array is one, even when its keys are unread.
+it('types + with an array operand whose keys it cannot read as a spread arm of that operand\'s type', function (string $php, string $type) {
+    expect(arrayUnionType($php))->toBe($type);
+})->with([
+    'an untyped operand on the left' => ['json_decode("{}") + ["x" => 1]', "Omit<Record<string, unknown>, 'x'> & { x: number }"],
+    'an untyped operand on the right' => ['["x" => 1] + json_decode("{}")', "Omit<Record<string, unknown>, 'x'> & { x: number }"],
+    'a relation filter' => ['$this->author->only(["id"]) + ["x" => 1]', "Omit<Pick<User, 'id'>, 'x'> & { x: number }"],
+    'an array cast' => ['$this->options + ["a" => "x"]', "Omit<Record<string, string>, 'a'> & { a: string }"],
+]);
 
 it('resolves concat to string', function () {
     $handler = new BinaryOpHandler;

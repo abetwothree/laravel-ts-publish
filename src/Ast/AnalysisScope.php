@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -17,8 +18,11 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\MagicConst\Line;
 use PhpParser\Node\Scalar\String_;
@@ -421,33 +425,46 @@ final class AnalysisScope
                 return ['type' => $default instanceof Line ? 'number' : 'string', 'optional' => false];
             }
 
-            $stringDefault = $default instanceof New_ ? $resolver->resolveStringSerializedNew($default) : null;
-
-            if ($stringDefault !== null) {
-                return $stringDefault;
+            // PHP 8.5 allows a static closure or a first-class callable here; json_encode() writes the Closure as `{}`.
+            if (($default instanceof Closure && $default->static)
+                || (($default instanceof FuncCall || $default instanceof StaticCall) && $default->isFirstClassCallable())
+            ) {
+                return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
             }
 
-            // Only the engine reads `new`, but it types a list literal as a record and a closure by its return, though
-            // json_encode() writes a Closure as `{}`; a default that reads a variable is no constant expression at all.
+            $newDefault = $default instanceof New_ ? $resolver->resolveSerializedNew($default) : null;
+
+            if ($newDefault !== null) {
+                return $newDefault;
+            }
+
+            // collect() reads the list of a `new Collection([...])` itself, so the list clause below lets it through.
+            $readsOwnList = $default instanceof New_ && $resolver->collectCall($default) !== null;
+
+            // Only the engine reads `new`, but it types a closure by its return though json_encode() writes it as `{}`.
+            // A list of values the evaluator failed on is left unbound, but a keyed one, whose keys the engine types,
+            // still binds even when a value throws, such as `[0 => 1 / 0]`; a variable is no constant expression.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
                 || $node instanceof Closure
                 || $node instanceof ArrowFunction
                 || ($node instanceof CallLike && $node->isFirstClassCallable())
-                || ($node instanceof Array_ && ! $this->isRecordLiteral($node)));
+                || (! $readsOwnList && $node instanceof Array_ && ! $this->isKeyedLiteral($node)));
 
             return $unreadable === null ? $engine->resolve($default) : null;
         }
 
-        return $resolver->resolveConstantValue($value, $engine);
+        return $resolver->resolveConstantValue($value);
     }
 
     /**
-     * Whether an array literal keys every item by a string that fails is_numeric(), so no resource re-indexes it.
+     * Whether an array literal keys every item by a literal int or string, so the engine types it by those keys.
      */
-    private function isRecordLiteral(Array_ $array): bool
+    private function isKeyedLiteral(Array_ $array): bool
     {
-        return array_all($array->items, fn (ArrayItem $item): bool => $item->key instanceof String_
-            && ! is_numeric($item->key->value));
+        return array_all(
+            $array->items,
+            fn (ArrayItem $item): bool => $item->key instanceof String_ || $item->key instanceof Int_,
+        );
     }
 
     /**

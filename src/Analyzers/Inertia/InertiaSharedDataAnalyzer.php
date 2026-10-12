@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
@@ -36,7 +37,7 @@ use ReflectionClass;
  *     valueImports: TypesImportMap,
  * }
  * @phpstan-type OverrideEntry = array{type: string, optional: bool}
- * @phpstan-type SharedPropMap = array<string, OverrideEntry>
+ * @phpstan-type SharedPropMap = array<array-key, OverrideEntry>
  */
 class InertiaSharedDataAnalyzer
 {
@@ -137,9 +138,12 @@ class InertiaSharedDataAnalyzer
 
         $this->forgetOverriddenChannels($analysis, $mergedOverrides);
 
+        $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+        $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
+
         $propsType = $this->buildTypeStringWithOverrides(
-            $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis),
-            $mergedOverrides,
+            TopLevelRenumbering::rekey($props, $renumbered),
+            TopLevelRenumbering::rekey($mergedOverrides, $renumbered),
         );
 
         $inferredImports = $this->buildInferredImports($analysis, $propsType);
@@ -362,6 +366,21 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
+     * The key Laravel sends each top-level prop on, as the page merge renumbers shared data's int keys; warns for each.
+     *
+     * @param  SharedPropMap  $props
+     * @param  SharedPropMap  $overrides
+     * @return array<array-key, string>
+     */
+    protected function renumberTopLevel(array $props, array $overrides, string $middlewareClass): array
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys(array_replace($props, $overrides))));
+        TopLevelRenumbering::warnRenumbered($middlewareClass, 'shared data', $renumbered);
+
+        return $renumbered;
+    }
+
+    /**
      * Build a TypeScript object type string, applying overrides where present.
      *
      * @param  SharedPropMap  $props  the AST-inferred props
@@ -390,10 +409,10 @@ class InertiaSharedDataAnalyzer
      * against the inferred plain property names — otherwise `filters?` misses `filters` and the entry
      * is emitted twice, which TypeScript rejects as a duplicate identifier. Also settles an optional signature.
      *
-     * @param  array<string, string>  $overrides
-     * @param  array<string, bool>  $optionalOverrides  a #[TsCasts] entry's own `optional` flag, which outranks a `?`
-     * @param  array<string, bool>  $propFlags  each prop's own flag, which a cast that says nothing keeps unless an
-     *                                          earlier entry decides
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, bool>  $optionalOverrides  a #[TsCasts] entry's own `optional` flag, over a `?`
+     * @param  array<array-key, bool>  $propFlags  each prop's own flag, which a cast that says nothing keeps unless an
+     *                                             earlier entry decides
      * @return SharedPropMap
      */
     protected function normalizeOverrideKeys(array $overrides, array $optionalOverrides = [], array $propFlags = []): array

@@ -23,6 +23,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
@@ -32,6 +34,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnum
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
@@ -134,10 +138,13 @@ use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
+use Workbench\App\Http\Resources\HandoverDefaultsResource;
 use Workbench\App\Http\Resources\HandoverDigestCollection;
+use Workbench\App\Http\Resources\HandoverListResource;
 use Workbench\App\Http\Resources\HandoverRosterCollection;
 use Workbench\App\Http\Resources\HandoverRosterResource;
 use Workbench\App\Http\Resources\HandoverSummaryResource;
+use Workbench\App\Http\Resources\HandoverUnionResource;
 use Workbench\App\Http\Resources\HelperCallResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
@@ -178,6 +185,7 @@ use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PermissionsSpreadResource;
 use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
+use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostUnwrappedCollection;
@@ -226,6 +234,7 @@ use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Merchant;
 use Workbench\App\Models\Order;
@@ -245,6 +254,7 @@ use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Blog\Http\Resources\ReactionResource;
 use Workbench\Blog\Models\Article;
 use Workbench\Blog\Models\Reaction;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\Deal;
@@ -1845,10 +1855,10 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($names)->not->toContain('bare_value');
     });
 
-    test('skips integer keyed items', function () {
-        $names = array_column($this->analysis->properties, 'name');
+    test('keeps integer keyed items', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
 
-        expect($names)->not->toContain('42');
+        expect($props['42']['type'])->toBe('string');
     });
 
     test('resolves when with single arg as unknown optional', function () {
@@ -5977,14 +5987,13 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($props['channel_tags']['type'])->toBe('string[]')
         // A list whose elements don't agree resolves to a union element array.
         ->and($props['mixed_tags']['type'])->toBe('(string | number)[]')
-        // A list nested inside a keyed constant resolves the same way a top-level one does,
-        // rather than the Record<string, unknown> a keyless item would otherwise misreport.
+        // A list nested inside a keyed constant resolves the same way a top-level one does.
         ->and($props['nested_tags']['type'])->toBe('{ primary: string[]; secondary: string[] }')
         // Negative case: an undefined-constant reference degrades to unknown at read time
         // instead of throwing and aborting the whole generation run.
         ->and($props['broken_channels']['type'])->toBe('unknown')
-        // Negative case: one element past MAX_CONSTANT_ARRAY_ELEMENTS.
-        ->and($props['over_element_limit']['type'])->toBe('unknown')
+        // A flat list one past MAX_CONSTANT_ARRAY_ELEMENTS: the cap counts only arrays that inline a shape per element.
+        ->and($props['over_element_limit']['type'])->toBe('number[]')
         // Negative case: one level past MAX_CONSTANT_ARRAY_DEPTH.
         ->and($props['over_depth_limit']['type'])->toBe('unknown')
         // An enum case nested inside a keyed constant — the FQCN must survive embedding.
@@ -5992,10 +6001,10 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($analysis->directEnumFqcns)->toContain(OrderStatus::class)
         // An enum case nested inside a list constant — same requirement, list shape.
         ->and($props['status_list']['type'])->toBe('OrderStatusType[]')
-        // All-int, non-sequential keys: every member is dropped, not a regression.
-        ->and($props['all_int_keys']['type'])->toBe('Record<string, unknown>')
-        // A mixed string/int-keyed constant: the int-keyed member is silently dropped.
-        ->and($props['mixed_keys']['type'])->toBe('{ a: number }')
+        // All-int, non-sequential keys, kept as JSON writes them; the resource's publisher re-indexes them into a list.
+        ->and($props['all_int_keys']['type'])->toBe('{ "200": string; "404": string }')
+        // A mixed string/int-keyed constant keeps its keys, the int one written as JSON writes it.
+        ->and($props['mixed_keys']['type'])->toBe('{ a: number; "5": string }')
         // New behaviour: `Foo::class` now types as a plain string instead of unknown. The four
         // risky call sites never reach this branch — they resolve their ClassConstFetch argument
         // directly, without going through analyzeValueExpression() — so this is new behaviour, not a guard.
@@ -6274,6 +6283,12 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
             ->and($this->props['members_collection_spread']['optional'])->toBeTrue()
             ->and($this->props['members_collection_spread']['type'])->not->toContain('Omit<')
             ->and($this->analysis->inlineModelFqcns['members_collection_spread'] ?? [])->toBe([User::class]);
+    });
+
+    test('a numeric-string key beside a collection spread keeps the intersection the body spells', function () {
+        // '0' is the key 0, which overwrites the first member; ResourceTransformerTest pins the list it sends.
+        expect($this->props['members_zero_key_spread']['type'])->toBe('Record<number, User> & { "0": boolean }')
+            ->and($this->analysis->inlineModelFqcns['members_zero_key_spread'] ?? [])->toBe([User::class]);
     });
 
     test('two resource spreads plus a sibling key intersect in order, each Omit<>\'d against what later overrides it', function () {
@@ -7160,4 +7175,99 @@ describe('a cast across its locations', function () {
 
         expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
     });
+});
+
+test('a keyless list literal publishes the list it encodes as, with the imports its elements name', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(HandoverListResource::class), Handover::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe([
+        'stages' => 'string[]',
+        'stamps' => '(number | string | null)[]',
+        'lanes' => 'number[]',
+        'route' => '{ stops: string[]; hops: number }',
+        'empty' => 'never[]',
+        'stops' => 'string[]',
+        'statuses' => 'OrderStatusType[]',
+        'senders' => '(UserResource | null)[]',
+        'legs' => '({ from: string; to: string } | { from: string; to: number })[]',
+        'grid' => 'number[][]',
+        'flags' => 'string[]',
+        'opaque' => 'unknown[]',
+        'collected' => '(number | string | null)[]',
+    ])->and($analysis->inlineEnumFqcns['statuses'] ?? [])->toBe([OrderStatus::class])
+        ->and($analysis->inlineResourceFqcns['senders'] ?? [])->toBe([UserResource::class]);
+});
+
+// #76: a member per enum where two share a name, each queued in the order the type spells them.
+test('a union of two same-named enums keeps a member and a queue entry per enum, in token order', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(WarehouseResource::class), Warehouse::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class])
+        ->and($result)->not->toHaveKey('directEnumFqcn');
+})->with([
+    'a shape beside a read' => ['$this->id > 0 ? ["s" => $this->status] : $this->current_crm_status', '{ s: StatusType | null } | StatusType | null'],
+    'two reads' => ['$this->id > 0 ? $this->status : $this->current_crm_status', 'StatusType | StatusType | null'],
+]);
+
+// An enum resource's token holds no queue entry, so a union holding one keeps the merge by text it had (#76, #108):
+// nested_mixed's `o` keeps that merge's CRM alias. With no enum resource, the nested union reads its enums by class.
+test('a union holding an enum resource beside two same-named enums keeps the merge by text it had', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(EnumWrapBesideSharedNameResource::class)->properties))
+        ->toBe([
+            'mixed' => 'WorkbenchStatusType | null',
+            'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
+            'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
+        ]);
+});
+
+// The body fallback flattens a helper's shape with no import, so the case declines and leaves its siblings their types.
+test('an enum case in a vague helper\'s body fallback leaves its siblings typed', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ s: unknown; n: number }']);
+});
+
+test('a list of an enum case beside a read of the same enum publishes one element type, queued once per token', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostEnumCaseResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all()['case_list'])->toBe('StatusType[]')
+        ->and($analysis->inlineEnumFqcns['case_list'] ?? [])->toBe([Status::class]);
+});
+
+test('+ on arrays publishes the array union in value position and as a whole return', function () {
+    $value = new ResourceAstAnalyzer(new ReflectionClass(HandoverUnionResource::class), Handover::class)->analyze();
+    $whole = new ResourceAstAnalyzer(new ReflectionClass(HandoverDefaultsResource::class), Handover::class)->analyze();
+
+    expect(collect($value->properties)->pluck('type', 'name')->all())->toBe([
+        'with_defaults' => '{ note: string; id: number; sender_id: number | null }',
+        'override' => '{ code: string; lane: number }',
+        'lanes' => 'number[]',
+        'chained' => '{ a: number; b: string; c: boolean }',
+        'total' => 'number',
+    ])->and(collect($whole->properties)->pluck('type', 'name')->all())->toBe([
+        'id' => 'number',
+        'sender_id' => 'number | null',
+        'note' => 'string',
+    ]);
+});
+
+// Review Focus 4: the parent's keys win a key both sides set, as `+=` keeps them.
+test('+ after a parent call publishes every parent key, the parent winning a key both set', function () {
+    $parent = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->analyze();
+    $union = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionResource::class), Post::class)->analyze();
+    $parentTypes = collect($parent->properties)->pluck('type', 'name')->all();
+
+    expect(collect($union->properties)->pluck('type', 'name')->all())->toBe([...$parentTypes, 'extra' => 'number'])
+        ->and($parentTypes['id'])->toBe('number');
+});
+
+test('a variable built from + is read whole beside a literal return, so only the keys both set stay required', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionVariableResource::class), Post::class)->analyze();
+    $optional = collect($analysis->properties)->pluck('optional', 'name');
+
+    expect($optional['id'])->toBeFalse()
+        ->and($optional['title'])->toBeTrue()
+        ->and($optional['extra'])->toBeTrue();
 });

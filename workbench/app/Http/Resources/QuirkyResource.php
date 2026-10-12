@@ -26,7 +26,7 @@ class QuirkyResource extends JsonResource
             'id' => $this->id,
             // Bare string value (null key, not MethodCall) — tests null-key guard
             'bare_value',
-            // Integer key — tests non-string key guard
+            // Integer key — kept, written `"42"` as JSON writes it
             42 => $this->total,
             // $this->when() with 1 arg — tests analyzeWhen fallback
             'flag' => $this->when(true),

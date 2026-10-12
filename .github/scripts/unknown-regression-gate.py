@@ -27,15 +27,23 @@ import subprocess
 import sys
 
 ROOT = "workbench/resources/js/types/data"
-PROP = re.compile(r"^\s*([A-Za-z_$][\w$]*)\??:\s*(.+?);\s*$")
-ALIAS = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_$][\w$]*)\s*=\s*(.+?);\s*$")
-MEMBER = re.compile(r"^([A-Za-z_$][\w$]*)\??:\s*(.+)$")
+# A property name is an identifier or a quoted key (`"42"`, `'tags.*'`); the quotes are not part of the name.
+NAME = r"""(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<name>[A-Za-z_$][\w$]*))"""
+PROP = re.compile(rf"^\s*{NAME}\??:\s*(?P<value>.+?);\s*$")
+ALIAS = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<value>.+?);\s*$")
+MEMBER = re.compile(rf"^{NAME}\??:\s*(?P<value>.+)$")
 BLOCK = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(interface|namespace|module)\s+([^\s{]+)")
 OPENERS, CLOSERS = "{[(<", "}])>"
 
 
 def git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+
+
+def name_of(match: re.Match) -> str:
+    """The property name a PROP, ALIAS or MEMBER match spells, without its quotes."""
+    groups = match.groupdict()
+    return groups.get("dq") or groups.get("sq") or groups["name"]
 
 
 def scan_objects(value: str) -> list[tuple[int, int]]:
@@ -102,7 +110,7 @@ def expand(name: str, value: str) -> dict[str, str]:
         for part in split_members(value[s + 1:e]):
             member = MEMBER.match(part)
             if member:
-                out.update(expand(f"{prefix}.{member.group(1)}", member.group(2)))
+                out.update(expand(f"{prefix}.{name_of(member)}", member.group("value")))
     return out
 
 
@@ -120,7 +128,7 @@ def parse_source(body: str) -> dict[tuple[str, str], str]:
             match = PROP.match(raw) or ALIAS.match(raw)
             if match:
                 scope = ".".join(n for n, _ in stack) or "<root>"
-                for key, val in expand(match.group(1), match.group(2)).items():
+                for key, val in expand(name_of(match), match.group("value")).items():
                     out[(scope, key)] = val
         opens = line.count("{")
         # Push only once the brace is seen: this repo puts `interface Foo` and `{` on separate
@@ -154,9 +162,11 @@ def detect_regressions(b: dict, h: dict) -> list:
     head_keys = list(h)
 
     def exhausted(k: tuple) -> bool:
-        # True when k has head members and every one already existed in base: member-level
-        # comparison is then exhaustive for k, so the parent is skipped rather than double-reported.
-        # A member new in head has no base counterpart, so it falls through and the parent stays checked.
+        # True when every head member of k existed in base, so members alone are compared; a new member keeps k checked.
+        # An inline-object parent counts a quoted `'tags.*'` sibling as a member, since it shares the `tags.` prefix, so
+        # the sibling can mask it (type-inference-gates.md); a parent that is no inline object has no members.
+        if "{" not in h[k]:
+            return False
         members = [
             other for other in head_keys
             if other[:-1] == k[:-1] and (other[-1].startswith(k[-1] + ".") or other[-1].startswith(k[-1] + "["))
@@ -216,6 +226,16 @@ PARSE_CASES = [
             ("<root>", "variants[1].email"): "string",
         },
     ),
+    (
+        "quoted property names, either quote (store-post-request.ts:11)",
+        "export interface A {\n    'tags.*': string[];\n    \"42\"?: string;\n}\n",
+        {("A", "tags.*"): "string[]", ("A", "42"): "string"},
+    ),
+    (
+        "quoted inline object member",
+        "    labelled: { name: string; \"42\": boolean };",
+        {("<root>", "labelled.name"): "string", ("<root>", "labelled.42"): "boolean"},
+    ),
 ]
 
 REGRESS_BASE = (
@@ -245,6 +265,10 @@ GAINED_HEAD = "export interface A {\n    meta: { id: number; note: unknown };\n}
 
 UNION_BASE = "    variants?: ({ name: string } | { email: string })[];"
 UNION_HEAD = "    variants?: ({ name: unknown } | { email: string })[];"
+
+
+SIBLING_BASE = "export interface StorePostRequestProbe {\n    tags: string[];\n    'tags.*': string;\n}\n"
+SIBLING_HEAD = "export interface StorePostRequestProbe {\n    tags: unknown;\n    'tags.*': string;\n}\n"
 
 
 def run_parsetest() -> int:
@@ -301,7 +325,15 @@ def run_parsetest() -> int:
         failed += 1
         print(f"FAIL - union member regressing without flagging the indexed parent (synthetic)\n  got: {bad}")
 
-    total = len(PARSE_CASES) + 5
+    base, head = parse_source(SIBLING_BASE), parse_source(SIBLING_HEAD)
+    bad = detect_regressions(base, head)
+    if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == ["StorePostRequestProbe.tags"]:
+        print("PASS - property regressing beside a quoted 'tags.*' sibling (store-post-request.ts:10)")
+    else:
+        failed += 1
+        print(f"FAIL - property regressing beside a quoted 'tags.*' sibling (store-post-request.ts:10)\n  got: {bad}")
+
+    total = len(PARSE_CASES) + 6
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
         return 1

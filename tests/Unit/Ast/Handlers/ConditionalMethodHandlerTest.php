@@ -11,8 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AggregateAliasPost;
@@ -808,7 +810,7 @@ it('publishes MIN() and MAX() of a column by a custom_ts_mappings entry for its 
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
-// is a list, never the record the engine types an array literal as, and a list the evaluator cannot read binds nothing.
+// is a list, and a list the evaluator cannot read binds nothing.
 it('binds a parameter default to the value it evaluates to', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
@@ -821,32 +823,42 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'whenHas() default closure, a list' => ['$this->whenHas("no_such_attr", 1, fn ($d = [1]) => $d)', 'number | number[]'],
     'transform() callback, a later list' => ['$this->transform($this->title, fn ($t, $u = [1]) => $u)', 'number[]'],
     'whenLoaded(), a later list' => ['$this->whenLoaded("author", fn ($a, $u = ["x"]) => $u)', 'string[]'],
-    'when(), an int-keyed record a resource re-indexes' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', 'unknown'],
+    'when(), an int-keyed record, which the resource re-indexes later' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', '{ "1": string }'],
     'when(), a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = [new Foo]) => $t)', 'unknown'],
     'when(), a record the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => new Foo]) => $t)', '{ a: unknown }'],
     'when(), a record holding a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => [new Foo]]) => $t)', 'unknown'],
-    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown'],
-    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', 'unknown'],
+    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown[]'],
+    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', '{ "1.5": unknown }'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
-    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
-    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
+    'when(), a keyed list whose evaluation errors' => ['$this->when($this->title, fn ($t = [0 => 1 / 0]) => $t)', 'number[]'],
+    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'Record<string, never>'],
+    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'Record<string, never>'],
+    'when(), a static method first-class callable' => ['$this->when($this->title, fn ($t = \\Workbench\\App\\Enums\\Status::from(...)) => $t)', 'Record<string, never>'],
+    'transform() callback, a later first-class callable' => ['$this->transform($this->title, fn ($t, $u = strlen(...)) => $u)', 'Record<string, never>'],
+    'when(), a closure that is not static, which PHP rejects' => ['$this->when($this->title, fn ($t = function () { return 1; }) => $t)', 'unknown'],
+    'when(), an arrow function, which PHP rejects' => ['$this->when($this->title, fn ($t = static fn () => 1) => $t)', 'unknown'],
+    'when(), a method first-class callable, which PHP rejects' => ['$this->when($this->title, fn ($t = $this->getKey(...)) => $t)', 'unknown'],
+    'when(), a list holding a first-class callable' => ['$this->when($this->title, fn ($t = [strlen(...)]) => $t)', 'unknown'],
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
+    'when(), a Collection, which json_encode() writes as its items' => ['$this->when($this->rating, 1, fn ($d = new \\Illuminate\\Support\\Collection(["z"])) => $d)', 'number | string[]'],
+    'when(), a Collection holding a closure' => ['$this->when($this->title, fn ($t = new \\Illuminate\\Support\\Collection([static function () { return 1; }])) => $t)', 'unknown'],
 ]);
 
-// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth, so
-// the record those keys would type as is not what reaches JSON.
-it('binds nothing for a default a resource re-indexes into a list', function (string $default) {
+// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth:
+// the engine types the default by its keys, and the resource's publisher sends it as the list that reaches JSON.
+it('binds a default a resource re-indexes into a list as that list', function (string $default, string $type, string $sent) {
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = '.$default.') => $t)')['type'])
-        ->toBe('unknown');
+        ->toBe($type)
+        ->and(ResourceReindexing::reindexedType($type))->toBe($sent);
 })->with([
-    'a float-string key' => ['["1.5" => "x"]'],
-    'an exponent key' => ['["1e3" => "x"]'],
-    'a key with a leading space' => ['[" 1" => "x"]'],
-    'a negative-zero key' => ['["-0" => "x"]'],
-    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]'],
-    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]'],
-    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]'],
+    'a float-string key' => ['["1.5" => "x"]', '{ "1.5": string }', 'string[]'],
+    'an exponent key' => ['["1e3" => "x"]', '{ "1e3": string }', 'string[]'],
+    'a key with a leading space' => ['[" 1" => "x"]', '{ " 1": string }', 'string[]'],
+    'a negative-zero key' => ['["-0" => "x"]', '{ "-0": string }', 'string[]'],
+    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]', '{ "1": string; "1.5": string }', 'string[]'],
+    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]', '{ a: { "2.5": number } }', '{ a: number[] }'],
+    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]', '{ "1.5": number }', 'number[]'],
 ]);
 
 // Each of these is a constant expression whose value serializes to a string, so its parameter binds as one.
@@ -866,14 +878,35 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     '__PROPERTY__' => ['__PROPERTY__', 'string'],
     '__LINE__' => ['__LINE__', 'number'],
     'PHP_EOL' => ['PHP_EOL', 'string'],
+    'PHP_INT_MAX, an int on every host' => ['PHP_INT_MAX', 'number'],
+    'E_ALL, an int on every host' => ['E_ALL', 'number'],
+    'M_PI, a float on every host' => ['M_PI', 'number'],
+    'a class constant' => ['\\Workbench\\App\\Models\\Release::CHANNEL_STABLE', 'number'],
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
+    'a global constant and an enum ->value in a list' => ['[PHP_INT_MAX, \\Workbench\\App\\Enums\\Status::Published->value]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
-    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
+    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a ?string serialization returning null' => ['new \\'.NullableStringJson::class.'()', 'string | null'],
     'a ?string serialization returning a string' => ['new \\'.NullableStringJson::class.'("x")', 'string | null'],
     '__TRAIT__ as a key, whose value depends on where it appears' => ['[__TRAIT__ => 1]', 'unknown'],
     '__FILE__ as a key' => ['[__FILE__ => 1]', 'unknown'],
     'a comparison on __TRAIT__, which never folds' => ['__TRAIT__ === "" ? 1 : "a"', 'number | string'],
+]);
+
+// A constant the publishing process never defines, such as one a request defines at runtime, has no value to type.
+it('binds nothing for a default naming a constant the publishing process never defines', function () {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = DEFINED_ONLY_AT_RUNTIME) => $t)')['type'])
+        ->toBe('unknown');
+});
+
+// A default holds one case of its enum, so the enum's members type a read through the parameter.
+it('reads a parameter bound to an enum case default as that enum', function (string $read, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
+        ->toBe($type);
+})->with([
+    '->value' => ['->value', 'number'],
+    '->name' => ['->name', 'string'],
+    'a method' => ['->icon()', 'string'],
 ]);
 
 // A later key must see the outer binding again once a default closure has bound the same name and returned.

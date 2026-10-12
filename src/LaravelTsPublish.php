@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AllowDynamicProperties;
 use ArrayObject;
@@ -67,6 +68,7 @@ use UnitEnum;
  *    classFqcns: list<class-string>,
  *    classTokenFqcns?: list<class-string>,
  *    omit?: bool,
+ *    keepsKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  *
@@ -76,6 +78,9 @@ use UnitEnum;
  * once, so its order alone cannot say which token is which.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
+ *
+ * `keepsKeys`, when true, says `type` is the JSON a class declares for its object, which an API resource's filter
+ * never enters, so its numeric keys are never re-indexed.
  *
  * The delegations below keep every `LaravelTsPublish::` helper answering for callers outside this
  * package; inside it, call the helper's own facade.
@@ -335,7 +340,7 @@ class LaravelTsPublish
 
             $result['type'] = $shapeType ?? 'unknown[]';
 
-            return $result;
+            return [...$result, 'keepsKeys' => true];
         }
 
         // 5a-bis. JsonSerializable (non-Model, non-Arrayable) → object shape from jsonSerialize().
@@ -353,17 +358,17 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 $result['type'] = $shapeType;
 
-                return $result;
+                return [...$result, 'keepsKeys' => true];
             }
         }
 
         // 5b. A class json_encode() writes as a string, `string` or `string | null`, as jsonSerialize() declares it or
-        //     a `mixed` one's `@return` says; never by __toString(), which json_encode() never calls. A date, such as
-        //     CarbonInterface or a Carbon subclass, follows Carbon's own date-map entry.
-        $jsonString = StringSerialization::jsonStringType($phpType) ?? $this->docblockJsonStringType($phpType);
+        //     a `mixed` one's `@return` says, which may name PHP's date object instead; never by __toString(). A date
+        //     writing a string, such as CarbonInterface or a Carbon subclass, follows Carbon's own date-map entry.
+        $jsonString = StringSerialization::jsonStringType($phpType) ?? $this->docblockJsonSerializeType($phpType);
 
         if ($jsonString !== null) {
-            $result['type'] = is_a($phpType, DateTimeInterface::class, true)
+            $result['type'] = is_a($phpType, DateTimeInterface::class, true) && ! str_contains($jsonString, self::DATE_TIME_OBJECT_TYPE)
                 ? $this->carbonDateType().(str_ends_with($jsonString, ' | null') ? ' | null' : '')
                 : $jsonString;
 
@@ -383,7 +388,7 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 $result['type'] = $shapeType;
 
-                return $result;
+                return [...$result, 'keepsKeys' => true];
             }
         }
 
@@ -395,7 +400,7 @@ class LaravelTsPublish
         if ($stringableObjectType !== null) {
             $result['type'] = $stringableObjectType;
 
-            return $result;
+            return [...$result, 'keepsKeys' => true];
         }
 
         // 5. Any other existing class
@@ -539,11 +544,12 @@ class LaravelTsPublish
     }
 
     /**
-     * The string json_encode() writes for a jsonSerialize() declaring `mixed` or nothing, as its `@return` says.
+     * What json_encode() writes for a jsonSerialize() declaring `mixed` or nothing, as its `@return` says.
      *
-     * Only `string` or a Carbon date counts, with or without `null`; anything else, or no `@return`, answers null.
+     * Only `string`, a Carbon date or PHP's date object counts, with or without `null`; anything else, or no
+     * `@return`, answers null.
      */
-    protected function docblockJsonStringType(string $phpType): ?string
+    protected function docblockJsonSerializeType(string $phpType): ?string
     {
         if (! is_a($phpType, JsonSerializable::class, true) || is_a($phpType, Model::class, true)) {
             return null;
@@ -557,13 +563,13 @@ class LaravelTsPublish
         }
 
         $arms = TsTypeString::splitTopLevelUnion($this->docblockReturnTypes($method)['type']);
-        $strings = array_values(array_diff($arms, ['null']));
+        $written = array_values(array_diff($arms, ['null']));
 
-        if ($strings === [] || array_diff($strings, ['string', $this->carbonDateType()]) !== []) {
+        if ($written === [] || array_diff($written, ['string', $this->carbonDateType(), self::DATE_TIME_OBJECT_TYPE]) !== []) {
             return null;
         }
 
-        return implode(' | ', $strings).(in_array('null', $arms, true) ? ' | null' : '');
+        return implode(' | ', $written).(in_array('null', $arms, true) ? ' | null' : '');
     }
 
     /**
@@ -2391,6 +2397,13 @@ class LaravelTsPublish
         // empty queue would keep ClassTokenQueue::fqcnsOf() from falling back to `classFqcns`.
         if ($classTokenFqcns !== [] && count(array_unique($result['classes'])) < count($result['classes'])) {
             $result['classTokenFqcns'] = $classTokenFqcns;
+        }
+
+        // The re-index rewrites only an arm holding an object, so the union keeps its keys when each such arm does.
+        $keyed = array_filter($infos, fn (array $info): bool => TsTypeShape::holdsKeyedObject($info['type']));
+
+        if ($keyed !== [] && array_all($keyed, fn (array $info): bool => $info['keepsKeys'] ?? false)) {
+            $result['keepsKeys'] = true;
         }
 
         return $result;

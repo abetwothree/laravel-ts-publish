@@ -36,7 +36,7 @@ final class AnalysisComposer
     use BuildsImportMaps;
     use ResolvesImportConflicts;
 
-    /** @var array<string, ComposedProperty> property name => the property being rewritten */
+    /** @var array<array-key, ComposedProperty> property name => the property being rewritten */
     private array $properties = [];
 
     /** @var array<string, string> FQCN => bare TypeScript enum type name */
@@ -51,7 +51,7 @@ final class AnalysisComposer
     /** @var array<string, string> FQCN => model type name */
     private array $modelFqcnMap = [];
 
-    /** @var array<string, list<class-string>> property name => positional FQCN queue for aliasing */
+    /** @var array<array-key, list<class-string>> property name => positional FQCN queue for aliasing */
     private array $propertyFqcnQueues = [];
 
     /** The importing file's namespace path; BuildsImportMaps computes relative paths from it. */
@@ -160,8 +160,7 @@ final class AnalysisComposer
      */
     private function registerCarried(MethodAnalysis $analysis): void
     {
-        $enumTypeName = static fn (string $fqcn): string => LaravelTsPublish::toTsType($fqcn)['enumTypes'][0]
-            ?? class_basename($fqcn).'Type';
+        $enumTypeName = ValueResult::enumTypeName(...);
 
         foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
             $this->enumFqcnMap[$fqcn] ??= $name;
@@ -335,7 +334,7 @@ final class AnalysisComposer
     /**
      * Each EnumResource property's arm shape, for the rewrite above.
      *
-     * @return array<string, EnumResourceArm>
+     * @return array<array-key, EnumResourceArm>
      */
     private function enumResourceArms(MethodAnalysis $analysis): array
     {
@@ -457,11 +456,11 @@ final class AnalysisComposer
      * longer than the type's real occurrences; aliasPropertyType() consumes only the matching
      * prefix, which is also why a repeat must survive as a repeat.
      *
-     * @return array<string, list<class-string>>
+     * @return array<array-key, list<class-string>>
      */
     private function buildPropertyFqcnQueues(MethodAnalysis $analysis): array
     {
-        /** @var array<string, list<class-string>> $queues */
+        /** @var array<array-key, list<class-string>> $queues */
         $queues = [];
 
         foreach ([

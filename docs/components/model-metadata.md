@@ -45,6 +45,7 @@ For each key, `#[TsCasts]` on `provide()` beats the `@return array{...}` shape, 
   token check runs over those.
 - **Inference**: body inference keeps only the keys the payload returned and discards any type containing `unknown`.
   Such a key then needs a docblock or a cast, or the run fails naming it.
+- **Numeric keys**: a numeric `@return` shape key is read on its own key; a payload with an int key is rejected before it.
 
 `ModelMetadataTransformer::validateProperties()` runs before `resolveImports()`, which writes a type for every payload
 key and would fail on a key no source typed.

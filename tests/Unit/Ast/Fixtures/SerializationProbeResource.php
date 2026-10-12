@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReportSummary;
+use DateTime;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -52,6 +54,10 @@ final class SerializationProbeResource extends JsonResource
             'checked_at' => $request->boolean('fresh') ? new Carbon : null,
             'default_checked_at' => $this->whenLoaded('author', fn ($author, $at = true ? new Carbon : null) => $at),
             'default_note' => $this->whenLoaded('author', fn ($author, $note = new StringableNullableJson) => $note),
+            'new_error' => new Exception('x'),
+            'new_opened' => new DateTime('2026-01-01'),
+            'default_error' => $this->whenLoaded('author', fn ($a, $e = new Exception('x')) => $e),
+            'new_summary' => new ReportSummary,
         ];
     }
 }
