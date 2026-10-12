@@ -12916,7 +12916,7 @@
                 },
                 {
                     "name": "callable_shape",
-                    "type": "unknown",
+                    "type": "{ fn: unknown }",
                     "optional": false
                 },
                 {
@@ -12931,22 +12931,22 @@
                 },
                 {
                     "name": "tuple",
-                    "type": "unknown",
+                    "type": "[number, string]",
                     "optional": false
                 },
                 {
                     "name": "decoded",
-                    "type": "unknown",
+                    "type": "{ a: number }",
                     "optional": false
                 },
                 {
                     "name": "literal_keys",
-                    "type": "unknown",
+                    "type": "{ a?: number; b?: number }",
                     "optional": false
                 },
                 {
                     "name": "quoted_key",
-                    "type": "unknown",
+                    "type": "{ a: number; b: string }",
                     "optional": false
                 },
                 {

@@ -86,6 +86,14 @@ describe('memberType', function () {
             ->and(TsTypeShape::memberType('{ a: number } | null', 'a'))->toBe('number');
     });
 
+    test('reads a tuple member by its position, without its optional marker', function () {
+        expect(TsTypeShape::memberType('[Record<string, number>, number[]]', '0'))->toBe('Record<string, number>')
+            ->and(TsTypeShape::memberType('[number, { a: string }?] | null', '1'))->toBe('{ a: string }')
+            ->and(TsTypeShape::memberType('[number, (string | null)?]', '1'))->toBe('string | null')
+            ->and(TsTypeShape::memberType('[number, string]', '2'))->toBeNull()
+            ->and(TsTypeShape::memberType('[number, string]', 'a'))->toBeNull();
+    });
+
     test('answers any key for Record and index-signature types', function () {
         expect(TsTypeShape::memberType('Record<string, { deep: number[] }>', 'anything'))->toBe('{ deep: number[] }')
             ->and(TsTypeShape::memberType('{ [key: string]: boolean }', 'anything'))->toBe('boolean');

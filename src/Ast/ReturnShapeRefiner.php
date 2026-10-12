@@ -105,7 +105,7 @@ final class ReturnShapeRefiner
     }
 
     /**
-     * The method's `@return array{...}` keys mapped to their raw, unresolved PHPDoc type strings.
+     * The method's `@return array{...}` keys, an optional one with its `?`, mapped to their raw PHPDoc type strings.
      *
      * @return array<string, string>
      */
@@ -118,17 +118,16 @@ final class ReturnShapeRefiner
         }
 
         $returnType = LaravelTsPublish::extractReturnTypeFromDocblock($docComment);
+        $shape = $returnType === null ? null : LaravelTsPublish::arrayShapeEntries($returnType);
 
-        if ($returnType === null || ! str_starts_with($returnType, 'array{') || ! str_ends_with($returnType, '}')) {
+        if ($shape === null) {
             return []; // @codeCoverageIgnore
         }
 
         $types = [];
 
-        foreach (LaravelTsPublish::splitAtTopLevelCommas(trim(substr($returnType, 6, -1))) as $entry) {
-            if (preg_match('/^(\w+)(\??)\s*:\s*(.+)$/s', trim($entry), $m) === 1) {
-                $types[$m[1].$m[2]] = trim($m[3]);
-            }
+        foreach ($shape['entries'] as $entry) {
+            $types[$entry['key'].($entry['optional'] ? '?' : '')] = $entry['type'];
         }
 
         return $types;

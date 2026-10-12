@@ -59,6 +59,7 @@ final class HelperParameterKindsResource extends JsonResource
             ...$this->filled(null),
             'filled' => $this->filled(null),
             'by_ref_passed' => $this->whenLoaded('author', fn ($author) => [...$this->untypedByReference($author)]),
+            ...$this->variadicTuples([1, 'a'], [2, 'b']),
         ];
     }
 
@@ -234,6 +235,17 @@ final class HelperParameterKindsResource extends JsonResource
     private function untypedByReference(&$r): array
     {
         return ['r_name' => $r->name];
+    }
+
+    /**
+     * A variadic parameter whose `@param` declares each argument a list shape.
+     *
+     * @param  list{int, string}  ...$pairs
+     * @return array<string, mixed>
+     */
+    private function variadicTuples(array ...$pairs): array
+    {
+        return ['vt_pairs' => $pairs];
     }
 
     /**

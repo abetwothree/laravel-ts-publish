@@ -71,7 +71,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part.
+     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      * @return VarTag|null
@@ -80,10 +80,8 @@ final class PropertyDocblockTypeReader
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null
-            || ! VarTypeWhitelist::for($context)->accepts($tag[0])
-            || preg_match('/\bunknown\b/', $this->readDeclared($tag[0], $context)['type'] ?? '') === 1
-        ) {
+        // A tag no reading accepts, such as an interface's, still names the receiver its local holds.
+        if ($tag === null || ! $this->readsInFull($tag[0], $context, unreadAccepted: true)) {
             return null;
         }
 
@@ -92,7 +90,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture the type a method's `@phpstan-param`, `@psalm-param` or `@param` tag gives one parameter, tried in that
-     * order. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part, as for a local.
+     * order. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      */
@@ -109,10 +107,7 @@ final class PropertyDocblockTypeReader
                     continue;
                 }
 
-                return VarTypeWhitelist::for($context)->accepts($type)
-                    && preg_match('/\bunknown\b/', $this->readDeclared($type, $context)['type'] ?? 'unknown') !== 1
-                    ? $type
-                    : null;
+                return $this->readsInFull($type, $context, unreadAccepted: false) ? $type : null;
             }
         }
 
@@ -194,10 +189,32 @@ final class PropertyDocblockTypeReader
         $captured = rtrim($captured);
         $remaining = ltrim($remaining);
 
-        // A `&` before a parameter name marks a by-reference `@param`, not an intersection.
+        // A `&` before a parameter name marks a by-reference `@param`, not an intersection. A `:` after a `)` opens a
+        // callable's return type.
         return str_ends_with($captured, '|') || str_ends_with($captured, '&')
             || str_starts_with($remaining, '|')
-            || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1);
+            || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1)
+            || preg_match('/\)\s*:$/', $captured) === 1
+            || (str_ends_with($captured, ')') && str_starts_with($remaining, ':'));
+    }
+
+    /**
+     * Whether a tag's type is a VarTypeWhitelist form whose reading holds an `unknown` only where a callable stands.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @param  bool  $unreadAccepted  the answer when the reading is null, as for a type that only names a receiver
+     */
+    private function readsInFull(string $type, ReflectionClass $context, bool $unreadAccepted): bool
+    {
+        $leaves = VarTypeWhitelist::for($context)->unknownLeaves($type);
+
+        if ($leaves === null) {
+            return false;
+        }
+
+        $read = $this->readDeclared($type, $context);
+
+        return $read === null ? $unreadAccepted : preg_match_all('/\bunknown\b/', $read['type']) === $leaves;
     }
 
     /**

@@ -152,6 +152,7 @@ test('each kind of declared parameter binds as the value a call passes it', func
         'p_title' => 'string',
         'filled' => '{ p_title: string }',
         'by_ref_passed' => '?{ r_name: string }',
+        'vt_pairs' => '[number, string][]',
     ]);
 });
 
@@ -343,6 +344,28 @@ test('reads one parameter\'s @phpstan-param, @psalm-param or @param tag, and dec
     'a variadic' => ["/**\n * @param  Post  ...\$posts\n */", 'Post'],
     'a by-reference parameter' => ["/**\n * @param  Post  &\$posts\n */", 'Post'],
     'a longer name only' => ["/**\n * @param  Post  \$postsById\n */", null],
-    'a misread form' => ["/**\n * @param  list{int, string}  \$posts\n */", null],
+    'a list shape' => ["/**\n * @param  list{int, string}  \$posts\n */", 'list{int, string}'],
+    'a shape holding a callable, which reads unknown by design' => [
+        "/**\n * @param  array{fn: callable(int): string}  \$posts\n */",
+        'array{fn: callable(int): string}',
+    ],
+    'a bare callable' => ["/**\n * @param  callable(int): string  \$posts\n */", null],
+    'an unsealed list shape' => ["/**\n * @param  list{int, ...}  \$posts\n */", null],
     'no tag' => ['/** Nothing. */', null],
 ]);
+
+test('reads a list shape @param as the tuple it declares', function () {
+    $reader = resolve(PropertyDocblockTypeReader::class);
+    $context = new ReflectionClass(PostHelperParamsResource::class);
+
+    expect($reader->readDeclared((string) $reader->extractParamTag("/**\n * @param  list{int, string}  \$posts\n */", 'posts', $context), $context)['type'] ?? null)
+        ->toBe('[number, string]');
+});
+
+test('captures a callable @param whole, up to the by-reference name after its return type', function () {
+    $tag = new ReflectionMethod(PropertyDocblockTypeReader::class, 'captureTag')
+        ->invoke(resolve(PropertyDocblockTypeReader::class), "/**\n * @param callable(int): string &\$cb\n */", '/(?<![\w-])@param\s+/');
+
+    expect($tag[0] ?? null)->toBe('callable(int): string')
+        ->and(trim($tag[1] ?? ''))->toBe('&$cb');
+});

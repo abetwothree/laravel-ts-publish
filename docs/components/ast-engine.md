@@ -286,6 +286,10 @@ vague. A parameter's own binding holds until the body's first write that replace
 only past its test, as `ReassignedClosureParamResource` pins. A span still outlives a write through a by-reference
 parameter of a callee the scan cannot name.
 
+`VarTypeWhitelist` lists the forms a tag may use. A callable inside a shape reads `unknown` by design, so
+`extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
+no more.
+
 ### What deliberately stays unbound
 
 These shapes stay unbound on purpose, so they resolve as `unknown` rather than as a guess:

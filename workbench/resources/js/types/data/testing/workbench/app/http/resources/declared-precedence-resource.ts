@@ -19,13 +19,13 @@ export interface DeclaredPrecedenceResource
     title_as_totals: string;
     verifiable_email: string;
     callable: unknown;
-    callable_shape: unknown;
+    callable_shape: { fn: unknown };
     closure: unknown;
     intersection: unknown;
-    tuple: unknown;
-    decoded: unknown;
-    literal_keys: unknown;
-    quoted_key: unknown;
+    tuple: [number, string];
+    decoded: { a: number };
+    literal_keys: { a?: number; b?: number };
+    quoted_key: { a: number; b: string };
     kept_title: string;
     kept_record: { a: number; b: string };
     kept_shape: { a: number; b: string };

@@ -99,7 +99,7 @@ with members, or a tuple with required elements. A provider can return `(object)
 `ModelMetadataTransformer::normalizeMetadataValue()` keeps as the one PHP value that spells `{}`. Otherwise
 `coerceEmptyArrays()` spells a bare `[]` as `{}` where `TsTypeShape::isObjectLike()` holds for the type at that path.
 A PHP list asks `TsTypeShape::elementType()` first and falls back to `memberType()`, because a list can be typed as an
-object literal with numeric keys.
+object literal with numeric keys or as a tuple.
 
 `isObjectLike()` requires every non-null arm to be an object literal or a `Record`, so a mixed union, an imported alias
 or a `#[TsCasts]` tuple keeps `[]`. Coercion reads the type string because the engine's DTOs export nothing else. The

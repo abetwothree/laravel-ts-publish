@@ -602,6 +602,11 @@ describe('Arrayable DTO shape inference', function () {
         expect($result['type'])->toBe('{ meta: { owner: string } }');
     });
 
+    test('a quoted shape key that is no identifier publishes quoted, and an optional one keeps its marker', function () {
+        expect($this->service->toTsType(ArrayableWithQuotedKeyValueObject::class)['type'])
+            ->toBe('{ "a-b": number; "c d"?: string; plain: boolean }');
+    });
+
     test('subclass inheriting toArray() resolves the shape from the declaring base class docblock', function () {
         // method_exists() is true for inherited methods; getDeclaringClass() points at the class defining toArray().
         $result = $this->service->toTsType(ArrayableShapeSubclassValueObject::class);
@@ -1136,6 +1141,12 @@ describe('extractReturnTypeFromDocblock', function () {
             'array{a: int} | array<int, string>',
         ],
         'a description after the type' => ['/** @return int|null The count */', 'int|null'],
+        'a list shape' => ['/** @return list{int, string} The pair */', 'list{int, string}'],
+        'an object shape' => ['/** @return object{a: int} The object */', 'object{a: int}'],
+        'a nullable shape' => ['/** @return ?array{a: int} The shape */', '?array{a: int}'],
+        'a list shape or null' => ['/** @return list{int, string} | null The pair */', 'list{int, string} | null'],
+        'a callable' => ['/** @return callable(int): string The callback */', 'callable(int): string'],
+        'a callable spaced before its colon' => ['/** @return callable(int) : string The callback */', 'callable(int) : string'],
     ]);
 
     test('keeps the first-token reading of a conditional return type', function () {
@@ -1380,6 +1391,106 @@ describe('parseArrayShapeToTsTypes', function () {
 
         expect($result)->toBe(['required' => 'number', 'optional?' => 'string']);
     });
+});
+
+describe('PHPDoc shapes, tuples and callables', function () {
+    test('reads each shape form as json_encode() writes it, through every docblock reader', function (string $phpType, string $expected) {
+        $useMap = ['User' => User::class];
+
+        expect($this->service->resolvePhpDocTypeToTs($phpType, $useMap, ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, $useMap, '')['type'])->toBe($expected)
+            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", $useMap, '')['type'] ?? null)
+            ->toBe(str_contains($expected, '|') ? "({$expected})[]" : "{$expected}[]");
+    })->with([
+        'a positional list shape' => ['list{int, string}', '[number, string]'],
+        'a positional array shape' => ['array{int, string}', '[number, string]'],
+        'a list shape with explicit keys and an optional last member' => ['list{0: int, 1?: string}', '[number, string?]'],
+        'an empty list shape' => ['list{}', '[]'],
+        'an unsealed list shape' => ['list{int, ...}', 'unknown[]'],
+        'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
+        'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
+        'a quoted key' => ["array{'a': int, b: string}", '{ a: number; b: string }'],
+        'a double-quoted key that is no identifier' => ['array{"a-b": int}', '{ "a-b": number }'],
+        'a key with an escaped quote' => ["array{'it\\'s': int}", '{ "it\'s": number }'],
+        'a dashed bare key' => ['array{a-b: int}', '{ "a-b": number }'],
+        'a space before the optional marker' => ['array{a ?: int}', '{ a?: number }'],
+        'a space before the colon' => ['array{a : int}', '{ a: number }'],
+        'a nullable shape inside a shape' => ['array{a: ?array{b: int}}', '{ a: { b: number } | null }'],
+        'a nullable list inside a shape' => ['array{a: ?list<int>}', '{ a: number[] | null }'],
+        'a tuple inside a shape' => ['array{pair: list{int, string}}', '{ pair: [number, string] }'],
+        'a callable inside a shape' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
+        'a mixed shape, whose positional member takes the next int key' => ['array{int, a: string}', '{ 0: number; a: string }'],
+        'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
+    ]);
+
+    test('reads an array shape keyed exactly 0 to n-1 in order as a tuple, and any other int keys as an object', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected);
+    })->with([
+        'keys 0 and 1' => ['array{0: int, 1: string}', '[number, string]'],
+        'a positional member, then key 1' => ['array{int, 1: string}', '[number, string]'],
+        'keys out of order' => ['array{1: string, 0: int}', '{ 1: string; 0: number }'],
+        'a gap in the keys' => ['array{0: int, 2: string}', '{ 0: number; 2: string }'],
+        'an optional member before a required one, which no list holds' => ['list{0?: int, 1: string}', '[number?, string?]'],
+        'an optional union member, parenthesized for its marker' => ['list{0: int, 1?: string|null}', '[number, (string | null)?]'],
+        'an optional member before a required one in an array' => ['array{0?: int, 1: string}', '{ 0?: number; 1: string }'],
+    ]);
+
+    test('reads a nullable shape or list once, adding a top-level null a nested one does not count as', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected);
+    })->with([
+        'a nullable shape' => ['?array{a: int}', '{ a: number } | null'],
+        'a nullable shape holding a null member' => ['?array{a: ?int}', '{ a: number | null } | null'],
+        'a nullable list of nullables' => ['?list<?int>', '(number | null)[] | null'],
+        'a nullable tuple' => ['?list{int, string}', '[number, string] | null'],
+        'a parenthesized union in a list' => ['(int|string)[]', '(number | string)[]'],
+    ]);
+
+    test('reads a callable as unknown, since what it sends depends on who serializes it', function (string $phpType) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe('unknown')
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe('unknown');
+    })->with([
+        'a callable signature' => ['callable(int): string'],
+        'a callable signature with no space' => ['callable(int):string'],
+        'a pure callable' => ['pure-callable(int): string'],
+        'a closure signature' => ['\Closure(int): string'],
+    ]);
+
+    test('keeps the first-token reading of a conditional return type through every docblock reader', function () {
+        expect($this->service->resolvePhpDocTypeToTs('($string', [], ''))->toBe('string')
+            ->and($this->service->resolveDocblockTypePart('($string', [], '')['type'])->toBe('string');
+    });
+
+    test('keeps a shape whose entries fail the key grammar as the shape of the ones that pass', function () {
+        expect($this->service->resolvePhpDocTypeToTs('array{a.b: int, c: string}', [], ''))->toBe('{ c: string }')
+            ->and($this->service->parseArrayShapeToTsTypes("array{'a': int, b?: string, c: int}", [], ''))
+            ->toBe(['a' => 'number', 'b?' => 'string', 'c' => 'number'])
+            ->and($this->service->parseArrayShapeToTsTypes('list{int, string}', [], ''))->toBe([]);
+    });
+
+    test('splits a shape into its entries, a positional one taking the next int key', function () {
+        expect($this->service->arrayShapeEntries("non-empty-array{int, 5: string, bool, 'k'?: int, ...}"))->toBe([
+            'kind' => 'array',
+            'entries' => [
+                ['key' => '0', 'implicit' => true, 'optional' => false, 'type' => 'int'],
+                ['key' => '5', 'implicit' => false, 'optional' => false, 'type' => 'string'],
+                ['key' => '6', 'implicit' => true, 'optional' => false, 'type' => 'bool'],
+                ['key' => 'k', 'implicit' => false, 'optional' => true, 'type' => 'int'],
+            ],
+            'sealed' => false,
+        ])
+            ->and($this->service->arrayShapeEntries('array{a: int} | null'))->toBeNull()
+            ->and($this->service->arrayShapeEntries('array {a: int}'))->toBeNull()
+            ->and($this->service->arrayShapeEntries('object{a: int}')['kind'] ?? null)->toBe('object')
+            ->and($this->service->arrayShapeEntries('non-empty-list{int}')['kind'] ?? null)->toBe('list');
+    });
+
+    test('leaves a numeric literal key, or a literal beside a scalar key, as the list it read before', function (string $phpType, string $expected) {
+        expect($this->service->resolveGenericContainerType($phpType, [], '')['type'] ?? null)->toBe($expected);
+    })->with([
+        'numeric string keys' => ["array<'1'|'2', int>", 'number[]'],
+        'a literal beside a string key' => ["array<'a'|string, int>", 'number[]'],
+    ]);
 });
 
 describe('phpstan type aliases', function () {
@@ -2205,6 +2316,20 @@ class ArrayableWithClassArrayValueObject implements Arrayable
 class ArrayableWithNestedPrimitiveValueObject implements Arrayable
 {
     /** @return array{meta: array{owner: string}} */
+    public function toArray(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * A value object whose toArray() shape quotes keys that are no identifier.
+ *
+ * @implements Arrayable<string, mixed>
+ */
+class ArrayableWithQuotedKeyValueObject implements Arrayable
+{
+    /** @return array{'a-b': int, "c d"?: string, plain: bool} */
     public function toArray(): array
     {
         return [];

@@ -116,10 +116,11 @@ test('renders body-inferred empty containers', function () {
         ->toContain('    flags: {},');
 });
 
-test('renders a list whose type declares numeric object keys', function () {
+test('renders a list whose type declares numeric object keys, and one whose type is a tuple', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
 
     expect((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
-        ->toContain('    tuple: [{}, []],');
+        ->toContain('    tuple: [{}, []],')
+        ->toContain('    pair: [{}, []],');
 });

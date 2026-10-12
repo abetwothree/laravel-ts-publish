@@ -23,9 +23,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
@@ -7019,7 +7021,23 @@ test('a spread helper\'s `@return` publishes its literal types, and each union a
     'two arms typed alike' => ['amount', 'number'],
     'a name no class answers to' => ['custom', 'CustomObject'],
     'a class the shape cannot import' => ['text', 'unknown'],
+    'a quoted key spaced before its optional marker' => ['quoted-key', "'a' | 'b'"],
 ]);
+
+test('a helper declaring a list shape publishes the tuple, whether or not the resource preserves keys', function (string $resource) {
+    $props = collect(resolve(AstEngine::class)->analyze($resource, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['pair']['type'])->toBe('[number, string]');
+})->with([
+    'a re-indexing resource' => [DeclaredTupleHelperResource::class],
+    'a resource that preserves keys' => [KeptDeclaredTupleHelperResource::class],
+]);
+
+test('a call whose `@return` is conditional keeps its first-token reading', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(DeclaredTupleHelperResource::class, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['title_first']['type'])->toBe('string');
+});
 
 test('toArray()\'s own `@return` types its literals but never ships a class name its file does not import', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DocShapePostResource::class), Post::class)->analyze()->properties)->keyBy('name');

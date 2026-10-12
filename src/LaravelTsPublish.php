@@ -72,6 +72,8 @@ use UnitEnum;
  *    keepsKeys?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
+ * @phpstan-type ShapeEntry = array{key: string, implicit: bool, optional: bool, type: string}
+ * @phpstan-type PhpDocShape = array{kind: 'array'|'list'|'object', entries: list<ShapeEntry>, sealed: bool}
  *
  * `enums` holds PHP enum const names (display only); `enumTypes` holds the TS alias names emitted in imports.
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right. It is set only when
@@ -201,11 +203,8 @@ class LaravelTsPublish
         // 0. Nullable shorthand ?T
         if (str_starts_with($phpType, '?')) {
             $inner = $this->toTsType(substr($phpType, 1));
-            if (! str_contains($inner['type'], 'null')) {
-                $inner['type'] .= ' | null';
-            }
 
-            return $inner;
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
         }
 
         // 1. Exact map match. The DateTime class lowercases to the `datetime` column type, which it is not.
@@ -716,7 +715,9 @@ class LaravelTsPublish
                 $type = 'unknown';
             }
 
-            $parts[] = $key.': '.$type;
+            $name = (string) $key;
+            $optional = str_ends_with($name, '?');
+            $parts[] = $this->shapeKey($optional ? substr($name, 0, -1) : $name).($optional ? '?' : '').': '.$type;
         }
 
         return '{ '.implode('; ', $parts).' }';
@@ -1472,11 +1473,7 @@ class LaravelTsPublish
         if (str_starts_with($trimmed, '?')) {
             $inner = $this->resolveDocblockTypePartOrAlias(substr($trimmed, 1), $useMap, $namespace, $contextClass);
 
-            if (! str_contains($inner['type'], 'null')) {
-                $inner['type'] .= ' | null';
-            }
-
-            return $inner;
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
         }
 
         $alias = $this->resolvePhpstanTypeAlias($trimmed, $contextClass);
@@ -1522,23 +1519,30 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve one member of a PHPDoc type union: generic containers first, then plain names.
+     * Resolve one member of a PHPDoc type union: generic containers first, then `?T`, then shapes, then plain names.
      *
-     * A part still containing '<' is an unrecognized generic — degrade it to 'unknown' rather than let
-     * toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
+     * A part still holding '<', '{' or '(' is a form this reader does not know, such as a callable: it degrades to
+     * 'unknown' rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
      *
      * @param  array<string, string>  $useMap
      * @return TypeScriptTypeInfo
      */
     public function resolveDocblockTypePart(string $part, array $useMap, string $namespace): array
     {
+        $part = trim($part);
         $generic = $this->resolveGenericContainerType($part, $useMap, $namespace);
 
         if ($generic !== null) {
             return $generic;
         }
 
-        if (str_starts_with($part, 'array{')) {
+        if (str_starts_with($part, '?')) {
+            $inner = $this->resolveDocblockTypePart(substr($part, 1), $useMap, $namespace);
+
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
+        }
+
+        if ($this->isPhpDocShape($part)) {
             $shapeType = $this->resolveArrayShapeString($part, $useMap, $namespace);
 
             if ($shapeType !== null) {
@@ -1548,7 +1552,7 @@ class LaravelTsPublish
 
         $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
 
-        return str_contains($resolved, '<')
+        return $this->isUnreadForm($resolved, '<{(')
             ? $this->emptyTypeScriptInfo()
             : $this->toTsType($resolved);
     }
@@ -1570,15 +1574,7 @@ class LaravelTsPublish
         if (str_starts_with($type, '?')) {
             $inner = $this->resolveGenericContainerType(substr($type, 1), $useMap, $namespace);
 
-            if ($inner === null) {
-                return null;
-            }
-
-            if (! str_contains($inner['type'], 'null')) {
-                $inner['type'] .= ' | null';
-            }
-
-            return $inner;
+            return $inner === null ? null : [...$inner, 'type' => $this->withNullArm($inner['type'])];
         }
 
         // X[] shorthand (but not TS-style unions — split upstream)
@@ -1606,6 +1602,17 @@ class LaravelTsPublish
         $valueTypeString = count($args) === 2 ? $args[1] : $args[0];
 
         $inner = $this->resolveDocblockContainerValue($valueTypeString, $useMap, $namespace);
+        $literalKeys = $isList || count($args) !== 2 ? null : $this->stringLiteralKeys($args[0]);
+
+        // Any of the keys may be absent, and json_encode() writes string keys as an object.
+        if ($literalKeys !== null) {
+            $inner['type'] = '{ '.implode('; ', array_map(
+                fn (string $key): string => $this->shapeKey($key).'?: '.$inner['type'],
+                $literalKeys,
+            )).' }';
+
+            return $inner;
+        }
 
         if ($keyType === 'string' || preg_match('/^[a-z-]+-string(?:<.+>)?$/', $keyType) === 1) {
             $inner['type'] = 'Record<string, '.$inner['type'].'>';
@@ -1629,6 +1636,12 @@ class LaravelTsPublish
      */
     protected function resolveDocblockContainerValue(string $valueType, array $useMap, string $namespace): array
     {
+        $valueType = trim($valueType);
+
+        if (TsTypeShape::isWrapped($valueType, '(', ')') && ! str_starts_with($valueType, '($')) {
+            return $this->resolveDocblockContainerValue(substr($valueType, 1, -1), $useMap, $namespace);
+        }
+
         $unionParts = $this->splitPhpDocUnionType($valueType);
 
         // Split the union first, or `X|X[]` reads as one `(X|X)[]` list and loses its bare arm.
@@ -1651,10 +1664,7 @@ class LaravelTsPublish
             $infos = [];
 
             foreach ($intersectionParts as $member) {
-                $member = trim($member);
-                $info = str_starts_with($member, 'object{')
-                    ? [...$this->emptyTypeScriptInfo(), 'type' => $this->resolveArrayShapeString('array{'.substr($member, 7), $useMap, $namespace) ?? 'unknown']
-                    : $this->resolveDocblockContainerValue($member, $useMap, $namespace);
+                $info = $this->resolveDocblockContainerValue($member, $useMap, $namespace);
 
                 // A & B is assignable to A, so dropping a member we cannot type only widens the result.
                 if ($info['type'] !== 'unknown') {
@@ -1667,15 +1677,26 @@ class LaravelTsPublish
             }
         }
 
-        if (str_starts_with(trim($valueType), 'array{')) {
-            $shapeType = $this->resolveArrayShapeString(trim($valueType), $useMap, $namespace);
+        if (str_starts_with($valueType, '?')) {
+            $inner = $this->resolveDocblockContainerValue(substr($valueType, 1), $useMap, $namespace);
+
+            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
+        }
+
+        if ($this->isPhpDocShape($valueType)) {
+            $shapeType = $this->resolveArrayShapeString($valueType, $useMap, $namespace);
 
             if ($shapeType !== null) {
                 return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
             }
         }
 
-        return $this->toTsType($this->resolveDocblockTypeName(trim($valueType), $useMap, $namespace));
+        $resolved = $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
+
+        // '<' is left to toTsType(), whose partial match reads `class-string<X>` as the string it is.
+        return $this->isUnreadForm($resolved, '{(')
+            ? $this->emptyTypeScriptInfo()
+            : $this->toTsType($resolved);
     }
 
     /**
@@ -1878,42 +1899,94 @@ class LaravelTsPublish
     }
 
     /**
-     * Parse a PHPDoc `array{key: type, ...}` shape into a map of property name → TypeScript type,
-     * recursing through nested shapes and unions.
+     * Parse a PHPDoc shape into a map of key → TypeScript type, recursing through nested shapes and unions.
+     *
+     * Keys come unquoted, an optional one with a `?` suffix so callers formatting "$key: $type" emit the marker. A list
+     * shape, which json_encode() writes as an array, has no keys to map.
      *
      * @param  array<string, string>  $useMap
      * @return array<string, string>
      */
     public function parseArrayShapeToTsTypes(string $shape, array $useMap, string $namespace): array
     {
-        if (! str_starts_with($shape, 'array{') || ! str_ends_with($shape, '}')) {
+        $parsed = $this->arrayShapeEntries($shape);
+
+        if ($parsed === null || $this->isTupleShape($parsed)) {
             return [];
         }
 
-        $inner = trim(substr($shape, 6, -1));
-
-        if ($inner === '') {
-            return [];
-        }
-
-        $entries = $this->splitAtTopLevelCommas($inner);
         $result = [];
 
-        foreach ($entries as $entry) {
-            $entry = trim($entry);
-
-            // Match 'key: type' or 'key?: type' — the '?' is kept as part of the returned key so
-            // callers formatting "$key: $type" emit the optional marker without extra bookkeeping.
-            if (preg_match('/^(\w+)(\??)\s*:\s*(.+)$/s', $entry, $m)) {
-                $result[$m[1].$m[2]] = $this->resolvePhpDocTypeToTs(trim($m[3]), $useMap, $namespace);
-            }
+        foreach ($parsed['entries'] as $entry) {
+            $key = $entry['key'].($entry['optional'] ? '?' : '');
+            $result[$key] = $this->resolvePhpDocTypeToTs($entry['type'], $useMap, $namespace);
         }
 
         return $result;
     }
 
     /**
-     * Resolve a PHPDoc `array{...}` shape string to an inline TS object literal, or null when malformed.
+     * Split a PHPDoc `array{…}`, `list{…}`, `object{…}` or `non-empty-` shape into its entries, or null when the string
+     * is not one whole shape.
+     *
+     * A positional entry takes the next int key, as in PHPStan: one past the largest int key before it, from 0.
+     *
+     * @return PhpDocShape|null
+     */
+    public function arrayShapeEntries(string $shape): ?array
+    {
+        if (preg_match('/^(non-empty-array|non-empty-list|array|list|object)\{/', $shape, $opener) !== 1
+            || ! $this->closesAtEnd(substr($shape, strlen($opener[1])))) {
+            return null;
+        }
+
+        $kind = match ($opener[1]) {
+            'object' => 'object',
+            'list', 'non-empty-list' => 'list',
+            default => 'array',
+        };
+        $entries = [];
+        $sealed = true;
+        $nextIndex = 0;
+        $key = '[a-zA-Z_\x80-\xff][\w\x80-\xff-]*|-?\d+|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"';
+
+        foreach ($this->splitAtTopLevelCommas(substr($shape, strlen($opener[1]) + 1, -1)) as $entry) {
+            if (str_starts_with($entry, '...')) {
+                $sealed = false;
+
+                continue;
+            }
+
+            if (preg_match('/^('.$key.')\s*(\?)?\s*:(?!:)\s*(.+)$/s', $entry, $m) !== 1) {
+                // A `key: type` whose key is no PHPDoc key is left out, as before, not read as a positional value.
+                $keyed = preg_match('/^[^(){}<>:]*[^\s(){}<>:]\s*\??\s*:(?!:)/', $entry) === 1;
+
+                if ($entry !== '' && $kind !== 'object' && ! $keyed) {
+                    $entries[] = ['key' => (string) $nextIndex++, 'implicit' => true, 'optional' => false, 'type' => $entry];
+                }
+
+                continue;
+            }
+
+            $name = str_contains('\'"', $m[1][0]) ? $this->phpDocStringLiteral($m[1]) : $m[1];
+
+            if ($name === null) {
+                continue;
+            }
+
+            // PHP casts a decimal int string key, quoted or not, to an int.
+            if (preg_match('/^(?:0|-?[1-9]\d*)$/', $name) === 1) {
+                $nextIndex = max($nextIndex, (int) $name + 1);
+            }
+
+            $entries[] = ['key' => $name, 'implicit' => false, 'optional' => $m[2] === '?', 'type' => trim($m[3])];
+        }
+
+        return ['kind' => $kind, 'entries' => $entries, 'sealed' => $sealed];
+    }
+
+    /**
+     * Resolve a PHPDoc shape string to an inline TS object literal, a tuple for a list shape, or null when malformed.
      *
      * A per-key value with an unimportable token (a bare class/enum name) degrades to 'unknown': the
      * shape map is string-only, so it can never carry the FQCN an import would need.
@@ -1922,24 +1995,48 @@ class LaravelTsPublish
      */
     protected function resolveArrayShapeString(string $phpType, array $useMap, string $namespace): ?string
     {
-        if (! str_starts_with($phpType, 'array{') || ! str_ends_with($phpType, '}')) {
+        $parsed = $this->arrayShapeEntries($phpType);
+
+        if ($parsed === null) {
             return null;
         }
 
-        $innerTypes = $this->parseArrayShapeToTsTypes($phpType, $useMap, $namespace);
+        $member = function (string $type) use ($useMap, $namespace): string {
+            $resolved = $this->resolvePhpDocTypeToTs($type, $useMap, $namespace);
 
-        if ($innerTypes === []) {
+            return TsTypeString::shapeValueHasUnimportableToken($resolved) ? 'unknown' : $resolved;
+        };
+
+        if ($this->isTupleShape($parsed)) {
+            // A list that may hold more members says nothing of the type at each position.
+            if (! $parsed['sealed']) {
+                return 'unknown[]';
+            }
+
+            $members = [];
+            $optional = false;
+
+            foreach ($parsed['entries'] as $entry) {
+                // A list holds no member past an absent one, so each one after an optional member may be absent too.
+                $optional = $optional || $entry['optional'];
+                $type = $member($entry['type']);
+                $members[] = $optional
+                    ? (count(TsTypeShape::splitTopLevel($type, ['|', '&'])) > 1 ? "({$type})?" : "{$type}?")
+                    : $type;
+            }
+
+            return '['.implode(', ', $members).']';
+        }
+
+        if ($parsed['entries'] === []) {
             return 'Record<string, unknown>';
         }
 
         $parts = [];
 
-        foreach ($innerTypes as $key => $type) {
-            if (TsTypeString::shapeValueHasUnimportableToken($type)) {
-                $type = 'unknown';
-            }
-
-            $parts[] = $key.': '.$type;
+        foreach ($parsed['entries'] as $entry) {
+            $key = $this->shapeKey($entry['key']).($entry['optional'] ? '?' : '');
+            $parts[$entry['key']] = $key.': '.$member($entry['type']);
         }
 
         return '{ '.implode('; ', $parts).' }';
@@ -1972,9 +2069,14 @@ class LaravelTsPublish
             return $generic['type'];
         }
 
+        if (str_starts_with($phpType, '?')) {
+            return $this->withNullArm($this->resolvePhpDocTypeToTs(substr($phpType, 1), $useMap, $namespace));
+        }
+
         // After the union split this is a pure shape
-        if (str_starts_with($phpType, 'array{')) {
-            return $this->resolveArrayShapeString($phpType, $useMap, $namespace) ?? 'Record<string, unknown>';
+        if ($this->isPhpDocShape($phpType)) {
+            return $this->resolveArrayShapeString($phpType, $useMap, $namespace)
+                ?? (str_starts_with($phpType, 'array{') ? 'Record<string, unknown>' : 'unknown');
         }
 
         $literal = $this->phpDocLiteralType($phpType);
@@ -1985,9 +2087,9 @@ class LaravelTsPublish
 
         $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
 
-        // A type still containing '<' is an unrecognized generic — degrade it rather than let
-        // toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
-        if (str_contains($resolved, '<')) {
+        // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
+        // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
+        if ($this->isUnreadForm($resolved, '<{(')) {
             return 'unknown';
         }
 
@@ -2003,15 +2105,10 @@ class LaravelTsPublish
      */
     protected function phpDocLiteralType(string $phpType): ?string
     {
-        if (preg_match('/^(?:\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*")$/s', $phpType) === 1) {
-            try {
-                $value = String_::fromString($phpType)->value;
-            } catch (Error) {
-                return null;
-            }
+        $string = $this->phpDocStringLiteral($phpType);
 
-            // An escape past U+10FFFF, or a raw `\x..` byte, leaves no text a .ts file can hold.
-            return preg_match('//u', $value) === 1 ? JsEmitter::toJsLiteral($value) : null;
+        if ($string !== null) {
+            return JsEmitter::toJsLiteral($string);
         }
 
         if (preg_match('/^-?(?:0|[1-9]\d*)$/', $phpType) === 1) {
@@ -2026,6 +2123,137 @@ class LaravelTsPublish
         $float = (float) $phpType;
 
         return is_finite($float) ? JsEmitter::toJsLiteral($float) : null;
+    }
+
+    /**
+     * The text a PHPStan string literal spells, unescaped, or null for any other type or one no .ts file can hold.
+     */
+    protected function phpDocStringLiteral(string $phpType): ?string
+    {
+        if (preg_match('/^(?:\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*")$/s', $phpType) !== 1) {
+            return null;
+        }
+
+        try {
+            $value = String_::fromString($phpType)->value;
+        } catch (Error) {
+            return null;
+        }
+
+        // An escape past U+10FFFF, or a raw `\x..` byte, leaves no text a .ts file can hold.
+        return preg_match('//u', $value) === 1 ? $value : null;
+    }
+
+    /**
+     * Whether a PHPDoc type opens as a shape: `array{`, `list{`, `object{`, or a `non-empty-` one.
+     */
+    protected function isPhpDocShape(string $phpType): bool
+    {
+        return preg_match('/^(?:non-empty-)?(?:array|list)\{|^object\{/', $phpType) === 1;
+    }
+
+    /**
+     * Whether a resolved name still holds one of these brackets, a form the docblock reader does not know.
+     *
+     * A conditional return type kept as its first token, `($value`, is exempt: its partial match is today's reading.
+     */
+    protected function isUnreadForm(string $resolved, string $brackets): bool
+    {
+        return strpbrk($resolved, $brackets) !== false && ! str_starts_with($resolved, '($');
+    }
+
+    /**
+     * Whether the bracket a PHPDoc type opens with closes at its last character, skipping quoted keys and literals.
+     */
+    protected function closesAtEnd(string $type): bool
+    {
+        $depth = 0;
+        $length = strlen($type);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $type[$i];
+
+            if ($char === '\'' || $char === '"') {
+                // An escaped quote stays inside the literal, as in `'it\'s'`.
+                while (++$i < $length && $type[$i] !== $char) {
+                    $i += (int) ($type[$i] === '\\');
+                }
+
+                continue;
+            }
+
+            $depth += (int) str_contains('{<(', $char) - (int) str_contains('}>)', $char);
+
+            if ($depth === 0) {
+                return $i === $length - 1;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a parsed shape is a list, which json_encode() writes as an array: a `list{…}`, or an `array{…}` keyed
+     * exactly 0 to n-1 in order with no required member after an optional one.
+     *
+     * @param  PhpDocShape  $shape
+     */
+    protected function isTupleShape(array $shape): bool
+    {
+        if ($shape['kind'] !== 'array') {
+            return $shape['kind'] === 'list';
+        }
+
+        $optional = false;
+
+        foreach ($shape['entries'] as $index => $entry) {
+            if ($entry['key'] !== (string) $index || ($optional && ! $entry['optional'])) {
+                return false;
+            }
+
+            $optional = $optional || $entry['optional'];
+        }
+
+        return $shape['entries'] !== [];
+    }
+
+    /**
+     * A shape key as an object literal spells it: bare when it is an identifier or an int, quoted otherwise.
+     */
+    protected function shapeKey(string $key): string
+    {
+        return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1 ? $key : JsEmitter::validJsObjectKey($key);
+    }
+
+    /**
+     * The keys a union of PHPStan string literals names, such as `'a'|'b'`, or null for any other key type.
+     *
+     * @return list<string>|null
+     */
+    protected function stringLiteralKeys(string $keyType): ?array
+    {
+        $keys = [];
+
+        foreach ($this->splitPhpDocUnionType($keyType) as $part) {
+            $key = $this->phpDocStringLiteral($part);
+
+            // A numeric string key is an int key in PHP, which an API resource can re-index into a list.
+            if ($key === null || is_numeric($key)) {
+                return null;
+            }
+
+            $keys[] = $key;
+        }
+
+        return $keys === [] ? null : array_values(array_unique($keys));
+    }
+
+    /**
+     * Append a top-level `| null` arm unless one is there: a nested `null`, as in `{ a: number | null }`, is not one.
+     */
+    protected function withNullArm(string $type): string
+    {
+        return in_array('null', TsTypeShape::splitTopLevel($type, ['|']), true) ? $type : $type.' | null';
     }
 
     /**

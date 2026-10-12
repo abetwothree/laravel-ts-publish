@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
@@ -762,6 +763,15 @@ describe('@property docblock refinement', function () {
         expect($info['type'])->toBe('Record<string, unknown> | null');
     });
 });
+
+test('a @property tag spelling a tuple, an object shape, a quoted key or a nested nullable shape types its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PropertyDocblockShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'a tuple' => ['tags', '[number, string] | null'],
+    'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
+    'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
+    'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
 
 test('an AsArrayObject cast resolves to the array-or-record union', function () {
     $resolver = resolve(ModelAttributeResolver::class);

@@ -290,17 +290,11 @@ describe('an inline @var on a local assignment', function () {
         'a callable signature with no space' => ['callable(int):string'],
         'a void callable' => ['callable():void'],
         'a pure callable' => ['pure-callable(int): string'],
-        'a callable in a shape' => ['array{fn: callable(int): string}'],
         'a callable in a list' => ['list<callable(int): string>'],
         'a callable in a record' => ['array<string, callable(int): string>'],
         'a closure signature' => ['\Closure(int): string'],
         'an intersection' => ['\Workbench\App\Models\Post&\JsonSerializable'],
         'an unclosed shape' => ['array{a: int'],
-        'a tuple list' => ['list{int, string}'],
-        'an object shape' => ['object{a: int}'],
-        'literal keys' => ["array<'a'|'b', int>"],
-        'a quoted shape key, which the shape reader skips' => ["array{'a': int, b: string}"],
-        'a positional shape' => ['array{int, string}'],
         'an empty shape' => ['array{}'],
         'a bracket list' => ['int[]'],
         'a parenthesized union' => ['(int|string)[]'],
@@ -322,23 +316,11 @@ describe('an inline @var on a local assignment', function () {
         'a nullable union' => ['?int|string'],
         'a nullable member' => ['int|?string'],
         'a dangling union' => ['string|'],
-        'a nullable shape inside a shape' => ['array{a: ?array{b: int}}'],
-        'a nullable shape inside a listed shape' => ['list<array{id: int, meta: ?array{k: string}}>'],
-        'a nullable shape inside a multi-line shape' => ["array{\n *     a: int,\n *     b: ?array{c: int},\n * }"],
-        'a nullable shape' => ['?array{a: int}'],
-        'a nullable list' => ['?list<int>'],
-        'a nullable keyed array' => ['?array<string, int>'],
-        'a list of nullable shapes' => ['list<?array{a: int}>'],
-        'a nullable collection' => ['?\Illuminate\Database\Eloquent\Collection<string, User>'],
-        'a nullable collection of nullables, whose own null the resolution drops' => ['?\Illuminate\Support\Collection<int, ?Comment>'],
-        'a nullable class whose own reading holds null, which the resolution drops' => ['?\Workbench\App\ValueObjects\ArrayableData'],
         'a class bare and in a list before it' => ['list<User>|User'],
         'a class bare and in a list after it' => ['User|list<User>'],
         'a class bare and in a collection' => ['\Illuminate\Support\Collection<int, Comment>|Comment'],
         'a class bare and in a collection, or null' => ['\Illuminate\Support\Collection<int, Comment>|Comment|null'],
         'an enum bare and in a list' => ['list<\Workbench\App\Enums\OrderStatus>|\Workbench\App\Enums\OrderStatus'],
-        'a space between a shape key and its marker' => ['array{a ?: int, b: string}'],
-        'a space between a shape key and its colon' => ['array{a : int}'],
         'a space before a shape\'s brace' => ['array {a: int}'],
         'a space before a nested shape\'s brace' => ['array{a: array {b: int}}'],
         'a list slot holding a scalar or a list' => ['list<int|list<string>>'],
@@ -348,6 +330,12 @@ describe('an inline @var on a local assignment', function () {
         'a list slot holding a shape or null' => ['list<array{a: int}|null>'],
         'a shape member whose class the shape reader leaves unknown' => ['array{a: User}'],
         'a bare collection, which resolves to unknown elements' => ['\Illuminate\Support\Collection'],
+        'a shape mixing positional and named members' => ['array{int, a: string}'],
+        'an optional positional member, which PHPDoc does not allow' => ['list{int, string?}'],
+        'an unsealed shape' => ['array{a: int, ...}'],
+        'a closure in a shape' => ['array{fn: \Closure(int): string}'],
+        'a numeric string key' => ["array<'1'|'2', int>"],
+        'a literal key beside a scalar key' => ["array<'a'|string, int>"],
     ]);
 
     test('binds a tag built only from supported forms, and reads it in full', function (string $type, ?string $read) {
@@ -381,7 +369,44 @@ describe('an inline @var on a local assignment', function () {
         'lists in a union' => ['list<int>|list<string>', 'number[] | string[]'],
         'a support collection' => ['\Illuminate\Support\Collection<int, Comment>', 'Comment[]'],
         'an Eloquent collection or null' => ['\Illuminate\Database\Eloquent\Collection<string, User>|null', 'Record<string, User> | null'],
+        'a positional list shape' => ['list{int, string}', '[number, string]'],
+        'a positional array shape' => ['array{int, string}', '[number, string]'],
+        'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
+        'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
+        'quoted shape keys' => ["array{'a': int, \"b-c\": string}", '{ a: number; "b-c": string }'],
+        'a space before a shape key\'s marker' => ['array{a ?: int, b: string}', '{ a?: number; b: string }'],
+        'a space before a shape key\'s colon' => ['array{a : int}', '{ a: number }'],
+        'a nullable shape inside a shape' => ['array{a: ?array{b: int}}', '{ a: { b: number } | null }'],
+        'a nullable shape inside a listed shape' => [
+            'list<array{id: int, meta: ?array{k: string}}>',
+            '({ id: number; meta: { k: string } | null })[]',
+        ],
+        'a nullable shape' => ['?array{a: int}', '{ a: number } | null'],
+        'a nullable list' => ['?list<int>', 'number[] | null'],
+        'a nullable keyed array' => ['?array<string, int>', 'Record<string, number> | null'],
+        'a list of nullable shapes' => ['list<?array{a: int}>', '({ a: number } | null)[]'],
+        'a nullable collection' => ['?\Illuminate\Database\Eloquent\Collection<string, User>', 'Record<string, User> | null'],
+        'a nullable collection of nullables' => ['?\Illuminate\Support\Collection<int, ?Comment>', '(Comment | null)[] | null'],
+        'a nullable class whose own reading holds a null member' => [
+            '?\Workbench\App\ValueObjects\ArrayableData',
+            '{ recordedAt?: string; title: string; weight: number | null } | null',
+        ],
+        'a callable in a shape, which reads unknown' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
+        'a callable in each of two members, one nullable' => [
+            'array{a: callable(int): string, b: ?callable(): int}',
+            '{ a: unknown; b: unknown | null }',
+        ],
+        'a tuple in a shape' => ['array{pair: list{int, string}}', '{ pair: [number, string] }'],
     ]);
+
+    test('binds a nullable shape inside a multi-line shape, read with its lines joined', function () {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $context = new ReflectionClass(DeclaredPrecedenceResource::class);
+        $tag = $reader->extractVarTag("/** @var array{\n *     a: int,\n *     b: ?array{c: int},\n * } \$d */", $context);
+
+        expect($tag[1] ?? null)->toBe('d')
+            ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
+    });
 
     test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {
         $closure = fn (string $declared): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
@@ -502,13 +527,13 @@ describe('an inline @var on a local assignment', function () {
                     title_as_totals: string;
                     verifiable_email: string;
                     callable: unknown;
-                    callable_shape: unknown;
+                    callable_shape: { fn: unknown };
                     closure: unknown;
                     intersection: unknown;
-                    tuple: unknown;
-                    decoded: unknown;
-                    literal_keys: unknown;
-                    quoted_key: unknown;
+                    tuple: [number, string];
+                    decoded: { a: number };
+                    literal_keys: { a?: number; b?: number };
+                    quoted_key: { a: number; b: string };
                     kept_title: string;
                     kept_record: { a: number; b: string };
                     kept_shape: { a: number; b: string };

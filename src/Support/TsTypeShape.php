@@ -37,7 +37,7 @@ final class TsTypeShape
     }
 
     /**
-     * The declared type of $key inside an object literal or Record, or null when the type is opaque.
+     * The declared type of $key inside an object literal, a Record or a tuple, or null when the type is opaque.
      */
     public static function memberType(string $type, string $key): ?string
     {
@@ -46,6 +46,12 @@ final class TsTypeShape
                 $arguments = self::splitTopLevel(substr($arm, 7, -1), [',']);
 
                 return $arguments[1] ?? null;
+            }
+
+            if (self::isWrapped($arm, '[', ']')) {
+                return preg_match('/^(?:0|[1-9]\d*)$/', $key) === 1
+                    ? self::tupleMember(self::splitTopLevel(substr($arm, 1, -1), [','])[(int) $key] ?? null)
+                    : null;
             }
 
             foreach (self::members($arm) ?? [] as [$name, $value]) {
@@ -251,6 +257,20 @@ final class TsTypeShape
         }
 
         return $arms;
+    }
+
+    /**
+     * A tuple member's type without its optional marker, unwrapping the parentheses the marker needs after a union.
+     */
+    private static function tupleMember(?string $member): ?string
+    {
+        if ($member === null || ! str_ends_with($member, '?')) {
+            return $member;
+        }
+
+        $member = trim(substr($member, 0, -1));
+
+        return self::isWrapped($member, '(', ')') ? trim(substr($member, 1, -1)) : $member;
     }
 
     /**

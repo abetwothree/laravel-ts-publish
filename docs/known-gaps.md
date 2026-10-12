@@ -89,7 +89,9 @@ A local rewritten through a by-reference parameter of a method on a receiver the
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes
 `{ a?: number } | null` under a `?array` signature and `{ a?: number }` under `array`, but `json_encode([])` writes a
 JSON array, not an object. `MethodReturnTypeResolver::shapeReadsEveryReturn()` reads the empty `[]` as a branch that
-omits the keys. Under `?array`, return `null` on that path instead, which publishes `{ a: number } | null`.
+omits the keys. Under `?array`, return `null` on that path instead, which publishes `{ a: number } | null`. A declared
+shape whose keys can all be absent, such as `array{a?: int}` or `array<'a'|'b', int>`, publishes the same object and
+has the same gap: an empty array is sent as `[]`.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
@@ -260,9 +262,13 @@ so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
 Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
 (`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
 shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
-degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, while `Record<string, User>` has
-nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method a
-native return type that names the class.
+degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
+`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property
+with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+
+### An open shape publishes only its named keys
+
+An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
 
 ### An index signature its body types can fail to compile beside a key it cannot take in
 
@@ -469,6 +475,12 @@ helper method the action calls, are read as that method's own values, so a first
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
+
+### A callable in a docblock publishes `unknown`
+
+`callable(int): string`, alone or as a shape member, publishes `unknown`, because what it sends depends on who
+serializes it: an API resource writes a `Closure` as `{}`, Inertia calls it, and a callable string or array is sent as
+itself. Type the key with `#[TsCasts]`.
 
 ### A `Collection` beside an array an API resource lists or under numeric keys, and the arrays one holds, publish as lists
 
