@@ -185,17 +185,40 @@ final class ValueResult
     }
 
     /**
+     * The result as `??` or a short `?:` receives its checked operand: a field absent from the request reads `null`,
+     * which the operator replaces, so only a placeholder that drops the key (a MissingValue) keeps it optional.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function checkedOperand(array $result): array
+    {
+        if ($result['absentReadsNull'] ?? false) {
+            unset($result['absentReadsNull']);
+            $result['optional'] = false;
+        }
+
+        return $result;
+    }
+
+    /**
      * Merge multiple branch expressions into a single union-typed ValueExpressionResult.
      *
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
      * duplicate types are removed and import metadata is collected from all branches.
      *
+     * With $firstIsChecked, the first expression is the checked operand of a short `?:`.
+     *
      * @param  list<Expr>  $returns
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope): array
+    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope, bool $firstIsChecked = false): array
     {
         $results = array_map($engine->resolve(...), $returns);
+
+        if ($firstIsChecked) {
+            $results[0] = self::checkedOperand($results[0]);
+        }
 
         // Paired with their expressions here because unionResults() receives results only, and by then
         // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
@@ -215,7 +238,7 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
-     * The union is optional when any arm, typed or not, can be the MissingValue an API resource drops.
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult

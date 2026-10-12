@@ -11,8 +11,8 @@ use Workbench\App\Models\User;
 /** An event whose payload falls back with `??`, which no MissingValue reaches. */
 final class CoalescingBroadcastEvent implements ShouldBroadcast
 {
-    /** Carries the user the payload reads. */
-    public function __construct(public User $user) {}
+    /** Carries the values the payload reads. */
+    public function __construct(public User $user, public ?string $a = null) {}
 
     /** The channel. */
     public function broadcastOn(): Channel
@@ -27,6 +27,6 @@ final class CoalescingBroadcastEvent implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
-        return ['x' => $this->user->name ?? 'none'];
+        return ['x' => $this->a ?? 'none'];
     }
 }

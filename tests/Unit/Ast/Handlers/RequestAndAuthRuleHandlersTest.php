@@ -280,7 +280,7 @@ it('types validated() for a dotted key the rules declare', function () {
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.default'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true]);
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // A prohibited rule keeps the key out of the generated interface entirely, so neither it nor
@@ -533,7 +533,7 @@ it('validated() honours the request #[TsCasts] type and optional overrides', fun
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('rating'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
-        ->toBe(['type' => 'number | bigint | null', 'optional' => true]);
+        ->toBe(['type' => 'number | bigint | null', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // `tags` overrides the type with no `optional` key, so optionalOverrides carries no entry for it and
@@ -542,7 +542,7 @@ it('reads optionality from the rules for an override that declares no optional k
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('tags'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
-        ->toBe(['type' => 'string[]', 'optional' => true]);
+        ->toBe(['type' => 'string[]', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // An override naming an imported type has to carry its import, or the prop emits a token nothing
@@ -555,6 +555,7 @@ it('carries the import an override declares next to its type', function () {
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))->toBe([
         'type' => 'PostAttributes',
         'optional' => true,
+        'absentReadsNull' => true,
         'customImports' => ['@js/types/posts' => ['PostAttributes']],
     ]);
 });
@@ -569,7 +570,7 @@ it('does not let a #[TsCasts] override resurrect a key validated() declines', fu
     expect((new KnownMethodRuleHandler)->resolve($call('secret'), $scope, requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($call('tags.*'), $scope, requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($call('options.default'), $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true]);
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // The rules alone answer both of these backwards: `title` is `required` and overridden optional, `note`
@@ -581,7 +582,7 @@ it('takes optionality from the override rather than the rule, both ways round', 
     $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call('title'), $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true])
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true])
         ->and((new KnownMethodRuleHandler)->resolve($call('note'), $scope, requestRuleEngine()))
         ->toBe(['type' => 'string', 'optional' => false]);
 });
@@ -594,7 +595,7 @@ it('emits no import for an override type with no importable token', function () 
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
-        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true]);
+        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // The assumption the dotted decline rests on: the transformer matches an override to a top-level

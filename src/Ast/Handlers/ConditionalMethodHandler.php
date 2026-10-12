@@ -165,7 +165,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $defaultExpr = $defaultArg->value;
 
         // A default closure requiring more parameters than Laravel supplies it can never run, so its
-        // arm is unreachable — the value arm stands alone, still required.
+        // arm is unreachable — the value arm stands alone, optional only as its own value is.
         if ($this->closureRequiresArguments($defaultExpr, $defaultArgCount)) {
             return $value;
         }

@@ -302,16 +302,17 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `when($c, $this->whenLoaded('author'), 'x')`.
 - **A `MissingValue` passed on stays optional**: `ValueResult::unionResults()` makes a union optional when an arm is, so
   `??`, a ternary, `match` and a closure's several returns carry it, and `CoalesceHandler` counts the right operand only
-  past a left that can be `null`.
+  past a left that can be `null`. A form-request field absent from the request reads `null`, so `??` and a short `?:`
+  replace it (`ValueResult::checkedOperand()`); a ternary or closure over it stays optional, as a direct read does.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s or an untypable `whenHas()` or `whenAppended()` value, keeps the key `unknown`,
-  since `T | unknown` is `unknown`. The key stays required either way. A default left out is recorded in
+  since `T | unknown` is `unknown`. The key is optional only if the value arm is. A default left out is recorded in
   `DroppedUnionArms` as `conditional-default`; see
   [AST engine § Dropped union arms](ast-engine.md#dropped-union-arms) for the policy.
 - **A default closure that needs more arguments than Laravel passes is skipped**: Laravel calls a default as
   `value($default)` with no arguments, except `transform()`, whose helper calls `$default($value)`. A closure requiring
   more parameters would throw `ArgumentCountError`, so `InspectsAstNodes::closureRequiresArguments()` keeps it out of
-  the union, and the key stays required with the value arm's type.
+  the union, and the key keeps the value arm's type and optionality.
 - **A `never[]` arm drops beside an array arm**: a literal `[]` is `never[]`, since `json_encode([])` is `[]`, and it
   adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.

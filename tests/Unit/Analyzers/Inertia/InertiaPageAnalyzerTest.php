@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -112,6 +113,14 @@ it('keeps a ternary prop required over plain arms and optional over a lazy one',
     $data = pageData(ControllerWithUnionProps::class.'@index');
 
     expect($data['pageType'])->toBe('Inertia.SharedData & { y: number | string, z?: number }');
+});
+
+// A field absent from the request reads null, which `??` and a short `?:` replace; a direct read, a full ternary and a
+// closure keep the field's optional.
+it('drops a form-request field\'s optional across ?? and ?:, and keeps it across a ternary or closure', function () {
+    $data = pageData(ControllerWithValidatedProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { a: string, b: number, c?: string, d?: string, e: { search: string }, f: string, h: string, i?: string }');
 });
 
 it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {

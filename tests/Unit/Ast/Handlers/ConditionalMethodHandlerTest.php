@@ -1157,6 +1157,18 @@ it('keeps the key optional when the value or the default of a when() can be a Mi
     'a required value beside an untyped default' => [['type' => 'string', 'optional' => false], ['type' => 'unknown', 'optional' => false], false],
 ]);
 
+// A default closure Laravel cannot call leaves the value arm alone, with the optional of its own.
+it('keeps the value arm\'s optional when the default closure needs an argument', function (bool $optional) {
+    $valueExpr = new Variable('valueArm');
+    $default = new ArrowFunction(['params' => [new Param(new Variable('x'))], 'expr' => new String_('y')]);
+    $expr = new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('condition')), new Arg($valueExpr), new Arg($default)]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([[$valueExpr, ['type' => 'User', 'optional' => $optional]]]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'User', 'optional' => $optional]);
+})->with([true, false]);
+
 // Where no two classes share a name, the union by class is the union by text.
 it('unions a value and a default of two different names as a merge by text does', function (string $method, string $type) {
     $value = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];

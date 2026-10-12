@@ -34,7 +34,7 @@ final class CoalesceHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof BinaryOp\Coalesce) {
-            $leftResult = $engine->resolve($expr->left);
+            $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
             $rightResult = $engine->resolve($expr->right);
             // A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null.
             $optional = $leftResult['optional']
