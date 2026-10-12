@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Carbon\CarbonImmutable;
 use Closure;
+use Exception;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -1686,8 +1687,8 @@ class ModelAttributeResolver
                 foreach ($declarer->getAttributes($tableAttribute) as $attribute) {
                     try {
                         $table = $attribute->newInstance();
-                    } catch (Throwable) {
-                        continue;
+                    } catch (Exception) { // @codeCoverageIgnore
+                        return ['key' => null, 'keyType' => null]; // @codeCoverageIgnore
                     }
 
                     return ['key' => $table->key, 'keyType' => $table->keyType];
@@ -1727,11 +1728,18 @@ class ModelAttributeResolver
         }
 
         foreach ($methods as $method) {
-            if (str_starts_with((string) $method->getFileName(), $framework)) {
+            $path = $method->getFileName();
+
+            // Source that is not on disk, such as eval()'d code, cannot be read, so it may set the key.
+            if ($path === false || ! is_file($path)) {
+                return true;
+            }
+
+            if (str_starts_with($path, $framework)) {
                 continue;
             }
 
-            $file = new SplFileObject((string) $method->getFileName());
+            $file = new SplFileObject($path);
             $file->seek($method->getStartLine() - 1);
             $code = '';
 

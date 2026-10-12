@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,8 @@ trait ResolvesAuthHelperCalls
         if ($method !== 'id') {
             return null;
         }
+
+        DependencyRecorder::recordClass($model);
 
         $keyType = $this->identifiesByKey($model) ? resolve(ModelAttributeResolver::class)->keyTsType($model) : null;
 

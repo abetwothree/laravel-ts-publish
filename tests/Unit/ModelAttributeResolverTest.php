@@ -1283,6 +1283,12 @@ describe('keyTsType()', function () {
         expect(resolve(ModelAttributeResolver::class)->keyTsType(AbstractInitializeKeyModel::class))->toBeNull();
     })->skip(! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\Initialize'), 'Initialize attribute requires Laravel 12.22+');
 
+    test('declines an abstract model whose constructor has no source on disk to read', function () {
+        eval('abstract class EvalKeyModel extends \Illuminate\Database\Eloquent\Model { public function __construct(array $a = []) { parent::__construct($a); } }');
+
+        expect(resolve(ModelAttributeResolver::class)->keyTsType('EvalKeyModel'))->toBeNull();
+    });
+
     test('publishes null for a model with no primary key, whose getKey() is always null', function () {
         expect(resolve(ModelAttributeResolver::class)->keyTsType(NullKeyPost::class))->toBe('null');
     });

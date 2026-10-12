@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
@@ -364,6 +365,16 @@ it('declines auth()->id() and Auth::id() for an auth model identified by another
         ->toBeNull()
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
         ->toBe('unknown');
+});
+
+it('records the auth model it declines for another identifier column, so editing it rebuilds the result', function () {
+    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+    DependencyRecorder::start();
+    (new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine());
+    $paths = DependencyRecorder::paths();
+    DependencyRecorder::stop();
+
+    expect($paths)->toContain((string) new ReflectionClass(EmailIdentifierUser::class)->getFileName());
 });
 
 it('declines an unbound ->user() on any other receiver', function () {
