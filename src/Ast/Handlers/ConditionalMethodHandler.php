@@ -933,9 +933,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         if ($value instanceof Variable) {
-            if (is_string($value->name)) {
-                $scope->copyBindings($value->name, $name, $outer);
-            }
+            $scope->copyBindings($value, $name, $outer);
 
             return;
         }

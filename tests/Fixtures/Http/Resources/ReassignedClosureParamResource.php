@@ -99,6 +99,55 @@ class ReassignedClosureParamResource extends JsonResource
 
                 return $author->name;
             }),
+            // A re-sorted, re-filtered or re-indexed collection still holds Comments.
+            'sorted_pluck' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->sortBy('id');
+
+                return $comments->pluck('content');
+            }),
+            'filtered_pluck' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->where('content', '!=', '');
+
+                return $comments->pluck('content');
+            }),
+            'values_map' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->values();
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'sorted_resources' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->sortBy('id');
+
+                return $comments->toResourceCollection();
+            }),
+            'reassigned_resources' => $this->whenLoaded('author', function (User $author) {
+                $author = $author->comments;
+
+                return $author->toResourceCollection();
+            }),
+            'coalesce_assign' => $this->whenLoaded('author', function (User $author) {
+                $author ??= new User;
+
+                return $author->name;
+            }),
+            // An arrow function writes its own copy of `$author`, never the closure's.
+            'arrow_write' => $this->whenLoaded('author', function (User $author) {
+                $profile = fn () => $author = $author->profile;
+
+                return $author->name;
+            }),
+            'concat_value' => $this->whenHas('title', function ($title) {
+                $title .= '!';
+
+                return $title;
+            }),
+            'branch_value' => $this->whenHas('title', function ($title) {
+                if ($title === '') {
+                    $title = 'x';
+                }
+
+                return $title;
+            }),
         ];
     }
 }

@@ -35,6 +35,24 @@ class ReassignedRouteModelController
         ]);
     }
 
+    /** Fills an absent post with a new one, which is still a Post. */
+    public function coalesceAssign(?Post $post = null): Response
+    {
+        $post ??= new Post;
+
+        return Inertia::render('Reassigned/CoalesceAssign', [
+            'title' => $post->title,
+        ]);
+    }
+
+    /** Reassigns the bound post to its author, then passes it by name. */
+    public function compacted(Post $post): Response
+    {
+        $post = $post->author;
+
+        return Inertia::render('Reassigned/Compacted', compact('post'));
+    }
+
     /** Reassigns the bound post to its own fresh copy. */
     public function fresh(Post $post): Response
     {

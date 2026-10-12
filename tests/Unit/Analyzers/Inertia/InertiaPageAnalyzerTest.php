@@ -173,7 +173,11 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { title: string }');
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { post: unknown }');
 });
 
 it('types a resource collection from what it wraps', function () {

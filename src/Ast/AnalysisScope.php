@@ -292,12 +292,15 @@ final class AnalysisScope
      */
     public function bindsName(string $name): bool
     {
-        return isset($this->varModelBindings[$name])
-            || isset($this->varCollectionBindings[$name])
-            || isset($this->varClassBindings[$name])
-            || isset($this->varValueBindings[$name])
-            || isset($this->closureParamExprBindings[$name])
-            || isset($this->requestVarNames[$name]);
+        return array_any($this->parameterBindingTables(), fn (array $table): bool => isset($table[$name]));
+    }
+
+    /**
+     * Whether any name holds a parameter's or a seeded binding, so a body's writes can end one.
+     */
+    public function bindsAnyName(): bool
+    {
+        return array_any($this->parameterBindingTables(), fn (array $table): bool => $table !== []);
     }
 
     /**
@@ -401,18 +404,46 @@ final class AnalysisScope
     /**
      * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture, but a
      * proof, which spells the read it proves under the variable's own name, and a binding end, an offset in the
-     * caller's body.
+     * caller's body. A variable passed past its end passes only the body's own bindings of it.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
-    public function copyBindings(string $from, string $to, array $snapshot): void
+    public function copyBindings(Variable $passed, string $to, array $snapshot): void
     {
-        if (isset($snapshot['closureParamExprBindings'][$from])) {
-            $this->closureParamExprBindings[$to] = $snapshot['closureParamExprBindings'][$from];
+        if (! is_string($passed->name)) {
+            return;
         }
 
-        if (isset($snapshot['varClassBindings'][$from])) {
-            $this->varClassBindings[$to] = $snapshot['varClassBindings'][$from];
+        $from = $passed->name;
+        $end = $snapshot['bindingEnds'][$from] ?? null;
+
+        if ($end !== null && $passed->getStartFilePos() > $end) {
+            // The parameter's own binding ends before any read, so no reader guesses a class for it.
+            $this->bindingEnds[$to] = PHP_INT_MIN;
+        } else {
+            if (isset($snapshot['closureParamExprBindings'][$from])) {
+                $this->closureParamExprBindings[$to] = $snapshot['closureParamExprBindings'][$from];
+            }
+
+            if (isset($snapshot['varClassBindings'][$from])) {
+                $this->varClassBindings[$to] = $snapshot['varClassBindings'][$from];
+            }
+
+            if (isset($snapshot['varModelBindings'][$from])) {
+                $this->varModelBindings[$to] = $snapshot['varModelBindings'][$from];
+            }
+
+            if (isset($snapshot['varCollectionBindings'][$from])) {
+                $this->varCollectionBindings[$to] = $snapshot['varCollectionBindings'][$from];
+            }
+
+            if (isset($snapshot['varValueBindings'][$from])) {
+                $this->varValueBindings[$to] = $snapshot['varValueBindings'][$from];
+            }
+
+            if (isset($snapshot['requestVarNames'][$from])) {
+                $this->requestVarNames[$to] = $snapshot['requestVarNames'][$from];
+            }
         }
 
         if (isset($snapshot['varGuardBindings'][$from])) {
@@ -423,24 +454,8 @@ final class AnalysisScope
             $this->varDocBindings[$to] = $snapshot['varDocBindings'][$from];
         }
 
-        if (isset($snapshot['varModelBindings'][$from])) {
-            $this->varModelBindings[$to] = $snapshot['varModelBindings'][$from];
-        }
-
-        if (isset($snapshot['varCollectionBindings'][$from])) {
-            $this->varCollectionBindings[$to] = $snapshot['varCollectionBindings'][$from];
-        }
-
-        if (isset($snapshot['varValueBindings'][$from])) {
-            $this->varValueBindings[$to] = $snapshot['varValueBindings'][$from];
-        }
-
         if (isset($snapshot['localVarBindings'][$from])) {
             $this->localVarBindings[$to] = $snapshot['localVarBindings'][$from];
-        }
-
-        if (isset($snapshot['requestVarNames'][$from])) {
-            $this->requestVarNames[$to] = $snapshot['requestVarNames'][$from];
         }
     }
 
@@ -501,6 +516,23 @@ final class AnalysisScope
             $array->items,
             fn (ArrayItem $item): bool => $item->key instanceof String_ || $item->key instanceof Int_,
         );
+    }
+
+    /**
+     * The tables that hold a parameter's or a seeded binding, which a body write can end.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function parameterBindingTables(): array
+    {
+        return [
+            $this->varModelBindings,
+            $this->varCollectionBindings,
+            $this->varClassBindings,
+            $this->varValueBindings,
+            $this->closureParamExprBindings,
+            $this->requestVarNames,
+        ];
     }
 
     /**

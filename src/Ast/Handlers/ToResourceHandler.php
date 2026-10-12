@@ -139,8 +139,8 @@ final class ToResourceHandler implements ExpressionHandler
 
     /**
      * Analyze `$collection->toResourceCollection()` / `->toResourceCollection(SomeResource::class)`.
-     * An explicit argument wins outright; otherwise the receiver's model resolves via
-     * resolveResourceCollectionForModel().
+     * An explicit argument wins outright; otherwise the receiver's model, else the element model the receiver resolver
+     * reads, resolves via resolveResourceCollectionForModel().
      *
      * @return ValueExpressionResult
      */
@@ -166,7 +166,8 @@ final class ToResourceHandler implements ExpressionHandler
             ];
         }
 
-        $modelFqcn = $this->resolveToResourceReceiverModel($call->var, $scope);
+        $modelFqcn = $this->resolveToResourceReceiverModel($call->var, $scope)
+            ?? resolve(ReceiverClassResolver::class)->resolve($call->var, $scope)?->elementModel;
         $resolved = $modelFqcn !== null ? $this->resolveResourceCollectionForModel($modelFqcn) : null;
 
         if ($resolved === null) {

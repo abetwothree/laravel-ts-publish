@@ -10,6 +10,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
@@ -126,11 +127,33 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
     'a foreach target' => ['foreach ([] as $p) {} return $p;', [false, false]],
     'a later write past the first end' => ['$p = $p->profile; $p = $p->user; return $p;', [true, true, false, false, false]],
     'a write to a nested closure\'s own parameter' => ['$f = function ($p) { $p = 1; }; return $p;', [true, true, true]],
+    'a write inside an arrow function, which captures by value' => ['$f = fn () => $p = $p->profile; return $p;', [true, true, true]],
+    'a ??= naming the same model' => ['$p ??= new \\Workbench\\App\\Models\\User; return $p;', [true, true]],
+    'a ??= naming another model' => ['$p ??= new \\Workbench\\App\\Models\\Profile; return $p;', [true, false]],
+    'an operator such as .= or ++' => ['$p .= "x"; $p++; return $p;', [true, true, true]],
 ]);
 
-// A value names no class to compare, so any write that replaces it ends it; the local then reads what was assigned.
-it('ends a value binding at any write that replaces it', function () {
-    expect(parameterReadsHolding('$p = trim($p); return $p;', function (AnalysisScope $scope): void {
+it('keeps a loaded collection\'s binding across a write naming no other element class', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
+        $scope->varCollectionBindings['p'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
+    }))->toBe($holding);
+})->with([
+    'a re-sort' => ['$p = $p->sortBy("id"); return $p;', [true, true, true]],
+    'a filter' => ['$p = $p->where("content", "!=", ""); return $p;', [true, true, true]],
+    'a re-index' => ['$p = $p->values(); return $p;', [true, true, true]],
+    'a value naming no class' => ['$p = $p->first(); return $p;', [true, true, true]],
+    'a collection of another model' => ['$p = $this->resource->tags; return $p;', [true, false]],
+    'a single model' => ['$p = new \\Workbench\\App\\Models\\Comment; return $p;', [true, false]],
+]);
+
+// A value binding names no class, so only a value that names one ends it; the local then reads what was assigned.
+it('ends a value binding only at a write whose value names a class', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
         $scope->varValueBindings['p'] = ['type' => 'string', 'optional' => false];
-    }))->toBe([true, true, false]);
-});
+    }))->toBe($holding);
+})->with([
+    'a concatenation' => ['$p .= "!"; return $p;', [true, true]],
+    'a literal in a branch' => ['if ($p === "") { $p = "x"; } return $p;', [true, true, true]],
+    'a value naming no class' => ['$p = trim($p); return $p;', [true, true, true]],
+    'a value naming a class' => ['$p = \\Workbench\\App\\Enums\\Status::from($p); return $p;', [true, true, false]],
+]);

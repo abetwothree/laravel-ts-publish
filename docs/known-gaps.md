@@ -562,7 +562,8 @@ it a `@var` docblock.
 
 `whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
 `$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
-`/** @var Comment $a */`, and the read follows it.
+`/** @var Comment $a */`, and the read follows it. A parameter passed a value does the same: after
+`$t = json_decode($t)`, `$t` keeps the type it was passed.
 
 ### An abstract model's key type misses a subclass the run does not publish
 

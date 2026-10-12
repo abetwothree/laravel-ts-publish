@@ -19,6 +19,7 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -93,16 +94,18 @@ trait CollectsLocalVarBindings
      */
     protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope): void
     {
-        if ($scope->varModelBindings === [] && $scope->varCollectionBindings === [] && $scope->varClassBindings === []
-            && $scope->varValueBindings === [] && $scope->closureParamExprBindings === [] && $scope->requestVarNames === []
-        ) {
+        if (! $scope->bindsAnyName()) {
             return;
         }
+
+        // An arrow function captures by value, so no write inside one reaches the body's own variable.
+        $arrows = new NodeFinder()->findInstanceOf($stmts, ArrowFunction::class);
 
         foreach ($this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, $node, $target]) {
             // A write past an end already recorded cannot move it earlier.
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
+                || array_any($arrows, fn (ArrowFunction $arrow): bool => $this->encloses($arrow, $node))
                 || ! $this->replacesVariable($target, $name)
                 || $this->keepsBinding($name, $node, $scope)
             ) {
@@ -110,7 +113,7 @@ trait CollectsLocalVarBindings
             }
 
             foreach ($stmts as $stmt) {
-                if ($stmt->getStartFilePos() <= $node->getStartFilePos() && $node->getEndFilePos() <= $stmt->getEndFilePos()) {
+                if ($this->encloses($stmt, $node)) {
                     $end = $stmt instanceof ExpressionStmt && $stmt->expr === $node && ($node instanceof Assign || $node instanceof AssignOp)
                         ? $stmt->getEndFilePos()
                         : $stmt->getStartFilePos() - 1;
@@ -241,11 +244,28 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether an assignment leaves a class binding standing: its value names no class, so the old binding is all that
-     * is known, or only classes the binding holds. An inline `@var` on it answers where its value names none.
+     * Whether a write leaves a binding standing. An operator such as `.=` or `++` keeps the kind of value held, and an
+     * assignment or `??=` keeps it unless its value names a class: for a class binding one it does not hold, for a
+     * collection one with another element. An inline `@var` on an assignment answers where its value names none.
      */
     private function keepsBinding(string $name, Node $node, AnalysisScope $scope): bool
     {
+        if (($node instanceof AssignOp && ! $node instanceof CoalesceAssign)
+            || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
+        ) {
+            return true;
+        }
+
+        // A `foreach` target, `catch`, `unset()`, destructuring or by-reference write holds a value this does not read.
+        if ((! $node instanceof Assign && ! $node instanceof CoalesceAssign) || ! $node->var instanceof Variable) {
+            return false;
+        }
+
+        $resolver = resolve(ReceiverClassResolver::class);
+        $span = $node instanceof Assign
+            ? array_find($scope->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $node->expr)
+            : null;
+        $held = $span === null ? $resolver->resolve($node->expr, $scope) : $resolver->resolveDeclared($name, $span, $scope);
         $element = $scope->varCollectionBindings[$name]['modelFqcn'] ?? null;
         $classes = match (true) {
             isset($scope->varModelBindings[$name]) => [$scope->varModelBindings[$name]],
@@ -254,21 +274,22 @@ trait CollectsLocalVarBindings
             default => null,
         };
 
-        if (! $node instanceof Assign || ! $node->var instanceof Variable || ($classes === null && $element === null)) {
-            return false;
-        }
-
-        $resolver = resolve(ReceiverClassResolver::class);
-        $span = array_find($scope->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $node->expr);
-        $held = $span === null ? $resolver->resolve($node->expr, $scope) : $resolver->resolveDeclared($name, $span, $scope);
-
         return match (true) {
             $held === null => true,
             $classes !== null => $held->within($classes),
-            default => $held->elementModel !== null
-                && is_a($held->elementModel, $element, true)
-                && $held->within([Enumerable::class]),
+            // A re-sorted or re-filtered collection names no element class, so the element binding stands.
+            $element !== null => $held->within([Enumerable::class])
+                && ($held->elementModel === null || is_a($held->elementModel, $element, true)),
+            default => false,
         };
+    }
+
+    /**
+     * Whether a node lies within another by their file offsets.
+     */
+    private function encloses(Node $outer, Node $inner): bool
+    {
+        return $outer->getStartFilePos() <= $inner->getStartFilePos() && $inner->getEndFilePos() <= $outer->getEndFilePos();
     }
 
     /**

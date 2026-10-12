@@ -130,7 +130,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
-    $scope->copyBindings('item', 'param', $captured);
+    $scope->copyBindings(new Variable('item'), 'param', $captured);
 
     expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true])))->each->toBe(['param'])
         ->and($scope->nonNullReads)->toBe([])
@@ -176,6 +176,28 @@ it('binds a name a parameter or a seeded binding holds, never one only the body\
 
     expect($bodyOnly->bindsName('item'))->toBeFalse()
         ->and($scope->bindsName('missing'))->toBeFalse();
+});
+
+// Past its end the variable holds only what the body assigned, so the parameter must not inherit the old class.
+it('copies only the body\'s own bindings of a variable passed past its end, and ends the parameter\'s before any read', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
+
+    expect(array_keys(array_filter(array_diff_key($scope->nameBindings(), ['claimedClosures' => true]))))
+        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'bindingEnds'])
+        ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
+});
+
+it('binds any name only while a parameter table holds one', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->localVarBindings['item'] = new Variable('outer');
+    $bound = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bound->requestVarNames['item'] = Request::class;
+
+    expect($scope->bindsAnyName())->toBeFalse()
+        ->and($bound->bindsAnyName())->toBeTrue();
 });
 
 it('binds each parameter a call passes nothing to what it holds: a default, or an empty list', function () {

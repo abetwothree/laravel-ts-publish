@@ -654,6 +654,11 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
     'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
     'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
+    // A User has no `website`: past the write the parameter holds the Profile the body assigned, not the old binding.
+    'a variable past the write that ended its binding' => [
+        '$this->whenLoaded("author", function (\\Workbench\\App\\Models\\User $author) { $author = $author->profile; return $this->transform($author, fn ($p) => $p->website); })',
+        'string | null',
+    ],
 ]);
 
 // Laravel returns the value whatever it is, so the attribute answers only a value-less call or an EnumResource wrap.

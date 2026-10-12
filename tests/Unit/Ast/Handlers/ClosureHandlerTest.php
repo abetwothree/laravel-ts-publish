@@ -449,6 +449,15 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'mapped_reassigned?' => 'unknown',
         // Collection::first() names no class, so the old binding is all that is known and stands (known gap).
         'unnamed_name?' => 'string',
+        'sorted_pluck?' => 'string[]',
+        'filtered_pluck?' => 'string[]',
+        'values_map?' => 'string[]',
+        'sorted_resources?' => 'CommentResource[]',
+        'reassigned_resources?' => 'CommentResource[]',
+        'coalesce_assign?' => 'string',
+        'arrow_write?' => 'string',
+        'concat_value?' => 'string',
+        'branch_value?' => 'string',
     ]);
 });
 

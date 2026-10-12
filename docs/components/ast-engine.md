@@ -266,8 +266,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
   guard still narrows one reassigned only before it, and an inline `@var` types it for its span.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
-- **A parameter past a write that names another class**: its binding ends there. A write whose value names no class
-  leaves the binding standing, since only the old binding is known.
+- **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
+  or an operator such as `.=`, leaves the binding standing, since only the old binding is known; a `foreach`, `catch`
+  or by-reference write ends it.
 
 ## Subject mode
 
