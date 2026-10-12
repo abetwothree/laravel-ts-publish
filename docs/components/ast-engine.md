@@ -224,7 +224,8 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
   writes its subject is not narrowed.
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
-`GuardWritePostResource` pins both cases. Neither mechanism sees a write through a reference.
+`GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee
+the scan can name; neither sees one on a receiver it cannot name.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -285,10 +286,10 @@ an untyped property's default, typed by `ValueResolver::resolveConstantValue()` 
 non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
 the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
 trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
-by-reference parameter of a callee the scan can name, such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. The check cannot see a subclass's write, including a child's that
-inherits `toArray()` and so publishes its parent's analysis (#79), a by-reference parameter on a receiver it cannot
-resolve, or a write from outside the class.
+by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan shares), such
+as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. The check
+cannot see a subclass's write, including a child's that inherits `toArray()` and so publishes its parent's analysis
+(#79), a by-reference parameter on a receiver it cannot resolve, or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -497,6 +498,7 @@ These pages cover the engine's neighbors:
 [`AnalysisScope`]: ../../src/Ast/AnalysisScope.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/AstParser.php
+[`ByReferenceArguments`]: ../../src/Ast/ByReferenceArguments.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
 [`ControllerExpressionHandlers`]: ../../src/Ast/ControllerExpressionHandlers.php
 [`DroppedUnionArms`]: ../../src/Ast/DroppedUnionArms.php

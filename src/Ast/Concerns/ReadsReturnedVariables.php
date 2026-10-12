@@ -114,12 +114,13 @@ trait ReadsReturnedVariables
     {
         $assigned = false;
 
-        foreach ($this->collectVariableWrites($stmts) as [$written, $node]) {
+        foreach ($this->collectVariableWrites($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
             if ($written !== $varName) {
                 continue;
             }
 
-            $target = $this->writeTarget($node);
+            // A key unset() is a key write, which the walk judges where it reads the statement.
+            $target = $node instanceof Unset_ ? $writtenTo : $this->writeTarget($node);
 
             if ($target instanceof ArrayDimFetch) {
                 continue;

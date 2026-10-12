@@ -49,6 +49,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCol
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
@@ -5623,7 +5624,9 @@ describe('local variable bindings', function () {
         expect($props['mapped_members']['type'])->toBe('User[]')
             ->and($props['loaded_owner']['type'])->toBe('User')
             // The shadowing closure param no longer suppresses the outer $member local's own binding.
-            ->and($props['outer_member']['type'])->toBe('string');
+            ->and($props['outer_member']['type'])->toBe('string')
+            // Nor does a closure's write to its own same-named parameter.
+            ->and($props['shadowed']['type'])->toBe('string');
     });
 
     // Guards the regression narrowing collectWrittenVariableNames() alone would introduce: with no
@@ -7281,7 +7284,7 @@ test('a variable built from + is read whole beside a literal return, so only the
  * @param  class-string  $model
  * @return array<string, string>
  */
-function missingThroughOperatorsKeys(string $resource, string $model): array
+function resourceKeyTypes(string $resource, string $model): array
 {
     $keys = [];
 
@@ -7293,7 +7296,7 @@ function missingThroughOperatorsKeys(string $resource, string $model): array
 }
 
 it('keeps a key optional when a MissingValue can pass through ??, a when*() default, a ternary or a match', function () {
-    expect(missingThroughOperatorsKeys(MissingThroughOperatorsResource::class, Post::class))->toMatchArray([
+    expect(resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class))->toMatchArray([
         'local_loaded_coalesce?' => 'User | string',
         'declared_coalesce?' => 'User | string',
         'local_when_coalesce?' => 'string',
@@ -7325,7 +7328,7 @@ it('publishes required only keys that Laravel sends over an unloaded relation', 
         ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])),
     ];
 
-    foreach (missingThroughOperatorsKeys(MissingThroughOperatorsResource::class, Post::class) as $key => $type) {
+    foreach (resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class) as $key => $type) {
         if (! str_ends_with($key, '?') && ! in_array($key, ['nested', 'nested_coalesce'], true)) {
             expect($sent)->toHaveKey($key);
         }
@@ -7335,4 +7338,24 @@ it('publishes required only keys that Laravel sends over an unloaded relation', 
 
     expect(new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])))
         ->toHaveKey('when_wrap_default');
+});
+
+// Laravel sends none of the types these locals held before the rewrite; `shadowed`'s closure writes only its parameter.
+it('unbinds a local a catch, a by-reference argument, unset(), static or global rewrites', function () {
+    expect(resourceKeyTypes(UnseenWritesResource::class, Post::class))->toBe([
+        'caught' => 'unknown',
+        'declared_caught' => 'unknown',
+        'matches' => 'unknown',
+        'sorted' => 'unknown',
+        'static_filled' => 'unknown',
+        'instance_filled' => 'unknown',
+        'gone' => 'null',
+        'counter' => 'unknown',
+        'glob' => 'unknown',
+        'by_ref_loop' => 'unknown',
+        'shadowed' => 'string',
+        'doubled' => 'number[]',
+        'arrow_shadowed' => 'string',
+        'mapped' => 'number[]',
+    ]);
 });

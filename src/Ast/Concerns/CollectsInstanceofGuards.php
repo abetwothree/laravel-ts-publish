@@ -50,7 +50,7 @@ trait CollectsInstanceofGuards
      */
     protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope): void
     {
-        $writes = $this->collectVariableWrites($stmts);
+        $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof If_ || $stmt->elseifs !== [] || $stmt->else !== null || ! $this->alwaysExits($stmt->stmts)) {
@@ -73,7 +73,11 @@ trait CollectsInstanceofGuards
     protected function proveClosureGuards(Expr $closure, AnalysisScope $scope): void
     {
         if ($closure instanceof ClosureExpr) {
-            $this->proveGuardedReads($closure->stmts, $scope, $this->collectVariableWrites($closure->stmts));
+            $this->proveGuardedReads(
+                $closure->stmts,
+                $scope,
+                $this->collectVariableWrites($closure->stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            );
         }
     }
 

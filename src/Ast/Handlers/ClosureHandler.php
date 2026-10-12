@@ -62,7 +62,7 @@ final class ClosureHandler implements ExpressionHandler
                 if ($expr instanceof ClosureExpr) {
                     // A body-local shadows the outer one of the same name however often it is written, so
                     // suppress every written name before the binding pass decides what to rebind.
-                    foreach ($this->collectWrittenVariableNames($expr->stmts) as $name) {
+                    foreach ($this->collectWrittenVariableNames($expr->stmts, $scope) as $name) {
                         unset($scope->localVarBindings[$name], $scope->varDocBindings[$name]);
                     }
 

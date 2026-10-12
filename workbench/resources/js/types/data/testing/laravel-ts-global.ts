@@ -2921,6 +2921,7 @@ declare global {
             mapped_members: workbench.app.models.User[];
             loaded_owner?: workbench.app.models.User;
             loaded_members_bare?: workbench.app.models.User[];
+            shadowed: string;
         }
         /**
          * Reads `$this->resource` inside whenLoaded closures bound to a different relation's model, so each

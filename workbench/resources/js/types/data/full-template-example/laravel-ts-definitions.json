@@ -11781,6 +11781,11 @@
                     "name": "loaded_members_bare",
                     "type": "User[]",
                     "optional": true
+                },
+                {
+                    "name": "shadowed",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },

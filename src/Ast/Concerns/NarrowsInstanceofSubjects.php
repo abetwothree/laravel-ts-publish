@@ -37,7 +37,7 @@ trait NarrowsInstanceofSubjects
 
         // `$this->resource` is written through the `this` variable.
         if (($variable === null && ! $this->isResourceFetch($subject))
-            || in_array($variable ?? 'this', array_column($this->collectVariableWrites([$arm]), 0), true)
+            || in_array($variable ?? 'this', $this->collectWrittenVariableNames([$arm], $scope), true)
         ) {
             return null;
         }
