@@ -224,7 +224,8 @@ step can decline:
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
    signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel).
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
-   JSON object.
+   JSON object. A concrete model keeps the `Record<string, unknown>` of a method it inherits from `Model`, such as
+   `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.
 6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
    `Illuminate\`, or an abstract one, declines, so `User::resolveChildRouteBinding()`'s `Model | null` does too.
    `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the two

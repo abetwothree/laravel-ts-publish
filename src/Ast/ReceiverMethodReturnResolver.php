@@ -302,7 +302,10 @@ final class ReceiverMethodReturnResolver
             : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
-        if ($result === null || TsTypeString::isVagueTsType($result['type'])) {
+        // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.
+        $modelRecord = $result !== null && $result['type'] === 'Record<string, unknown>' && $this->runsModelMethod($class, $methodName);
+
+        if ($result === null || (TsTypeString::isVagueTsType($result['type']) && ! $modelRecord)) {
             return null;
         }
 

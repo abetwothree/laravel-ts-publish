@@ -58,6 +58,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserListFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueDirtyOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -320,10 +321,19 @@ describe('ReceiverMethodReturnResolver', function () {
             ->and($resolver->resolve($model, 'shape', receiverProbeScope())['type'] ?? null)->toBe('{ id: number }');
     });
 
-    test('a vague array return declines', function () {
-        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of(Post::class), 'attributesToArray', receiverProbeScope()))
-            ->toBeNull();
-    });
+    test('a vague array return declines, save the attribute record a concrete model inherits from Model', function (string $model, string $method, ?string $type) {
+        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($model), $method, receiverProbeScope())['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        [Post::class, 'getCasts', null],
+        [Post::class, 'attributesToArray', 'Record<string, unknown>'],
+        [User::class, 'getAttributes', 'Record<string, unknown>'],
+        [User::class, 'getDirty', 'Record<string, unknown>'],
+        [User::class, 'getChanges', 'Record<string, unknown>'],
+        [User::class, 'getPrevious', 'Record<string, unknown>'],
+        [VagueDirtyOverrideModel::class, 'getDirty', null],
+        [CallPathAbstractModel::class, 'getAttributes', null],
+    ]);
 });
 
 describe('ReceiverMethodCallHandler', function () {
@@ -1052,6 +1062,9 @@ describe('a call on $this->prop types from the class the property holds, never f
         ['$this->resource->comments->toArray()', 'Record<string, unknown>[]'],
         ['$this->author?->toArray()', 'Record<string, unknown> | null'],
         ['$this->comments?->toArray()', 'Record<string, unknown>[] | null'],
+        ['$this->author->attributesToArray()', 'Record<string, unknown>'],
+        ['$this->author->getAttributes()', 'Record<string, unknown>'],
+        ['$this->author->getDirty()', 'Record<string, unknown>'],
     ]);
 
     test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {
