@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -105,6 +106,12 @@ it('marks the lazy Inertia wrappers optional and keeps the wrapped value type', 
 
     expect($data['pageType'])->toBe('Inertia.SharedData & { comments?: Comment[], tally?: number }')
         ->and($data['classFqcns'])->toBe([Comment::class]);
+});
+
+it('keeps a ternary prop required over plain arms and optional over a lazy one', function () {
+    $data = pageData(ControllerWithUnionProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { y: number | string, z?: number }');
 });
 
 it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {

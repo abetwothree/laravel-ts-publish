@@ -298,6 +298,11 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
   `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
   its import channels. Joining the type strings by hand would emit a token with no import.
+  The key stays optional when the value or the default can itself be a `MissingValue`, as in
+  `when($c, $this->whenLoaded('author'), 'x')`.
+- **A `MissingValue` passed on stays optional**: `ValueResult::unionResults()` makes a union optional when an arm is, so
+  `??`, a ternary, `match` and a closure's several returns carry it, and `CoalesceHandler` counts the right operand only
+  past a left that can be `null`.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s or an untypable `whenHas()` or `whenAppended()` value, keeps the key `unknown`,
   since `T | unknown` is `unknown`. The key stays required either way. A default left out is recorded in

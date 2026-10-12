@@ -31,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphMo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
@@ -76,6 +77,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingRe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
@@ -7270,4 +7272,67 @@ test('a variable built from + is read whole beside a literal return, so only the
     expect($optional['id'])->toBeFalse()
         ->and($optional['title'])->toBeTrue()
         ->and($optional['extra'])->toBeTrue();
+});
+
+/**
+ * Each analyzed key of a resource as its type, the name suffixed with `?` when the key is optional.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function missingThroughOperatorsKeys(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('keeps a key optional when a MissingValue can pass through ??, a when*() default, a ternary or a match', function () {
+    expect(missingThroughOperatorsKeys(MissingThroughOperatorsResource::class, Post::class))->toMatchArray([
+        'local_loaded_coalesce?' => 'User | string',
+        'declared_coalesce?' => 'User | string',
+        'local_when_coalesce?' => 'string',
+        'local_has_coalesce?' => 'string',
+        'direct_coalesce?' => 'User | string',
+        'coalesce_right_missing' => 'string | User',
+        'null_left_coalesce?' => 'User',
+        'when_wrap?' => 'User',
+        'when_wrap_default?' => 'User | string',
+        'when_true_default?' => 'User | string',
+        'unless_wrap_default?' => 'User | string',
+        'when_missing_default?' => 'string | User',
+        'when_closure_default?' => 'User | string',
+        'when_local_default?' => 'User | string',
+        'when_not_null_default?' => 'User | string',
+        'nested' => '{ inner?: User }',
+        'nested_coalesce' => '{ inner?: User | string }',
+        'ternary?' => 'User | string',
+        'match?' => 'User | string',
+        'kept' => 'number',
+    ]);
+});
+
+it('publishes required only keys that Laravel sends over an unloaded relation', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Hello']);
+    $sent = [
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '0'])),
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])),
+    ];
+
+    foreach (missingThroughOperatorsKeys(MissingThroughOperatorsResource::class, Post::class) as $key => $type) {
+        if (! str_ends_with($key, '?') && ! in_array($key, ['nested', 'nested_coalesce'], true)) {
+            expect($sent)->toHaveKey($key);
+        }
+    }
+
+    $post->setRelation('author', new User);
+
+    expect(new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])))
+        ->toHaveKey('when_wrap_default');
 });

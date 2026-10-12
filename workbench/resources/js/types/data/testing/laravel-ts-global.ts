@@ -3968,6 +3968,15 @@ declare global {
         export interface MiscCollection {
             data: unknown;
         }
+        /** A MissingValue passed on through `??`, a `when()` default and a ternary keeps its key optional. */
+        export interface MissingValueOperatorsResource {
+            direct_coalesce?: workbench.app.models.User | string;
+            when_wrap_default?: workbench.app.models.User | string;
+            when_missing_default?: string | workbench.app.models.User;
+            ternary?: workbench.app.models.User | string;
+            nested_coalesce: { inner?: workbench.app.models.User | string };
+            coalesce_right_missing: string | workbench.app.models.User;
+        }
         /**
          * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
          * (Task 28) must survive every result collector, not only analyzeReturnArray(). Each property

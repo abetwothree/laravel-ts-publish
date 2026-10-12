@@ -15002,6 +15002,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MissingValueOperatorsResource": {
+            "name": "MissingValueOperatorsResource",
+            "properties": [
+                {
+                    "name": "direct_coalesce",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "when_wrap_default",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "when_missing_default",
+                    "type": "string | User",
+                    "optional": true
+                },
+                {
+                    "name": "ternary",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "nested_coalesce",
+                    "type": "{ inner?: User | string }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesce_right_missing",
+                    "type": "string | User",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MixedEnumMergedResource": {
             "name": "MixedEnumMergedResource",
             "properties": [

@@ -108,6 +108,7 @@ export * from './merge-default-resource';
 export * from './merge-multi-branch-closure-resource';
 export * from './merged-signature-keys-resource';
 export * from './misc-collection';
+export * from './missing-value-operators-resource';
 export * from './mixed-enum-merged-resource';
 export * from './mixed-enum-return-branches-resource';
 export * from './model-wrapped-prop-resource';

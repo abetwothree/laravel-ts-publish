@@ -140,9 +140,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Fold an explicit default into the value arm: it makes the key required and unions in when it resolves. It is
-     * invoked with $defaultArgCount arguments, 0 for value($default) and 1 for transform()'s $default($value), whose
-     * one argument is $passedToDefault.
+     * Fold an explicit default into the value arm: it makes the key required, unless either arm can itself be a
+     * MissingValue, and unions in when it resolves. It is invoked with $defaultArgCount arguments, 0 for
+     * value($default) and 1 for transform()'s $default($value), whose one argument is $passedToDefault.
      *
      * @param  ValueExpressionResult  $value
      * @param  PassedValue|null  $passedToDefault
@@ -167,7 +167,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         // A default closure requiring more parameters than Laravel supplies it can never run, so its
         // arm is unreachable — the value arm stands alone, still required.
         if ($this->closureRequiresArguments($defaultExpr, $defaultArgCount)) {
-            return [...$value, 'optional' => false];
+            return $value;
         }
 
         $default = $this->resolveConditionalDefault($defaultExpr, $passedToDefault, $scope, $engine);
@@ -180,7 +180,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 DroppedUnionArms::record($defaultExpr, $scope, 'conditional-default');
             }
 
-            return [...$value, 'optional' => false];
+            return [...$value, 'optional' => $value['optional'] || $default['optional']];
         }
 
         $valueMembers = TsTypeString::splitTopLevelUnion($value['type']);
@@ -196,7 +196,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
         // which an inline array's member and Inertia shared data do not honour.
-        return [...ValueResult::unionResults([$value, $default], countMembers: true), 'optional' => false];
+        return ValueResult::unionResults([$value, $default], countMembers: true);
     }
 
     /**

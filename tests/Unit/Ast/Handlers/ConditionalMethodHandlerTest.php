@@ -1145,6 +1145,18 @@ it('drops an empty-array arm only where the other arm holds an array', function 
     'an empty value beside a default that is no array' => ['never[]', 'string', 'never[] | string'],
 ]);
 
+// A default makes the key required unless the value or the default can itself be a MissingValue.
+it('keeps the key optional when the value or the default of a when() can be a MissingValue', function (array $value, array $default, bool $optional) {
+    expect(conditionalMethodHandlerResolveArms('when', $value, $default)['optional'] ?? null)->toBe($optional);
+})->with([
+    'a required value and default' => [['type' => 'string', 'optional' => false], ['type' => 'number', 'optional' => false], false],
+    'an optional value' => [['type' => 'User', 'optional' => true], ['type' => 'string', 'optional' => false], true],
+    'an optional default' => [['type' => 'string', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'an optional value beside an untyped default' => [['type' => 'User', 'optional' => true], ['type' => 'unknown', 'optional' => false], true],
+    'an untyped value beside an optional default' => [['type' => 'unknown', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'a required value beside an untyped default' => [['type' => 'string', 'optional' => false], ['type' => 'unknown', 'optional' => false], false],
+]);
+
 // Where no two classes share a name, the union by class is the union by text.
 it('unions a value and a default of two different names as a merge by text does', function (string $method, string $type) {
     $value = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];

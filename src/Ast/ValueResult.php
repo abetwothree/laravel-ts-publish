@@ -215,6 +215,8 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
+     * The union is optional when any arm, typed or not, can be the MissingValue an API resource drops.
+     *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
@@ -235,16 +237,19 @@ final class ValueResult
         }
 
         $types = array_values(array_unique($types));
+        $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
 
         if ($types === []) {
-            return self::unknown();
+            return [...self::unknown(), 'optional' => $optional];
         }
 
         $result = self::mergeUnion($types, $branchResults);
 
         // Arms that spell one name for two classes cannot be told apart by their text, so the members are read again
         // arm by arm, one member per class.
-        return self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+        $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+
+        return [...$result, 'optional' => $optional];
     }
 
     /**
