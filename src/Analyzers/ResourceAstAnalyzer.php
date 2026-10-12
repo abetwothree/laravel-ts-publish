@@ -1001,25 +1001,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $this->scope->visitedSpreadMethods[$methodName] = true;
 
-        $previousLocalVarBindings = $this->scope->localVarBindings;
+        $previousBindings = $this->scope->nameBindings();
         $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
-        $previousVarModelBindings = $this->scope->varModelBindings;
-        $previousVarClassBindings = $this->scope->varClassBindings;
-        $previousVarGuardBindings = $this->scope->varGuardBindings;
-        $previousVarDocBindings = $this->scope->varDocBindings;
-        $previousNonNullReads = $this->scope->nonNullReads;
         $previousDeclaringFileClass = $this->scope->declaringFileClass;
-        $previousRequestVarNames = $this->scope->requestVarNames;
-        $previousBindingEnds = $this->scope->bindingEnds;
+        $proofs = $this->proofsAcrossCall($this->scope, $call);
         try {
-            $this->scope->localVarBindings = [];
-            $this->scope->bindingEnds = [];
+            $this->scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
             $this->scope->resolvingLocalVars = [];
-            $this->scope->varModelBindings = [];
-            $this->scope->varClassBindings = [];
-            $this->scope->varGuardBindings = [];
-            $this->scope->varDocBindings = [];
-            $this->scope->nonNullReads = $this->proofsAcrossCall($this->scope, $call);
+            $this->scope->nonNullReads = $proofs;
             $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
             // The spread method has its own signature: the entry method's Request params say nothing
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
@@ -1043,16 +1032,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
-            $this->scope->localVarBindings = $previousLocalVarBindings;
+            $this->scope->restoreNameBindings($previousBindings);
             $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
-            $this->scope->varModelBindings = $previousVarModelBindings;
-            $this->scope->varClassBindings = $previousVarClassBindings;
-            $this->scope->varGuardBindings = $previousVarGuardBindings;
-            $this->scope->varDocBindings = $previousVarDocBindings;
-            $this->scope->nonNullReads = $previousNonNullReads;
             $this->scope->declaringFileClass = $previousDeclaringFileClass;
-            $this->scope->requestVarNames = $previousRequestVarNames;
-            $this->scope->bindingEnds = $previousBindingEnds;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }
 

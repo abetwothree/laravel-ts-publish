@@ -43,22 +43,6 @@ final class SubjectHelperReturnResolver
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
-    /** Every name-keyed binding table, empty: a helper's body is a function scope no caller's name reaches. */
-    private const array EMPTY_NAME_BINDINGS = [
-        'closureParamExprBindings' => [],
-        'varClassBindings' => [],
-        'varGuardBindings' => [],
-        'nonNullReads' => [],
-        'varDocBindings' => [],
-        'varModelBindings' => [],
-        'varCollectionBindings' => [],
-        'varValueBindings' => [],
-        'localVarBindings' => [],
-        'requestVarNames' => [],
-        'claimedClosures' => [],
-        'bindingEnds' => [],
-    ];
-
     /**
      * The union of a `$this->m()` helper's returns, or null for any other call or body, or a union that types no wrap.
      *
@@ -98,7 +82,7 @@ final class SubjectHelperReturnResolver
 
         try {
             $scope->visitedSpreadMethods[$name] = true;
-            $scope->restoreNameBindings(self::EMPTY_NAME_BINDINGS);
+            $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
             $scope->resolvingLocalVars = [];
             // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
             $scope->closureRelationModelClass = null;

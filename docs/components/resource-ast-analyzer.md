@@ -64,13 +64,11 @@ every profile, the order handlers run in decides which one answers; see
   optional, except in a `do` body before its first `break` or `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
-  the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
-  (`localVarBindings`, `varModelBindings`, `varClassBindings`, `varGuardBindings` and `varDocBindings`) and the
-  `resolvingLocalVars` guard, and keeps only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names in
-  `nonNullReads`. It re-derives `requestVarNames` and `declaringFileClass` for the spread method, and restores all of
-  them in a `finally`. `closureParamExprBindings`, `varCollectionBindings` and `varValueBindings` stay as the caller
-  left them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis instead of
-  recursing until memory runs out.
+  the method in its class, a trait or a parent through `MethodLocator::locate()`. It sets every name-keyed table aside through
+  `AnalysisScope::nameBindings()`, keeping only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and
+  empties the `resolvingLocalVars` guard. It re-derives `requestVarNames` and `declaringFileClass`, and restores all of
+  them in a `finally`. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis
+  instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key

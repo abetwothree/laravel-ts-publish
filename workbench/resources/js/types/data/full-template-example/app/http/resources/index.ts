@@ -191,6 +191,7 @@ export * from './service-desk-resource';
 export * from './service-return-resource';
 export * from './shadowed-closure-param-resource';
 export * from './shift-resource';
+export * from './spread-helper-scope-resource';
 export * from './spread-json-base-resource';
 export * from './spread-with-closure-resource';
 export * from './spread-with-guard-clause-closure-resource';

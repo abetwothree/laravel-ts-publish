@@ -153,8 +153,7 @@ property with a wrong but plausible type, far from the writer that leaked it. Re
 you believe you wrote.
 
 Closure writers and `ClosureHandler` snapshot with `AnalysisScope::nameBindings()` and restore with
-`restoreNameBindings()`. `ResourceAstAnalyzer::analyzeThisMethodSpread()` and
-`NarrowsInstanceofSubjects::resolveNarrowed()` hand-roll their snapshots.
+`restoreNameBindings()`. `NarrowsInstanceofSubjects::resolveNarrowed()` hand-rolls its snapshot.
 `ResourceAstAnalyzer::bindForeachLoopVariables()` takes none, because a `foreach` binding is method-wide by design. The
 closure writers' snapshots restore over it, so a same-named closure parameter still resolves against its own binding, as
 `ClosureParamShadowResource` pins.

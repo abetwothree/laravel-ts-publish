@@ -4964,6 +4964,13 @@ declare global {
             next_bell: string;
             checked_at: string | null;
         }
+        /** A spread helper called inside closures whose parameter is named like a local the helper writes itself. */
+        export interface SpreadHelperScopeResource {
+            has_t?: { v: number; k: number };
+            transform_t?: { v: number };
+            loaded_t?: { v: number };
+            v: number;
+        }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
             id: number;

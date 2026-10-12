@@ -18137,6 +18137,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\SpreadHelperScopeResource": {
+            "name": "SpreadHelperScopeResource",
+            "properties": [
+                {
+                    "name": "has_t",
+                    "type": "{ v: number; k: number }",
+                    "optional": true
+                },
+                {
+                    "name": "transform_t",
+                    "type": "{ v: number }",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_t",
+                    "type": "{ v: number }",
+                    "optional": true
+                },
+                {
+                    "name": "v",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SpreadJsonBaseResource": {
             "name": "SpreadJsonBaseResource",
             "properties": [

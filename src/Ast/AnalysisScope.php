@@ -73,6 +73,22 @@ use ReflectionClass;
  */
 final class AnalysisScope
 {
+    /** Every name-keyed binding table, empty: a function scope no caller's name reaches. */
+    public const array NO_NAME_BINDINGS = [
+        'closureParamExprBindings' => [],
+        'varClassBindings' => [],
+        'varGuardBindings' => [],
+        'nonNullReads' => [],
+        'varDocBindings' => [],
+        'varModelBindings' => [],
+        'varCollectionBindings' => [],
+        'varValueBindings' => [],
+        'localVarBindings' => [],
+        'requestVarNames' => [],
+        'claimedClosures' => [],
+        'bindingEnds' => [],
+    ];
+
     /**
      * Wrapped class from an `instanceof` guard in toArray(); fallback when resolveClassOnProperty() returns null.
      *
