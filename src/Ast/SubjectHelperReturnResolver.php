@@ -79,6 +79,8 @@ final class SubjectHelperReturnResolver
         $resolvingLocalVars = $scope->resolvingLocalVars;
         $declaringFileClass = $scope->declaringFileClass;
         $relationModel = $scope->closureRelationModelClass;
+        // Read in the caller's names, before they are set aside.
+        $passed = new CallSite($call, $scope, $engine)->passedTo($method);
 
         try {
             $scope->visitedSpreadMethods[$name] = true;
@@ -87,7 +89,9 @@ final class SubjectHelperReturnResolver
             // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
             $scope->closureRelationModelClass = null;
             $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-            resolve(ParameterBinder::class)->bindDeclared($method, $stmts, $scope);
+            $binder = resolve(ParameterBinder::class);
+            $binder->bindDeclared($method, $stmts, $scope);
+            $binder->bindPassed($stmts, $passed, $scope);
             $this->collectLocalVarBindings($stmts, $scope);
             $this->endBindingsAtWrites($stmts, $scope);
 

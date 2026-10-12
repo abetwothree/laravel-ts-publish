@@ -68,7 +68,7 @@ every profile, the order handlers run in decides which one answers; see
   spread the same way. It sets every name-keyed table aside through `AnalysisScope::nameBindings()`, keeping only the
   guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, empties the `resolvingLocalVars` guard and clears
   `closureRelationModelClass`, since the helper's `$this` is the subject. It re-derives `requestVarNames` and
-  `declaringFileClass`, binds the method's parameters as
+  `declaringFileClass`, binds the method's parameters, and what the call passes them through `CallSite::passedTo()`, as
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and restores all of them
   in a `finally`. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis
   instead of recursing until memory runs out.

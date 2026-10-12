@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -125,7 +126,9 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->class->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
+            $site = new CallSite($expr, $scope, $engine);
+
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site);
         }
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
@@ -137,7 +140,7 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->class->name->toString() === 'resource'
             && $expr->name instanceof Identifier
         ) {
-            return $this->analyzeStaticMethodOnResource($expr->name->toString(), $scope);
+            return $this->analyzeStaticMethodOnResource($expr, $expr->name->toString(), $scope, $engine);
         }
 
         // `Auth::user()`/`Auth::id()`. Must precede the general StaticCall arm below, whose reflection
@@ -242,7 +245,9 @@ final class StaticCallHandler implements ExpressionHandler
         // Any other existing class — its declared return type, else the shape its literal body spells.
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
-            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName) ?? $result;
+            $site = new CallSite($call, $scope, $engine);
+
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName, $site) ?? $result;
         }
 
         return $result;
@@ -407,8 +412,9 @@ final class StaticCallHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeStaticMethodOnResource(string $methodName, AnalysisScope $scope): array
+    private function analyzeStaticMethodOnResource(StaticCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        return resolve(SubjectMethodTypeResolver::class)->resolveForwarded($scope, $methodName) ?? ValueResult::unknown();
+        return resolve(SubjectMethodTypeResolver::class)
+            ->resolveForwarded($scope, $methodName, new CallSite($call, $scope, $engine)) ?? ValueResult::unknown();
     }
 }

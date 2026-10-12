@@ -10,11 +10,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use Workbench\App\Events\PostHelperPayloadEvent;
 use Workbench\App\Http\Resources\CallableValueResource;
@@ -39,6 +43,28 @@ function parameterBinderKeyTypes(iterable $properties): array
     }
 
     return $types;
+}
+
+/**
+ * How each argument, a value and the classes it holds, binds the parameter it is passed; one that binds nothing is left
+ * out, as CallSite::passedTo() leaves it.
+ *
+ * @param  array<string, array{value: array<string, mixed>, receiver: ReceiverType|null}>  $arguments
+ * @return array<string, mixed>
+ */
+function parameterBinderPassed(array $arguments): array
+{
+    $passed = [];
+
+    foreach ($arguments as $name => ['value' => $value, 'receiver' => $receiver]) {
+        $binding = resolve(ParameterBinder::class)->passedBinding($value, $receiver);
+
+        if ($binding !== null) {
+            $passed[$name] = $binding;
+        }
+    }
+
+    return $passed;
 }
 
 /**
@@ -107,7 +133,7 @@ test('each kind of declared parameter binds as the value a call passes it', func
         'pp_tags' => 'string[]',
         'phpstan_param' => '{ pp_tags: string[] }',
         'ut_title' => 'string',
-        'untyped' => '{ ut_title: unknown }',
+        'untyped' => '{ ut_title: string }',
         'wr_name' => 'string',
         'written' => '{ wr_name: string }',
         'rq_has' => 'unknown',
@@ -246,13 +272,13 @@ test('binds what a spread call passes: one concrete model by its class, a nullab
     $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
     $nullable = ['type' => 'Post | null', 'optional' => true, 'modelFqcn' => Post::class];
 
-    resolve(ParameterBinder::class)->bindPassed([], [
+    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
         'post' => ['value' => ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class], 'receiver' => ReceiverType::of(Post::class)],
         'maybe' => ['value' => $nullable, 'receiver' => ReceiverType::of(Post::class)],
         'owner' => ['value' => ['type' => 'Post | User', 'optional' => false], 'receiver' => new ReceiverType([Post::class, User::class])],
         'title' => ['value' => ['type' => 'string', 'optional' => false], 'receiver' => null],
         'vague' => ['value' => ['type' => 'unknown', 'optional' => false], 'receiver' => null],
-    ], $scope);
+    ]), $scope);
 
     expect($scope->varModelBindings)->toBe(['post' => Post::class])
         ->and($scope->varDeclaredBindings)->toBe(['maybe' => [Post::class], 'owner' => [Post::class, User::class]])
@@ -263,19 +289,27 @@ test('binds what a spread call passes: one concrete model by its class, a nullab
         ]);
 });
 
-// A `?->` can end the argument as null, and a model no row backs yet keys as `| null`: neither binds a class.
-test('binds a passed model that may short-circuit, or that no row backs yet, by its value alone', function () {
+// A `?->` can end the argument as null, so it binds no class. A model no row backs yet keys as `| null`, which a class
+// binding drops: it binds as a `new` of its class, which the receiver resolver reads again, unless it may be another.
+test('binds a passed model that may short-circuit by its value alone, and one no row backs yet as a new model', function () {
     $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
     $post = ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class];
+    $either = ['type' => 'Post | User', 'optional' => false];
 
-    resolve(ParameterBinder::class)->bindPassed([], [
+    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
         'shortCircuits' => ['value' => $post, 'receiver' => ReceiverType::of(Post::class, shortCircuits: true)],
         'unsaved' => ['value' => $post, 'receiver' => ReceiverType::of(Post::class)->asUnsaved()],
-    ], $scope);
+        'copy' => ['value' => $either, 'receiver' => new ReceiverType([Post::class, User::class], unsaved: true)],
+    ]), $scope);
+
+    $unsaved = $scope->closureParamExprBindings['unsaved'] ?? null;
 
     expect($scope->varModelBindings)->toBe([])
         ->and($scope->varDeclaredBindings)->toBe([])
-        ->and($scope->varValueBindings)->toBe(['shortCircuits' => $post, 'unsaved' => $post]);
+        ->and(array_keys($scope->closureParamExprBindings))->toBe(['unsaved'])
+        ->and($unsaved instanceof New_ && $unsaved->class instanceof Name ? $unsaved->class->toString() : null)->toBe(Post::class)
+        ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('unsaved'), $scope)?->unsaved)->toBeTrue()
+        ->and($scope->varValueBindings)->toBe(['shortCircuits' => $post, 'unsaved' => $post, 'copy' => $either]);
 });
 
 test('binds the classes a spread call passes a parameter the body writes, but not its value', function () {
@@ -283,10 +317,10 @@ test('binds the classes a spread call passes a parameter the body writes, but no
     /** @var array<Stmt> $stmts */
     $stmts = new AstParser()->parseSource('<?php $owner = $owner->author; $title = trim($title);');
 
-    resolve(ParameterBinder::class)->bindPassed($stmts, [
+    resolve(ParameterBinder::class)->bindPassed($stmts, parameterBinderPassed([
         'owner' => ['value' => ['type' => 'Post | User', 'optional' => false], 'receiver' => new ReceiverType([Post::class, User::class])],
         'title' => ['value' => ['type' => 'string', 'optional' => false], 'receiver' => null],
-    ], $scope);
+    ]), $scope);
 
     expect($scope->varDeclaredBindings)->toBe(['owner' => [Post::class, User::class]])
         ->and($scope->varValueBindings)->toBe([]);

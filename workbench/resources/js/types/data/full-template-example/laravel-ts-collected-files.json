@@ -238,6 +238,7 @@
     "app\/Http\/Resources\/OrderOnlyResource.php",
     "app\/Http\/Resources\/OrderResource.php",
     "app\/Http\/Resources\/OrderSummaryResource.php",
+    "app\/Http\/Resources\/PassedArgumentHelpersResource.php",
     "app\/Http\/Resources\/PermissionsSpreadResource.php",
     "app\/Http\/Resources\/PostAttachmentFilterResource.php",
     "app\/Http\/Resources\/PostCollection.php",

@@ -136,6 +136,7 @@ export * from './order-item-resource';
 export * from './order-only-resource';
 export * from './order-resource';
 export * from './order-summary-resource';
+export * from './passed-argument-helpers-resource';
 export * from './permissions-spread-resource';
 export * from './post-attachment-filter-resource';
 export * from './post-collection';

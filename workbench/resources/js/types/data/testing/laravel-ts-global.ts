@@ -4278,6 +4278,13 @@ declare global {
             notes: string | null;
             search_index: unknown;
         }
+        /** Helpers whose parameters declare no type, read as values: each body reads what its call passes. */
+        export interface PassedArgumentHelpersResource {
+            row: { pk: number; title: string };
+            author_card: { name: string; email: string };
+            static_row: { static_pk: number };
+            outer: { inner: { pk: number; title: string } };
+        }
         /**
          * Every return branch of a spread method counts, and the method's own @return shape types
          * what its body cannot.

@@ -247,17 +247,17 @@ step can decline:
 ### The body fallback carries no FQCN channel
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
-body once. The shape spelled by its literal return, or by a returned variable the walk reads, replaces the
-declaration's array arms, so `PriceQuoteService::quote()`, which declares only `: array`, publishes
-`{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it too, so it publishes
-what the bare `$this->m()` does.
+body once per set of bindings its calls' arguments make. The shape spelled by its literal return, or by a returned
+variable the walk reads, replaces the declaration's array arms, so `PriceQuoteService::quote()`, which declares only
+`: array`, publishes `{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it
+too, so it publishes what the bare `$this->m()` does.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
 returns nothing, through a guard in [`AnalysisMemo`](ast-engine.md#the-run-memo-replays-what-it-recorded), so a body
-that calls itself terminates. An int key publishes quoted, as `PriceQuoteService::tierLabels()`'s
-`{ "1": string; "2": string }` shows, whatever the subject. A resource publisher then
-[re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
+that calls itself terminates, whatever each call passes. An int key publishes quoted, as
+`PriceQuoteService::tierLabels()`'s `{ "1": string; "2": string }` shows, whatever the subject. A resource publisher
+then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
 `ServiceReturnResource.tiers` publishes `string[]`.
 
 The inline type is a plain string with no FQCN channel, so a body whose shape names an enum or a model could never

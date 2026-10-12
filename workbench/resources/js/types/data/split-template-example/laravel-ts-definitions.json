@@ -15988,6 +15988,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PassedArgumentHelpersResource": {
+            "name": "PassedArgumentHelpersResource",
+            "properties": [
+                {
+                    "name": "row",
+                    "type": "{ pk: number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "author_card",
+                    "type": "{ name: string; email: string }",
+                    "optional": false
+                },
+                {
+                    "name": "static_row",
+                    "type": "{ static_pk: number }",
+                    "optional": false
+                },
+                {
+                    "name": "outer",
+                    "type": "{ inner: { pk: number; title: string } }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PermissionsSpreadResource": {
             "name": "PermissionsSpreadResource",
             "properties": [

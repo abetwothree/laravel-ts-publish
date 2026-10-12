@@ -225,9 +225,12 @@ stay as they are.
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
 says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
 outlive a write naming no class such as `$n = (string) $n`, so its local answers. The binding reads only the
-declaration, so the `analysis:` and `method-return:` keys stay valid. A spread call also binds an untyped or `mixed`
-parameter to the argument it passes, through `bindPassed()`, read before the caller's tables are set aside. A value
-read does not, since its memo is keyed per method.
+declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds
+each parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`)
+to what its argument binds, through `CallSite::passedTo()` and `bindPassed()`, read before the caller's tables are set
+aside. A value read keys its memo on what the call binds ([The run memo replays what it
+recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
+keeps `| null`.
 
 ### Narrowing
 
@@ -352,6 +355,12 @@ helper changes.
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
 import mode, gains an `@importless` suffix for an analysis that carries no imports.
+
+`analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
+suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that
+bind alike share one answer, and a call that binds nothing keeps the plain key. The arguments are read in the caller's
+scope before the callee's frame opens, so what they record is the caller's. The `method-body:` cycle guard stays per
+method, so a recursion that passes a new value each time stops at its first repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
 records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have

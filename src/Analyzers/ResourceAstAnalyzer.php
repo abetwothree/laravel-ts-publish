@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -55,6 +56,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
@@ -84,7 +86,7 @@ use ReflectionNamedType;
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
- * @phpstan-import-type PassedArgument from ParameterBinder
+ * @phpstan-import-type PassedBinding from ParameterBinder
  *
  * @internal
  */
@@ -132,6 +134,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
+     * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -141,6 +144,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         ?AnalysisScope $scope = null,
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
+        private readonly array $passed = [],
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -324,7 +328,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // A scope AstEngine::bindingsFor() seeded already holds the parameters it binds.
         if ($this->ownsScope && $this->scope->subjectReflection->hasMethod($this->methodName)) {
             $method = $this->scope->subjectReflection->getMethod($this->methodName);
-            resolve(ParameterBinder::class)->bindDeclared($method, $toArrayMethod->stmts, $this->scope);
+            $binder = resolve(ParameterBinder::class);
+            $binder->bindDeclared($method, $toArrayMethod->stmts, $this->scope);
+            $binder->bindPassed($toArrayMethod->stmts, $this->passed, $this->scope);
         }
 
         $this->seedVarBindings($toArrayMethod->stmts);
@@ -1091,7 +1097,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $proofs = $this->proofsAcrossCall($this->scope, $call);
         try {
             // Read in the caller's tables, before they are set aside.
-            $passed = $this->passedToUntypedParameters($method, $call);
+            $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
             $this->scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
             $this->scope->resolvingLocalVars = [];
             $this->scope->nonNullReads = $proofs;
@@ -1137,47 +1143,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
-    }
-
-    /**
-     * The value a spread call passes each parameter that declares no type or `mixed`, read in the caller's bindings;
-     * a variadic parameter, and an unpacked or first-class call, pass nothing here.
-     *
-     * @return array<string, PassedArgument>
-     */
-    private function passedToUntypedParameters(ReflectionMethod $method, ?Expr $call): array
-    {
-        if ((! $call instanceof MethodCall && ! $call instanceof FuncCall && ! $call instanceof StaticCall)
-            || $call->isFirstClassCallable()
-        ) {
-            return [];
-        }
-
-        $arguments = null;
-        $passed = [];
-
-        foreach ($method->getParameters() as $parameter) {
-            if ($parameter->isVariadic() || ($parameter->hasType() && (string) $parameter->getType() !== 'mixed')) {
-                continue;
-            }
-
-            $arguments ??= CallArguments::for($call, $method);
-
-            if ($arguments->hasUnpack()) {
-                return [];
-            }
-
-            $argument = $arguments->named($parameter->getName());
-
-            if ($argument !== null) {
-                $passed[$parameter->getName()] = [
-                    'value' => $this->analyzeValueExpression($argument->value),
-                    'receiver' => resolve(ReceiverClassResolver::class)->resolve($argument->value, $this->scope),
-                ];
-            }
-        }
-
-        return $passed;
     }
 
     /**

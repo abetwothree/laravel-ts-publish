@@ -10,6 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt;
 use ReflectionClass;
 use ReflectionMethod;
@@ -20,8 +22,8 @@ use ReflectionUnionType;
 
 /**
  * Binds the parameters of a method whose body is read apart from its call, such as a subject's helper: by the types
- * they declare, which every call passes, so one reading holds for all of them and the `class@method` memos stay valid;
- * and, for a spread call read in place, an untyped parameter by the argument that call passes.
+ * they declare, which every call passes, so one reading holds for all of them; and each parameter whose declaration
+ * binds nothing by what the call's argument binds, which a value read's memos key on (CallSite::signature()).
  *
  * A body write that replaces a parameter ends its class binding there: the caller runs endBindingsAtWrites() once the
  * body's locals are seeded. A written parameter binds no value, since a value binding outlives a write naming no class,
@@ -29,7 +31,12 @@ use ReflectionUnionType;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type PassedArgument = array{value: ValueExpressionResult, receiver: ReceiverType|null}
+ * @phpstan-type PassedBinding = array{
+ *     model: class-string<Model>|null,
+ *     classes: non-empty-list<class-string>|null,
+ *     value: ValueExpressionResult|null,
+ *     unsaved: bool,
+ * }
  *
  * @internal
  */
@@ -92,41 +99,93 @@ final class ParameterBinder
     }
 
     /**
-     * Bind each parameter the scope leaves unbound to what its call passes: one concrete model the argument holds,
-     * never null, in varModelBindings, other classes in varDeclaredBindings, and its value.
+     * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, other classes
+     * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
      *
-     * A model no row may back yet binds only by value: a class binding would drop the `null` its key can hold.
+     * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark.
      *
      * @param  array<Stmt>  $stmts  the method's body
-     * @param  array<string, PassedArgument>  $passed  each parameter's argument, read where the call is written
+     * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $stmts, array $passed, AnalysisScope $scope): void
     {
         $written = $passed === [] ? [] : $this->collectWrittenVariableNames($stmts, $scope);
 
-        foreach ($passed as $name => ['value' => $value, 'receiver' => $receiver]) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved]) {
             if ($scope->bindsName($name)) {
                 continue;
             }
 
-            $classes = $receiver === null || $receiver->shortCircuits || $receiver->unsaved ? null : $receiver->classes;
-            $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
-
-            // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
-            if ($model !== null && ! ValueResult::hasNullArm($value['type'])) {
+            if ($model !== null) {
                 $scope->varModelBindings[$name] = $model;
 
                 continue;
             }
 
-            if ($classes !== null) {
+            if ($classes !== null && $unsaved) {
+                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
+            } elseif ($classes !== null) {
                 $scope->varDeclaredBindings[$name] = $classes;
             }
 
-            if ($value['type'] !== 'unknown' && ! in_array($name, $written, true)) {
-                $scope->varValueBindings[$name] = [...$value, 'optional' => false];
+            if ($value !== null && ! in_array($name, $written, true)) {
+                $scope->varValueBindings[$name] = $value;
             }
         }
+    }
+
+    /**
+     * How an argument binds the parameter it is passed: the one concrete model it holds, never null, by its class;
+     * other classes and its value otherwise; null when it binds nothing. A `?->` can end it as null: no class binds.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return PassedBinding|null
+     */
+    public function passedBinding(array $value, ?ReceiverType $receiver): ?array
+    {
+        $held = $receiver === null || $receiver->shortCircuits ? null : $receiver;
+        $unsaved = $held !== null && $held->unsaved && $held->models() !== [];
+        // Only a `new` of one class carries a model's unsaved mark into the body: a copy that may be more binds none.
+        $classes = $held === null || ($unsaved && count($held->classes) !== 1) ? null : $held->classes;
+        $unsaved = $unsaved && $classes !== null;
+        $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+
+        // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
+        if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
+            return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false];
+        }
+
+        $value = $value['type'] === 'unknown' ? null : [...$value, 'optional' => false];
+
+        return $classes === null && $value === null
+            ? null
+            : ['model' => null, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved];
+    }
+
+    /**
+     * Whether any parameter of a method takes the value its call passes, so a read of its body depends on the call.
+     */
+    public function takesPassedValues(ReflectionMethod $method): bool
+    {
+        return array_any(
+            $method->getParameters(),
+            fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method),
+        );
+    }
+
+    /**
+     * Whether a parameter's declaration binds nothing, so only the value its call passes can: no class, no type precise
+     * enough to publish, natively or by `@param`. A variadic parameter collects its arguments, never holding one.
+     */
+    public function takesPassedValue(ReflectionParameter $parameter, ReflectionMethod $method): bool
+    {
+        return ! $parameter->isVariadic()
+            && $this->nativeClasses($parameter->getType()) === null
+            && $this->declaredValue(
+                $parameter,
+                (string) $method->getDocComment(),
+                LaravelTsPublish::methodDeclaringFileClass($method),
+            ) === null;
     }
 
     /**

@@ -31,13 +31,15 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor;
 use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * A method's return type: the declaration first, then, when that is too vague to publish, the shape its literal body
- * spells in place of the declaration's array arm, beside every other arm it names. Memoized per `class@method` for the
- * run; the rules are in docs/components/receiver-types.md § Following a method's return type.
+ * spells in place of the declaration's array arm, beside every other arm it names. Memoized per `class@method` and what
+ * the call binds; the rules are in docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type PassedBinding from ParameterBinder
  *
  * @phpstan-type OwnReturn = array{Return_, bool}
  *
@@ -48,21 +50,26 @@ final class MethodReturnTypeResolver
     use BuildsInlineObjectTypes;
 
     /**
-     * Reflect a method's return type, else analyze its body once; declines one naming a model with no published file.
+     * Reflect a method's return type, else analyze its body once per set of bindings its calls' arguments make;
+     * declines one naming a model with no published file.
      *
      * @param  class-string  $class
+     * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
      * @return ValueExpressionResult|null
      */
-    public function resolve(string $class, string $methodName): ?array
+    public function resolve(string $class, string $methodName, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName)) {
             return null;
         }
 
+        // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
+        $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
+
         return resolve(AnalysisMemo::class)->remember(
-            'method-return:'.$class.'@'.$methodName,
-            function () use ($class, $methodName): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName);
+            'method-return:'.$class.'@'.$methodName.CallSite::signature($passed),
+            function () use ($class, $methodName, $passed): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -70,12 +77,37 @@ final class MethodReturnTypeResolver
     }
 
     /**
+     * What a call passes a method whose body would be read; nothing where the declaration answers without the body.
+     *
+     * @param  class-string  $class
+     * @return array<string, PassedBinding>
+     */
+    private function passedToBody(string $class, string $methodName, CallSite $site): array
+    {
+        if (! $site->passesArguments()) {
+            return [];
+        }
+
+        $method = new ReflectionMethod($class, $methodName);
+
+        if (! resolve(ParameterBinder::class)->takesPassedValues($method)) {
+            return [];
+        }
+
+        $reflected = resolve(ReflectedTypeAcceptor::class)
+            ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
+
+        return $reflected !== null && ! TsTypeString::isVagueTsType($reflected['type']) ? [] : $site->passedTo($method);
+    }
+
+    /**
      * The reflected return type when it is precise, else the body's shape beside the declaration's other arms.
      *
      * @param  class-string  $class
+     * @param  array<string, PassedBinding>  $passed
      * @return ValueExpressionResult|null
      */
-    private function reflectOrReadBody(string $class, string $methodName): ?array
+    private function reflectOrReadBody(string $class, string $methodName, array $passed): ?array
     {
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
@@ -84,18 +116,22 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected) ?? $reflected;
+        return $this->bodyType($class, $methodName, $reflected, $passed) ?? $reflected;
     }
 
     /**
      * The inline object a method's literal return body spells, beside every non-array arm its declaration names; null
      * when a return the shape does not describe is left over, or the shape spells nothing importable.
      *
+     * The cycle guard stays per method, whatever the call passes, so a recursion passing a new value each time still
+     * stops at its first repeat.
+     *
      * @param  class-string  $class
      * @param  ValueExpressionResult|null  $reflected
+     * @param  array<string, PassedBinding>  $passed
      * @return ValueExpressionResult|null
      */
-    private function bodyType(string $class, string $methodName, ?array $reflected): ?array
+    private function bodyType(string $class, string $methodName, ?array $reflected, array $passed): ?array
     {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -118,6 +154,7 @@ final class MethodReturnTypeResolver
                 $methodName,
                 is_a($class, Model::class, true) ? $class : null,
                 carriesImports: false,
+                passed: $passed,
             );
         } finally {
             $memo->leave($key);

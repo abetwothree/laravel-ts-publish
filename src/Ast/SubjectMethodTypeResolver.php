@@ -26,19 +26,22 @@ final class SubjectMethodTypeResolver
     use InspectsResourceSubject;
 
     /**
+     * Resolve a subject method call by its declaration, else its body read with what the call passes.
+     *
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null null when nothing in scope declares the method, or declares it
      *                                    with a return type the acceptor rejects, so the handler
      *                                    declines and dispatch reaches the next claimant
      */
-    public function resolve(AnalysisScope $scope, string $methodName): ?array
+    public function resolve(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
     {
-        $own = $this->resolveOn($scope->subjectReflection, $methodName);
+        $own = $this->resolveOn($scope->subjectReflection, $methodName, $site);
 
         if ($own !== null) {
             return $own;
         }
 
-        return $this->resolveForwarded($scope, $methodName);
+        return $this->resolveForwarded($scope, $methodName, $site);
     }
 
     /**
@@ -46,9 +49,10 @@ final class SubjectMethodTypeResolver
      * wrapped class declares the method but cannot type it. A bare `$this->m()`, `$this::m()`,
      * `$this->resource::m()` and `$this->resource->m()` all read this.
      *
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null
      */
-    public function resolveForwarded(AnalysisScope $scope, string $methodName): ?array
+    public function resolveForwarded(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
     {
         $wrappedClass = $this->resolveWrappedClass($scope);
 
@@ -57,7 +61,7 @@ final class SubjectMethodTypeResolver
                 continue;
             }
 
-            $accepted = $this->forwardedOn($class, $methodName, $scope);
+            $accepted = $this->forwardedOn($class, $methodName, $scope, $site);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -72,9 +76,10 @@ final class SubjectMethodTypeResolver
      * declaration-then-body read. A non-public method declines, as PHP sends it to `__call`.
      *
      * @param  class-string  $class
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null
      */
-    public function forwardedOn(string $class, string $methodName, AnalysisScope $scope): ?array
+    public function forwardedOn(string $class, string $methodName, AnalysisScope $scope, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName) || ! new ReflectionMethod($class, $methodName)->isPublic()) {
             return null;
@@ -84,7 +89,7 @@ final class SubjectMethodTypeResolver
 
         return $receiverRules->typesModelMethod($class, $methodName)
             ? $receiverRules->resolve(ReceiverType::of($class), $methodName, $scope)
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
     }
 
     /**
@@ -93,9 +98,10 @@ final class SubjectMethodTypeResolver
      * `$this->service->method()` — reflects it by exactly the same rules.
      *
      * @param  ReflectionClass<object>  $reflection
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null
      */
-    public function resolveOn(ReflectionClass $reflection, string $methodName): ?array
+    public function resolveOn(ReflectionClass $reflection, string $methodName, ?CallSite $site = null): ?array
     {
         if (! $reflection->hasMethod($methodName)) {
             return null;
@@ -104,6 +110,6 @@ final class SubjectMethodTypeResolver
         /** @var class-string $class */
         $class = $reflection->getName();
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
     }
 }

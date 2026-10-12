@@ -25,6 +25,7 @@ use ReflectionProperty;
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type PassedBinding from ParameterBinder
  */
 final class AstEngine
 {
@@ -39,6 +40,7 @@ final class AstEngine
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
      * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
+     * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      *
      * @internal
      */
@@ -47,6 +49,7 @@ final class AstEngine
         string $method = 'toArray',
         ?string $modelClass = null,
         bool $carriesImports = true,
+        array $passed = [],
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -54,11 +57,12 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
+            .CallSite::signature($passed);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed),
         );
 
         return clone $analysis;
@@ -225,6 +229,7 @@ final class AstEngine
      *
      * @param  ReflectionClass<object>  $reflection
      * @param  class-string<Model>|null  $modelClass
+     * @param  array<string, PassedBinding>  $passed
      */
     private function analyzeOnce(
         ReflectionClass $reflection,
@@ -232,6 +237,7 @@ final class AstEngine
         ?string $modelClass,
         bool $carriesImports,
         string $key,
+        array $passed,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -242,7 +248,9 @@ final class AstEngine
         }
 
         try {
-            return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
+            $analyzer = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports, passed: $passed);
+
+            return $analyzer->analyze();
         } finally {
             $memo->leave($key);
         }

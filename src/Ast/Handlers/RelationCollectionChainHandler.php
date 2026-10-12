@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -82,7 +83,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         // `$this->resource->m()` runs what a bare `$this->m()` forwards to, so both publish alike, a vague answer too.
         if ($expr instanceof MethodCall && $this->isResourceFetch($expr->var) && $expr->name instanceof Identifier) {
-            return $this->forwardedMethodReturn($expr->name->toString(), $scope);
+            return $this->forwardedMethodReturn($expr, $expr->name->toString(), $scope, $engine);
         }
 
         // Any other `$this->prop->m()` types from the class the property holds, never the scope's model: here only on a
@@ -104,7 +105,9 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString())
+            $site = new CallSite($expr, $scope, $engine);
+
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site)
                 ?? resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn($expr, $scope, $engine);
         }
 
@@ -318,9 +321,10 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function forwardedMethodReturn(string $methodName, AnalysisScope $scope): ?array
+    private function forwardedMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        return resolve(SubjectMethodTypeResolver::class)->resolveForwarded($scope, $methodName);
+        return resolve(SubjectMethodTypeResolver::class)
+            ->resolveForwarded($scope, $methodName, new CallSite($call, $scope, $engine));
     }
 
     /**

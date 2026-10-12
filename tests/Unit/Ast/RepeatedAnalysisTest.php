@@ -18,6 +18,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedPostSummary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostDigestResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowDigestResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowFormatter;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryDetail;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryResource;
 use Workbench\App\Http\Resources\MutualSpreadAResource;
@@ -146,6 +149,42 @@ test('a reused body analysis still records every file it read as a cache depende
 
     expect(array_column($properties, 'type', 'name'))->toBe(['summary' => '{ detail: { views: number } }'])
         ->and($paths)->toContain((new ReflectionClass(PostSummaryDetail::class))->getFileName());
+});
+
+test('an untyped helper body is analyzed once per binding its calls pass, a typed one once in all', function () use ($countLookups) {
+    $lookups = $countLookups();
+
+    $properties = resolve(AstEngine::class)->analyzeMethod(PostRowResource::class)->properties;
+
+    expect(array_column($properties, 'type', 'name'))->toBe([
+        'first' => '{ title: string }',
+        'again' => '{ title: string }',
+        'author' => '{ title: unknown }',
+        'typed' => '{ key: unknown }',
+        'typed_author' => '{ key: unknown }',
+    ])
+        ->and($lookups['own:'.PostRowFormatter::class.'::row'] ?? 0)->toBe(2)
+        ->and($lookups['own:'.PostRowFormatter::class.'::typed'] ?? 0)->toBe(1);
+});
+
+test('an answer reused for a call that binds the same still records every file it read', function () use ($countLookups) {
+    DependencyRecorder::start();
+    resolve(AstEngine::class)->analyzeMethod(PostRowResource::class);
+    DependencyRecorder::stop();
+    $lookups = $countLookups();
+
+    DependencyRecorder::start();
+
+    try {
+        $properties = resolve(AstEngine::class)->analyzeMethod(PostRowDigestResource::class)->properties;
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect(array_column($properties, 'type', 'name'))->toBe(['row' => '{ title: string }'])
+        ->and($lookups['own:'.PostRowFormatter::class.'::row'] ?? 0)->toBe(0)
+        ->and($paths)->toContain((new ReflectionClass(PostRowFormatter::class))->getFileName());
 });
 
 test('an analysis reused at the top of a chain counts the union arms it dropped again', function () use ($countLookups) {
