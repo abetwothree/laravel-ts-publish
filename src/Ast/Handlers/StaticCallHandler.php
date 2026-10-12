@@ -18,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -405,34 +404,10 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
      *
-     * Each answer is accepted only when its tokens can be imported; see MethodReturnTypeResolver::resolve().
-     *
      * @return ValueExpressionResult
      */
     private function analyzeStaticMethodOnResource(string $methodName, AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
-        $wrappedClass = $this->resolveWrappedClass($scope);
-
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
-            /** @var class-string $wrappedClass */
-            $accepted = resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($wrappedClass, $methodName, $scope);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
-            /** @var class-string $modelClass */
-            $modelClass = $scope->modelClass;
-            $accepted = resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($modelClass, $methodName, $scope);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        return $result;
+        return resolve(SubjectMethodTypeResolver::class)->resolveForwarded($scope, $methodName) ?? ValueResult::unknown();
     }
 }

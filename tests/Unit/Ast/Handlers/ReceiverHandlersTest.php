@@ -40,6 +40,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClosureNamesakePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HeldReceiversCommentResource;
@@ -1277,4 +1279,28 @@ describe('$this->resource->m() publishes what the bare $this->m() does', functio
         expect($props['summary_via_resource'])->toBe($props['summary'])
             ->and($props['summary'])->toStartWith('{ id: number;');
     });
+});
+
+describe('a forwarded model method reads the same in every spelling', function () {
+    $spellings = ['$this->%s()', '$this::%s()', '$this->resource::%s()', '$this->resource->%s()'];
+
+    test('the wrapped class answers when it declares the method, else the model does', function (string $method, string $type) use ($spellings) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
+
+        foreach ($spellings as $spelling) {
+            expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe($type);
+        }
+    })->with([
+        ['onBoth', 'number'],
+        ['onWrapped', 'boolean'],
+        ['onModel', 'string'],
+    ]);
+
+    test('a protected method declines, as PHP sends it to __call', function (string $method) use ($spellings) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
+
+        foreach ($spellings as $spelling) {
+            expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe('unknown');
+        }
+    })->with(['guarded', 'hiddenOnWrapped']);
 });

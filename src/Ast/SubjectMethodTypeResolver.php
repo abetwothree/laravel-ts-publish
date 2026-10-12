@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
  * Resolve a generic `$this->method()`/`$this::method()` call by reflecting its declared return
@@ -37,22 +38,26 @@ final class SubjectMethodTypeResolver
             return $own;
         }
 
+        return $this->resolveForwarded($scope, $methodName);
+    }
+
+    /**
+     * What a call forwarded to the wrapped class, else the backing model, returns; the model answers when the
+     * wrapped class declares the method but cannot type it. A bare `$this->m()`, `$this::m()`,
+     * `$this->resource::m()` and `$this->resource->m()` all read this.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveForwarded(AnalysisScope $scope, string $methodName): ?array
+    {
         $wrappedClass = $this->resolveWrappedClass($scope);
-        $forwarded = resolve(ReceiverMethodReturnResolver::class);
 
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
-            /** @var class-string $wrappedClass */
-            $accepted = $forwarded->forwardedReturn($wrappedClass, $methodName, $scope);
-
-            if ($accepted !== null) {
-                return $accepted;
+        foreach ([$wrappedClass, $scope->modelClass] as $class) {
+            if ($class === null) {
+                continue;
             }
-        }
 
-        if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
-            /** @var class-string $modelClass */
-            $modelClass = $scope->modelClass;
-            $accepted = $forwarded->forwardedReturn($modelClass, $methodName, $scope);
+            $accepted = $this->forwardedOn($class, $methodName, $scope);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -60,6 +65,26 @@ final class SubjectMethodTypeResolver
         }
 
         return null;
+    }
+
+    /**
+     * What a call forwarded to one class returns: the rules' answer for a model method they type, else the
+     * declaration-then-body read. A non-public method declines, as PHP sends it to `__call`.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    public function forwardedOn(string $class, string $methodName, AnalysisScope $scope): ?array
+    {
+        if (! method_exists($class, $methodName) || ! new ReflectionMethod($class, $methodName)->isPublic()) {
+            return null;
+        }
+
+        $receiverRules = resolve(ReceiverMethodReturnResolver::class);
+
+        return $receiverRules->typesModelMethod($class, $methodName)
+            ? $receiverRules->resolve(ReceiverType::of($class), $methodName, $scope)
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
     }
 
     /**

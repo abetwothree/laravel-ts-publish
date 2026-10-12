@@ -314,21 +314,13 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     }
 
     /**
-     * What `$this->resource->m()` returns: the wrapped class's declaration when it has one, else the model's, through
-     * the read ReceiverMethodReturnResolver::forwardedReturn() gives, as the bare call does.
+     * What `$this->resource->m()` returns: the read SubjectMethodTypeResolver::resolveForwarded() gives the bare call.
      *
      * @return ValueExpressionResult|null
      */
     private function forwardedMethodReturn(string $methodName, AnalysisScope $scope): ?array
     {
-        $wrappedClass = $this->resolveWrappedClass($scope);
-        $class = $wrappedClass !== null && method_exists($wrappedClass, $methodName) ? $wrappedClass : $scope->modelClass;
-
-        if ($class === null || ! method_exists($class, $methodName) || ! new ReflectionMethod($class, $methodName)->isPublic()) {
-            return null;
-        }
-
-        return resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($class, $methodName, $scope);
+        return resolve(SubjectMethodTypeResolver::class)->resolveForwarded($scope, $methodName);
     }
 
     /**
@@ -376,7 +368,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return null;
         }
 
-        return resolve(SubjectMethodTypeResolver::class)->resolveOn(new ReflectionClass($propertyClass), $methodName);
+        return resolve(SubjectMethodTypeResolver::class)->forwardedOn($propertyClass, $methodName, $scope);
     }
 
     /**

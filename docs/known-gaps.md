@@ -603,4 +603,5 @@ into it ([AGENTS.md § Git](../AGENTS.md#git)). [Performance gate](./testing/per
 
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 
-The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number.
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent call
+such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null.

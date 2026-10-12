@@ -74,6 +74,10 @@ final class ReceiverMethodReturnResolver
     ): ?array {
         $results = [];
 
+        if ($receiver->elementModel !== null) {
+            DependencyRecorder::recordClass($receiver->elementModel);
+        }
+
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
@@ -111,20 +115,6 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * What a call forwarded to a class returns: the rules' answer for a model method they type, else the
-     * declaration-then-body read, a vague answer included. A bare `$this->m()`, `$this::m()` and the proxy read this.
-     *
-     * @param  class-string  $class
-     * @return ValueExpressionResult|null
-     */
-    public function forwardedReturn(string $class, string $methodName, AnalysisScope $scope): ?array
-    {
-        return $this->typesModelMethod($class, $methodName)
-            ? $this->resolve(ReceiverType::of($class), $methodName, $scope)
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
-    }
-
-    /**
      * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
      *
      * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
@@ -133,6 +123,8 @@ final class ReceiverMethodReturnResolver
      */
     public function typesModelMethod(string $class, string $methodName): bool
     {
+        DependencyRecorder::recordClass($class);
+
         return ($methodName === 'toArray' || isset(self::MODEL_ARRAY_RETURNS[$methodName])) && $this->runsModelMethod($class, $methodName);
     }
 
