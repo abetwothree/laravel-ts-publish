@@ -123,6 +123,18 @@ final class ReceiverMethodReturnResolver
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($keyType)];
         }
 
+        // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
+        if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
+            return $this->attributeRecordResult(nullable: false);
+        }
+
+        // A relation's collection is keyed 0..n-1, so it lists what each model's own toArray() writes.
+        if ($methodName === 'toArray' && $receiver->elementModel !== null) {
+            $element = $this->runsModelMethod($receiver->elementModel, $methodName) ? 'Record<string, unknown>' : 'unknown';
+
+            return [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($element)];
+        }
+
         if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
             return null;
         }

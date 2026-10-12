@@ -162,13 +162,19 @@ Earlier claimants of these node classes decline a call they cannot type, as
 [AST engine § A handler declines what it cannot type][declines] requires, so this handler gets to answer.
 [The honest ordering inventory][inventory] records the declines that settle each pair.
 
+`RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`, where it reads the
+wrapped class, else the model, through `MethodReturnTypeResolver::resolve()`; on a date-cast column; or on a model-less
+subject's own typed property. A model's `toArray()`, and a filter on a model the subject holds, are left to the receiver
+rules. Every other `$this->prop->m()` is this handler's, inside a relation's closure too, so `$this->checks->toArray()`
+reads `PublishChecks`, never the resource's model.
+
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks four convention rules on each class before
+`ReceiverMethodReturnResolver` checks five convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all four loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
-`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()` to the list `unknown[]`, and
-`resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it names:
+Laravel declares all five loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
+`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()` and `Model::toArray()` to the
+list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -180,6 +186,9 @@ Laravel declares all four loosely. `Model::getKey()` returns `mixed`, `Collectio
   types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,
   wrapped first when it is a union: `(number | string)[]`.
+- **`toArray()`**: on a concrete model that inherits `Model::toArray()`, `Record<string, unknown>`, since its keys hang
+  on the relations loaded at runtime. On an `Eloquent\Collection` with `elementModel` set, `Record<string, unknown>[]`,
+  or `unknown[]` when the element model overrides `toArray()`.
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
@@ -207,8 +216,8 @@ step can decline:
 
 1. The method must exist. On a receiver other than `self::`, `static::` or `parent::`, it must be public, by the
    [visibility](#visibility) rule.
-2. `Model::toArray()` declines. Its output depends on which relations are loaded, and no declaration describes that
-   runtime state. See [known gaps][gap-to-array].
+2. A model's `toArray()` that no rule answers, an override or an abstract model's, declines. Its output depends on which
+   relations are loaded, and no declaration describes that runtime state. See [known gaps][gap-to-array].
 3. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,
    the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so `Model::fresh()` on a
    `User` is `User | null`.
@@ -218,16 +227,17 @@ step can decline:
    JSON object.
 6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
    `Illuminate\`, or an abstract one, declines, so `User::resolveChildRouteBinding()`'s `Model | null` does too.
-   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the four
-   direct reflections in three classes (`RelationCollectionChainHandler`, `MethodChainHandler`,
-   `ResolvesRelatedModelTypes`) apply it themselves, so here it still guards step 3.
+   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the two
+   direct reflections, in `MethodChainHandler` and `ResolvesRelatedModelTypes`, apply it themselves, so here it still
+   guards step 3.
 
 ### The body fallback carries no FQCN channel
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
 body once. The shape spelled by its literal return, or by a returned variable the walk reads, replaces the
 declaration's array arms, so `PriceQuoteService::quote()`, which declares only `: array`, publishes
-`{ unit: string; minimum: number; discounted: { unit: string } }`.
+`{ unit: string; minimum: number; discounted: { unit: string } }`. `$this->resource->m()` reads it too, so it publishes
+what the bare `$this->m()` does.
 
 The resolver's docblocks carry the bounds. The shape replaces only the array arms, so `?array` gives `{…} | null`, and a
 return the analysis does not read must be a literal a declared arm covers. A `class@method` already under analysis
@@ -320,7 +330,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverType`]: ../../src/Ast/ReceiverType.php
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type
-[gap-to-array]: ../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately
+[gap-to-array]: ../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately
 [inventory]: ast-engine.md#the-honest-ordering-inventory
 [queue-contract]: import-name-registry.md#rewriting-aliased-type-references
 [reader-no-import]: accessor-body-analyzer.md#a-reader-that-carries-no-import

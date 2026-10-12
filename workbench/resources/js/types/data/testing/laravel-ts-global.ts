@@ -3031,6 +3031,7 @@ declare global {
         export interface CommentRelationFiltersResource {
             id: number;
             summary: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
+            summary_via_resource: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
             picks: { id: number; author: Pick<workbench.app.models.User, 'id' | 'name'>; author_role: Pick<workbench.app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: workbench.app.models.Comment[]; kept_replies: workbench.app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
             picks_summary: { id: number; picks: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] } };
         }
@@ -4448,6 +4449,10 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            blockers: { message: string; route?: string }[];
+            checks_count: string;
+            loaded_checks_count?: string;
+            loaded_checks_label?: string;
         }
         /**
          * Wraps the post's enums in an EnumResource reached through a local, a helper on the resource and a method that returns

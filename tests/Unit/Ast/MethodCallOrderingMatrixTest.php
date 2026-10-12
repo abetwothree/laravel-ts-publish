@@ -102,6 +102,10 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
         // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
         new MethodCall($this_, 'getKey'),
+        // The proxy spelling RelationCollectionChainHandler keeps, a call on a relation it hands on, and a plain chain.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'getMorphClass'),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'commentsCount'),
+        new MethodCall(new PropertyFetch($this_, 'replies'), 'take', [new Arg(new Int_(5))]),
         // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a
         // collect() root, and concat() of the receiver's own relation.
         new MethodCall(new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'map', [

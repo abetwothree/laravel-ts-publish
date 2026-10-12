@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AppliesKnownMethodRules;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -17,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
@@ -39,8 +39,8 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Non-nullsafe method calls on `$this`: collection chains rooted at a many-relation, calls on a
- * wrapped `$this->prop` receiver, and the generic `$this->method()` return-type reflection.
+ * Non-nullsafe method calls on `$this`: collection chains rooted at a many-relation, a call through the
+ * `$this->resource` proxy, on a date-cast column or on a model-less subject's own property, and the bare `$this->m()`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -49,7 +49,6 @@ use ReflectionMethod;
 final class RelationCollectionChainHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
-    use AppliesKnownMethodRules;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
@@ -73,8 +72,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         // Collection chains rooted at `$this->{manyRelation}` (e.g. `->take(5)->map(...)->values()`).
-        // Must precede the `$this->anyProp->method()` branch below: a 1-deep `$this->items->count()`
-        // matches both, and this returns null for it so knownMethodRule()'s count()/exists() rule wins.
         if ($expr instanceof MethodCall) {
             $chainResult = $this->analyzeRelationCollectionChain($expr, $scope, $engine);
 
@@ -83,21 +80,21 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             }
         }
 
-        // $this->anyProp->method() — e.g. $this->resource->extensions() on a backed enum or model
+        // `$this->resource->m()` runs what a bare `$this->m()` forwards to, so both publish alike, a vague answer too.
+        if ($expr instanceof MethodCall && $this->isResourceFetch($expr->var) && $expr->name instanceof Identifier) {
+            return $this->forwardedMethodReturn($expr->name->toString(), $scope);
+        }
+
+        // Any other `$this->prop->m()` types from the class the property holds, never the scope's model: here only on a
+        // date-cast column or a model-less subject's own property, and otherwise in ReceiverMethodCallHandler.
         if ($expr instanceof MethodCall
+            && $expr->var instanceof PropertyFetch
             && $this->isThisPropertyFetch($expr->var)
+            && $expr->var->name instanceof Identifier
             && $expr->name instanceof Identifier
         ) {
-            $info = $this->analyzeWrappedResourceMethodCall($expr, $scope);
-
-            /** @var class-string<Model>|null $closureModelClass */
-            $closureModelClass = $scope->closureRelationModelClass;
-
-            if ($info['type'] === 'unknown' && $closureModelClass !== null) {
-                $info = $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
-            }
-
-            return $info['type'] === 'unknown' ? null : $info;
+            return $this->heldPropertyMethodReturn($expr->var->name->toString(), $expr->name->toString(), $scope)
+                ?? $this->subjectPropertyMethodReturn($expr, $expr->name->toString(), $scope);
         }
 
         // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
@@ -118,7 +115,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      * Analyze a method-call chain on `$this->{manyRelation}` of identity-preserving ops plus at most
      * one `map()`/`pluck()`, or an argless `first()`/`last()`.
      *
-     * Anything else returns null and falls through — e.g. `$this->items->count()` still reaches knownMethodRule().
+     * Anything else returns null and falls through — e.g. `$this->items->count()` reaches the count() rule.
      *
      * @return ValueExpressionResult|null
      */
@@ -317,96 +314,72 @@ final class RelationCollectionChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->anyProp->method()` by resolving the method on the wrapped class.
+     * What `$this->resource->m()` returns: the wrapped class's declaration when it has one, else the model's, through
+     * the declaration-then-body read. A model's toArray() is left to the receiver rules.
      *
-     * @return ValueExpressionResult
+     * @return ValueExpressionResult|null
      */
-    private function analyzeWrappedResourceMethodCall(MethodCall $expr, AnalysisScope $scope): array
+    private function forwardedMethodReturn(string $methodName, AnalysisScope $scope): ?array
     {
-        $result = ValueResult::unknown();
-        $methodName = $expr->name instanceof Identifier ? $expr->name->toString() : null;
-
-        if ($methodName === null) {
-            return $result; // @codeCoverageIgnore
-        }
-
         $wrappedClass = $this->resolveWrappedClass($scope);
+        $class = $wrappedClass !== null && method_exists($wrappedClass, $methodName) ? $wrappedClass : $scope->modelClass;
 
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
-            /** @var class-string $wrappedClass */
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($wrappedClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
-
-            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
-                return $accepted;
-            }
-        } elseif ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
-            // @mixin-style resources: `$this->resource->commentsCount()` lives on the model.
-            /** @var class-string $modelClass */
-            $modelClass = $scope->modelClass;
-            $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($modelClass), $methodName);
-            $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
-
-            if ($accepted !== null && ValueResult::namesOnlyPublishedModels($accepted)) {
-                return $accepted;
-            }
+        if ($class === null
+            || ! method_exists($class, $methodName)
+            || ! new ReflectionMethod($class, $methodName)->isPublic()
+            || ($methodName === 'toArray' && is_a($class, Model::class, true))
+        ) {
+            return null;
         }
 
-        // On a date-cast receiver (e.g. `created_at`) the method is a Carbon instance method reached
-        // through the cast, not declared on the model — reflect it on Carbon/CarbonImmutable instead.
-        if ($expr->var instanceof PropertyFetch && $expr->var->name instanceof Identifier) {
-            $receiverAttr = $scope->modelClass !== null
-                ? resolve(ModelAttributeResolver::class)->getAttributes($scope->modelClass)
-                    ?->firstWhere('name', $expr->var->name->toString())
-                : null;
-
-            $cast = $receiverAttr['cast'] ?? null;
-
-            if (is_string($cast) && $this->isDateFamilyCast($cast)) {
-                $carbonClass = str_starts_with($cast, 'immutable_')
-                    ? CarbonImmutable::class
-                    : Carbon::class;
-
-                $tsInfo = LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($carbonClass), $methodName);
-                $accepted = resolve(ReflectedTypeAcceptor::class)->accept($tsInfo);
-
-                if ($accepted !== null) {
-                    return $accepted;
-                }
-            }
-        }
-
-        // Subject mode: a model-less scope (a controller, not a resource) resolves `$this->service`
-        // from the subject's own typed property, then reflects the method on that class.
-        if ($wrappedClass === null && $scope->modelClass === null) {
-            $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->subjectReflection, $expr->var);
-
-            if ($propertyClass !== null) {
-                $accepted = resolve(SubjectMethodTypeResolver::class)
-                    ->resolveOn(new ReflectionClass($propertyClass), $methodName);
-
-                if ($accepted !== null) {
-                    return $accepted;
-                }
-            }
-        }
-
-        // Known-method rules — authorization checks and relation counts/existence.
-        $known = $this->knownMethodRule($expr, $scope);
-
-        if ($known !== null) {
-            return $known;
-        }
-
-        return $result;
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
     }
 
     /**
-     * Determine whether a resolved model cast belongs to the date/datetime family; see ModelAttributeResolver.
+     * A Carbon method on a date-cast column, `$this->published_at->format()`, reflected on the class the cast yields.
+     *
+     * @return ValueExpressionResult|null
      */
-    private function isDateFamilyCast(string $cast): bool
+    private function heldPropertyMethodReturn(string $propertyName, string $methodName, AnalysisScope $scope): ?array
     {
-        return resolve(ModelAttributeResolver::class)->isDateFamilyCast($cast);
+        if ($scope->modelClass === null) {
+            return null;
+        }
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $cast = $resolver->getAttributes($scope->modelClass)?->firstWhere('name', $propertyName)['cast'] ?? null;
+
+        if (! is_string($cast) || ! $resolver->isDateFamilyCast($cast)) {
+            return null;
+        }
+
+        $carbonClass = str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
+
+        return resolve(ReflectedTypeAcceptor::class)
+            ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($carbonClass), $methodName));
+    }
+
+    /**
+     * A model-less subject's `$this->service->m()`, from the class its own property is typed as. A held model's
+     * filters and toArray() are left to the receiver rules, which read its key list and its serialization.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function subjectPropertyMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope): ?array
+    {
+        if ($scope->modelClass !== null || $this->resolveWrappedClass($scope) !== null) {
+            return null;
+        }
+
+        $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->subjectReflection, $call->var);
+
+        if ($propertyClass === null
+            || (is_a($propertyClass, Model::class, true) && ($methodName === 'toArray' || $this->callsAttributeFilter($call)))
+        ) {
+            return null;
+        }
+
+        return resolve(SubjectMethodTypeResolver::class)->resolveOn(new ReflectionClass($propertyClass), $methodName);
     }
 
     /**

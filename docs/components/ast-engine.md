@@ -92,7 +92,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
 | `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
-| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, a concrete model's own `toArray()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
@@ -104,9 +104,8 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 - **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler`, `MethodChainHandler` and
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
   on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
-  still reflects `$this->post->only([...])` to `Record<string, unknown>` and `except($keys)` to `unknown[]`. Those
-  answers win over the receiver rules' `Pick<Post, …>` and `Record<string, unknown>`, and the matrix runs only a
-  resource scope, so that divergence is unpinned.
+  declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with
+  `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`.
 - **`RelationFilterHandler` and `ReceiverMethodCallHandler`**: both claim a single-model relation filter, and they agree
   by construction, as [ResourceAstAnalyzer § Attribute filters][attribute-filters] explains. `ReceiverHandlersTest`'s
   "both claim … and answer it the same" cases pin the agreement.
@@ -116,7 +115,8 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
 - **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, so
   `RelationCollectionChainHandler` never floors `$this->when()` or `$this->can()` at `unknown`. It rejects
-  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()`.
+  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()` or
+  `$this->resource->getKey()`.
 
 One `PropertyFetch` pair can disagree where the corpus is silent. `VariableHandler` types `$x->member` from the
 attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()` closure's relation model. It answers a

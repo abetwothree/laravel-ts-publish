@@ -22,7 +22,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -128,7 +127,7 @@ final class StaticCallHandler implements ExpressionHandler
             return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
         }
 
-        // `$this->resource::staticMethod()`. Must precede the closure-context PropertyFetch handler below.
+        // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
         if ($expr instanceof StaticCall
             && $expr->class instanceof PropertyFetch
             && $expr->class->var instanceof Variable
@@ -138,19 +137,6 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
         ) {
             return $this->analyzeStaticMethodOnResource($expr->name->toString(), $scope);
-        }
-
-        // `$this->relation::staticMethod()` inside a whenLoaded closure — use the related model.
-        if ($expr instanceof StaticCall
-            && $expr->class instanceof PropertyFetch
-            && $expr->name instanceof Identifier
-        ) {
-            /** @var class-string<Model>|null $closureModelClass */
-            $closureModelClass = $scope->closureRelationModelClass;
-
-            if ($closureModelClass !== null) {
-                return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
-            }
         }
 
         // `Auth::user()`/`Auth::id()`. Must precede the general StaticCall arm below, whose reflection

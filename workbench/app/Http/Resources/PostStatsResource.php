@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PostStats;
+use Workbench\App\ValueObjects\PublishChecks;
 
 /**
  * A resource that carries a value next to its model through a promoted constructor property.
@@ -22,8 +23,11 @@ final class PostStatsResource extends JsonResource
     /** Collides with Post::$title, a string column, so a published `number` proves D3 end to end. */
     protected int $title = 0;
 
-    public function __construct(Post $resource, private readonly ?PostStats $stats = null)
-    {
+    public function __construct(
+        Post $resource,
+        private readonly ?PostStats $stats = null,
+        private readonly PublishChecks $checks = new PublishChecks,
+    ) {
         parent::__construct($resource);
     }
 
@@ -38,6 +42,10 @@ final class PostStatsResource extends JsonResource
             'stats' => $this->stats,
             'views' => $this->stats?->views,
             'share_count' => $this->stats?->shares,
+            'blockers' => $this->checks->toArray(),
+            'checks_count' => $this->checks->commentsCount(),
+            'loaded_checks_count' => $this->whenLoaded('author', fn () => $this->checks->commentsCount()),
+            'loaded_checks_label' => $this->whenLoaded('author', fn () => $this->checks::label()),
         ];
     }
 }

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
@@ -25,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
@@ -33,11 +35,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOve
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClosureNamesakePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HeldReceiversCommentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
@@ -56,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserFilterOverrideModel
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserListFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -66,6 +71,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
@@ -288,7 +294,25 @@ describe('ReceiverMethodReturnResolver', function () {
             ->toBe(['type' => 'string', 'optional' => false]);
     });
 
-    test('a model toArray() declines even when it declares a precise shape', function () {
+    test('a model running Model::toArray() publishes an attribute record, where an abstract model declines', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+
+        expect($resolver->resolve(ReceiverType::of(Post::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
+            ->and($resolver->resolve(ReceiverType::of(CallPathAbstractModel::class), 'toArray', receiverProbeScope()))->toBeNull();
+    });
+
+    test('a relation\'s collection lists each model\'s toArray(), an attribute record unless the model overrides it', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $collection = fn (string $model): ReceiverType => new ReceiverType([EloquentCollection::class], elementModel: $model);
+
+        expect($resolver->resolve($collection(Post::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'Record<string, unknown>[]', 'optional' => false])
+            ->and($resolver->resolve($collection(ReceiverShapedToArrayModel::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'unknown[]', 'optional' => false]);
+    });
+
+    test('a model toArray() override declines even when it declares a precise shape', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
         $model = ReceiverType::of(ReceiverShapedToArrayModel::class);
 
@@ -1001,5 +1025,88 @@ describe('getKey()', function () {
 
         expect(new KnownMethodRuleHandler()->resolve(receiverHandlerExpr('$this->resource->getKey()'), $scope, chainHandlersThrowingEngine()))
             ->toBeNull();
+    });
+});
+
+describe('a call on $this->prop types from the class the property holds, never from the scope model', function () {
+    test('a value object a resource holds publishes its own declarations, not its model namesakes', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostStatsResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['blockers'])->toBe('{ message: string; route?: string }[]')
+            ->and($props['checks_count'])->toBe('string')
+            ->and($props['loaded_checks_count'])->toBe('string')
+            ->and($props['loaded_checks_label'])->toBe('string');
+    });
+
+    test('a relation call reads the related model, so a method only the scope model declares declines', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->author->commentsCount()', 'unknown'],
+        ['$this->author->toArray()', 'Record<string, unknown>'],
+        ['$this->resource->commentsCount()', 'number'],
+        ['$this->resource->toArray()', 'Record<string, unknown>'],
+        ['$this->comments->toArray()', 'Record<string, unknown>[]'],
+        ['$this->resource->comments->toArray()', 'Record<string, unknown>[]'],
+        ['$this->author?->toArray()', 'Record<string, unknown> | null'],
+        ['$this->comments?->toArray()', 'Record<string, unknown>[] | null'],
+    ]);
+
+    test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostStatsResource::class), ClosureNamesakePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->published_at?->format(\'Y\'))', 'string | null'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->published_at->format(\'Y\'))', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->checks->commentsCount())', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->checks::label())', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->namesakeAuthor?->format())', 'number | null'],
+    ]);
+
+    test('a model-less scope types a filter on a held model by the receiver rules', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->post->except($keys)', 'Record<string, unknown>'],
+        ['$this->post->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'>"],
+        ['$this->checks->toArray()', '{ message: string; route?: string }[]'],
+        ['$this->post->commentsCount()', 'number'],
+        ['$this->post->toArray()', 'Record<string, unknown>'],
+    ]);
+
+    test('a resource types a property it holds from that class, nullable or not, and never from its own model', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(HeldReceiversCommentResource::class), Comment::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->checks?->toArray()', '{ message: string; route?: string }[] | null'],
+        ['$this->other->commentsCount()', 'number'],
+        ['$this->other->only([\'id\'])', "Pick<Post, 'id'>"],
+        ['$this->other->toArray()', 'Record<string, unknown>'],
+    ]);
+});
+
+describe('$this->resource->m() publishes what the bare $this->m() does', function () {
+    test('a vague array helper types from its body in every spelling, a trait\'s included', function (string $method, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), ClosureNamesakePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource->'.$method.'()'))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->'.$method.'()'))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->resource?->'.$method.'()'))['type'])->toBe($type.' | null');
+    })->with([
+        ['meta', '{ a: number; b: string }'],
+        ['traitMeta', '{ c: boolean; d: number }'],
+    ]);
+
+    test('the workbench summary publishes the same shape through the proxy', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['summary_via_resource'])->toBe($props['summary'])
+            ->and($props['summary'])->toStartWith('{ id: number;');
     });
 });

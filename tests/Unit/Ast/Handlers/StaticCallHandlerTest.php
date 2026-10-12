@@ -657,12 +657,9 @@ it('wraps a resolved payload only when it holds one enum and nothing else', func
     'make(), two enums that share a name' => [WarehouseResource::class, Warehouse::class, '\\'.EnumResource::class.'::make($this->status ?? $this->current_crm_status)', ['type' => 'unknown', 'optional' => false]],
 ]);
 
-it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound — guard 5 must precede guard 6', function () {
-    // $this->resource::tableName() — guard 5 (`$this->resource::staticMethod()`) and guard 6
-    // (closure-context `$this->relation::staticMethod()`) share the same PropertyFetch-receiver
-    // shape; only guard 5's extra `name->toString() === 'resource'` check tells them apart. Setting
-    // closureRelationModelClass to a model with no tableName() method makes a guard-6 misroute
-    // observable: it would degrade to unknown instead of reflecting Post::tableName()'s `string`.
+it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound', function () {
+    // A relation's closure never changes what `$this` is: Address declares no tableName(), so reading the closure's
+    // model would degrade to unknown instead of reflecting Post::tableName()'s `string`.
     $expr = new StaticCall(
         new PropertyFetch(new Variable('this'), 'resource'),
         'tableName',

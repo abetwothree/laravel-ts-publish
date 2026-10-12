@@ -365,13 +365,14 @@ on a key no cast covers.
 
 ## `$this->resource` inside a relation closure is the resource's own model
 
-Inside a `whenLoaded()` closure, `AnalysisScope::$closureRelationModelClass` holds the relation's model, and a bare
-`$this->prop` reads that relation. `$this->resource->…` always reads the resource's own model, whichever closure it is
-in. So [`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and
-[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) root a chain whose first step is `resource` at
-`$modelClass`. They also skip the `startIndex` shortcut that treats a closure chain's first step as the relation
-proxy, which would drop the chain's first real relation. A model that declares a real `resource` relation keeps the
-relation walk. `ClosureResourceRootResource` pins both spellings.
+Inside a `whenLoaded()` closure `$this` is still the resource.
+[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) roots every chain at `$modelClass`, and
+`RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
+`AnalysisScope::$closureRelationModelClass`, the relation's model. A property read still does:
+[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) starts a bare `$this->prop` chain there, and
+roots one whose first step is `resource` at `$modelClass`. It also skips the `startIndex` shortcut for that chain, which
+treats a closure chain's first step as the relation proxy and would drop its first real relation. A model that declares
+a real `resource` relation keeps the relation walk. `ClosureResourceRootResource` pins both spellings.
 
 ## Collection pipelines
 
@@ -851,7 +852,7 @@ These [known gaps](../known-gaps.md) come from the rules on this page:
 - [A helper that returns an empty `[]` on one path publishes an object shape](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
 - [`#[TsCasts]` and the top-level spread flatten disagree by scope](../known-gaps.md#tscasts-and-the-top-level-spread-flatten-disagree-by-scope-in-three-separate-ways)
 - [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)
-- [`Model::toArray()` on a receiver declines, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately)
+- [`Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
 - [A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals](../known-gaps.md#a-mixed-enum-ternary-whose-arms-are-both-array-shaped-ships-a-duplicated-union-member-in-the-globals)

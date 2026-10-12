@@ -274,14 +274,14 @@ join, the signature publishes the last entry's value alone. A publisher warns ab
 union out; type the key, or rename it out of the pattern. The rules are under
 [Index signatures](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them).
 
-### `Model::toArray()` on a receiver declines, deliberately
+### `Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately
 
-`ReceiverMethodReturnResolver::resolveOn()` gives no shape for `$model->toArray()` in value position, even when the
-model declares one, because the relations it serializes are whatever is loaded at runtime. `ReceiverHandlersTest` pins
-the decline, but nothing pins what such a call publishes instead, since the workbench only spreads a model's
-`toArray()`, so expect something vague. The spread form is typed: `[...$user->toArray(), 'flag' => true]` publishes
-`Omit<User, 'flag'> & { flag: boolean }`. [Receiver types](./components/receiver-types.md#the-order-for-one-class)
-gives the order the receiver rules run in.
+`$model->toArray()` in value position publishes `Record<string, unknown>`, as `except($keys)` does, and a relation's
+`$this->comments->toArray()` a list of it, because the relations a model serializes are whatever is loaded at runtime.
+A model with no attributes encodes `[]`, which TypeScript does not assign to that `Record`. An override of `toArray()`,
+or an abstract model's, publishes `unknown`, even when it declares a shape. The spread form is typed:
+`[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
+[Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
 ### A model spread inside a `collect()->map()` closure names the wrong model, or none
 
@@ -308,6 +308,12 @@ though Laravel sends `null` for a relation loaded as `null`.
 `whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
+
+### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
+
+`$this->assignable->label()` publishes `unknown` in every spelling when the relation names no target, even if the
+resource's own model declares `label()`, since the related model could be any. Name the targets in
+`@return MorphTo<A|B, $this>`.
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
@@ -523,7 +529,7 @@ or on the left of `+`.
 
 ### An operand of `+` not typed as one object adds no keys beside a keyed literal
 
-`$this->resource->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
+`$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
 adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
