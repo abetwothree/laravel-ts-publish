@@ -73,6 +73,16 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
+     * A first-class callable passed to an untyped helper, which may call it or not.
+     *
+     * @return array<string, mixed>
+     */
+    public function callables(): array
+    {
+        return ['held_callable' => $this->hold($this->resource->getKey(...))];
+    }
+
+    /**
      * @param  mixed  $subject
      * @return array<string, mixed>
      */
@@ -128,6 +138,15 @@ final class PassedArgumentEdgesResource extends JsonResource
     private function keyed($post): array
     {
         return ['k' => $post->getKey()];
+    }
+
+    /**
+     * @param  mixed  $held
+     * @return array<string, mixed>
+     */
+    private function hold($held): array
+    {
+        return ['held' => $held];
     }
 
     /**

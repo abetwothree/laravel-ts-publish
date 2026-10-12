@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaFormatterController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PassedArgumentEdgesResource;
@@ -85,6 +86,15 @@ test('a service helper called on a property or another receiver reads what its c
         ->toBe('Inertia.SharedData & { row: { row_title: string } }')
         ->and(passedArgumentTypes(PassedArgumentEdgesResource::class, 'receivers'))
         ->toBe(['summary' => '{ row_title: string }']);
+});
+
+// Laravel sends a Closure as `{}`. Read as a value, the callable warns that nothing calls it, though the helper may.
+test('a first-class callable a call passes binds the Closure it creates and warns of nothing', function () {
+    AnalysisWarnings::reset();
+
+    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'callables'))
+        ->toBe(['held_callable' => '{ held: Record<string, never> }'])
+        ->and(AnalysisWarnings::all())->toBe([]);
 });
 
 test('the signature is empty for a call that binds nothing, and one for two arguments that bind alike', function () {

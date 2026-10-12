@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
 use ReflectionMethod;
@@ -103,6 +104,11 @@ final readonly class CallSite
             return null;
         }
 
-        return $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
+        // A first-class callable passes the Closure it creates: the engine would call it, or warn that nothing does.
+        $value = $argument instanceof CallLike && $argument->isFirstClassCallable()
+            ? ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false]
+            : $this->engine->resolve($argument);
+
+        return $binder->passedBinding($value, $receiver, refines: $declared !== null);
     }
 }
