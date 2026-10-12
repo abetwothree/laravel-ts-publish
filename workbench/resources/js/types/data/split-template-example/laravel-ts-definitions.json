@@ -17342,6 +17342,16 @@
                     "optional": false
                 },
                 {
+                    "name": "draft_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "copy_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "bare_comments_count",
                     "type": "number",
                     "optional": false

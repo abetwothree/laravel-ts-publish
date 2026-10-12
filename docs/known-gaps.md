@@ -600,3 +600,7 @@ read the pins as the divergences found so far, not all there are.
 `origin/main`, and never checks a speedup. Until a speedup reaches `main`, later branches still measure against the
 slower base, so they can give it back without failing. Updating `main` is the owner's step, since agents never merge
 into it ([AGENTS.md § Git](../AGENTS.md#git)). [Performance gate](./testing/performance-gate.md) describes the job.
+
+### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
+
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number.

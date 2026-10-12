@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
@@ -1112,6 +1113,51 @@ describe('getKey()', function () {
         ['$this->resource?->getKey()', 'number | string | null'],
         ['$this->getKey()', 'number | string'],
     ]);
+
+    test('adds null for a receiver no row backs yet, and keeps the bare key type for one a row backs', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['(new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+        ['(new \Workbench\App\Models\Product)->getKey()', 'string | null'],
+        ['$this->resource->replicate()->getKey()', 'number | null'],
+        ['$this->replicate()->getKey()', 'number | null'],
+        ['$this->resource->replicateQuietly()->getKey()', 'number | null'],
+        ['$this->resource->newInstance()->getKey()', 'number | null'],
+        ['$this->resource?->replicate()->getKey()', 'number | null'],
+        ['$this->resource->getKey()', 'number'],
+        ['$this->getKey()', 'number'],
+        ['$this->author->getKey()', 'number'],
+        ['$this->resource->fresh()->getKey()', 'number'],
+        ['(true ? new \Workbench\App\Models\Post : $this->resource)->getKey()', 'number | null'],
+        ['($this->resource ?? new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+    ]);
+
+    test('a local bound to a new model carries the unsaved flag to its getKey()', function (string $bound, string $type) {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $scope->localVarBindings['draft'] = receiverHandlerExpr($bound);
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope)?->unsaved)->toBeTrue()
+            ->and(resolve(ReceiverMethodReturnResolver::class)->resolve(
+                resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope),
+                'getKey',
+                $scope,
+            )['type'] ?? null)->toBe($type);
+    })->with([
+        ['new \Workbench\App\Models\Post', 'number | null'],
+        ['$this->resource->replicate()', 'number | null'],
+    ]);
+
+    test('a null key prints null once and an abstract model\'s union gains one null arm when unsaved', function () {
+        PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+        $nullKey = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $abstract = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyedModel::class);
+
+        expect($nullKey->resolve(receiverHandlerExpr('(new \\'.NullKeyPost::class.')->replicate()->getKey()'))['type'])->toBe('null')
+            ->and($abstract->resolve(receiverHandlerExpr('$this->resource->replicate()->getKey()'))['type'])->toBe('number | string | null')
+            ->and($abstract->resolve(receiverHandlerExpr('$this->replicate()->getKey()'))['type'])->toBe('number | string | null');
+    });
 
     test('the dispatch floor no longer answers getKey()', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);

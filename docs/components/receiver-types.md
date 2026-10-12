@@ -41,7 +41,7 @@ reflection answers, a decline included.
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `returnClasses()` on every class, for a public method |
 | `static::m()`, `self::m()`, `parent::m()` | The subject, or its framework parent for `parent`, then `returnClasses()`, at any visibility |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a public method |
-| `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent` |
+| `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent`; marked unsaved |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
 | A ternary, `?:` or `??` | The union of the non-`null` arms. See [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
@@ -185,6 +185,8 @@ receiver it names:
   (`ModelAttributeResolver::declaredKeyTsType()`), and an abstract one adds each published concrete subclass's, so
   `number | string`. Where code decides the key, through an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`,
   or a constructor or initializer naming it, the rule declines. A model whose `$primaryKey` is `null` publishes `null`.
+  `ReceiverType::$unsaved`, set by `new` and by `replicate()`, `replicateQuietly()` and `newInstance()` (through a
+  local, a ternary or a `??` too), adds `| null`: `number | null`.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,

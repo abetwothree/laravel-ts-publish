@@ -155,7 +155,9 @@ final class ReceiverMethodReturnResolver
         if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
             $keyType = $resolver->keyTsType($class);
 
-            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
+            return $keyType === null
+                ? null
+                : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? ValueResult::withNullArm($keyType) : $keyType];
         }
 
         // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.

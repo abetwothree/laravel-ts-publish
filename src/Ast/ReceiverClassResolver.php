@@ -64,6 +64,9 @@ final class ReceiverClassResolver
         'collect' => Collection::class,
     ];
 
+    /** The Model methods whose result is a copy no row backs yet. */
+    private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -74,7 +77,7 @@ final class ReceiverClassResolver
             $expr instanceof PropertyFetch, $expr instanceof NullsafePropertyFetch => $this->fromPropertyFetch($expr, $scope),
             $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall => $this->fromMethodCall($expr, $scope),
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
-            $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope) : null,
+            $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope)?->asUnsaved() : null,
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
             $expr instanceof Ternary => $this->fromArms(
                 [$expr->if ?? $expr->cond, $expr->else],
@@ -394,7 +397,7 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve `$this->m()`, `<receiver>->m()`, or `<receiver>?->m()`.
+     * Resolve `$this->m()`, `<receiver>->m()`, or `<receiver>?->m()`, marking a model copy as one no row backs yet.
      */
     private function fromMethodCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): ?ReceiverType
     {
@@ -404,10 +407,20 @@ final class ReceiverClassResolver
 
         $method = $call->name->toString();
 
-        if ($call->var instanceof Variable && $call->var->name === 'this') {
-            return $this->fromThisMethodCall($method, $scope);
-        }
+        $result = $call->var instanceof Variable && $call->var->name === 'this'
+            ? $this->fromThisMethodCall($method, $scope)
+            : $this->fromReceiverMethodCall($call, $method, $scope);
 
+        return $result !== null && in_array($method, self::UNSAVED_COPIES, true) && $result->models() !== []
+            ? $result->asUnsaved()
+            : $result;
+    }
+
+    /**
+     * Resolve `<receiver>->m()` or `<receiver>?->m()`.
+     */
+    private function fromReceiverMethodCall(MethodCall|NullsafeMethodCall $call, string $method, AnalysisScope $scope): ?ReceiverType
+    {
         $receiver = $this->resolve($call->var, $scope);
 
         if ($receiver === null) {
@@ -565,7 +578,7 @@ final class ReceiverClassResolver
         // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
         return $classes === []
             ? $arm
-            : new ReceiverType(array_values(array_unique($classes)), $arm->shortCircuits, $arm->elementModel, $arm->relatedModel);
+            : new ReceiverType(array_values(array_unique($classes)), $arm->shortCircuits, $arm->elementModel, $arm->relatedModel, $arm->unsaved);
     }
 
     /**
@@ -864,6 +877,7 @@ final class ReceiverClassResolver
         $classes = [];
         $elementModels = [];
         $relatedModels = [];
+        $unsaved = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -873,6 +887,7 @@ final class ReceiverClassResolver
             $classes = [...$classes, ...$type->classes];
             $elementModels[$type->elementModel ?? ''] = $type->elementModel;
             $relatedModels[$type->relatedModel ?? ''] = $type->relatedModel;
+            $unsaved = $unsaved || $type->unsaved;
         }
 
         if ($classes === []) {
@@ -884,6 +899,7 @@ final class ReceiverClassResolver
             $shortCircuits,
             count($elementModels) === 1 ? reset($elementModels) : null,
             count($relatedModels) === 1 ? reset($relatedModels) : null,
+            $unsaved,
         );
     }
 
