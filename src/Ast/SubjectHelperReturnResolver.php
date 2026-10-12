@@ -87,7 +87,7 @@ final class SubjectHelperReturnResolver
             // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
             $scope->closureRelationModelClass = null;
             $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-            resolve(ParameterBinder::class)->bindDeclared($method, $scope);
+            resolve(ParameterBinder::class)->bindDeclared($method, $stmts, $scope);
             $this->collectLocalVarBindings($stmts, $scope);
             $this->endBindingsAtWrites($stmts, $scope);
 

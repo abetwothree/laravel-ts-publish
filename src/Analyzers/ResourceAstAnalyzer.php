@@ -323,7 +323,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // A scope AstEngine::bindingsFor() seeded already holds the parameters it binds.
         if ($this->ownsScope && $this->scope->subjectReflection->hasMethod($this->methodName)) {
-            resolve(ParameterBinder::class)->bindDeclared($this->scope->subjectReflection->getMethod($this->methodName), $this->scope);
+            $method = $this->scope->subjectReflection->getMethod($this->methodName);
+            resolve(ParameterBinder::class)->bindDeclared($method, $toArrayMethod->stmts, $this->scope);
         }
 
         $this->seedVarBindings($toArrayMethod->stmts);
@@ -1101,8 +1102,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
             $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
             $binder = resolve(ParameterBinder::class);
-            $binder->bindDeclared($method, $this->scope);
-            $binder->bindPassed($passed, $this->scope);
+            $binder->bindDeclared($method, $targetMethod->stmts, $this->scope);
+            $binder->bindPassed($targetMethod->stmts, $passed, $this->scope);
             $this->seedVarBindings($targetMethod->stmts);
 
             $branches = [];
@@ -1140,7 +1141,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The value a spread call passes each parameter that declares no type or `mixed`, read in the caller's bindings;
-     * a variadic or by-reference parameter, and an unpacked or first-class call, pass nothing here.
+     * a variadic parameter, and an unpacked or first-class call, pass nothing here.
      *
      * @return array<string, PassedArgument>
      */
@@ -1156,10 +1157,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $passed = [];
 
         foreach ($method->getParameters() as $parameter) {
-            if ($parameter->isVariadic()
-                || $parameter->isPassedByReference()
-                || ($parameter->hasType() && (string) $parameter->getType() !== 'mixed')
-            ) {
+            if ($parameter->isVariadic() || ($parameter->hasType() && (string) $parameter->getType() !== 'mixed')) {
                 continue;
             }
 

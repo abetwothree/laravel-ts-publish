@@ -222,11 +222,12 @@ type is vague. One concrete, non-null model goes in `varModelBindings`; any othe
 names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` and a name already bound
 stay as they are.
 
-A parameter the body writes is bound too, and its binding ends at the write as [Declared locals](#declared-locals) says;
-a write holding fewer of a declared union's classes ends it as well. The binding reads only the declaration, so the
-`analysis:` and `method-return:` keys stay valid. A spread call also binds an untyped or `mixed` parameter to the
-argument it passes, through `bindPassed()`, read before the caller's tables are set aside. A value read does not, since
-its memo is keyed per method.
+A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
+says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
+outlive a write naming no class such as `$n = (string) $n`, so its local answers. The binding reads only the
+declaration, so the `analysis:` and `method-return:` keys stay valid. A spread call also binds an untyped or `mixed`
+parameter to the argument it passes, through `bindPassed()`, read before the caller's tables are set aside. A value
+read does not, since its memo is keyed per method.
 
 ### Narrowing
 

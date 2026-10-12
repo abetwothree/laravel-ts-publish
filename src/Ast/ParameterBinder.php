@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use PhpParser\Node\Stmt;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -21,8 +23,9 @@ use ReflectionUnionType;
  * they declare, which every call passes, so one reading holds for all of them and the `class@method` memos stay valid;
  * and, for a spread call read in place, an untyped parameter by the argument that call passes.
  *
- * A body write that replaces a parameter ends its binding there: the caller runs endBindingsAtWrites() once the body's
- * locals are seeded, as for any other parameter.
+ * A body write that replaces a parameter ends its class binding there: the caller runs endBindingsAtWrites() once the
+ * body's locals are seeded. A written parameter binds no value, since a value binding outlives a write naming no class,
+ * such as `$n = (string) $n`, where the body's own local answers.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -32,13 +35,17 @@ use ReflectionUnionType;
  */
 final class ParameterBinder
 {
+    use CollectsLocalVarBindings;
+
     /**
      * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
      * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
      *
      * A Request parameter is left to the request rules, and a name the scope already binds is left as it is.
+     *
+     * @param  array<Stmt>  $stmts  the method's body
      */
-    public function bindDeclared(ReflectionMethod $method, AnalysisScope $scope): void
+    public function bindDeclared(ReflectionMethod $method, array $stmts, AnalysisScope $scope): void
     {
         $parameters = $method->getParameters();
 
@@ -48,6 +55,7 @@ final class ParameterBinder
 
         $context = LaravelTsPublish::methodDeclaringFileClass($method);
         $docComment = (string) $method->getDocComment();
+        $written = null;
 
         foreach ($parameters as $parameter) {
             $name = $parameter->getName();
@@ -74,7 +82,8 @@ final class ParameterBinder
                 $scope->varDeclaredBindings[$name] = $classes;
             }
 
-            $value = $this->declaredValue($parameter, $docComment, $context);
+            $written ??= $this->collectWrittenVariableNames($stmts, $scope);
+            $value = in_array($name, $written, true) ? null : $this->declaredValue($parameter, $docComment, $context);
 
             if ($value !== null) {
                 $scope->varValueBindings[$name] = $value;
@@ -88,10 +97,13 @@ final class ParameterBinder
      *
      * A model no row may back yet binds only by value: a class binding would drop the `null` its key can hold.
      *
+     * @param  array<Stmt>  $stmts  the method's body
      * @param  array<string, PassedArgument>  $passed  each parameter's argument, read where the call is written
      */
-    public function bindPassed(array $passed, AnalysisScope $scope): void
+    public function bindPassed(array $stmts, array $passed, AnalysisScope $scope): void
     {
+        $written = $passed === [] ? [] : $this->collectWrittenVariableNames($stmts, $scope);
+
         foreach ($passed as $name => ['value' => $value, 'receiver' => $receiver]) {
             if ($scope->bindsName($name)) {
                 continue;
@@ -111,7 +123,7 @@ final class ParameterBinder
                 $scope->varDeclaredBindings[$name] = $classes;
             }
 
-            if ($value['type'] !== 'unknown') {
+            if ($value['type'] !== 'unknown' && ! in_array($name, $written, true)) {
                 $scope->varValueBindings[$name] = [...$value, 'optional' => false];
             }
         }

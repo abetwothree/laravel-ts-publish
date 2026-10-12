@@ -50,6 +50,15 @@ final class HelperParameterKindsResource extends JsonResource
             'relabel' => $this->relabel($this->resource),
             'tr_typed' => $this->transform($this->title, $this->wrapTyped(...)),
             'has_typed' => $this->whenHas('title', $this->wrapTyped(...)),
+            ...$this->formatted(1.5),
+            'formatted' => $this->formatted(1.5),
+            ...$this->stringCast(5),
+            'string_cast' => $this->stringCast(5),
+            ...$this->joined(['a', 'b']),
+            'joined' => $this->joined(['a', 'b']),
+            ...$this->filled(null),
+            'filled' => $this->filled(null),
+            'by_ref_passed' => $this->whenLoaded('author', fn ($author) => [...$this->untypedByReference($author)]),
         ];
     }
 
@@ -166,6 +175,65 @@ final class HelperParameterKindsResource extends JsonResource
         $p = $p->author;
 
         return ['rl_name' => $p->name, 'rl_title' => $p->title];
+    }
+
+    /**
+     * A number the body replaces with its formatted string.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatted(float $amount): array
+    {
+        $amount = number_format($amount, 2);
+
+        return ['amount' => $amount];
+    }
+
+    /**
+     * A number the body replaces with its string cast.
+     *
+     * @return array<string, mixed>
+     */
+    private function stringCast(int $n): array
+    {
+        $n = (string) $n;
+
+        return ['n' => $n];
+    }
+
+    /**
+     * A list the body replaces with its joined string.
+     *
+     * @param  list<string>  $tags
+     * @return array<string, mixed>
+     */
+    private function joined(array $tags): array
+    {
+        $tags = implode(', ', $tags);
+
+        return ['tags' => $tags];
+    }
+
+    /**
+     * A missing post the body replaces with a new one.
+     *
+     * @return array<string, mixed>
+     */
+    private function filled(?Post $p): array
+    {
+        $p ??= new Post;
+
+        return ['p_title' => $p->title];
+    }
+
+    /**
+     * A name read off an untyped by-reference parameter, which the caller passes the post's author.
+     *
+     * @return array<string, mixed>
+     */
+    private function untypedByReference(&$r): array
+    {
+        return ['r_name' => $r->name];
     }
 
     /**
