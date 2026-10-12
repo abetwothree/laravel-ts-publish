@@ -73,13 +73,18 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
-     * A first-class callable passed to an untyped helper, which may call it or not.
+     * A closure and a first-class callable passed to an untyped helper that holds it, and to one that calls it.
      *
      * @return array<string, mixed>
      */
     public function callables(): array
     {
-        return ['held_callable' => $this->hold($this->resource->getKey(...))];
+        return [
+            'held_closure' => $this->hold(fn () => 5),
+            'held_callable' => $this->hold($this->headline(...)),
+            'called_closure' => $this->callIt(fn () => 5),
+            'called_callable' => $this->callIt($this->headline(...)),
+        ];
     }
 
     /**
@@ -147,6 +152,23 @@ final class PassedArgumentEdgesResource extends JsonResource
     private function hold($held): array
     {
         return ['held' => $held];
+    }
+
+    /**
+     * @param  mixed  $callback
+     * @return array<string, mixed>
+     */
+    private function callIt($callback): array
+    {
+        return ['called' => $this->when(true, $callback)];
+    }
+
+    /**
+     * The headline a callable returns.
+     */
+    private function headline(): string
+    {
+        return 'Hello';
     }
 
     /**

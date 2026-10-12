@@ -11,14 +11,14 @@ use Workbench\App\Models\Post;
 final class PostRowFormatter
 {
     /**
-     * A title read off whatever the caller passes.
+     * A title read off whatever the caller passes, beside a detail only this body names.
      *
      * @param  mixed  $subject
      * @return array<string, mixed>
      */
     public static function row($subject): array
     {
-        return ['title' => $subject->title];
+        return ['title' => $subject->title, 'detail' => (new PostRowDetail)->detail()];
     }
 
     /**

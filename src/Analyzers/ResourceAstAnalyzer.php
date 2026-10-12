@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
@@ -122,6 +123,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
     private readonly bool $ownsScope;
+
+    /** Whether the handler profile invokes callables, read once from it by invokesCallables(). */
+    private ?bool $invokingProfile = null;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -402,6 +406,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): ResourceAnalysis
     {
         return $this->analyzeReturnArray($array, $topLevel);
+    }
+
+    /**
+     * Whether this analyzer's handler profile reads a callable as the call it stands for, as Inertia's profiles do.
+     */
+    public function invokesCallables(): bool
+    {
+        return $this->invokingProfile ??= array_any(
+            $this->handlers(),
+            fn (ExpressionHandler $handler): bool => $handler instanceof FirstClassCallableHandler && $handler->invokesCallables(),
+        );
     }
 
     /**

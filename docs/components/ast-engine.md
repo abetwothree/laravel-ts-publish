@@ -234,7 +234,9 @@ to what its argument binds, through `CallSite::passedTo()` and `bindPassed()`, r
 aside. A value read keys its memo on what the call binds ([The run memo replays what it
 recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
 keeps `| null`. An argument holding narrower classes than a declared abstract class, interface or union, such as a post
-passed to `Model $m`, replaces the declared binding the same way.
+passed to `Model $m`, replaces the declared binding the same way. A value read binds nothing for a closure or
+first-class callable argument, whose value hangs on whether the method calls it, unless the caller calls every
+callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`).
 
 ### Narrowing
 

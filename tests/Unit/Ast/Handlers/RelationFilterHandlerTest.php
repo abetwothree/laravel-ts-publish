@@ -68,6 +68,12 @@ function relationFilterStubEngine(array $result): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         /** Fails the test: no array is analyzed in this case. */
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
@@ -101,6 +107,12 @@ function relationFilterHandlerThrowingEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis

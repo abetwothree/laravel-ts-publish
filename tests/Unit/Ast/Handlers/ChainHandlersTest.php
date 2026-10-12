@@ -77,6 +77,12 @@ final class ChainHandlersMapStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');

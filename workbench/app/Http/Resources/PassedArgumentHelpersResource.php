@@ -34,6 +34,17 @@ final class PassedArgumentHelpersResource extends JsonResource
     }
 
     /**
+     * The post's key from a static helper.
+     *
+     * @param  mixed  $post
+     * @return array<string, mixed>
+     */
+    private static function staticRow($post): array
+    {
+        return ['static_pk' => $post->id];
+    }
+
+    /**
      * The post's identity, read off whatever the caller passes.
      *
      * @param  mixed  $post
@@ -53,17 +64,6 @@ final class PassedArgumentHelpersResource extends JsonResource
     private function authorCard($author): array
     {
         return ['name' => $author->name, 'email' => $author->email];
-    }
-
-    /**
-     * The post's key from a static helper.
-     *
-     * @param  mixed  $post
-     * @return array<string, mixed>
-     */
-    private static function staticRow($post): array
-    {
-        return ['static_pk' => $post->id];
     }
 
     /**

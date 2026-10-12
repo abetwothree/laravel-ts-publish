@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\Closure;
 use ReflectionMethod;
 use ReflectionParameter;
 
@@ -54,9 +55,10 @@ final readonly class CallSite
      * argument narrows, read in the caller's scope; an unpacked or first-class call, and an argument nothing can type,
      * bind nothing.
      *
+     * @param  bool  $valueRead  the call is read as a value, not spread in place
      * @return array<string, PassedBinding>
      */
-    public function passedTo(ReflectionMethod $method): array
+    public function passedTo(ReflectionMethod $method, bool $valueRead = false): array
     {
         if (! $this->passesArguments()) {
             return [];
@@ -72,7 +74,9 @@ final readonly class CallSite
 
         foreach ($method->getParameters() as $parameter) {
             $argument = $arguments->named($parameter->getName());
-            $binding = $argument === null ? null : $this->bindingFor($parameter, $method, $argument->value);
+            $binding = $argument === null || ($valueRead && $this->passesUncalledCallable($argument->value))
+                ? null
+                : $this->bindingFor($parameter, $method, $argument->value);
 
             if ($binding !== null) {
                 $passed[$parameter->getName()] = $binding;
@@ -104,11 +108,18 @@ final readonly class CallSite
             return null;
         }
 
-        // A first-class callable passes the Closure it creates: the engine would call it, or warn that nothing does.
-        $value = $argument instanceof CallLike && $argument->isFirstClassCallable()
-            ? ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false]
-            : $this->engine->resolve($argument);
+        return $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: $declared !== null);
+    }
 
-        return $binder->passedBinding($value, $receiver, refines: $declared !== null);
+    /**
+     * Whether an argument is a closure or first-class callable whose value hangs on whether the method calls it:
+     * Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so it sends the latter.
+     */
+    private function passesUncalledCallable(Expr $argument): bool
+    {
+        return ! $this->engine->invokesCallables()
+            && ($argument instanceof Closure
+                || $argument instanceof ArrowFunction
+                || ($argument instanceof CallLike && $argument->isFirstClassCallable()));
     }
 }

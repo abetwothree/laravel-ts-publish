@@ -80,7 +80,7 @@ final class SubjectHelperReturnResolver
         $declaringFileClass = $scope->declaringFileClass;
         $relationModel = $scope->closureRelationModelClass;
         // Read in the caller's names, before they are set aside.
-        $passed = new CallSite($call, $scope, $engine)->passedTo($method);
+        $passed = new CallSite($call, $scope, $engine)->passedTo($method, valueRead: true);
 
         try {
             $scope->visitedSpreadMethods[$name] = true;

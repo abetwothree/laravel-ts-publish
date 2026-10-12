@@ -10,8 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaFormatterController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedArgumentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PassedArgumentEdgesResource;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
@@ -23,13 +25,14 @@ use Workbench\App\Models\Post;
  * Each property a class's analysis publishes, as `name => type`, `?` marking an optional one.
  *
  * @param  class-string  $class
+ * @param  class-string<Model>|null  $model
  * @return array<string, string>
  */
-function passedArgumentTypes(string $class, string $method = 'toArray'): array
+function passedArgumentTypes(string $class, string $method = 'toArray', ?string $model = Post::class): array
 {
     $types = [];
 
-    foreach (resolve(AstEngine::class)->analyze($class, $method, Post::class)->properties as $property) {
+    foreach (resolve(AstEngine::class)->analyze($class, $method, $model)->properties as $property) {
         $types[$property['name']] = ($property['optional'] ? '?' : '').$property['type'];
     }
 
@@ -81,6 +84,14 @@ test('a helper declaring an abstract class or a union reads the narrower class i
     ]);
 });
 
+test('a forwarded call reads what it passes an untyped parameter, as a call on $this does', function () {
+    expect(passedArgumentTypes(ForwardedArgumentResource::class, 'forPost', null))->toBe([
+        'forwarded' => '{ row_title: string }',
+        'forwarded_static' => '{ static_title: string }',
+        'own_static' => '{ own_title: string }',
+    ]);
+});
+
 test('a service helper called on a property or another receiver reads what its call passes', function () {
     expect(new InertiaPageAnalyzer()->analyze(['uses' => InertiaFormatterController::class.'@show'])['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { row: { row_title: string } }')
@@ -88,12 +99,17 @@ test('a service helper called on a property or another receiver reads what its c
         ->toBe(['summary' => '{ row_title: string }']);
 });
 
-// Laravel sends a Closure as `{}`. Read as a value, the callable warns that nothing calls it, though the helper may.
-test('a first-class callable a call passes binds the Closure it creates and warns of nothing', function () {
+// Laravel sends a callable a helper holds as `{}`, and what it returns where the helper calls it: the value read cannot
+// tell, so it binds nothing, and warns of nothing.
+test('a callable a value read passes binds nothing outside a caller that calls every callable', function () {
     AnalysisWarnings::reset();
 
-    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'callables'))
-        ->toBe(['held_callable' => '{ held: Record<string, never> }'])
+    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'callables'))->toBe([
+        'held_closure' => '{ held: unknown }',
+        'held_callable' => '{ held: unknown }',
+        'called_closure' => '{ called?: unknown }',
+        'called_callable' => '{ called?: unknown }',
+    ])
         ->and(AnalysisWarnings::all())->toBe([]);
 });
 

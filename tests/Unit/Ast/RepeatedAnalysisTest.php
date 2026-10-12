@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedPostSummary;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostBadgeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostDigestResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowDetail;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowDigestResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowFormatter;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowResource;
@@ -158,9 +159,9 @@ test('an untyped helper body is analyzed once per binding its calls pass, a type
     $properties = resolve(AstEngine::class)->analyzeMethod(PostRowResource::class)->properties;
 
     expect(array_column($properties, 'type', 'name'))->toBe([
-        'first' => '{ title: string }',
-        'again' => '{ title: string }',
-        'author' => '{ title: unknown }',
+        'first' => '{ title: string; detail: { rank: number } }',
+        'again' => '{ title: string; detail: { rank: number } }',
+        'author' => '{ title: unknown; detail: { rank: number } }',
         'typed' => '{ key: unknown }',
         'typed_author' => '{ key: unknown }',
         'titled' => '{ title: string }',
@@ -186,9 +187,10 @@ test('an answer reused for a call that binds the same still records every file i
         DependencyRecorder::stop();
     }
 
-    expect(array_column($properties, 'type', 'name'))->toBe(['row' => '{ title: string }'])
+    // Only the helper's body names PostRowDetail, so only the reused answer's replay records its file.
+    expect(array_column($properties, 'type', 'name'))->toBe(['row' => '{ title: string; detail: { rank: number } }'])
         ->and($lookups['own:'.PostRowFormatter::class.'::row'] ?? 0)->toBe(0)
-        ->and($paths)->toContain((new ReflectionClass(PostRowFormatter::class))->getFileName());
+        ->and($paths)->toContain((new ReflectionClass(PostRowDetail::class))->getFileName());
 });
 
 test('an analysis reused at the top of a chain counts the union arms it dropped again', function () use ($countLookups) {

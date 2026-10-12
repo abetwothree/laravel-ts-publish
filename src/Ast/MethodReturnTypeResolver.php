@@ -97,7 +97,9 @@ final class MethodReturnTypeResolver
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
 
-        return $reflected !== null && ! TsTypeString::isVagueTsType($reflected['type']) ? [] : $site->passedTo($method);
+        return $reflected !== null && ! TsTypeString::isVagueTsType($reflected['type'])
+            ? []
+            : $site->passedTo($method, valueRead: true);
     }
 
     /**
