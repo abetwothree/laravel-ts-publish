@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
@@ -111,7 +112,15 @@ test('a method body reading an accessor whose getter filters keeps its shape', f
     'as a spread key' => ['readAsSpreadKey', '{ id: number; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
     'as a spread camelCase key' => ['readAsSpreadAlias', '{ id: number; authorPicks: { v: { id: number; role: unknown } | null; id: number }; x: number }'],
     'a literal getter' => ['readLiteral', '{ v: { a: number; b: string }; id: number }'],
-    'a docblock-typed getter still drops the shape' => ['readOwner', 'unknown[]'],
+    'a docblock-typed getter keeps the shape, its member unknown' => ['readOwner', '{ v: unknown; id: number }'],
+]);
+
+test('a vague helper whose member names a class keeps its shape, that member unknown', function (string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(ClassNamingMemberModel::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'a toResource() member' => ['withResource', '{ r: unknown; title: string }'],
+    'an EnumResource::make() member' => ['withEnumResource', '{ s: unknown; title: string }'],
 ]);
 
 // Without imports a to-many filter spells `unknown[]`. As when the body itself is vague, a fallback annotation or tag

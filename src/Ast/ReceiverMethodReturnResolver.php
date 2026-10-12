@@ -115,6 +115,18 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * The one Eloquent model a receiver holds when every class it holds is that model; null otherwise.
+     *
+     * @return class-string<Model>|null
+     */
+    public function singleModel(ReceiverType $receiver): ?string
+    {
+        $models = $receiver->models();
+
+        return count($models) === 1 && $models === $receiver->classes ? $models[0] : null;
+    }
+
+    /**
      * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
      *
      * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
@@ -209,9 +221,9 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $models = $receiver->models();
+        $model = $this->singleModel($receiver);
 
-        if (count($models) !== 1 || $models !== $receiver->classes) {
+        if ($model === null) {
             return null;
         }
 
@@ -221,7 +233,7 @@ final class ReceiverMethodReturnResolver
             return $this->attributeRecordResult(nullable: false);
         }
 
-        $result = $this->literalKeyFilterResult($models[0], $keys, $methodName === 'only', $scope->carriesImports);
+        $result = $this->literalKeyFilterResult($model, $keys, $methodName === 'only', $scope->carriesImports);
 
         // Model::only() keys a name it cannot find to null, so the value is still an attribute-keyed array.
         if ($result === null) {

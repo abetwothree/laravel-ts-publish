@@ -258,9 +258,8 @@ so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
 ### A shape whose values name a class loses those values, in one of two ways
 
 Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) drops its whole shape when one value names a class, except that `only()` and
-`except()` answer with that member as `unknown`, as
-[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
+(`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
+shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
 degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, while `Record<string, User>` has
 nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method a
 native return type that names the class.

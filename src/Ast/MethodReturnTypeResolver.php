@@ -127,9 +127,15 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        // The inline type has no import for a class a member names, so that member is `unknown` and its siblings stay.
+        foreach ($analysis->properties as $index => $property) {
+            if (TsTypeString::shapeValueHasUnimportableToken($property['type'])) {
+                $analysis->properties[$index]['type'] = 'unknown';
+            }
+        }
+
         $type = $this->buildInlineObjectType($analysis);
 
-        // The inline type carries no FQCN channel, so a token needing an import could never be emitted with one.
         return TsTypeString::shapeValueHasUnimportableToken($type)
             ? null
             : [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull([$type, ...$otherArms])];

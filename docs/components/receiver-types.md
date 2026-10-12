@@ -260,8 +260,8 @@ that calls itself terminates. An int key publishes quoted, as `PriceQuoteService
 `ServiceReturnResource.tiers` publishes `string[]`.
 
 The inline type is a plain string with no FQCN channel, so a body whose shape names an enum or a model could never
-import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore drops the whole body answer, and the vague
-declaration stands.
+import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore publishes each member whose type names a token as
+`unknown`, and its siblings keep their types.
 
 Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
 `carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:

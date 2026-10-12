@@ -29,6 +29,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -553,6 +555,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
+            // ...$post->only([...]) on any other receiver holding one model flattens as the own-model spread does.
+            if ($topLevel && $item->key === null && $item->unpack && $item->value instanceof MethodCall) {
+                $filterAnalysis = $this->analyzeReceiverModelFilter($item->value);
+
+                if ($filterAnalysis !== null) {
+                    $analysis->merge($filterAnalysis);
+
+                    continue;
+                }
+            }
+
             // Handle ...$this->method() spread (e.g., trait methods returning arrays)
             if ($item->key === null && $item->unpack
                 && $item->value instanceof MethodCall
@@ -637,6 +650,43 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
+    }
+
+    /**
+     * The keys `only()` keeps on a receiver other than the subject's own model that holds exactly one concrete model.
+     *
+     * `except()` is left out: its pool would list the accessors and relations `Model::except()` never returns.
+     */
+    private function analyzeReceiverModelFilter(MethodCall $call): ?ResourceAnalysis
+    {
+        if ($this->filtersOwnModel($call)
+            || ! $call->name instanceof Identifier
+            || $call->name->toLowerString() !== 'only'
+            || $call->isFirstClassCallable()
+        ) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $this->scope);
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $model = $receiver !== null && ! $receiver->shortCircuits ? $resolver->singleModel($receiver) : null;
+
+        if ($model === null
+            || new ReflectionClass($model)->isAbstract()
+            || ! $resolver->typesAsModelFilter($model, 'only')
+        ) {
+            return null;
+        }
+
+        $filtering = new self(
+            $this->scope->subjectReflection,
+            $model,
+            $this->methodName,
+            $this->handlerProfile,
+            carriesImports: $this->scope->carriesImports,
+        );
+
+        return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
     }
 
     /**

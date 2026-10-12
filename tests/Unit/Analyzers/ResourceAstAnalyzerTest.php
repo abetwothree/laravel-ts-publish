@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
@@ -7371,5 +7372,14 @@ it('a spread helper reads none of its caller closure\'s names', function () {
         'transform_t?' => '{ v: number }',
         'loaded_t?' => '{ v: number }',
         'v' => 'number',
+    ]);
+});
+
+it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
+    expect(resourceKeyTypes(ReceiverOnlySpreadResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'name' => 'string',
+        'email' => 'string',
+        'nested' => "Omit<Pick<User, 'id'>, 'x'> & { x: number }",
     ]);
 });

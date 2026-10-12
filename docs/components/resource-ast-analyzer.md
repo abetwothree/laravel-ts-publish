@@ -199,7 +199,10 @@ runtime key list, on the resource's own model, a single-model relation and a man
 
 `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` write the same filters both ways, and
 `ResourceAstAnalyzerTest` asserts they publish identical properties and imports. Two shapes stay outside the pair.
-`...$this->author->only([...])` flattens under neither spelling. `$this?->only($keys)` publishes
+A top-level `...$receiver->only([...])` on another receiver holding one concrete model flattens
+(`analyzeReceiverModelFilter()`, sharing `ReceiverMethodReturnResolver::singleModel()` with the value rule), while
+`except()` does not, since its pool would list accessors and relations `Model::except()` never returns.
+`$this?->only($keys)` publishes
 `Record<string, unknown>`, while `$this->resource?->only($keys)` adds `| null`, since only the resource can wrap
 nothing.
 
