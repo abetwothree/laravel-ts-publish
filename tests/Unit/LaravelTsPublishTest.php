@@ -39,7 +39,9 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
@@ -1013,6 +1015,15 @@ describe('docblockReturnTypes', function () {
         expect($result['type'])->toBe('OrderItem[] | null')
             ->and($result['classFqcns'])->toBe([OrderItem::class]);
     });
+
+    test('docblockReturnTypes reads the whole tag', function (string $method, string $type) {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(DocblockReturnClass::class, $method))['type'])
+            ->toBe($type);
+    })->with([
+        'a spaced union' => ['spacedUnion', 'string | null'],
+        'an array of collections' => ['arrayOfCollections', 'OrderItem[][]'],
+        'two int-keyed arrays, spaced inside' => ['spacedGenericUnion', 'OrderItem[] | StatusType[]'],
+    ]);
 });
 
 describe('extractReturnTypeFromDocblock', function () {
@@ -1091,7 +1102,7 @@ describe('extractReturnTypeFromDocblock', function () {
         DOC;
 
         $result = $this->service->extractReturnTypeFromDocblock($doc);
-        expect($result)->toBe('array{name: string, age: int}|null');
+        expect($result)->toBe('array{name: string, age: int} | null');
     });
 
     test('extracts multiline array shape with spaced trailing union', function () {
@@ -1108,8 +1119,49 @@ describe('extractReturnTypeFromDocblock', function () {
         expect($result)->toContain('array{')
             ->and($result)->toContain('name: string')
             ->and($result)->toContain('age: int')
-            ->and($result)->toContain('|null');
+            ->and($result)->toEndWith('} | null');
     });
+
+    test('reads the whole type a tag spells, whatever its spacing', function (string $doc, string $type) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($type);
+    })->with([
+        'an array of a generic' => ['/** @return Collection<int, Post>[] */', 'Collection<int, Post>[]'],
+        'a spaced union after a plain type' => ['/** @return Foo | null */', 'Foo | null'],
+        'a trailing union whose generic holds a space' => [
+            '/** @return array<int, User>|array<int, CrmUser> */',
+            'array<int, User>|array<int, CrmUser>',
+        ],
+        'a spaced union after a shape' => [
+            '/** @return array{a: int} | array<int, string> */',
+            'array{a: int} | array<int, string>',
+        ],
+        'a description after the type' => ['/** @return int|null The count */', 'int|null'],
+    ]);
+
+    test('keeps the first-token reading of a conditional return type', function () {
+        expect($this->service->extractReturnTypeFromDocblock("/** @return (\$value is '' ? '' : string) */"))
+            ->toBe('($value');
+    });
+
+    test('keeps the first-token reading of a conditional return type Laravel declares', function (
+        string $class,
+        string $method,
+        string $reading,
+    ) {
+        $doc = (string) (new ReflectionMethod($class, $method))->getDocComment();
+
+        if (preg_match('/@return\s+\(/', $doc) !== 1) {
+            $this->markTestSkipped("The installed Laravel declares no conditional @return on {$method}().");
+        }
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+    })->with([
+        'Str::upper' => [Str::class, 'upper', '($value'],
+        'Str::contains' => [Str::class, 'contains', '($needles'],
+        'Str::password' => [Str::class, 'password', '($letters'],
+        'Arr::random' => [Arr::class, 'random', '($number'],
+        'Collection::sum' => [Collection::class, 'sum', '($callback'],
+    ]);
 });
 
 describe('phpstan-return docblock support', function () {
@@ -2520,6 +2572,30 @@ class DocblockReturnClass
     public function nullableGenericCollection()
     {
         return null;
+    }
+
+    /**
+     * @return string | null
+     */
+    public function spacedUnion()
+    {
+        return null;
+    }
+
+    /**
+     * @return Collection<int, OrderItem>[]
+     */
+    public function arrayOfCollections()
+    {
+        return [];
+    }
+
+    /**
+     * @return array<int, OrderItem>|array<int, Status>
+     */
+    public function spacedGenericUnion()
+    {
+        return [];
     }
 }
 

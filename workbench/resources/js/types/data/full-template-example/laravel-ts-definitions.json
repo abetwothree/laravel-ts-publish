@@ -18284,6 +18284,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\SpacedDocblockResource": {
+            "name": "SpacedDocblockResource",
+            "properties": [
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "subtitle",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "pages",
+                    "type": "Comment[][]",
+                    "optional": false
+                },
+                {
+                    "name": "threads",
+                    "type": "Comment[] | Post[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SpreadHelperScopeResource": {
             "name": "SpreadHelperScopeResource",
             "properties": [

@@ -296,6 +296,7 @@
     "app\/Http\/Resources\/ServiceReturnResource.php",
     "app\/Http\/Resources\/ShadowedClosureParamResource.php",
     "app\/Http\/Resources\/ShiftResource.php",
+    "app\/Http\/Resources\/SpacedDocblockResource.php",
     "app\/Http\/Resources\/SpreadHelperScopeResource.php",
     "app\/Http\/Resources\/SpreadJsonBaseResource.php",
     "app\/Http\/Resources\/SpreadWithClosureResource.php",

@@ -122,8 +122,8 @@ final class PropertyDocblockTypeReader
     /**
      * Capture the full type after a line-leading `@return`, `@phpstan-return` or `@psalm-return`, tried in that order.
      *
-     * Unlike LaravelTsPublish::extractReturnTypeFromDocblock(), text after a generic's closing `>`, such as `[]`, stays
-     * part of the type, so ReceiverClassResolver refuses an array of a class instead of naming the class.
+     * Text after a generic's closing `>`, such as `[]`, stays part of the type, so ReceiverClassResolver refuses an
+     * array of a class instead of naming the class. LaravelTsPublish::extractReturnTypeFromDocblock() reads through it.
      */
     public function extractReturnType(string $docComment): ?string
     {

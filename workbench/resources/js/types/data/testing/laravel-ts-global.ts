@@ -4999,6 +4999,16 @@ declare global {
             next_bell: string;
             checked_at: string | null;
         }
+        /**
+         * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a
+         * helper's `@return` keeps a spaced `| null`, an array of collections and a union of spaced generics.
+         */
+        export interface SpacedDocblockResource {
+            title: string;
+            subtitle: string | null;
+            pages: workbench.app.models.Comment[][];
+            threads: workbench.app.models.Comment[] | workbench.app.models.Post[];
+        }
         /** A spread helper called inside closures whose parameter is named like a local the helper writes itself. */
         export interface SpreadHelperScopeResource {
             has_t?: { v: number; k: number };

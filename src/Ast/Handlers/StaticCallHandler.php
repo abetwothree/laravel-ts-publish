@@ -335,8 +335,7 @@ final class StaticCallHandler implements ExpressionHandler
             return false;
         }
 
-        // extractReturnTypeFromDocblock()'s final fallback is `\S+`, so the token it returns
-        // can never carry surrounding whitespace — no trim() needed before comparing.
+        // extractReturnTypeFromDocblock() trims the type and collapses its whitespace, so no trim() before comparing.
         return LaravelTsPublish::extractReturnTypeFromDocblock($docComment) === '$this';
     }
 

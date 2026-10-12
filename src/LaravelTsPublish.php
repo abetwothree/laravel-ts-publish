@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
@@ -937,7 +938,7 @@ class LaravelTsPublish
     /**
      * Extend a single-line `@phpstan-type`/`@psalm-type` capture across further docblock lines when
      * its `{}`/`<>` depth is unbalanced — a multi-line `array{...}` shape — stripping each line's
-     * leading `*` comment marker as it goes. Mirrors extractReturnTypeFromDocblock()'s depth-aware walk.
+     * leading `*` comment marker as it goes.
      */
     protected function balanceTypeDefinition(string $firstLine, string $doc, int $offsetAfterFirstLine): string
     {
@@ -1785,111 +1786,23 @@ class LaravelTsPublish
     }
 
     /**
-     * Extract the complete return type string from a docblock, including multiline `array{...}` shapes.
-     *
-     * Returns null when no `@return`, `@phpstan-return`, or `@psalm-return` tag is found.
+     * Extract the whole return type a docblock's `@return`, `@phpstan-return` or `@psalm-return` tag spells, whatever
+     * its spacing, including multiline `array{...}` shapes. Null when the docblock has none of those tags.
      */
     public function extractReturnTypeFromDocblock(string $docComment): ?string
     {
-        // The "\n" join is significant: it lets the tag search below anchor to line starts, so a tag
-        // named mid-sentence — "The @return value..." — isn't mistaken for the real tag.
-        $lines = explode("\n", $docComment);
-        $content = '';
+        $type = resolve(PropertyDocblockTypeReader::class)->extractReturnType($docComment);
 
-        foreach ($lines as $line) {
-            $stripped = preg_replace('#^\s*/?\*+\s?#', '', $line) ?? '';
-            $stripped = preg_replace('#\s*\*+/$#', '', $stripped);
-            $content .= "\n".$stripped;
-        }
-
-        $content = trim($content);
-
-        // The negative lookbehind stops '@return' from matching inside '@phpstan-return'
-        $tagPattern = null;
-        foreach (['@return', '@phpstan-return', '@psalm-return'] as $tag) {
-            if (preg_match('/^\s*(?<![\w-])'.preg_quote($tag, '/').'\s+/m', $content, $match, PREG_OFFSET_CAPTURE)) {
-                $tagPattern = $match;
-
-                break;
-            }
-        }
-
-        if ($tagPattern === null) {
+        if ($type === null) {
             return null;
         }
 
-        $start = (int) $tagPattern[0][1] + strlen((string) $tagPattern[0][0]);
-        $rest = trim(substr($content, $start));
-
-        if (str_starts_with($rest, 'array{')) {
-            $depth = 0;
-            $end = 0;
-
-            for ($i = 5; $i < strlen($rest); $i++) {
-                if ($rest[$i] === '{') {
-                    $depth++;
-                } elseif ($rest[$i] === '}') {
-                    $depth--;
-
-                    if ($depth === 0) {
-                        $end = $i + 1;
-
-                        break;
-                    }
-                }
-            }
-
-            if ($end > 0) {
-                // Capture any trailing union, allowing spaces around `|` (e.g. `array{...} | null`)
-                $after = substr($rest, $end);
-                $afterTrimmed = ltrim($after);
-
-                if (preg_match('/^(\s*\|\s*[^\s|@]+)+/', $afterTrimmed, $trailingMatch)) {
-                    $trailingNormalized = (string) preg_replace('/\s*\|\s*/', '|', $trailingMatch[0]);
-
-                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingNormalized);
-                }
-
-                return $this->normalizeDocblockWhitespace(substr($rest, 0, $end));
-            }
+        // A conditional keeps its first-token reading: whole, toTsType()'s partial match would guess from its arms.
+        if (preg_match('/^\(\s*(\S+)\s+is\s/', $type, $condition) === 1) {
+            return '('.$condition[1];
         }
 
-        if (preg_match('/^[\w\\\\?]+\s*</', $rest)) {
-            $depth = 0;
-            $end = 0;
-
-            for ($i = 0; $i < strlen($rest); $i++) {
-                if ($rest[$i] === '<') {
-                    $depth++;
-                } elseif ($rest[$i] === '>') {
-                    $depth--;
-
-                    if ($depth === 0) {
-                        $end = $i + 1;
-
-                        break;
-                    }
-                }
-            }
-
-            if ($end > 0) {
-                // Trailing union, mirroring the array{...} case so `Collection<int, X>|null` keeps its `|null`
-                $after = substr($rest, $end);
-                $afterTrimmed = ltrim($after);
-
-                if (preg_match('/^(\s*\|\s*[^\s|@]+)+/', $afterTrimmed, $trailingMatch)) {
-                    $trailingNormalized = (string) preg_replace('/\s*\|\s*/', '|', $trailingMatch[0]);
-
-                    return $this->normalizeDocblockWhitespace(substr($rest, 0, $end).$trailingNormalized);
-                }
-
-                return $this->normalizeDocblockWhitespace(substr($rest, 0, $end));
-            }
-        }
-
-        preg_match('/^(\S+)/', $rest, $typeMatch);
-
-        return $typeMatch[1] ?? null;
+        return $this->normalizeDocblockWhitespace($type);
     }
 
     /**
