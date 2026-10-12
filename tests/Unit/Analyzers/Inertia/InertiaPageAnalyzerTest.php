@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -178,6 +179,13 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { post: unknown }');
+});
+
+it('types the props an action reads from its scalar, enum, union and nullable model parameters', function () {
+    expect(pageData(TypedActionParametersController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null }')
+        ->and(pageData(TypedActionParametersController::class.'@filter')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { term: string | null, key: string | number }');
 });
 
 it('types a resource collection from what it wraps', function () {

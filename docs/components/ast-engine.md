@@ -80,7 +80,8 @@ pins the structure and the three orderings. `invokingCallables()` swaps in `Firs
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's route-bound
-models, `Request` parameters and locals. The seeded scope is why `compact()`, a route-bound `$post` and
+models, `Request` parameters and locals; every other typed parameter binds through `ParameterBinder::bindDeclared()`, as a
+helper's are. The seeded scope is why `compact()`, a route-bound `$post` and
 `$request->integer()` type with no Inertia-specific handler code.
 
 ### The honest ordering inventory

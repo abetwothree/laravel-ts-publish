@@ -107,7 +107,7 @@ final class AstEngine
     /**
      * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
      * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
-     * `Request $request` is a fact the resource path never had.
+     * `Request $request` is a fact the resource path never had; every other typed parameter binds as a helper's does.
      *
      * @internal
      */
@@ -138,9 +138,15 @@ final class AstEngine
             }
         }
 
-        $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
-        $this->endBindingsAtWrites($context->method->stmts ?? [], $scope);
-        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
+        $stmts = $context->method->stmts ?? [];
+
+        if ($context->reflection->hasMethod($methodName)) {
+            resolve(ParameterBinder::class)->bindDeclared($context->reflection->getMethod($methodName), $stmts, $scope);
+        }
+
+        $this->collectLocalVarBindings($stmts, $scope);
+        $this->endBindingsAtWrites($stmts, $scope);
+        $this->collectInstanceofGuards($stmts, $scope);
 
         return $scope;
     }

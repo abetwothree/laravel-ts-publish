@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
@@ -223,6 +224,11 @@ test('an Inertia action\'s helper reads its typed parameter', function () {
 test('a metadata provider\'s helper reads the model it is passed', function () {
     expect(resolve(ModelMetadataAnalyzer::class)->analyze(HelperModelMetadataProvider::class, ['naming', 'keyName'])->types)
         ->toBe(['naming' => '{ table: string }', 'keyName' => 'string']);
+});
+
+test('a metadata provider reads its typed scalar parameter beside the model', function () {
+    expect(resolve(ModelMetadataAnalyzer::class)->analyze(TypedParameterMetadataProvider::class, ['limit', 'table'])->types)
+        ->toBe(['limit' => 'number', 'table' => 'string']);
 });
 
 test('binds each parameter into the table its declared type belongs in, and leaves a Request one', function () {
