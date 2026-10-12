@@ -20,6 +20,7 @@ use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Concerns\HasUniqueStringIds;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -37,6 +38,7 @@ use ReflectionFunction;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionType;
+use SplFileObject;
 use Throwable;
 
 /**
@@ -1013,21 +1015,24 @@ class ModelAttributeResolver
     }
 
     /**
-     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated. No default
-     * here: on no instance the receiver rules decline, while the auth and getKey rules fall back to `string`.
+     * The TypeScript spelling of a model's primary key type, read from its instance, else from what its class declares
+     * (an abstract model, or one that cannot be built) with an abstract one's published subclasses; null when none of
+     * these answers.
      *
      * @param  class-string  $modelFqcn
      */
     public function keyTsType(string $modelFqcn): ?string
     {
-        $instance = $this->getInstance($modelFqcn);
+        // A model whose table cannot be read is still built without it, so its constructor and initializers count.
+        $instance = $this->getInstance($modelFqcn) ?? $this->resolveRelationContext($modelFqcn)['instance'] ?? null;
 
-        if ($instance === null) {
-            return null;
+        if ($instance !== null) {
+            return self::keyTsTypeOf($instance->getKeyName(), $instance->getKeyType());
         }
 
-        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
-        return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+        $declared = $this->declaredKeyTsType($modelFqcn);
+
+        return $declared === null ? null : $this->subclassKeyTsType($modelFqcn, $declared);
     }
 
     /**
@@ -1594,6 +1599,157 @@ class ModelAttributeResolver
     }
 
     /**
+     * An abstract model's declared key type unioned with each published concrete subclass's, since getKey() runs on a
+     * subclass, which can key differently; null when a subclass names none or overrides getKey(). With no published
+     * set to read, the declared type.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    protected function subclassKeyTsType(string $modelFqcn, string $declared): ?string
+    {
+        if (PublishedModelRegistry::isEmpty() || ! new ReflectionClass($modelFqcn)->isAbstract()) {
+            return $declared;
+        }
+
+        $types = [$declared];
+
+        foreach (PublishedModelRegistry::all() as $model) {
+            // Whether a published model is a subclass is its own declaration, so a change to it must rebuild this.
+            DependencyRecorder::recordClass($model);
+
+            if (! is_subclass_of($model, $modelFqcn) || new ReflectionClass($model)->isAbstract()) {
+                continue;
+            }
+
+            $type = new ReflectionMethod($model, 'getKey')->getDeclaringClass()->getName() === Model::class
+                ? $this->keyTsType($model)
+                : null;
+
+            if ($type === null) {
+                return null;
+            }
+
+            $types[] = $type;
+        }
+
+        return implode(' | ', array_unique($types));
+    }
+
+    /**
+     * The key type a model class declares, read without instantiating it: the `$primaryKey` and `$keyType` defaults,
+     * Laravel 13's `#[Table]`, and `HasUuids`/`HasUlids`. Null for `Model` itself, and wherever code decides the key:
+     * an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`, or a constructor or initializer naming the key.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    protected function declaredKeyTsType(string $modelFqcn): ?string
+    {
+        if (! is_subclass_of($modelFqcn, Model::class)) {
+            return null;
+        }
+
+        $reflection = new ReflectionClass($modelFqcn);
+        $getKeyType = $reflection->getMethod('getKeyType');
+        $uniqueIds = self::runsFrameworkMethod($getKeyType, HasUniqueStringIds::class);
+
+        if (! self::runsFrameworkMethod($reflection->getMethod('getKeyName'), Model::class)
+            || ! ($uniqueIds || self::runsFrameworkMethod($getKeyType, Model::class))
+            || ($uniqueIds && ! self::runsFrameworkMethod($reflection->getMethod('uniqueIds'), HasUniqueStringIds::class))
+            || $this->setsKeyInCode($reflection)) {
+            return null;
+        }
+
+        $defaults = $reflection->getDefaultProperties();
+        $table = $this->tableKeyDeclaration($reflection);
+        // Model::initializeModelAttributes() lets #[Table] replace only the defaults `id` and `int`.
+        $keyName = $defaults['primaryKey'] === 'id' ? $table['key'] ?? 'id' : $defaults['primaryKey'];
+        $keyType = $defaults['keyType'] === 'int' ? $table['keyType'] ?? 'int' : $defaults['keyType'];
+
+        // HasUniqueStringIds::getKeyType() answers `string` for a key its own uniqueIds() lists, which is always.
+        return self::keyTsTypeOf($keyName, $uniqueIds ? 'string' : $keyType);
+    }
+
+    /**
+     * The `key` and `keyType` of the `#[Table]` Laravel 13 applies, found where Model::resolveClassAttribute() looks:
+     * on the class, then its own traits, then each parent in turn.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @return array{key: ?string, keyType: ?string}
+     */
+    protected function tableKeyDeclaration(ReflectionClass $reflection): array
+    {
+        // String FQCN behind class_exists(): Laravel 12 has no #[Table]. See docs/laravel-version-guards.md.
+        $tableAttribute = 'Illuminate\Database\Eloquent\Attributes\Table';
+
+        for ($class = $reflection; class_exists($tableAttribute) && $class !== false; $class = $class->getParentClass()) {
+            foreach ([$class, ...array_values($class->getTraits())] as $declarer) {
+                foreach ($declarer->getAttributes($tableAttribute) as $attribute) {
+                    try {
+                        $table = $attribute->newInstance();
+                    } catch (Throwable) {
+                        continue;
+                    }
+
+                    return ['key' => $table->key, 'keyType' => $table->keyType];
+                }
+            }
+        }
+
+        return ['key' => null, 'keyType' => null];
+    }
+
+    /**
+     * Whether a constructor or initializer outside the framework names the key, as `$this->keyType = …` does, so the
+     * value an instance would hold is not the declared default.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     */
+    protected function setsKeyInCode(ReflectionClass $reflection): bool
+    {
+        $framework = dirname((string) new ReflectionClass(Model::class)->getFileName(), 3);
+        // String FQCN behind class_exists(): #[Initialize] is new in Laravel 12.22. See docs/laravel-version-guards.md.
+        $initializeAttribute = 'Illuminate\Database\Eloquent\Attributes\Initialize';
+        $hasInitializeAttribute = class_exists($initializeAttribute);
+        $methods = array_filter(
+            $reflection->getMethods(),
+            fn (ReflectionMethod $method): bool => ! $method->isStatic()
+                && (str_starts_with($method->getName(), 'initialize')
+                    || ($hasInitializeAttribute && $method->getAttributes($initializeAttribute) !== [])),
+        );
+
+        // Each constructor in the chain can run through parent::__construct(), so each is read.
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            $constructor = $class->getConstructor();
+
+            if ($constructor !== null && $constructor->getDeclaringClass()->getName() === $class->getName()) {
+                $methods[] = $constructor;
+            }
+        }
+
+        foreach ($methods as $method) {
+            if (str_starts_with((string) $method->getFileName(), $framework)) {
+                continue;
+            }
+
+            $file = new SplFileObject((string) $method->getFileName());
+            $file->seek($method->getStartLine() - 1);
+            $code = '';
+
+            while (! $file->eof() && $file->key() < $method->getEndLine()) {
+                $line = $file->current();
+                $code .= is_string($line) ? $line : '';
+                $file->next();
+            }
+
+            if (preg_match('/\b(primaryKey|keyType|setKeyName|setKeyType)\b/', $code) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Append ' | null' to a TypeScriptTypeInfo's type when nullable and not already present.
      *
      * @param  TypeScriptTypeInfo  $tsInfo
@@ -1606,6 +1762,30 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * The TypeScript key type for a key name and Model::getKeyType() value: `null` when the model has no primary key,
+     * since getKey() is then getAttribute(null).
+     */
+    private static function keyTsTypeOf(mixed $keyName, mixed $keyType): string
+    {
+        if ($keyName === null || $keyName === '') {
+            return 'null';
+        }
+
+        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
+        return in_array($keyType, ['int', 'integer'], true) ? 'number' : 'string';
+    }
+
+    /**
+     * Whether a method runs the given framework class's or trait's own body, which a trait method's file identifies.
+     *
+     * @param  class-string  $declarer
+     */
+    private static function runsFrameworkMethod(ReflectionMethod $method, string $declarer): bool
+    {
+        return $method->getFileName() === new ReflectionClass($declarer)->getFileName();
     }
 
     /**

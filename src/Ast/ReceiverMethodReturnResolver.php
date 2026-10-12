@@ -103,7 +103,8 @@ final class ReceiverMethodReturnResolver
     ): ?array {
         $resolver = resolve(ModelAttributeResolver::class);
 
-        if ($methodName === 'getKey' && $this->runsModelMethod($class, $methodName)) {
+        // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
+        if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
             $keyType = $resolver->keyTsType($class);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
@@ -119,7 +120,7 @@ final class ReceiverMethodReturnResolver
         if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
             $keyType = $resolver->keyTsType($receiver->elementModel);
 
-            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
+            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($keyType)];
         }
 
         if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
@@ -246,8 +247,17 @@ final class ReceiverMethodReturnResolver
      */
     private function runsModelMethod(string $class, string $methodName): bool
     {
-        return is_a($class, Model::class, true)
-            && ! new ReflectionClass($class)->isAbstract()
+        return $this->inheritsModelMethod($class, $methodName) && ! new ReflectionClass($class)->isAbstract();
+    }
+
+    /**
+     * Whether a model class, abstract or not, inherits Model's own declaration of a method; `Model` itself does not.
+     *
+     * @param  class-string  $class
+     */
+    private function inheritsModelMethod(string $class, string $methodName): bool
+    {
+        return is_subclass_of($class, Model::class)
             && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
     }
 

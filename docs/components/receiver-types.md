@@ -172,9 +172,14 @@ Laravel declares all four loosely. `Model::getKey()` returns `mixed`, `Collectio
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
-  and an abstract model get no rule, so reflection declines the inherited `mixed`. An override gets no rule either,
-  because PHP holds every subclass to its declared return, which reflection types.
-- **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list.
+  gets no rule. A model with no instance, abstract or one that cannot be built, gets the key type its class declares
+  (`ModelAttributeResolver::declaredKeyTsType()`), and an abstract one adds each published concrete subclass's, so
+  `number | string`. Where code decides the key, through an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`,
+  or a constructor or initializer naming it, the rule declines. A model whose `$primaryKey` is `null` publishes `null`.
+  An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
+  types.
+- **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,
+  wrapped first when it is a union: `(number | string)[]`.
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
@@ -191,8 +196,9 @@ asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to su
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
 even when the subject is backed by the integer-keyed `Post`. The filter and route binding rules name a model token, so
-they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules do not
-answer, so `getKey()` declines on `mixed` and `modelKeys()` keeps its reflected `(string | number)[]`.
+they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules read the
+declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected `(string | number)[]`, only
+where code decides the key.
 
 ### The order for one class
 

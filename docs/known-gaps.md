@@ -548,6 +548,14 @@ parameter on a receiver the scan cannot resolve, such as `$other->fill($this->ta
 all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
 it a `@var` docblock.
 
+### An abstract model's key type misses a subclass the run does not publish
+
+`getKey()`, `modelKeys()` and `Auth::id()` on an abstract model publish the key type the class declares, joined with
+each concrete subclass the run publishes. A subclass the run leaves out, which the collector skips or a package
+holds, adds nothing when it keys differently. So does a key a constructor sets through another method. A
+`uniqueIds()` override publishes `unknown` even when its list leaves the key out. A concrete receiver class never
+looks at its subclasses.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:

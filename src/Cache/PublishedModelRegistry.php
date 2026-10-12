@@ -11,7 +11,7 @@ namespace AbeTwoThree\LaravelTsPublish\Cache;
  */
 class PublishedModelRegistry
 {
-    /** @var array<string, true> */
+    /** @var array<string, string> */
     protected static array $published = [];
 
     /** Whether a run registered its set, so an empty one means "nothing is published", not "no information". */
@@ -31,7 +31,7 @@ class PublishedModelRegistry
     public static function register(iterable $fqcns): void
     {
         foreach ($fqcns as $fqcn) {
-            static::$published[static::normalize($fqcn)] = true;
+            static::$published[static::normalize($fqcn)] ??= ltrim($fqcn, '\\');
         }
 
         static::$registered = true;
@@ -64,6 +64,16 @@ class PublishedModelRegistry
     public static function isPublished(string $fqcn): bool
     {
         return ! static::$registered || isset(static::$published[static::normalize($fqcn)]);
+    }
+
+    /**
+     * The registered class names, as each was first registered; empty until a run registers its set.
+     *
+     * @return list<string>
+     */
+    public static function all(): array
+    {
+        return array_values(static::$published);
     }
 
     /**

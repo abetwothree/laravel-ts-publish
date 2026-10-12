@@ -11,6 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Analyzers\FormRequest\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
@@ -330,6 +334,36 @@ it('types auth()->id() and Auth::id() as number for an `integer` key type', func
         ->toBe(['type' => 'number | null', 'optional' => false])
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'number | null', 'optional' => false]);
+});
+
+it('types auth()->id() and Auth::id() from the key an auth model declares when it cannot be inspected', function (string $model, string $type) {
+    config()->set('auth.providers.users.model', $model);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => $type, 'optional' => false])
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    'an unreachable connection' => [OfflineKeyUser::class, 'number | null'],
+    'no primary key' => [NullKeyPost::class, 'null'],
+]);
+
+it('declines auth()->id() and Auth::id() where code decides the auth model\'s key, where it once guessed string', function () {
+    config()->set('auth.providers.users.model', AbstractKeyTypeOverrideModel::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
+});
+
+it('declines auth()->id() and Auth::id() for an auth model identified by another column, where it published the key', function () {
+    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
 });
 
 it('declines an unbound ->user() on any other receiver', function () {

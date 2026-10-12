@@ -339,6 +339,14 @@ applies them in `Model::__construct()`, and the package reads the results throug
 back here. Keep the reads on an instance. The test-only version guards they need, and why the workbench fixtures may
 still `use`-import them, are in [Version-guarded Laravel classes](../laravel-version-guards.md).
 
+## Key types
+
+`keyTsType()` reads a model's key type from its instance, built without its table when that cannot be read. With no
+instance at all, `declaredKeyTsType()` reads `$primaryKey`, `$keyType`, Laravel 13's `#[Table]` and `HasUuids`/`HasUlids`
+from the class, and declines where code decides the key. For an abstract model, `subclassKeyTsType()` unions in each
+published concrete subclass's type and records every published model, since any of them could become a subclass.
+`tableKeyDeclaration()` is the one place `#[Table]` is read through reflection, because no constructor runs there.
+
 ## A missing table is reported, not guessed
 
 When `ModelInspector` finds no columns, `resolveContext()` asks the schema builder whether the table exists. If it

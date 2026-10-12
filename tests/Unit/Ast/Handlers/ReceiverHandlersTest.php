@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -18,12 +19,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
@@ -958,5 +965,41 @@ describe('narrowing', function () {
             ->toBe([])
             ->and(narrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
             ->toBe([]);
+    });
+});
+
+describe('getKey()', function () {
+    test('publishes the key type an abstract model declares in every spelling, where it once guessed string', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getKey()', 'number'],
+        ['$this->resource?->getKey()', 'number | null'],
+        ['$this->getKey()', 'number'],
+    ]);
+
+    test('declines in every spelling on an abstract model whose key code decides', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyTypeOverrideModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with(['$this->resource->getKey()', '$this->resource?->getKey()', '$this->getKey()']);
+
+    test('unions an abstract model\'s key type with a published subclass that keys differently', function (string $php, string $type) {
+        PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyedModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getKey()', 'number | string'],
+        ['$this->resource?->getKey()', 'number | string | null'],
+        ['$this->getKey()', 'number | string'],
+    ]);
+
+    test('the dispatch floor no longer answers getKey()', function () {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);
+
+        expect(new KnownMethodRuleHandler()->resolve(receiverHandlerExpr('$this->resource->getKey()'), $scope, chainHandlersThrowingEngine()))
+            ->toBeNull();
     });
 });

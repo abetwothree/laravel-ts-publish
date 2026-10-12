@@ -5,6 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverKeyInheritingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverKeyNarrowingModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -17,12 +22,27 @@ use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
 use Workbench\App\Models\UuidPost;
 
-test('getKey on the base Model or an abstract model inheriting its mixed return declines', function () {
+test('getKey on the base Model declines, while an abstract model inheriting Model::getKey() publishes its declared key', function () {
     $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
     $resolver = resolve(ReceiverMethodReturnResolver::class);
 
     expect($resolver->resolve(ReceiverType::of(Model::class), 'getKey', $scope))->toBeNull()
-        ->and($resolver->resolve(ReceiverType::of(ReceiverKeyInheritingModel::class), 'getKey', $scope))->toBeNull();
+        ->and($resolver->resolve(ReceiverType::of(ReceiverKeyInheritingModel::class), 'getKey', $scope))
+        ->toBe(['type' => 'number', 'optional' => false])
+        ->and($resolver->resolve(ReceiverType::of(AbstractUuidKeyModel::class), 'getKey', $scope))
+        ->toBe(['type' => 'string', 'optional' => false])
+        ->and($resolver->resolve(new ReceiverType([EloquentCollection::class], elementModel: AbstractUuidKeyModel::class), 'modelKeys', $scope))
+        ->toBe(['type' => 'string[]', 'optional' => false])
+        ->and($resolver->resolve(new ReceiverType([EloquentCollection::class], elementModel: Model::class), 'modelKeys', $scope))
+        ->toBe(['type' => '(string | number)[]', 'optional' => false]);
+});
+
+test('modelKeys wraps an abstract element model\'s union of subclass key types before listing it', function () {
+    PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+    expect(resolve(ReceiverMethodReturnResolver::class)->resolve(new ReceiverType([EloquentCollection::class], elementModel: AbstractKeyedModel::class), 'modelKeys', $scope))
+        ->toBe(['type' => '(number | string)[]', 'optional' => false]);
 });
 
 test('a model that declares getKey() itself publishes its declaration, not its key type', function () {

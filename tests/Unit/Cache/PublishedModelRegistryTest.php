@@ -107,3 +107,16 @@ it('signs the set, not the letter case its classes were registered in', function
     expect($signature)->not->toBe('')
         ->and(PublishedModelRegistry::signature())->toBe($signature);
 });
+
+it('lists the registered classes as each was first registered, once each, and none after reset()', function () {
+    expect(PublishedModelRegistry::all())->toBe([]);
+
+    PublishedModelRegistry::register(['\\Workbench\\App\\Models\\Post', 'Workbench\\App\\Models\\User']);
+    PublishedModelRegistry::register(['workbench\\app\\models\\post']);
+
+    expect(PublishedModelRegistry::all())->toBe(['Workbench\\App\\Models\\Post', 'Workbench\\App\\Models\\User']);
+
+    PublishedModelRegistry::reset();
+
+    expect(PublishedModelRegistry::all())->toBe([]);
+});

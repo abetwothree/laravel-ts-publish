@@ -307,7 +307,8 @@ interfaces included, so an override or a trait edit counts. Each reader records 
 member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
 `ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
 `LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`, and
-`ModelAttributeResolver`'s contexts and caster reads. A cache in front of such a read records before its lookup, or
+`ModelAttributeResolver`'s contexts and caster reads, and `ModelAttributeResolver::subclassKeyTsType()`, which records every
+published model. A cache in front of such a read records before its lookup, or
 replays what it recorded, as `resolveAttributeClass()` does. Recording never deduplicates, because a memo frame keeps
 the paths recorded after its mark.
 
