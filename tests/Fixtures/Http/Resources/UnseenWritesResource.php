@@ -74,6 +74,25 @@ class UnseenWritesResource extends JsonResource
         $arrowShadowed = $this->title;
         $mapped = collect([1, 2])->map(fn (int $arrowShadowed) => $arrowShadowed * 2);
 
+        $key = $this->title;
+        $keyed = ['x' => 1];
+        unset($keyed[$key]);
+
+        $field = $this->title;
+        $groups = ['x' => [3, 1]];
+        sort($groups[$field]);
+
+        $items = [1, 2];
+
+        foreach (array_values($items) as &$item) {
+            $item = 'z';
+        }
+
+        unset($item);
+
+        $author = $this->author;
+        unset($author->password);
+
         return [
             'caught' => $caught,
             'declared_caught' => $declaredCaught,
@@ -89,6 +108,10 @@ class UnseenWritesResource extends JsonResource
             'doubled' => $doubled,
             'arrow_shadowed' => $arrowShadowed,
             'mapped' => $mapped,
+            'key' => $key,
+            'field' => $field,
+            'items' => $items,
+            'author' => $author,
         ];
     }
 

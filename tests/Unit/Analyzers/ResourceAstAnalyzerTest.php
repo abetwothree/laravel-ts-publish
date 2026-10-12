@@ -7357,5 +7357,9 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
         'doubled' => 'number[]',
         'arrow_shadowed' => 'string',
         'mapped' => 'number[]',
+        'key' => 'string',
+        'field' => 'string',
+        'items' => 'number[]',
+        'author' => 'User',
     ]);
 });

@@ -22,8 +22,6 @@ use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
-use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\StaticVar;
 use PhpParser\Node\Stmt\Catch_;
@@ -96,6 +94,9 @@ trait CollectsLocalVarBindings
      * Every local variable write in a statement tree, as the name written, the node writing it and the expression it
      * writes to: an assignment or increment, a `foreach` target or by-reference array, a `catch` variable, `unset()`,
      * `static`, `global`, a by-reference `use`, or an argument to a by-reference parameter of a callee the call names.
+     *
+     * Only an assignment, an increment, a `foreach` target and a `use` count every variable they spell; the rest count
+     * just the variable they name or key into, so `unset($a[$k])` writes `$a` and `unset($o->p)` writes nothing.
      *
      * A nested closure or arrow function's write reaches the body only for a name it does not own; a nested class's or
      * named function's never does.
@@ -220,11 +221,19 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            foreach ($this->writeTargets($node, $subject, $declaration) as $target) {
+            foreach ($this->writeTargets($node) as $target) {
                 foreach ($this->writtenVariables($target) as $name) {
                     if ($this->reachesBody($name, $enclosing)) {
                         $writes[] = [$name, $node, $target];
                     }
+                }
+            }
+
+            foreach ($this->rootedWriteTargets($node, $subject, $declaration) as $target) {
+                $name = $this->rootVariable($target);
+
+                if ($name !== null && $this->reachesBody($name, $enclosing)) {
+                    $writes[] = [$name, $node, $target];
                 }
             }
 
@@ -245,22 +254,43 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The expressions one node writes to.
+     * The expressions an assignment, an increment, a `foreach` target or a by-reference `use` writes to, each variable
+     * they spell counted as written.
+     *
+     * @return list<Expr>
+     */
+    private function writeTargets(Node $node): array
+    {
+        $targets = match (true) {
+            $node instanceof AssignRef => [$node->var, $node->expr],
+            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PostInc,
+            $node instanceof PreDec, $node instanceof PostDec => [$node->var],
+            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar],
+            $node instanceof ClosureExpr => array_map(
+                fn (ClosureUse $use): Expr => $use->var,
+                array_filter($node->uses, fn (ClosureUse $use): bool => $use->byRef),
+            ),
+            default => [],
+        };
+
+        return array_values(array_filter($targets, fn (?Expr $target): bool => $target !== null));
+    }
+
+    /**
+     * The expressions a `catch`, `unset()`, `static`, `global`, a by-reference `foreach` or a by-reference argument
+     * writes to, each counted only for the variable rootVariable() finds.
      *
      * @param  ReflectionClass<object>|null  $subject
      * @param  ReflectionClass<object>|null  $declaration
      * @return list<Expr>
      */
-    private function writeTargets(Node $node, ?ReflectionClass $subject, ?ReflectionClass $declaration): array
+    private function rootedWriteTargets(Node $node, ?ReflectionClass $subject, ?ReflectionClass $declaration): array
     {
         if ($node instanceof CallLike) {
-            // Only a variable, a key or a property can be written through a reference, and only a call passing one
-            // pays for reflecting its callee.
+            // Only a call passing a variable or a key of one pays for reflecting its callee.
             $passed = $node->isFirstClassCallable() ? [] : array_filter(
                 $node->getArgs(),
-                fn (Arg $arg): bool => ($arg->value instanceof Variable || $arg->value instanceof ArrayDimFetch
-                    || $arg->value instanceof PropertyFetch || $arg->value instanceof StaticPropertyFetch)
-                    && $this->writtenVariables($arg->value) !== [],
+                fn (Arg $arg): bool => $this->rootVariable($arg->value) !== null,
             );
 
             return $passed === []
@@ -269,14 +299,7 @@ trait CollectsLocalVarBindings
         }
 
         $targets = match (true) {
-            $node instanceof AssignRef => [$node->var, $node->expr],
-            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PostInc,
-            $node instanceof PreDec, $node instanceof PostDec => [$node->var],
-            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar, $node->byRef ? $node->expr : null],
-            $node instanceof ClosureExpr => array_map(
-                fn (ClosureUse $use): Expr => $use->var,
-                array_filter($node->uses, fn (ClosureUse $use): bool => $use->byRef),
-            ),
+            $node instanceof Foreach_ => $node->byRef ? [$node->expr] : [],
             $node instanceof Catch_ => [$node->var],
             $node instanceof Unset_, $node instanceof Global_ => $node->vars,
             $node instanceof Static_ => array_map(fn (StaticVar $static): Expr => $static->var, $node->vars),
@@ -284,6 +307,19 @@ trait CollectsLocalVarBindings
         };
 
         return array_values(array_filter($targets, fn (?Expr $target): bool => $target !== null));
+    }
+
+    /**
+     * The variable a target rewrites when it is that variable or a key of it; a property keeps its holder, and a
+     * temporary such as a call's result holds no variable.
+     */
+    private function rootVariable(Expr $target): ?string
+    {
+        while ($target instanceof ArrayDimFetch) {
+            $target = $target->var;
+        }
+
+        return $target instanceof Variable && is_string($target->name) ? $target->name : null;
     }
 
     /**
