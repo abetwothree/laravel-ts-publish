@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
@@ -316,7 +315,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
     /**
      * What `$this->resource->m()` returns: the wrapped class's declaration when it has one, else the model's, through
-     * the declaration-then-body read. A model method the receiver rules type, such as toArray(), is left to them.
+     * the read ReceiverMethodReturnResolver::forwardedReturn() gives, as the bare call does.
      *
      * @return ValueExpressionResult|null
      */
@@ -325,15 +324,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $wrappedClass = $this->resolveWrappedClass($scope);
         $class = $wrappedClass !== null && method_exists($wrappedClass, $methodName) ? $wrappedClass : $scope->modelClass;
 
-        if ($class === null
-            || ! method_exists($class, $methodName)
-            || ! new ReflectionMethod($class, $methodName)->isPublic()
-            || resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($class, $methodName)
-        ) {
+        if ($class === null || ! method_exists($class, $methodName) || ! new ReflectionMethod($class, $methodName)->isPublic()) {
             return null;
         }
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+        return resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($class, $methodName, $scope);
     }
 
     /**

@@ -356,6 +356,21 @@ describe('ReceiverMethodReturnResolver', function () {
         [VagueDirtyOverrideModel::class, 'getCasts', null],
         [CallPathAbstractModel::class, 'getCasts', null],
     ]);
+
+    test('a method the model does not have is never Model\'s own, so nothing reflects it', function () {
+        $inherits = fn (string $class, string $method): bool => $this->inheritsModelMethod($class, $method);
+
+        expect($inherits->call(resolve(ReceiverMethodReturnResolver::class), User::class, 'notAModelMethod'))->toBeFalse()
+            ->and($inherits->call(resolve(ReceiverMethodReturnResolver::class), User::class, 'getCasts'))->toBeTrue();
+    });
+
+    test('an overridden toArray() publishes its declared shape through $this->resource and on a controller\'s property', function () {
+        $resource = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), ReceiverShapedToArrayModel::class);
+        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+
+        expect($resource->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])->toBe('{ id: number }')
+            ->and($controller->resolve(receiverHandlerExpr('$this->shaped->toArray()'))['type'])->toBe('{ id: number }');
+    });
 });
 
 describe('ReceiverMethodCallHandler', function () {
@@ -1106,6 +1121,13 @@ describe('a call on $this->prop types from the class the property holds, never f
         ['$this->resource->getCasts()', 'Record<string, string>'],
         ['$this->resource->getAppends()', 'string[]'],
         ['$this->getCasts()', 'Record<string, string>'],
+        ['$this::getAppends()', 'string[]'],
+        ['$this::all()', 'unknown[]'],
+        ['$this::getCasts()', 'Record<string, string>'],
+        ['$this->resource::getAppends()', 'string[]'],
+        ['$this->resource::all()', 'unknown[]'],
+        ['$this->resource::getCasts()', 'Record<string, string>'],
+        ['$this->comments?->all()', 'unknown[] | null'],
     ]);
 
     test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {

@@ -162,12 +162,13 @@ Earlier claimants of these node classes decline a call they cannot type, as
 [AST engine § A handler declines what it cannot type][declines] requires, so this handler gets to answer.
 [The honest ordering inventory][inventory] records the declines that settle each pair.
 
-`RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`, where it reads the
-wrapped class, else the model, through `MethodReturnTypeResolver::resolve()`; on a date-cast column; or on a model-less
-subject's own typed property. A model method the receiver rules type, such as `toArray()` or `getCasts()`, and a filter
-on a model the subject holds, are left to those rules, through `typesModelMethod()`. Every other `$this->prop->m()` is
-this handler's, inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the
-resource's model.
+`RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`; on a date-cast column;
+or on a model-less subject's own typed property. Through `$this->resource` it reads the wrapped class, else the model,
+by `ReceiverMethodReturnResolver::forwardedReturn()`, as the bare `$this->m()`, `$this::m()` and `$this->resource::m()`
+do: the receiver rules' answer for a model method they type (`typesModelMethod()`), such as `toArray()` or
+`getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it leaves those methods, and a
+filter on a held model, to the receiver rules. Every other `$this->prop->m()` is this handler's, inside a relation's
+closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 

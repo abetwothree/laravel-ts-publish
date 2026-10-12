@@ -122,8 +122,10 @@ final class MethodChainHandler implements ExpressionHandler
 
         $currentModel = $relationInfo['modelFqcn'];
 
-        // A model's own toArray() and loose arrays are the receiver rules', which type what they hold.
-        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)) {
+        // The receiver rules type a model's own toArray() and loose arrays, and a relation collection's toArray().
+        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)
+            && ($methodName === 'toArray' || ! str_ends_with($relationInfo['type'], '[]'))
+        ) {
             return ValueResult::unknown();
         }
 

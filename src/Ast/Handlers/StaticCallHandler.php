@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -415,7 +416,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
+            $accepted = resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($wrappedClass, $methodName, $scope);
 
             if ($accepted !== null) {
                 return $accepted;
@@ -425,7 +426,7 @@ final class StaticCallHandler implements ExpressionHandler
         if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
             /** @var class-string $modelClass */
             $modelClass = $scope->modelClass;
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
+            $accepted = resolve(ReceiverMethodReturnResolver::class)->forwardedReturn($modelClass, $methodName, $scope);
 
             if ($accepted !== null) {
                 return $accepted;

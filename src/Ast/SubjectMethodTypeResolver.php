@@ -38,25 +38,21 @@ final class SubjectMethodTypeResolver
         }
 
         $wrappedClass = $this->resolveWrappedClass($scope);
-        $rules = resolve(ReceiverMethodReturnResolver::class);
+        $forwarded = resolve(ReceiverMethodReturnResolver::class);
 
-        // A forwarded model method the receiver rules type, such as getCasts(), is theirs, as via `$this->resource`.
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName) && ! $rules->typesModelMethod($wrappedClass, $methodName)) {
+        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
             /** @var class-string $wrappedClass */
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
+            $accepted = $forwarded->forwardedReturn($wrappedClass, $methodName, $scope);
 
             if ($accepted !== null) {
                 return $accepted;
             }
         }
 
-        if ($scope->modelClass !== null
-            && method_exists($scope->modelClass, $methodName)
-            && ! $rules->typesModelMethod($scope->modelClass, $methodName)
-        ) {
+        if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
             /** @var class-string $modelClass */
             $modelClass = $scope->modelClass;
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
+            $accepted = $forwarded->forwardedReturn($modelClass, $methodName, $scope);
 
             if ($accepted !== null) {
                 return $accepted;
