@@ -75,6 +75,7 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
+use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
@@ -839,6 +840,33 @@ describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert agains
         expect($chain)->toBe(['type' => 'string | null', 'optional' => false])
             ->and($receiver)->toBe($chain);
     });
+});
+
+describe('a read on $this->prop types from the class the property holds', function () {
+    test('a column the held model does not have is unknown, where a column it has still types', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ModelWrappedPropResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a held model without the column' => ['$this->author->title', 'unknown'],
+        'a held model with the column' => ['$this->author->name', 'string'],
+        'the resource model\'s own column' => ['$this->resource->title', 'string'],
+    ]);
+
+    test('a model-less resource reading a property it does not declare is unknown', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->other->name'))['type'])->toBe('unknown');
+    });
+
+    test('inside a whenLoaded closure a read still types from the property, never from the closure relation', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a column the relation lacks' => ['$this->whenLoaded("author", fn () => $this->categoryRel->email)', 'unknown'],
+        'the same read nullsafe' => ['$this->whenLoaded("author", fn () => $this->categoryRel?->email)', 'unknown'],
+    ]);
 });
 
 describe('PropertyChainHandler declines an unknown-only chain', function () {

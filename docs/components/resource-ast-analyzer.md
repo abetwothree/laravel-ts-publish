@@ -366,13 +366,11 @@ on a key no cast covers.
 ## `$this->resource` inside a relation closure is the resource's own model
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
-[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) roots every chain at `$modelClass`, and
+[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) and
+[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
 `RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
-`AnalysisScope::$closureRelationModelClass`, the relation's model. A property read still does:
-[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) starts a bare `$this->prop` chain there, and
-roots one whose first step is `resource` at `$modelClass`. It also skips the `startIndex` shortcut for that chain, which
-treats a closure chain's first step as the relation proxy and would drop its first real relation. A model that declares
-a real `resource` relation keeps the relation walk. `ClosureResourceRootResource` pins both spellings.
+`AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
+keeps the relation walk. `ClosureResourceRootResource` pins both spellings.
 
 ## Collection pipelines
 

@@ -297,6 +297,7 @@ An accessor still costs the method its whole shape when its type names a class a
 `ReceiverMethodCallHandler` does for a call. So `$post?->title` is `string | null` once `$post` is known to hold a
 `Post`. A `$this->prop` leaf declines outright, since `ThisPropertyHandler` owns it and reads the subject's own
 declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode).
+A read on `$this->prop` types from the class `prop` holds, as a call does.
 
 Each class types the property one of two ways:
 
