@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use PhpParser\Node;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\NodeFinder;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
  * The names collectVariableWrites() reports for a parsed body, in order, with UnseenWritesResource as the subject.
@@ -68,3 +74,63 @@ it('reports each write kind', function (string $body, array $names) {
     'arrow capture write' => ['$f = fn () => $y = 1;', ['f', 'y']],
     'nested class' => ['$o = new class { public function m() { $z = 1; } };', ['o']],
 ]);
+
+/**
+ * Whether each read of `$p` in a parsed body, in order, still holds the binding a scope seeded for it, once the body's
+ * binding pass and endBindingsAtWrites() have run.
+ *
+ * @param  Closure(AnalysisScope): void  $seed
+ * @return list<bool>
+ */
+function parameterReadsHolding(string $body, Closure $seed): array
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Run the binding pass, then end the bindings the body's writes replace.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function end(array $stmts, AnalysisScope $scope): void
+        {
+            $this->collectLocalVarBindings($stmts, $scope);
+            $this->endBindingsAtWrites($stmts, $scope);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $seed($scope);
+    $host->end($stmts, $scope);
+
+    $reads = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof Variable && $node->name === 'p');
+
+    return array_map(fn (Node $read): bool => $read instanceof Variable && $scope->holdsBinding($read), $reads);
+}
+
+it('ends a parameter\'s model binding at the first write that replaces it with another class', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
+        $scope->varModelBindings['p'] = User::class;
+    }))->toBe($holding);
+})->with([
+    'a top-level write to another model, past its own statement' => ['$p = $p->profile; return $p;', [true, true, false]],
+    'a write naming the same model' => ['$p = $p->fresh() ?? $p; return $p;', [true, true, true, true]],
+    'a write whose value names no class' => ['$p = $p->comments->first(); return $p;', [true, true, true]],
+    'a write an inline @var names another class for' => ['/** @var \\Workbench\\App\\Models\\Comment $p */ $p = $p->comments->first(); return $p;', [true, true, false]],
+    'a nested write, from where its statement starts' => ['if ($p->id) { $p = $p->profile; } return $p;', [false, false, false, false]],
+    'a write through a property or a key' => ['$p->name = "x"; $p["k"] = 1; return $p;', [true, true, true]],
+    'a destructuring write' => ['[$p] = [$p->profile]; return $p;', [true, true, false]],
+    'a foreach target' => ['foreach ([] as $p) {} return $p;', [false, false]],
+    'a later write past the first end' => ['$p = $p->profile; $p = $p->user; return $p;', [true, true, false, false, false]],
+    'a write to a nested closure\'s own parameter' => ['$f = function ($p) { $p = 1; }; return $p;', [true, true, true]],
+]);
+
+// A value names no class to compare, so any write that replaces it ends it; the local then reads what was assigned.
+it('ends a value binding at any write that replaces it', function () {
+    expect(parameterReadsHolding('$p = trim($p); return $p;', function (AnalysisScope $scope): void {
+        $scope->varValueBindings['p'] = ['type' => 'string', 'optional' => false];
+    }))->toBe([true, true, false]);
+});

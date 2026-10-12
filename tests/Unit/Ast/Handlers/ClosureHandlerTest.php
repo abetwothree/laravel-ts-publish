@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedPostParamResource;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -17,6 +20,8 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Models\Comment;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
@@ -281,6 +286,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->localVarBindings[$name] = $outer;
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
+        $scope->bindingEnds[$name] = 0;
     }
 
     $before = $scope->nameBindings();
@@ -406,4 +412,47 @@ it('drops an outer inline @var binding of a name the closure body writes, and bi
     expect(array_keys($rewritten))->toBe(['kept'])
         ->and(array_column($annotated['u'] ?? [], 'type'))->toBe(['\Workbench\App\Models\Post'])
         ->and($scope->nameBindings())->toBe($before);
+});
+
+/**
+ * Each key a resource publishes, its name suffixed `?` when optional, mapped to its type.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function closureHandlerResourceKeys(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('reads a whenLoaded() parameter past its reassignment through what the body assigned', function () {
+    expect(closureHandlerResourceKeys(ReassignedClosureParamResource::class, Post::class))->toBe([
+        'declared_name?' => 'unknown',
+        'declared_content?' => 'string',
+        'declared_nullsafe?' => 'string | null',
+        'declared_bare?' => 'Comment',
+        'read_before?' => 'string',
+        'same_model?' => 'string',
+        'relation_bio?' => 'string | null',
+        'relation_website?' => 'string | null',
+        // A relation read through a model-bound variable is unknown, so the local it binds is too (#93).
+        'relation_bare?' => 'unknown',
+        'narrowed_bio?' => 'string | null',
+        'narrowed_website?' => 'string | null',
+        'mapped_reassigned?' => 'unknown',
+        // Collection::first() names no class, so the old binding is all that is known and stands (known gap).
+        'unnamed_name?' => 'string',
+    ]);
+});
+
+it('drops the old binding\'s member and method for a parameter reassigned to another model', function () {
+    expect(closureHandlerResourceKeys(ReassignedPostParamResource::class, Comment::class))
+        ->toBe(['old_prop?' => 'unknown', 'new_prop?' => 'string', 'old_method?' => 'unknown']);
 });

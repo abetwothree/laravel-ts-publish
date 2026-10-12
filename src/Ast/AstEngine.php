@@ -135,6 +135,7 @@ final class AstEngine
         }
 
         $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
+        $this->endBindingsAtWrites($context->method->stmts ?? [], $scope);
         $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
 
         return $scope;

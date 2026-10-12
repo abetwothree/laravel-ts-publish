@@ -167,10 +167,10 @@ So an outer binding of a parameter's name, left in any table, outranks the param
 Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
 
 Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
-claim drops each parameter name from every table and marks the closure claimed. The writer reads the value the call
-passes before it claims, since the claim can release a name that value shares, then binds the parameter to it.
-`ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no writer claimed, such
-as a `whenNotNull()` value closure.
+claim drops each parameter name from every table, its binding end included, and marks the closure claimed. The writer
+reads the value the call passes before it claims, since the claim can release a name that value shares, then binds the
+parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no
+writer claimed, such as a `whenNotNull()` value closure.
 
 Each writer binds the first parameter to what Laravel passes the closure:
 
@@ -253,8 +253,10 @@ that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`,
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, `ReceiverClassResolver::fromVariable()` to a receiver,
 and `VariableHandler::ambientModel()` to the ambient model inside a `whenLoaded()` closure. Each states its own test for
-vague. A `$x->prop` on a parameter bound in `varModelBindings` still reads that binding first, and a span can outlive a
-write through a reference.
+vague. A parameter's own binding holds until the body's first write that replaces it with a value naming another class.
+`AnalysisScope::$bindingEnds` records where, and past it every read takes the body's own binding, a ternary narrowing it
+only past its test, as `ReassignedClosureParamResource` pins. A span still outlives a write through a by-reference
+parameter of a callee the scan cannot name.
 
 ### What deliberately stays unbound
 
@@ -264,6 +266,8 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
   guard still narrows one reassigned only before it, and an inline `@var` types it for its span.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
+- **A parameter past a write that names another class**: its binding ends there. A write whose value names no class
+  leaves the binding standing, since only the old binding is known.
 
 ## Subject mode
 

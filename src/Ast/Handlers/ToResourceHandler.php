@@ -200,15 +200,19 @@ final class ToResourceHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve the model class backing a toResource()/toResourceCollection() receiver: a whenLoaded
-     * closure parameter (ConditionalMethodHandler::analyzeWhenLoaded()'s bindings) or
-     * `$this->relation` accessed directly.
+     * Resolve the model class backing a toResource()/toResourceCollection() receiver: a whenLoaded closure parameter
+     * (ConditionalMethodHandler::analyzeWhenLoaded()'s bindings) or `$this->relation` accessed directly. Past the write
+     * that ended a parameter's binding, the receiver resolver reads what the body assigned instead.
      *
      * @return class-string<Model>|null
      */
     private function resolveToResourceReceiverModel(Expr $receiver, AnalysisScope $scope): ?string
     {
         if ($receiver instanceof Variable && is_string($receiver->name)) {
+            if (! $scope->holdsBinding($receiver)) {
+                return null;
+            }
+
             return $scope->varModelBindings[$receiver->name]
                 ?? $scope->varCollectionBindings[$receiver->name]['modelFqcn']
                 ?? $scope->closureRelationModelClass;

@@ -229,7 +229,23 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a variable through the scope's bindings; an unbound variable declines.
+     * Resolve a variable an inline `@var` declares: the annotated assignment replaces what it held, so its own value is
+     * read, and the `@var` fills in only where that names no class the engine can use.
+     *
+     * @param  VarDocBinding  $span
+     */
+    public function resolveDeclared(string $name, array $span, AnalysisScope $scope): ?ReceiverType
+    {
+        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
+
+        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
+            ? $assigned
+            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+    }
+
+    /**
+     * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
+     * what the body assigned; an unbound variable declines.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
     {
@@ -241,7 +257,7 @@ final class ReceiverClassResolver
 
         // First, so a narrowing outranks the localVarBindings fallback a guarded variable normally reaches
         // through; varModelBindings is the same concern for a narrowed closure param or loop variable.
-        if (isset($scope->varClassBindings[$name])) {
+        if (isset($scope->varClassBindings[$name]) && $scope->holdsBinding($variable)) {
             return new ReceiverType($scope->varClassBindings[$name]);
         }
 
@@ -255,16 +271,10 @@ final class ReceiverClassResolver
         $span = $scope->declaredAt($variable);
 
         if ($span === null) {
-            return $this->fromBindings($name, $scope);
+            return $scope->holdsBinding($variable) ? $this->fromBindings($name, $scope) : $this->fromLocal($name, $scope);
         }
 
-        // The annotated assignment replaces what the variable held, so its own value is read; the `@var` fills in only
-        // where that names no class the engine can use.
-        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
-
-        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
-            ? $assigned
-            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+        return $this->resolveDeclared($name, $span, $scope);
     }
 
     /**
@@ -303,7 +313,17 @@ final class ReceiverClassResolver
             return ReceiverType::of($enum);
         }
 
-        $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
+        $bound = $scope->closureParamExprBindings[$name] ?? null;
+
+        return $bound === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $bound, $scope);
+    }
+
+    /**
+     * Resolve a variable through its body's single-write assignment, re-read so the value keeps every flag it carries.
+     */
+    private function fromLocal(string $name, AnalysisScope $scope): ?ReceiverType
+    {
+        $bound = $scope->localVarBindings[$name] ?? null;
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }

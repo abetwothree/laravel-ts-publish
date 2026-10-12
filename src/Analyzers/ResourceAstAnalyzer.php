@@ -1010,8 +1010,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $previousNonNullReads = $this->scope->nonNullReads;
         $previousDeclaringFileClass = $this->scope->declaringFileClass;
         $previousRequestVarNames = $this->scope->requestVarNames;
+        $previousBindingEnds = $this->scope->bindingEnds;
         try {
             $this->scope->localVarBindings = [];
+            $this->scope->bindingEnds = [];
             $this->scope->resolvingLocalVars = [];
             $this->scope->varModelBindings = [];
             $this->scope->varClassBindings = [];
@@ -1050,6 +1052,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->nonNullReads = $previousNonNullReads;
             $this->scope->declaringFileClass = $previousDeclaringFileClass;
             $this->scope->requestVarNames = $previousRequestVarNames;
+            $this->scope->bindingEnds = $previousBindingEnds;
             unset($this->scope->visitedSpreadMethods[$methodName]);
         }
 

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -162,6 +163,17 @@ it('types the route-bound model parameter and the injected service call', functi
     $data = pageData(InertiaUserShapesController::class.'@bound');
 
     expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, stats: { views: number; likes: number } }');
+});
+
+// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
+// model, in a branch or not, keeps the parameter's binding.
+it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
+    expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }');
 });
 
 it('types a resource collection from what it wraps', function () {

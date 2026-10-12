@@ -73,6 +73,7 @@ final class StaticCallHandler implements ExpressionHandler
             && is_string($expr->class->name)
             && $expr->class->name !== 'this'
             && $expr->name instanceof Identifier
+            && $scope->holdsBinding($expr->class)
         ) {
             return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
         }

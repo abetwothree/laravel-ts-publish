@@ -67,6 +67,7 @@ final class ClosureHandler implements ExpressionHandler
                     }
 
                     $this->collectLocalVarBindings($expr->stmts, $scope);
+                    $this->endBindingsAtWrites($expr->stmts, $scope);
                     $this->collectInstanceofGuards($expr->stmts, $scope);
                 }
 

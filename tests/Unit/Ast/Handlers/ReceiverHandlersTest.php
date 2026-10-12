@@ -1151,6 +1151,17 @@ describe('getKey()', function () {
         ['$this->resource->replicate()', 'number | null'],
     ]);
 
+    // Past the write that ended its parameter binding the variable reads its local again, so the flag survives.
+    test('a parameter reassigned to a new model carries the unsaved flag past the write', function () {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $scope->varModelBindings['draft'] = User::class;
+        $scope->localVarBindings['draft'] = receiverHandlerExpr('new \Workbench\App\Models\Post');
+        $scope->bindingEnds['draft'] = 0;
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope))
+            ->toEqual(new ReceiverType([Post::class], unsaved: true));
+    });
+
     test('a null key prints null once and an abstract model\'s union gains one null arm when unsaved', function () {
         PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
         $nullKey = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);

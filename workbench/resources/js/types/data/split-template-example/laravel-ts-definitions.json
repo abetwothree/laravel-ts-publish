@@ -17283,6 +17283,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ReassignedParameterResource": {
+            "name": "ReassignedParameterResource",
+            "properties": [
+                {
+                    "name": "declared_content",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "read_before",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "same_model",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "relation_bio",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "new_model_name",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ReceiverMethodResource": {
             "name": "ReceiverMethodResource",
             "properties": [

@@ -68,6 +68,9 @@ answers:
    then a `varValueBindings` value bound to one enum case, such as a parameter's default, as that enum.
 5. `closureParamExprBindings`, else `localVarBindings`, resolved recursively under the `resolvingLocalVars` guard.
 
+Steps 1, 4 and 5's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
+first write that replaces a parameter, step 5's `localVarBindings` answers.
+
 The narrowing tables come first because a narrowed variable is usually also a plain `$x = …;` local, which step 5 would
 read unnarrowed. Ranking them above `varModelBindings` guards the same case for a closure parameter or loop variable, a
 case no fixture exercises. An unbound variable is `null`, and the ambient `closureRelationModelClass` is never used as a

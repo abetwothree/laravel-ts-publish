@@ -95,7 +95,8 @@ final class KnownMethodRuleHandler implements ExpressionHandler
         if (! $expr->name instanceof Identifier
             || ! $expr->var instanceof Variable
             || ! is_string($expr->var->name)
-            || ! isset($scope->requestVarNames[$expr->var->name])) {
+            || ! isset($scope->requestVarNames[$expr->var->name])
+            || ! $scope->holdsBinding($expr->var)) {
             return null;
         }
 

@@ -558,6 +558,12 @@ parameter on a receiver the scan cannot resolve, such as `$other->fill($this->ta
 all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
 it a `@var` docblock.
 
+### A parameter reassigned to a value the package cannot name keeps its old binding
+
+`whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
+`$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
+`/** @var Comment $a */`, and the read follows it.
+
 ### An abstract model's key type misses a subclass the run does not publish
 
 `getKey()`, `modelKeys()` and `Auth::id()` on an abstract model publish the key type the class declares, joined with

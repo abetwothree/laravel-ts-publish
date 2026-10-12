@@ -7,10 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use Illuminate\Support\Enumerable;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\ClosureUse;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
@@ -18,6 +22,7 @@ use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
@@ -73,6 +78,47 @@ trait CollectsLocalVarBindings
             }
 
             $this->bindDeclaredType($stmt, $stmt->expr, $name, $stmts, $writes, $scope);
+        }
+    }
+
+    /**
+     * End each binding a name came into the body with, a parameter's or a seeded one, at the body's first write that
+     * replaces the variable with a value naming a class the binding does not hold; a later read takes what the body
+     * wrote. A value naming no class leaves the binding standing, since it is all that is known.
+     *
+     * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
+     * nested in a statement ends it where that statement starts, since a loop can run the write before a read.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope): void
+    {
+        if ($scope->varModelBindings === [] && $scope->varCollectionBindings === [] && $scope->varClassBindings === []
+            && $scope->varValueBindings === [] && $scope->closureParamExprBindings === [] && $scope->requestVarNames === []
+        ) {
+            return;
+        }
+
+        foreach ($this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, $node, $target]) {
+            // A write past an end already recorded cannot move it earlier.
+            if (! $scope->bindsName($name)
+                || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
+                || ! $this->replacesVariable($target, $name)
+                || $this->keepsBinding($name, $node, $scope)
+            ) {
+                continue;
+            }
+
+            foreach ($stmts as $stmt) {
+                if ($stmt->getStartFilePos() <= $node->getStartFilePos() && $node->getEndFilePos() <= $stmt->getEndFilePos()) {
+                    $end = $stmt instanceof ExpressionStmt && $stmt->expr === $node && ($node instanceof Assign || $node instanceof AssignOp)
+                        ? $stmt->getEndFilePos()
+                        : $stmt->getStartFilePos() - 1;
+                    $scope->bindingEnds[$name] = min($scope->bindingEnds[$name] ?? $end, $end);
+
+                    break;
+                }
+            }
         }
     }
 
@@ -192,6 +238,53 @@ trait CollectsLocalVarBindings
             'before' => $before,
             'expr' => $assign->expr,
         ];
+    }
+
+    /**
+     * Whether an assignment leaves a class binding standing: its value names no class, so the old binding is all that
+     * is known, or only classes the binding holds. An inline `@var` on it answers where its value names none.
+     */
+    private function keepsBinding(string $name, Node $node, AnalysisScope $scope): bool
+    {
+        $element = $scope->varCollectionBindings[$name]['modelFqcn'] ?? null;
+        $classes = match (true) {
+            isset($scope->varModelBindings[$name]) => [$scope->varModelBindings[$name]],
+            isset($scope->varClassBindings[$name]) => $scope->varClassBindings[$name],
+            isset($scope->requestVarNames[$name]) => [$scope->requestVarNames[$name]],
+            default => null,
+        };
+
+        if (! $node instanceof Assign || ! $node->var instanceof Variable || ($classes === null && $element === null)) {
+            return false;
+        }
+
+        $resolver = resolve(ReceiverClassResolver::class);
+        $span = array_find($scope->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $node->expr);
+        $held = $span === null ? $resolver->resolve($node->expr, $scope) : $resolver->resolveDeclared($name, $span, $scope);
+
+        return match (true) {
+            $held === null => true,
+            $classes !== null => $held->within($classes),
+            default => $held->elementModel !== null
+                && is_a($held->elementModel, $element, true)
+                && $held->within([Enumerable::class]),
+        };
+    }
+
+    /**
+     * Whether a write target replaces the variable's whole value: the variable itself, or an item of a destructuring
+     * list. A write through `$x->prop` or `$x['key']` leaves `$x` holding the same value.
+     */
+    private function replacesVariable(Expr $target, string $name): bool
+    {
+        if ($target instanceof List_ || $target instanceof Array_) {
+            return array_any(
+                $target->items,
+                fn (?ArrayItem $item): bool => $item !== null && $this->replacesVariable($item->value, $name),
+            );
+        }
+
+        return $target instanceof Variable && $target->name === $name;
     }
 
     /**

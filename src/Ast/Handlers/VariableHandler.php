@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
@@ -47,6 +48,7 @@ use ReflectionMethod;
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use CollectsLocalVarBindings;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use ResolvesMapProxyElementModels;
@@ -90,7 +92,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
+            $boundModel = $this->boundModel($expr->var, $scope);
 
             if ($boundModel !== null) {
                 return $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
@@ -115,6 +117,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'pluck'
+            && $scope->holdsBinding($expr->var)
         ) {
             return $this->analyzeVariablePluckCall($expr, $scope);
         }
@@ -129,7 +132,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $this->callsAttributeFilter($expr)
         ) {
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
+            $boundModel = $this->boundModel($expr->var, $scope);
 
             if ($boundModel !== null) {
                 return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope, $boundModel);
@@ -143,17 +146,39 @@ final class VariableHandler implements ExpressionHandler
         $span = $scope->declaredAt($expr);
 
         return $span === null
-            ? $this->boundValue($expr->name, $scope, $engine)
+            ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
     }
 
     /**
-     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding.
+     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it,
+     * else the ambient whenLoaded model.
+     *
+     * @return class-string<Model>|null
+     */
+    private function boundModel(Variable $variable, AnalysisScope $scope): ?string
+    {
+        $own = is_string($variable->name) && $scope->holdsBinding($variable)
+            ? $scope->varModelBindings[$variable->name] ?? null
+            : null;
+
+        return $own ?? $this->ambientModel($variable, $scope);
+    }
+
+    /**
+     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding; past
+     * the write that ended its parameter binding, from the local assignment alone.
      *
      * @return ValueExpressionResult|null
      */
-    private function boundValue(string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        if (! $scope->holdsBinding($variable)) {
+            $local = $scope->localVarBindings[$name] ?? null;
+
+            return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
+        }
+
         // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
         // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
         if (isset($scope->varModelBindings[$name])) {
@@ -243,7 +268,7 @@ final class VariableHandler implements ExpressionHandler
     /**
      * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
      * only where it is, or extends, one of the classes the receiver path reads it as: its assigned value's, else the
-     * `@var`'s.
+     * `@var`'s. A variable past the write that ended its parameter binding holds what that write assigned instead.
      *
      * @return class-string<Model>|null
      */
@@ -251,7 +276,11 @@ final class VariableHandler implements ExpressionHandler
     {
         $ambient = $scope->closureRelationModelClass;
 
-        if ($ambient === null || $scope->declaredAt($variable) === null) {
+        if ($ambient === null || ! $scope->holdsBinding($variable)) {
+            return null;
+        }
+
+        if ($scope->declaredAt($variable) === null) {
             return $ambient;
         }
 
@@ -317,6 +346,11 @@ final class VariableHandler implements ExpressionHandler
             // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
             if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
                 $scope->varModelBindings[$firstParam->var->name] = $paramClass;
+            }
+
+            // The body's returns resolve here, never through ClosureHandler, so its reassignments end bindings here.
+            if ($closureArg instanceof ClosureExpr) {
+                $this->endBindingsAtWrites($closureArg->stmts, $scope);
             }
 
             $returnExprs = $this->resolveClosureReturnExpressions($closureArg);

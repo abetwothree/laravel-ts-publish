@@ -75,6 +75,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->localVarBindings[$name] = $expr;
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
+        $scope->bindingEnds[$name] = 0;
     }
 
     return $scope;
@@ -123,15 +124,17 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });
 
-// A proof spells the read it proves, `$item` here, so it never holds for a read of another name.
-it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs', function () {
+// A proof spells the read it proves, `$item` here, so it never holds for a read of another name, and a binding's end
+// is an offset in the caller's body, which the parameter's body never reaches.
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs and ends', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     $scope->copyBindings('item', 'param', $captured);
 
-    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true])))->each->toBe(['param'])
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true])))->each->toBe(['param'])
         ->and($scope->nonNullReads)->toBe([])
+        ->and($scope->bindingEnds)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
         ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
@@ -141,6 +144,38 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
         ->and($scope->requestVarNames['param'])->toBe(Request::class);
+});
+
+it('holds a binding for a read up to its end, and always for a name with no end or a variable with no name', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->bindingEnds['post'] = 10;
+    $at = fn (string $name, int $offset): Variable => new Variable($name, ['startFilePos' => $offset]);
+
+    expect($scope->holdsBinding($at('post', 10)))->toBeTrue()
+        ->and($scope->holdsBinding($at('post', 11)))->toBeFalse()
+        ->and($scope->holdsBinding(new Variable('post')))->toBeTrue()
+        ->and($scope->holdsBinding($at('other', 11)))->toBeTrue()
+        ->and($scope->holdsBinding(new Variable(new Variable('post'), ['startFilePos' => 11])))->toBeTrue();
+});
+
+it('binds a name a parameter or a seeded binding holds, never one only the body\'s own tables hold', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $bodyOnly = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bodyOnly->localVarBindings['item'] = new Variable('outer');
+    $bodyOnly->varDocBindings['item'] = $scope->varDocBindings['item'];
+    $bodyOnly->varGuardBindings['item'] = $scope->varGuardBindings['item'];
+    $bodyOnly->nonNullReads['item'] = $scope->nonNullReads['item'];
+    $tables = ['varModelBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
+
+    foreach ($tables as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $scope->{$table}['item'];
+
+        expect($one->bindsName('item'))->toBeTrue("{$table} binds the name");
+    }
+
+    expect($bodyOnly->bindsName('item'))->toBeFalse()
+        ->and($scope->bindsName('missing'))->toBeFalse();
 });
 
 it('binds each parameter a call passes nothing to what it holds: a default, or an empty list', function () {

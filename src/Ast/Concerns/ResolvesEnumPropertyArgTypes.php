@@ -62,7 +62,7 @@ trait ResolvesEnumPropertyArgTypes
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
                 $name = $argExpr->name;
 
-                if (isset($scope->closureParamExprBindings[$name])) {
+                if (isset($scope->closureParamExprBindings[$name]) && $scope->holdsBinding($argExpr)) {
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
@@ -86,6 +86,7 @@ trait ResolvesEnumPropertyArgTypes
                 && $argExpr->var instanceof Variable
                 && $argExpr->name instanceof Identifier
                 && $scope->closureRelationModelClass !== null
+                && $scope->holdsBinding($argExpr->var)
             ) {
                 $propName = $argExpr->name->toString();
                 $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->closureRelationModelClass, $propName);

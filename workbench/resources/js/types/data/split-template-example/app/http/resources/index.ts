@@ -167,6 +167,7 @@ export * from './property-docblock-edge-resource';
 export * from './proxy-filter-direct-resource';
 export * from './proxy-filter-wrapped-resource';
 export * from './quirky-resource';
+export * from './reassigned-parameter-resource';
 export * from './receiver-method-resource';
 export * from './receiver-property-resource';
 export * from './reflected-method-channel-resource';

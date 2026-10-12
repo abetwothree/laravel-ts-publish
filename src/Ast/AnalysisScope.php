@@ -65,7 +65,8 @@ use ReflectionClass;
  *      varValueBindings: VarValueBindingsMap,
  *      localVarBindings: LocalVarBindingsMap,
  *      requestVarNames: RequestVarNamesMap,
- *      claimedClosures: array<int, true>
+ *      claimedClosures: array<int, true>,
+ *      bindingEnds: array<string, int>
  * }
  *
  * @internal
@@ -122,7 +123,8 @@ final class AnalysisScope
 
     /**
      * Variables an early-exit `instanceof` guard proves to hold a class, with the file offset the guard's `if` ends at:
-     * the proof holds only for a read past that offset. Read right after varClassBindings, and scoped like it.
+     * the proof holds only for a read past that offset. A ternary's test writes one too, while its arm resolves, for a
+     * subject past the write that ended its parameter binding. Read right after varClassBindings, and scoped like it.
      *
      * @var VarGuardBindingsMap
      */
@@ -183,6 +185,14 @@ final class AnalysisScope
      * @var LocalVarBindingsMap
      */
     public array $localVarBindings = [];
+
+    /**
+     * The offset at which each name stops holding the binding it came into the body with, a parameter's or a seeded
+     * one: the body's first write that replaces it with another class. A read past it sees that write instead.
+     *
+     * @var array<string, int>
+     */
+    public array $bindingEnds = [];
 
     /**
      * Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential
@@ -268,6 +278,29 @@ final class AnalysisScope
     }
 
     /**
+     * Whether a read of a variable still sees the binding its name came into the body with, not a write the body made.
+     */
+    public function holdsBinding(Variable $variable): bool
+    {
+        return ! is_string($variable->name)
+            || ! isset($this->bindingEnds[$variable->name])
+            || $variable->getStartFilePos() <= $this->bindingEnds[$variable->name];
+    }
+
+    /**
+     * Whether a name holds a parameter's or a seeded binding, which a body write can end, rather than only the body's.
+     */
+    public function bindsName(string $name): bool
+    {
+        return isset($this->varModelBindings[$name])
+            || isset($this->varCollectionBindings[$name])
+            || isset($this->varClassBindings[$name])
+            || isset($this->varValueBindings[$name])
+            || isset($this->closureParamExprBindings[$name])
+            || isset($this->requestVarNames[$name]);
+    }
+
+    /**
      * Capture every name-keyed binding table — each map from a variable name to what it is bound to — for a writer
      * to restore after the body.
      *
@@ -287,6 +320,7 @@ final class AnalysisScope
             'localVarBindings' => $this->localVarBindings,
             'requestVarNames' => $this->requestVarNames,
             'claimedClosures' => $this->claimedClosures,
+            'bindingEnds' => $this->bindingEnds,
         ];
     }
 
@@ -308,6 +342,7 @@ final class AnalysisScope
         $this->localVarBindings = $snapshot['localVarBindings'];
         $this->requestVarNames = $snapshot['requestVarNames'];
         $this->claimedClosures = $snapshot['claimedClosures'];
+        $this->bindingEnds = $snapshot['bindingEnds'];
     }
 
     /**
@@ -365,7 +400,8 @@ final class AnalysisScope
 
     /**
      * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture, but a
-     * proof: each spells the read it proves under the variable's own name.
+     * proof, which spells the read it proves under the variable's own name, and a binding end, an offset in the
+     * caller's body.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
@@ -493,6 +529,7 @@ final class AnalysisScope
                 $this->varValueBindings[$name],
                 $this->localVarBindings[$name],
                 $this->requestVarNames[$name],
+                $this->bindingEnds[$name],
             );
         }
     }

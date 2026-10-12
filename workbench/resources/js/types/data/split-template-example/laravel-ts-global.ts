@@ -4668,6 +4668,17 @@ declare global {
             fake_relation?: unknown;
         }
         /**
+         * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned,
+         * and a read before it, or a reassignment to the same model, keeps the parameter's own binding.
+         */
+        export interface ReassignedParameterResource {
+            declared_content?: string;
+            read_before?: string;
+            same_model?: string;
+            relation_bio?: string | null;
+            new_model_name?: string | null;
+        }
+        /**
          * Method return types followed through every receiver kind: an enum cast, a Carbon cast, a local model,
          * a variable class for a static call, and an enum static constructor.
          */

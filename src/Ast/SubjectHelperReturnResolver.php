@@ -56,6 +56,7 @@ final class SubjectHelperReturnResolver
         'localVarBindings' => [],
         'requestVarNames' => [],
         'claimedClosures' => [],
+        'bindingEnds' => [],
     ];
 
     /**
