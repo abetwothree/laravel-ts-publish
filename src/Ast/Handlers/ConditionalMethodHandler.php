@@ -461,6 +461,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $valueExpr = $args->named('value')?->value;
 
         if ($valueExpr !== null && ! $this->isNullConstFetch($valueExpr)) {
+            // Laravel calls a callable with the loaded relation, so a first-class one binds it as a closure does.
+            $valueExpr = FirstClassCallableHandler::passingOneValue($valueExpr);
             // Resolve the related model so accesses on local variables inside the closure can be typed.
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousNameBindings = $scope->nameBindings();
@@ -583,14 +585,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
             // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
             $value = $valueArg->value;
             $resolvedValue = $engine->resolve($value);
+            $callback = FirstClassCallableHandler::passingOneValue($callbackArg->value);
 
-            $scope->claimParameters($callbackArg->value);
-            $this->bindPassedValue($callbackArg->value, $value, $resolvedValue, $previousNameBindings, $scope, $engine);
-            $scope->bindUnpassedParameters($callbackArg->value, 1, $engine);
+            $scope->claimParameters($callback);
+            $this->bindPassedValue($callback, $value, $resolvedValue, $previousNameBindings, $scope, $engine);
+            $scope->bindUnpassedParameters($callback, 1, $engine);
             // transform() calls back only for a filled value, so the read it passes is not null in the callback.
             $this->proveNonNull([$value], $scope);
 
-            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($callbackArg->value));
+            $inner = $engine->resolve($callback);
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -694,6 +697,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
     private function resolveConditionalDefault(Expr $default, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $previousNameBindings = $scope->nameBindings();
+        $default = $passed === null ? $default : FirstClassCallableHandler::passingOneValue($default);
 
         try {
             $scope->claimParameters($default);
@@ -766,6 +770,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousNameBindings = $scope->nameBindings();
+        $value = $argument === null ? $value : FirstClassCallableHandler::passingOneValue($value);
 
         try {
             $scope->claimParameters($value);

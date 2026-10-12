@@ -39,6 +39,10 @@ test('a helper read as a value reads an untyped parameter as what its call passe
         'author_card' => '{ name: string; email: string }',
         'static_row' => '{ static_pk: number }',
         'outer' => '{ inner: { pk: number; title: string } }',
+        'loaded_card' => '?{ name: string; email: string }',
+        'loaded_count' => '?{ count: number }',
+        'has_title' => '?{ value: string }',
+        'transformed' => '?{ value: string }',
     ]);
 });
 

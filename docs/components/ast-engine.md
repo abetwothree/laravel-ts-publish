@@ -187,6 +187,9 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `transform()`'s default | The blank value | The value's full type, `null` included |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
 
+A first-class callable in a position where Laravel passes one value binds the same way:
+`FirstClassCallableHandler::passingOneValue()` reads it as `fn ($v) => m($v)`.
+
 These rules settle the cases the table leaves open:
 
 - **A to-many `whenLoaded()` parameter holds the collection**: binding it to the element model would type a bare `$x` as

@@ -16010,6 +16010,26 @@
                     "name": "outer",
                     "type": "{ inner: { pk: number; title: string } }",
                     "optional": false
+                },
+                {
+                    "name": "loaded_card",
+                    "type": "{ name: string; email: string }",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_count",
+                    "type": "{ count: number }",
+                    "optional": true
+                },
+                {
+                    "name": "has_title",
+                    "type": "{ value: string }",
+                    "optional": true
+                },
+                {
+                    "name": "transformed",
+                    "type": "{ value: string }",
+                    "optional": true
                 }
             ]
         },

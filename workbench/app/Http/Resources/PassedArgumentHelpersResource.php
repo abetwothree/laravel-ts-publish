@@ -9,7 +9,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Helpers whose parameters declare no type, read as values: each body reads what its call passes.
+ * Helpers whose parameters declare no type, read as values: each body reads what its call passes, a first-class
+ * callable's included, which Laravel calls with the loaded relation, the attribute or the transformed value.
  *
  * @mixin Post
  */
@@ -25,6 +26,10 @@ final class PassedArgumentHelpersResource extends JsonResource
             'author_card' => $this->authorCard($this->author),
             'static_row' => self::staticRow($this->resource),
             'outer' => $this->outer($this->resource),
+            'loaded_card' => $this->whenLoaded('author', $this->authorCard(...)),
+            'loaded_count' => $this->whenLoaded('comments', $this->commentCount(...)),
+            'has_title' => $this->whenHas('title', $this->boxed(...)),
+            'transformed' => $this->transform($this->title, $this->boxed(...)),
         ];
     }
 
@@ -70,5 +75,27 @@ final class PassedArgumentHelpersResource extends JsonResource
     private function outer($post): array
     {
         return ['inner' => $this->row($post)];
+    }
+
+    /**
+     * How many comments a loaded collection holds.
+     *
+     * @param  mixed  $comments
+     * @return array<string, mixed>
+     */
+    private function commentCount($comments): array
+    {
+        return ['count' => $comments->count()];
+    }
+
+    /**
+     * Whatever value it is called with, under one key.
+     *
+     * @param  mixed  $value
+     * @return array<string, mixed>
+     */
+    private function boxed($value): array
+    {
+        return ['value' => $value];
     }
 }
