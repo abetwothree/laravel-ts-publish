@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -65,8 +66,9 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $fromInside = $expr instanceof StaticCall && $expr->class instanceof Name && $expr->class->isSpecialClassName();
+        $site = new CallSite($expr, $scope, $engine);
         $result = resolve(ReceiverMethodReturnResolver::class)
-            ->resolve($receiver, $expr->name->toString(), $scope, $fromInside, $expr);
+            ->resolve($receiver, $expr->name->toString(), $scope, $fromInside, $expr, $site);
 
         if ($result === null) {
             return null;

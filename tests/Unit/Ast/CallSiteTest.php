@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaFormatterController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PassedArgumentEdgesResource;
 use PhpParser\Node\Arg;
@@ -76,6 +78,13 @@ test('a helper declaring an abstract class or a union reads the narrower class i
         'by_model' => '?{ model_name: string }',
         'by_union' => '?{ union_name: string }',
     ]);
+});
+
+test('a service helper called on a property or another receiver reads what its call passes', function () {
+    expect(new InertiaPageAnalyzer()->analyze(['uses' => InertiaFormatterController::class.'@show'])['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { row: { row_title: string } }')
+        ->and(passedArgumentTypes(PassedArgumentEdgesResource::class, 'receivers'))
+        ->toBe(['summary' => '{ row_title: string }']);
 });
 
 test('the signature is empty for a call that binds nothing, and one for two arguments that bind alike', function () {

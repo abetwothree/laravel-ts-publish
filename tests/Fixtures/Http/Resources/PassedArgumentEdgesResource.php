@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostSummaryFormatter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -62,6 +63,16 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
+     * A service helper whose parameter declares no type, called on the service a helper returns.
+     *
+     * @return array<string, mixed>
+     */
+    public function receivers(): array
+    {
+        return ['summary' => $this->formatter()->row($this->resource)];
+    }
+
+    /**
      * @param  mixed  $subject
      * @return array<string, mixed>
      */
@@ -117,6 +128,14 @@ final class PassedArgumentEdgesResource extends JsonResource
     private function keyed($post): array
     {
         return ['k' => $post->getKey()];
+    }
+
+    /**
+     * The service the receivers() helper calls.
+     */
+    private function formatter(): PostSummaryFormatter
+    {
+        return new PostSummaryFormatter;
     }
 
     /**

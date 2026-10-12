@@ -95,7 +95,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
         ) {
             return $this->heldPropertyMethodReturn($expr->var->name->toString(), $expr->name->toString(), $scope)
-                ?? $this->subjectPropertyMethodReturn($expr, $expr->name->toString(), $scope);
+                ?? $this->subjectPropertyMethodReturn($expr, $expr->name->toString(), $scope, $engine);
         }
 
         // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
@@ -357,7 +357,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult|null
      */
-    private function subjectPropertyMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope): ?array
+    private function subjectPropertyMethodReturn(MethodCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($scope->modelClass !== null || $this->resolveWrappedClass($scope) !== null) {
             return null;
@@ -372,7 +372,8 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return null;
         }
 
-        return resolve(SubjectMethodTypeResolver::class)->forwardedOn($propertyClass, $methodName, $scope);
+        return resolve(SubjectMethodTypeResolver::class)
+            ->forwardedOn($propertyClass, $methodName, $scope, new CallSite($call, $scope, $engine));
     }
 
     /**

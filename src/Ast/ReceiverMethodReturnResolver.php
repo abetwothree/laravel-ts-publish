@@ -63,6 +63,7 @@ final class ReceiverMethodReturnResolver
      * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`; only
      *                            a direct caller passes it: StaticCallHandler answers every named-class call first
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call node, for a rule that reads its arguments
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null null when any receiver class cannot type the method
      */
     public function resolve(
@@ -71,6 +72,7 @@ final class ReceiverMethodReturnResolver
         AnalysisScope $scope,
         bool $fromInside = false,
         MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
+        ?CallSite $site = null,
     ): ?array {
         $results = [];
 
@@ -81,7 +83,8 @@ final class ReceiverMethodReturnResolver
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
+            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
+                ?? $this->resolveOn($class, $methodName, $fromInside, $site);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -338,7 +341,7 @@ final class ReceiverMethodReturnResolver
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function resolveOn(string $class, string $methodName, bool $fromInside): ?array
+    private function resolveOn(string $class, string $methodName, bool $fromInside, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName)) {
             return null;
@@ -358,7 +361,7 @@ final class ReceiverMethodReturnResolver
 
         $result = resolve(ReceiverClassResolver::class)->returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
         // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.
