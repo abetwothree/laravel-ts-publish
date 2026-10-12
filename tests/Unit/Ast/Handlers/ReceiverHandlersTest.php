@@ -853,6 +853,24 @@ describe('a read on $this->prop types from the class the property holds', functi
         'the resource model\'s own column' => ['$this->resource->title', 'string'],
     ]);
 
+    test('an accessor typed as one model is followed, and a to-many relation is not, in every spelling', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ModelWrappedPropResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'an accessor column' => ['$this->latestComment->content', 'string'],
+        'an accessor key' => ['$this->latestComment->id', 'number'],
+        'an accessor flag' => ['$this->resource->latestComment->is_flagged', 'boolean'],
+        'a nullsafe accessor date' => ['$this->latestComment?->created_at', 'string | null'],
+        'through the resource' => ['$this->resource->latestComment->id', 'number'],
+        'inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->latestComment->id)', 'number'],
+        'a morph-many column' => ['$this->tags->slug', 'unknown'],
+        'a has-many key' => ['$this->comments->id', 'unknown'],
+        'a to-many nullsafe' => ['$this->comments?->id', 'unknown'],
+        'a to-many inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags->slug)', 'unknown'],
+        'a to-many nullsafe inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags?->slug)', 'unknown'],
+    ]);
+
     test('a model-less resource reading a property it does not declare is unknown', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
 
