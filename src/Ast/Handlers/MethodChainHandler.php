@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -21,12 +22,11 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Identifier;
-use ReflectionClass;
 
 /**
- * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the
- * terminal relation model. The `?->` operator always makes the result nullable. A chain that does not
- * end on a relation, a method it cannot type, an `only()`/`except()` filter, or a model's own `toArray()` declines.
+ * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the terminal relation model.
+ * The `?->` operator always makes the result nullable. A chain not ending on a relation, a method it cannot type, an
+ * `only()`/`except()` filter, or a model method the receiver rules type declines.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -122,8 +122,8 @@ final class MethodChainHandler implements ExpressionHandler
 
         $currentModel = $relationInfo['modelFqcn'];
 
-        // A concrete model's own toArray() is the receiver rules', which type what it serializes rather than a list.
-        if ($methodName === 'toArray' && $this->runsModelToArray($currentModel)) {
+        // A model's own toArray() and loose arrays are the receiver rules', which type what they hold.
+        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)) {
             return ValueResult::unknown();
         }
 
@@ -149,17 +149,5 @@ final class MethodChainHandler implements ExpressionHandler
             : $result['type'].' | null';
 
         return [...$result, 'type' => $type, 'optional' => false];
-    }
-
-    /**
-     * Whether a concrete model runs Model's own toArray(), as the receiver rules' toArray() rule requires.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function runsModelToArray(string $model): bool
-    {
-        $reflection = new ReflectionClass($model);
-
-        return ! $reflection->isAbstract() && $reflection->getMethod('toArray')->getDeclaringClass()->getName() === Model::class;
     }
 }

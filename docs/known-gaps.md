@@ -279,7 +279,8 @@ union out; type the key, or rename it out of the pattern. The rules are under
 `$model->toArray()` in value position publishes `Record<string, unknown>`, as `except($keys)` does, and a relation's
 `$this->comments->toArray()` a list of it, because the relations a model serializes are whatever is loaded at runtime.
 A model with no attributes encodes `[]`, which TypeScript does not assign to that `Record`. An override of `toArray()`,
-or an abstract model's, publishes `unknown`, even when it declares a shape. The spread form is typed:
+or an abstract model's, publishes `unknown` on a receiver, even when it declares a shape; `$this->resource->toArray()`
+publishes what the override declares. The spread form is typed:
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 

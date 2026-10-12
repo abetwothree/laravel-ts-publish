@@ -325,7 +325,6 @@ describe('ReceiverMethodReturnResolver', function () {
         expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($model), $method, receiverProbeScope())['type'] ?? null)
             ->toBe($type);
     })->with([
-        [Post::class, 'getCasts', null],
         [Post::class, 'attributesToArray', 'Record<string, unknown>'],
         [User::class, 'getAttributes', 'Record<string, unknown>'],
         [User::class, 'getDirty', 'Record<string, unknown>'],
@@ -333,6 +332,29 @@ describe('ReceiverMethodReturnResolver', function () {
         [User::class, 'getPrevious', 'Record<string, unknown>'],
         [VagueDirtyOverrideModel::class, 'getDirty', null],
         [CallPathAbstractModel::class, 'getAttributes', null],
+    ]);
+
+    test('Model\'s own loosely declared arrays type by what they hold, where an override declines', function (string $model, string $method, ?string $type) {
+        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($model), $method, receiverProbeScope())['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        [User::class, 'getAppends', 'string[]'],
+        [User::class, 'getMutatedAttributes', 'string[]'],
+        [User::class, 'getTouchedRelations', 'string[]'],
+        [User::class, 'uniqueIds', 'string[]'],
+        [User::class, 'getQueueableRelations', 'string[]'],
+        [User::class, 'getCasts', 'Record<string, string>'],
+        [User::class, 'getGlobalScopes', 'Record<string, unknown>'],
+        [User::class, 'getRelations', 'Record<string, unknown>'],
+        [User::class, 'relationsToArray', 'Record<string, unknown>'],
+        [User::class, 'guessResourceName', 'string[]'],
+        [User::class, 'qualifyColumns', 'string[]'],
+        [User::class, 'resolveGlobalScopeAttributes', 'string[]'],
+        [User::class, 'resolveObserveAttributes', 'string[]'],
+        [User::class, 'getAllGlobalScopes', 'Record<string, Record<string, unknown>>'],
+        [User::class, 'all', 'unknown[]'],
+        [VagueDirtyOverrideModel::class, 'getCasts', null],
+        [CallPathAbstractModel::class, 'getCasts', null],
     ]);
 });
 
@@ -1065,6 +1087,25 @@ describe('a call on $this->prop types from the class the property holds, never f
         ['$this->author->attributesToArray()', 'Record<string, unknown>'],
         ['$this->author->getAttributes()', 'Record<string, unknown>'],
         ['$this->author->getDirty()', 'Record<string, unknown>'],
+        ['$this->author->getAppends()', 'string[]'],
+        ['$this->author->getMutatedAttributes()', 'string[]'],
+        ['$this->author->getTouchedRelations()', 'string[]'],
+        ['$this->author->uniqueIds()', 'string[]'],
+        ['$this->author->getQueueableRelations()', 'string[]'],
+        ['$this->author->getCasts()', 'Record<string, string>'],
+        ['$this->author->getGlobalScopes()', 'Record<string, unknown>'],
+        ['$this->author->getRelations()', 'Record<string, unknown>'],
+        ['$this->author->relationsToArray()', 'Record<string, unknown>'],
+        ['$this->author->guessResourceName()', 'string[]'],
+        ['$this->author->qualifyColumns([\'id\'])', 'string[]'],
+        ['$this->author->resolveGlobalScopeAttributes()', 'string[]'],
+        ['$this->author->resolveObserveAttributes()', 'string[]'],
+        ['$this->author->getAllGlobalScopes()', 'Record<string, Record<string, unknown>>'],
+        ['$this->author->all()', 'unknown[]'],
+        ['$this->author?->getCasts()', 'Record<string, string> | null'],
+        ['$this->resource->getCasts()', 'Record<string, string>'],
+        ['$this->resource->getAppends()', 'string[]'],
+        ['$this->getCasts()', 'Record<string, string>'],
     ]);
 
     test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {

@@ -36,6 +36,28 @@ final class ReceiverMethodReturnResolver
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
 
     /**
+     * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
+     * row of the class, each serialized as the loaded relations decide.
+     */
+    private const array MODEL_ARRAY_RETURNS = [
+        'getAppends' => 'string[]',
+        'getMutatedAttributes' => 'string[]',
+        'getTouchedRelations' => 'string[]',
+        'uniqueIds' => 'string[]',
+        'getQueueableRelations' => 'string[]',
+        'guessResourceName' => 'string[]',
+        'qualifyColumns' => 'string[]',
+        'resolveGlobalScopeAttributes' => 'string[]',
+        'resolveObserveAttributes' => 'string[]',
+        'getCasts' => 'Record<string, string>',
+        'getGlobalScopes' => 'Record<string, unknown>',
+        'getRelations' => 'Record<string, unknown>',
+        'relationsToArray' => 'Record<string, unknown>',
+        'getAllGlobalScopes' => 'Record<string, Record<string, unknown>>',
+        'all' => 'unknown[]',
+    ];
+
+    /**
      * Type a method on every class the receiver holds, unioning the answers.
      *
      * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`; only
@@ -89,6 +111,18 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
+     *
+     * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
+     *
+     * @param  class-string  $class
+     */
+    public function typesModelMethod(string $class, string $methodName): bool
+    {
+        return ($methodName === 'toArray' || isset(self::MODEL_ARRAY_RETURNS[$methodName])) && $this->runsModelMethod($class, $methodName);
+    }
+
+    /**
      * Convention rules that need the receiver's model rather than a reflected signature.
      *
      * @param  class-string  $class
@@ -126,6 +160,10 @@ final class ReceiverMethodReturnResolver
         // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
         if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
             return $this->attributeRecordResult(nullable: false);
+        }
+
+        if (isset(self::MODEL_ARRAY_RETURNS[$methodName]) && $this->runsModelMethod($class, $methodName)) {
+            return [...ValueResult::unknown(), 'type' => self::MODEL_ARRAY_RETURNS[$methodName]];
         }
 
         // A relation's collection is keyed 0..n-1, so it lists what each model's own toArray() writes.

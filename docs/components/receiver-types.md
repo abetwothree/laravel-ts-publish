@@ -164,17 +164,19 @@ Earlier claimants of these node classes decline a call they cannot type, as
 
 `RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`, where it reads the
 wrapped class, else the model, through `MethodReturnTypeResolver::resolve()`; on a date-cast column; or on a model-less
-subject's own typed property. A model's `toArray()`, and a filter on a model the subject holds, are left to the receiver
-rules. Every other `$this->prop->m()` is this handler's, inside a relation's closure too, so `$this->checks->toArray()`
-reads `PublishChecks`, never the resource's model.
+subject's own typed property. A model method the receiver rules type, such as `toArray()` or `getCasts()`, and a filter
+on a model the subject holds, are left to those rules, through `typesModelMethod()`. Every other `$this->prop->m()` is
+this handler's, inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the
+resource's model.
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks five convention rules on each class before
+`ReceiverMethodReturnResolver` checks six convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all five loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
-`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()` and `Model::toArray()` to the
-list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it names:
+Laravel declares all six loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
+`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other
+`Model` arrays to the list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the
+receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -189,6 +191,9 @@ list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each rule a
 - **`toArray()`**: on a concrete model that inherits `Model::toArray()`, `Record<string, unknown>`, since its keys hang
   on the relations loaded at runtime. On an `Eloquent\Collection` with `elementModel` set, `Record<string, unknown>[]`,
   or `unknown[]` when the element model overrides `toArray()`.
+- **`Model`'s bare arrays**: on a concrete model that inherits the method, what it holds, from
+  `ReceiverMethodReturnResolver::MODEL_ARRAY_RETURNS`: a list of names such as `getAppends()`'s `string[]`,
+  `getCasts()`'s `Record<string, string>`, or a map keyed by name such as `getRelations()`'s `Record<string, unknown>`.
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.

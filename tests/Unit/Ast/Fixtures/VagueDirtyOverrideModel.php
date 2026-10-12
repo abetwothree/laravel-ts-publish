@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** A model whose getDirty() override declares only a vague `array<string, mixed>`, which the receiver rules decline. */
+/** A model whose getDirty() and getCasts() overrides declare only vague arrays, which the receiver rules decline. */
 final class VagueDirtyOverrideModel extends Model
 {
     protected $table = 'posts';
@@ -15,5 +15,10 @@ final class VagueDirtyOverrideModel extends Model
     public function getDirty(): array
     {
         return parent::getDirty();
+    }
+
+    public function getCasts(): array
+    {
+        return parent::getCasts();
     }
 }

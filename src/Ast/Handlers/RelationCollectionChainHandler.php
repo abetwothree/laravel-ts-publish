@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
@@ -315,7 +316,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
     /**
      * What `$this->resource->m()` returns: the wrapped class's declaration when it has one, else the model's, through
-     * the declaration-then-body read. A model's toArray() is left to the receiver rules.
+     * the declaration-then-body read. A model method the receiver rules type, such as toArray(), is left to them.
      *
      * @return ValueExpressionResult|null
      */
@@ -327,7 +328,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         if ($class === null
             || ! method_exists($class, $methodName)
             || ! new ReflectionMethod($class, $methodName)->isPublic()
-            || ($methodName === 'toArray' && is_a($class, Model::class, true))
+            || resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($class, $methodName)
         ) {
             return null;
         }
@@ -361,7 +362,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
     /**
      * A model-less subject's `$this->service->m()`, from the class its own property is typed as. A held model's
-     * filters and toArray() are left to the receiver rules, which read its key list and its serialization.
+     * filters, toArray() and the arrays the receiver rules type are left to them.
      *
      * @return ValueExpressionResult|null
      */
@@ -374,7 +375,8 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $propertyClass = resolve(CallMatcher::class)->resolveThisPropertyClass($scope->subjectReflection, $call->var);
 
         if ($propertyClass === null
-            || (is_a($propertyClass, Model::class, true) && ($methodName === 'toArray' || $this->callsAttributeFilter($call)))
+            || (is_a($propertyClass, Model::class, true) && $this->callsAttributeFilter($call))
+            || resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($propertyClass, $methodName)
         ) {
             return null;
         }
