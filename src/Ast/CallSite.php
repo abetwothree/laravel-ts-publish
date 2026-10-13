@@ -55,7 +55,7 @@ final readonly class CallSite
      * argument narrows, read in the caller's scope; an unpacked or first-class call, and an argument nothing can type,
      * bind nothing.
      *
-     * @param  bool  $valueRead  the call is read as a value, not spread in place
+     * @param  bool  $valueRead  the call is read as a value, not spread in place: a first-class callable binds nothing
      * @return array<string, PassedBinding>
      */
     public function passedTo(ReflectionMethod $method, bool $valueRead = false): array
@@ -74,7 +74,7 @@ final readonly class CallSite
 
         foreach ($method->getParameters() as $parameter) {
             $argument = $arguments->named($parameter->getName());
-            $binding = $argument === null || ($valueRead && $this->passesUncalledCallable($argument->value))
+            $binding = $argument === null || $this->passesUncalledCallable($argument->value, $valueRead)
                 ? null
                 : $this->bindingFor($parameter, $method, $argument->value);
 
@@ -112,14 +112,15 @@ final readonly class CallSite
     }
 
     /**
-     * Whether an argument is a closure or first-class callable whose value hangs on whether the method calls it:
-     * Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so it sends the latter.
+     * Whether an argument is a closure, or on a value read a first-class callable, whose value hangs on whether the
+     * method calls it: Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so it
+     * sends the latter. A spread reads a held first-class callable as the Closure it creates, which is `{}`.
      */
-    private function passesUncalledCallable(Expr $argument): bool
+    private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
         return ! $this->engine->invokesCallables()
             && ($argument instanceof Closure
                 || $argument instanceof ArrowFunction
-                || ($argument instanceof CallLike && $argument->isFirstClassCallable()));
+                || ($valueRead && $argument instanceof CallLike && $argument->isFirstClassCallable()));
     }
 }

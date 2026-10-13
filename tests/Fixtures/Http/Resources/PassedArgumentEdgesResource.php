@@ -14,7 +14,7 @@ use Workbench\App\Models\User;
 /**
  * Helpers read with what their calls pass: one passed two models, an argument nothing types, a recursion passing a new
  * value each time, a written parameter, a scalar body, a value naming a class the body fallback cannot import, a model
- * no row backs yet, and helpers declaring an abstract class or a union.
+ * no row backs yet, helpers declaring an abstract class or a union, and callables a call holds or calls.
  *
  * @mixin Post
  */
@@ -119,6 +119,22 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
+     * A closure, an arrow function and a first-class callable passed to untyped helpers a spread holds them in.
+     *
+     * @return array<string, mixed>
+     */
+    public function spreadCallables(): array
+    {
+        return [
+            ...$this->hold(fn () => 5),
+            ...$this->holdClosure(function (): int {
+                return 5;
+            }),
+            ...$this->holdCallable($this->headline(...)),
+        ];
+    }
+
+    /**
      * @param  mixed  $title
      * @return mixed
      */
@@ -152,6 +168,24 @@ final class PassedArgumentEdgesResource extends JsonResource
     private function hold($held): array
     {
         return ['held' => $held];
+    }
+
+    /**
+     * @param  mixed  $held
+     * @return array<string, mixed>
+     */
+    private function holdClosure($held): array
+    {
+        return ['held_closure' => $held];
+    }
+
+    /**
+     * @param  mixed  $held
+     * @return array<string, mixed>
+     */
+    private function holdCallable($held): array
+    {
+        return ['held_callable' => $held];
     }
 
     /**

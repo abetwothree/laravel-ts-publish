@@ -477,9 +477,9 @@ helper method the action calls, are read as that method's own values, so a first
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
 read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead. A closure held in a
-local and passed to a helper read as a value publishes what it returns, as in `$f = fn () => 1; $this->hold($f)`
-where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with
-`#[TsCasts]`.
+local and passed to a helper, read as a value or spread, publishes what it returns, as in `$f = fn () => 1;
+$this->hold($f)` where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that
+key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 

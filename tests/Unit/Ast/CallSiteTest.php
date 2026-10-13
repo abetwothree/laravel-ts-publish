@@ -113,6 +113,16 @@ test('a callable a value read passes binds nothing outside a caller that calls e
         ->and(AnalysisWarnings::all())->toBe([]);
 });
 
+// The spread sends the Closure a helper holds as `{}`, so only a first-class callable, which the engine types as that
+// Closure, binds its parameter.
+test('a closure a spread passes binds nothing outside a caller that calls every callable', function () {
+    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'spreadCallables'))->toBe([
+        'held' => 'unknown',
+        'held_closure' => 'unknown',
+        'held_callable' => 'Record<string, never>',
+    ]);
+});
+
 test('the signature is empty for a call that binds nothing, and one for two arguments that bind alike', function () {
     $binder = resolve(ParameterBinder::class);
     $held = $binder->passedBinding(['type' => 'unknown', 'optional' => false], ReceiverType::of(Post::class));

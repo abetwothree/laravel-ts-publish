@@ -236,9 +236,10 @@ its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before
 sets the caller's tables aside. A value read keys its memo on what the call binds ([The run memo replays what it
 recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
 keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,
-interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A value read binds
-nothing for a closure or first-class callable argument, whose value hangs on whether the method calls it, unless the
-caller calls every callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`).
+interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A call binds
+nothing for a closure argument, whose value hangs on whether the method calls it, unless the caller calls every
+callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`). A value read binds nothing for a
+first-class callable either; a spread binds it to the `Closure` it creates, which Laravel sends as `{}`.
 
 ### Narrowing
 
