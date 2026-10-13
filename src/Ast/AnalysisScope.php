@@ -53,7 +53,13 @@ use ReflectionClass;
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
- * @phpstan-type ByReferenceForm array{effect: ByReferenceEffect, values: list<Expr>, path: list<string>}
+ * @phpstan-type ByReferenceForm array{
+ *      effect: ByReferenceEffect,
+ *      values: list<Expr>,
+ *      path: list<string>,
+ *      callback: ArrowFunction|Closure|null
+ * }
+ * @phpstan-type BindingGap array{int, int, Expr|null}
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type NameBindingsSnapshot array{
@@ -70,7 +76,8 @@ use ReflectionClass;
  *      byReferenceForms: ByReferenceFormsMap,
  *      requestVarNames: RequestVarNamesMap,
  *      claimedClosures: array<int, true>,
- *      bindingEnds: array<string, int>
+ *      bindingEnds: array<string, int>,
+ *      bindingGaps: array<string, non-empty-list<BindingGap>>
  * }
  * @phpstan-type CallerState array{
  *      bindings: NameBindingsSnapshot,
@@ -99,6 +106,7 @@ final class AnalysisScope
         'requestVarNames' => [],
         'claimedClosures' => [],
         'bindingEnds' => [],
+        'bindingGaps' => [],
     ];
 
     /**
@@ -240,6 +248,15 @@ final class AnalysisScope
     public array $bindingEnds = [];
 
     /**
+     * The spans, after one offset and up to another, where a name does not hold the binding it came into the body with
+     * though it takes it back past them: from a write inside a block that always returns or throws to that block's end,
+     * with the value the write assigns when it is the block's own `$x = …;` statement.
+     *
+     * @var array<string, non-empty-list<BindingGap>>
+     */
+    public array $bindingGaps = [];
+
+    /**
      * Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential
      * binding (e.g. `$a = $b; $b = $a;`) resolves as unknown instead of recursing forever.
      *
@@ -328,8 +345,25 @@ final class AnalysisScope
     public function holdsBinding(Variable $variable): bool
     {
         return ! is_string($variable->name)
-            || ! isset($this->bindingEnds[$variable->name])
-            || $variable->getStartFilePos() <= $this->bindingEnds[$variable->name];
+            || self::holdsAt($variable->name, $variable->getStartFilePos(), $this->bindingEnds, $this->bindingGaps);
+    }
+
+    /**
+     * The value a read inside a gap takes: the one the latest write before it in that block assigned, or null when
+     * that write assigns no value the scan reads, or the read is in no gap.
+     */
+    public function gapValue(Variable $variable): ?Expr
+    {
+        $position = $variable->getStartFilePos();
+        $latest = null;
+
+        foreach (is_string($variable->name) ? $this->bindingGaps[$variable->name] ?? [] : [] as $gap) {
+            if ($position > $gap[0] && $position <= $gap[1] && ($latest === null || $gap[0] > $latest[0])) {
+                $latest = $gap;
+            }
+        }
+
+        return $latest[2] ?? null;
     }
 
     /**
@@ -371,6 +405,7 @@ final class AnalysisScope
             'requestVarNames' => $this->requestVarNames,
             'claimedClosures' => $this->claimedClosures,
             'bindingEnds' => $this->bindingEnds,
+            'bindingGaps' => $this->bindingGaps,
         ];
     }
 
@@ -395,6 +430,7 @@ final class AnalysisScope
         $this->requestVarNames = $snapshot['requestVarNames'];
         $this->claimedClosures = $snapshot['claimedClosures'];
         $this->bindingEnds = $snapshot['bindingEnds'];
+        $this->bindingGaps = $snapshot['bindingGaps'];
     }
 
     /**
@@ -494,8 +530,8 @@ final class AnalysisScope
 
     /**
      * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture, but a
-     * proof, which spells the read it proves under the variable's own name, and a binding end, an offset in the
-     * caller's body. A variable passed past its end passes only the body's own bindings of it.
+     * proof, which spells the read it proves under the variable's own name, and a binding end or gap, offsets in the
+     * caller's body. A variable passed past its end, or inside a gap, passes only the body's own bindings of it.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
@@ -506,9 +542,8 @@ final class AnalysisScope
         }
 
         $from = $passed->name;
-        $end = $snapshot['bindingEnds'][$from] ?? null;
 
-        if ($end !== null && $passed->getStartFilePos() > $end) {
+        if (! self::holdsAt($from, $passed->getStartFilePos(), $snapshot['bindingEnds'], $snapshot['bindingGaps'])) {
             // The parameter's own binding ends before any read, so no reader guesses a class for it.
             $this->bindingEnds[$to] = PHP_INT_MIN;
         } else {
@@ -567,6 +602,18 @@ final class AnalysisScope
     public function literalLocalBindings(): array
     {
         return array_diff_key($this->localVarBindings, $this->byReferenceForms);
+    }
+
+    /**
+     * Whether a name holds the binding it came into the body with at an offset, past no end and inside no gap.
+     *
+     * @param  array<string, int>  $ends
+     * @param  array<string, non-empty-list<BindingGap>>  $gaps
+     */
+    private static function holdsAt(string $name, int $offset, array $ends, array $gaps): bool
+    {
+        return (! isset($ends[$name]) || $offset <= $ends[$name])
+            && ! array_any($gaps[$name] ?? [], fn (array $gap): bool => $offset > $gap[0] && $offset <= $gap[1]);
     }
 
     /**
@@ -675,6 +722,7 @@ final class AnalysisScope
                 $this->byReferenceForms[$name],
                 $this->requestVarNames[$name],
                 $this->bindingEnds[$name],
+                $this->bindingGaps[$name],
             );
         }
     }

@@ -77,6 +77,40 @@ class ByReferenceReshapedResource extends JsonResource
             $value = 'z';
         });
 
+        $poppedObject = ['a' => 1, 'b' => 2];
+        array_pop($poppedObject);
+
+        $key = 'name';
+        $labels = ['a', 'b'];
+        array_walk($labels, function (string &$label, int $key): void {
+            $label = $key;
+        });
+
+        $tmp = 'str';
+        $words = ['a'];
+        array_walk($words, function (string|int &$word): void {
+            $tmp = 5;
+            $word = $tmp;
+        });
+
+        $postWrittenList = ['a', 'b'];
+
+        foreach ($postWrittenList as &$postWritten) {
+            $postWritten = trim($postWritten);
+        }
+
+        $postWritten = 1;
+
+        $roundList = ['a', 'b'];
+
+        foreach ([1, 2] as $round) {
+            $roundElement = $round;
+
+            foreach ($roundList as &$roundElement) {
+                $roundElement = trim($roundElement);
+            }
+        }
+
         $keptList = ['b', 'a'];
         sort($keptList);
 
@@ -99,7 +133,14 @@ class ByReferenceReshapedResource extends JsonResource
             'object_member_sorted' => $objectMemberSorted,
             'dynamic_member_sorted' => $dynamicMemberSorted,
             'walked_nested_other' => $walkedNestedOther,
+            'popped_object' => $poppedObject,
+            'labels_by_key' => $labels,
+            'words_by_local' => $words,
+            'post_written_loop' => $postWrittenList,
+            'round_written_loop' => $roundList,
             'kept_list' => $keptList,
+            'key' => $key,
+            'tmp' => $tmp,
             'shuffled' => $shuffled,
         ];
     }

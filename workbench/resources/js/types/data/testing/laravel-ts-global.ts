@@ -3296,6 +3296,8 @@ declare global {
             decoded: { a: number };
             literal_keys: { a?: number; b?: number };
             quoted_key: { a: number; b: string };
+            comma_key: { "a,b": number; c: string };
+            numeric_keyed_tuple: [(string | number)[], number];
             kept_title: string;
             kept_record: { a: number; b: string };
             kept_shape: { a: number; b: string };
@@ -3776,9 +3778,9 @@ declare global {
             data: unknown;
         }
         /**
-         * Locals a by-reference built-in rewrites in a form that keeps their type: a sort of a list, a key sort of anything, a
-         * key-keeping sort of an object, a count out-parameter, a push of the list's own element type, a walk or a by-reference
-         * loop that writes each element within its type, and a recursive walk or a sort of one of a local's keys likewise.
+         * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
+         * push, pop, shift or splice of a list, a walk or a by-reference loop writing each element within its type, and a
+         * recursive walk or a sort of a key likewise. A resource re-indexes a list a key-keeping sort reorders.
          */
         export interface LocalVarByReferenceResource {
             sorted: string[];
@@ -3808,6 +3810,14 @@ declare global {
             nested_sorted_member: { x: { y: number[] } };
             key_sorted_member: { x: { b: number; a: number } };
             looped: string[];
+            popped: string[];
+            shifted: string[];
+            spliced: string[];
+            value_sorted_list: string[];
+            value_sorted_member: { x: string[] };
+            walked_keys: { a: string };
+            walked_import: string[];
+            pre_written_loop: string[];
         }
         /**
          * Regression fixture (Task 12 review, Critical 2): two TOP-LEVEL assignments to the
@@ -4768,13 +4778,15 @@ declare global {
         }
         /**
          * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned,
-         * and a read before it, or a reassignment to the same model, keeps the parameter's own binding.
+         * and a read before it, past a branch that reassigns it and returns, or a reassignment to the same model, keeps the
+         * parameter's own binding.
          */
         export interface ReassignedParameterResource {
             declared_content?: string;
             read_before?: string;
             same_model?: string;
             relation_bio?: string | null;
+            exiting_branch?: string | null;
             new_model_name?: string | null;
         }
         /**

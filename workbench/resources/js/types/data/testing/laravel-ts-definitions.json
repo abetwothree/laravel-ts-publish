@@ -13022,6 +13022,16 @@
                     "optional": false
                 },
                 {
+                    "name": "comma_key",
+                    "type": "{ \"a,b\": number; c: string }",
+                    "optional": false
+                },
+                {
+                    "name": "numeric_keyed_tuple",
+                    "type": "[(string | number)[], number]",
+                    "optional": false
+                },
+                {
                     "name": "kept_title",
                     "type": "string",
                     "optional": false
@@ -14641,6 +14651,46 @@
                 },
                 {
                     "name": "looped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "popped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "shifted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "spliced",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted_member",
+                    "type": "{ x: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_keys",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_import",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "pre_written_loop",
                     "type": "string[]",
                     "optional": false
                 }
@@ -17662,6 +17712,11 @@
                 },
                 {
                     "name": "relation_bio",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "exiting_branch",
                     "type": "string | null",
                     "optional": true
                 },

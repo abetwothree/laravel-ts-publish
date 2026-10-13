@@ -15,9 +15,9 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 39, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 42, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     // Deliberate: arms the same fixture drops beside a reading that is not only `null`, which stands over the tag.
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 81, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
-    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 86, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 87, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 92, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 98, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],

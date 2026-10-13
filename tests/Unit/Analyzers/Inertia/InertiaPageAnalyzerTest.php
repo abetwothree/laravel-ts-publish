@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
@@ -183,6 +184,12 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: unknown }');
+});
+
+// Inertia sends what json_encode() writes, so a list asort() keys out of order arrives as an object.
+it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
+    expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[] }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract

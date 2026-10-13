@@ -25,23 +25,32 @@ use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\StaticVar;
+use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\Else_;
+use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
+use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Global_;
+use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Static_;
 use PhpParser\Node\Stmt\Unset_;
+use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 
@@ -50,6 +59,8 @@ use ReflectionClass;
  * reader of a body seeds it here, so each reads the body's variables the same way.
  *
  * @phpstan-type VariableWrites = list<array{string, Node, Expr}>
+ * @phpstan-type KeptWrites = list<array{string, ByReferenceForm}>
+ * @phpstan-type PartitionedWrites = array{VariableWrites, KeptWrites}
  *
  * @phpstan-import-type ByReferenceForm from AnalysisScope
  *
@@ -71,7 +82,7 @@ trait CollectsLocalVarBindings
     protected function seedBody(array $stmts, AnalysisScope $scope): void
     {
         $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
-        [$replacing, $kept] = $this->partitionWrites($writes, $scope);
+        [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
 
         foreach ($replacing as [$name]) {
             unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
@@ -104,6 +115,7 @@ trait CollectsLocalVarBindings
     {
         $writes ??= $this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            $stmts,
             $scope,
         )[0];
         $writeCounts = array_count_values(array_column($writes, 0));
@@ -133,7 +145,8 @@ trait CollectsLocalVarBindings
      * wrote. A value naming no class leaves the binding standing, since it is all that is known.
      *
      * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
-     * nested in a statement ends it where that statement starts, since a loop can run the write before a read.
+     * nested in a statement ends it where that statement starts, since a loop can run the write before a read. A write
+     * in an `if` or `switch` block that always returns or throws ends it the same way inside that block alone.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
@@ -151,20 +164,30 @@ trait CollectsLocalVarBindings
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
                 || ! $this->replacesVariable($target, $name)
-                || $this->keepsBinding($name, $node, $this->byReferenceForm($node, $target, $writes, $scope), $scope)
+                || $this->keepsBinding($name, $node, $this->byReferenceForm($node, $target, $writes, $stmts, $scope), $scope)
             ) {
                 continue;
             }
 
-            foreach ($stmts as $stmt) {
-                if ($this->encloses($stmt, $node)) {
-                    $end = $stmt instanceof ExpressionStmt && $stmt->expr === $node && ($node instanceof Assign || $node instanceof AssignOp)
-                        ? $stmt->getEndFilePos()
-                        : $stmt->getStartFilePos() - 1;
-                    $scope->bindingEnds[$name] = min($scope->bindingEnds[$name] ?? $end, $end);
+            $block = $this->exitingBlock($stmts, $node);
+            $end = $this->endWithin($block ?? $stmts, $node);
 
-                    break;
-                }
+            if ($end === null) {
+                continue;
+            }
+
+            if ($block === null) {
+                $scope->bindingEnds[$name] = min($scope->bindingEnds[$name] ?? $end, $end);
+            } else {
+                $assigned = $node instanceof Assign && array_any(
+                    $block,
+                    fn (Node\Stmt $stmt): bool => $stmt instanceof ExpressionStmt && $stmt->expr === $node,
+                );
+                $scope->bindingGaps[$name][] = [
+                    $end,
+                    $block[array_key_last($block)]->getEndFilePos(),
+                    $assigned ? $node->expr : null,
+                ];
             }
         }
     }
@@ -180,6 +203,7 @@ trait CollectsLocalVarBindings
     {
         return array_column($this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            $stmts,
             $scope,
         )[0], 0);
     }
@@ -192,8 +216,8 @@ trait CollectsLocalVarBindings
      * Only an assignment, an increment, a `foreach` target and a `use` count every variable they spell; the rest count
      * just the variable they name or key into, so `unset($a[$k])` writes `$a` and `unset($o->p)` writes nothing.
      *
-     * A nested closure's write reaches the body only for a name it imports by reference; an arrow function's, a nested
-     * class's or a named function's never does.
+     * A nested closure's write reaches the body only for a name it imports by reference, and an arrow function's only
+     * through `$this`; a nested class's or a named function's never does.
      *
      * @param  array<Node>  $stmts
      * @param  ReflectionClass<object>|null  $subject  the class `$this`, `self` and `static` name, for a call's callee
@@ -349,15 +373,16 @@ trait CollectsLocalVarBindings
      * form, each with the form it keeps.
      *
      * @param  VariableWrites  $writes
-     * @return array{VariableWrites, list<array{string, ByReferenceForm}>}
+     * @param  array<Node>  $stmts  the body the writes were scanned from
+     * @return PartitionedWrites
      */
-    private function partitionWrites(array $writes, AnalysisScope $scope): array
+    private function partitionWrites(array $writes, array $stmts, AnalysisScope $scope): array
     {
         $replacing = [];
         $kept = [];
 
         foreach ($writes as $write) {
-            $form = $this->byReferenceForm($write[1], $write[2], $writes, $scope);
+            $form = $this->byReferenceForm($write[1], $write[2], $writes, $stmts, $scope);
 
             if ($form === null || $form['effect'] === ByReferenceEffect::Replaces) {
                 $replacing[] = $write;
@@ -374,9 +399,10 @@ trait CollectsLocalVarBindings
      * path of literal keys names, with the values it adds or writes into an element; null for a write neither makes.
      *
      * @param  VariableWrites  $writes  every write of the body, for those a `foreach` element's variable makes
+     * @param  array<Node>  $stmts  the body, for the loops around a `foreach`
      * @return ByReferenceForm|null
      */
-    private function byReferenceForm(Node $node, Expr $target, array $writes, AnalysisScope $scope): ?array
+    private function byReferenceForm(Node $node, Expr $target, array $writes, array $stmts, AnalysisScope $scope): ?array
     {
         $path = $this->keyPath($target);
 
@@ -387,10 +413,16 @@ trait CollectsLocalVarBindings
                 return $this->form(ByReferenceEffect::Replaces);
             }
 
-            // After the loop the variable still points at the last element, so every write to it counts, but unset().
+            // After the loop the variable still points at the last element, so a later write lands in it, as one before
+            // the loop does when a loop around both runs it again; unset() breaks the reference.
+            $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
+                && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
+                && $this->encloses($loop, $node));
             $values = $this->elementValues(array_values(array_filter(
                 $writes,
-                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_,
+                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
+                    && ($write[1]->getStartFilePos() > $node->getStartFilePos()
+                        || array_any($loops, fn (Node $loop): bool => $this->encloses($loop, $write[1]))),
             )));
 
             return $values === null
@@ -438,24 +470,38 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * What array_push() or array_unshift() leaves: the list, with each value it adds, unless one is unpacked.
+     * What array_push(), array_unshift() or array_splice() leaves: the list, with each value it adds, unless one is
+     * unpacked. array_splice() adds its replacement, a list literal's items or the one value it is.
      *
      * @param  list<string>  $path
      * @return ByReferenceForm
      */
     private function appendedForm(CallLike $call, Expr $target, array $path): array
     {
-        $added = array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->value !== $target));
+        if ($call instanceof FuncCall && $call->name instanceof Name && $call->name->toLowerString() === 'array_splice') {
+            $replacement = CallArguments::fromNames($call->getArgs(), ['array', 'offset', 'length', 'replacement'])
+                ->named('replacement')?->value;
+            $values = match (true) {
+                $replacement === null => [],
+                $replacement instanceof Array_ => array_any($replacement->items, fn (?ArrayItem $item): bool => $item === null || $item->unpack)
+                    ? null
+                    : array_values(array_filter(array_map(fn (?ArrayItem $item): ?Expr => $item?->value, $replacement->items))),
+                default => [$replacement],
+            };
+        } else {
+            $added = array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->value !== $target));
+            $values = array_any($added, fn (Arg $arg): bool => $arg->unpack) ? null : array_map(fn (Arg $arg): Expr => $arg->value, $added);
+        }
 
-        return array_any($added, fn (Arg $arg): bool => $arg->unpack)
+        return $values === null
             ? $this->form(ByReferenceEffect::Replaces)
-            : $this->form(ByReferenceEffect::Appends, array_map(fn (Arg $arg): Expr => $arg->value, $added), $path);
+            : $this->form(ByReferenceEffect::Appends, $values, $path);
     }
 
     /**
      * What array_walk() or array_walk_recursive() leaves: every element, when its callback takes none by reference,
      * else each element, or each leaf, with the values its callback writes into it, read only from a closure written
-     * at the call.
+     * at the call and read in that closure's own scope.
      *
      * @param  list<string>  $path
      * @return ByReferenceForm
@@ -483,7 +529,7 @@ trait CollectsLocalVarBindings
             fn (array $write): bool => $write[0] === $element,
         )));
 
-        return $values === null ? $this->form(ByReferenceEffect::Replaces) : $this->form($effect, $values, $path);
+        return $values === null ? $this->form(ByReferenceEffect::Replaces) : $this->form($effect, $values, $path, $callback);
     }
 
     /**
@@ -516,15 +562,70 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * A by-reference form of an effect, with the values the call adds or writes and the key path it takes.
+     * A by-reference form of an effect, with the values the call adds or writes, the key path it takes, and the walk's
+     * callback whose scope reads those values.
      *
      * @param  list<Expr>  $values
      * @param  list<string>  $path
      * @return ByReferenceForm
      */
-    private function form(ByReferenceEffect $effect, array $values = [], array $path = []): array
+    private function form(
+        ByReferenceEffect $effect,
+        array $values = [],
+        array $path = [],
+        ArrowFunction|ClosureExpr|null $callback = null,
+    ): array {
+        return ['effect' => $effect, 'values' => $values, 'path' => $path, 'callback' => $callback];
+    }
+
+    /**
+     * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always returns or
+     * throws, or null when none does; a block inside a nested function exits that function, not the body.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return non-empty-list<Node\Stmt>|null
+     */
+    private function exitingBlock(array $stmts, Node $node): ?array
     {
-        return ['effect' => $effect, 'values' => $values, 'path' => $path];
+        $finder = new NodeFinder;
+        $functions = $finder->find($stmts, fn (Node $function): bool => $function instanceof ClosureExpr
+            || $function instanceof ArrowFunction || $function instanceof Function_ || $function instanceof ClassLike);
+        $innermost = null;
+
+        foreach ($finder->find($stmts, fn (Node $owner): bool => $owner instanceof If_ || $owner instanceof ElseIf_
+            || $owner instanceof Else_ || $owner instanceof Case_) as $owner) {
+            /** @var If_|ElseIf_|Else_|Case_ $owner */
+            $block = array_values($owner->stmts);
+
+            if ($block !== [] && $this->alwaysExits($block)
+                && array_any($block, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $node))
+                && ! array_any($functions, fn (Node $function): bool => $this->encloses($function, $owner))
+                && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
+            ) {
+                $innermost = $block;
+            }
+        }
+
+        return $innermost;
+    }
+
+    /**
+     * Where a write ends a binding among a block's statements: past its own statement when that statement is the
+     * assignment itself, else where the statement holding it starts. Null when no statement holds it.
+     *
+     * @param  array<Node\Stmt>  $block
+     */
+    private function endWithin(array $block, Node $node): ?int
+    {
+        foreach ($block as $stmt) {
+            if ($this->encloses($stmt, $node)) {
+                return $stmt instanceof ExpressionStmt && $stmt->expr === $node && ($node instanceof Assign || $node instanceof AssignOp)
+                    ? $stmt->getEndFilePos()
+                    : $stmt->getStartFilePos() - 1;
+            }
+        }
+
+        return null;
     }
 
     /**

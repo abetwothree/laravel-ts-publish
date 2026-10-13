@@ -165,6 +165,24 @@ class ReassignedClosureParamResource extends JsonResource
 
                 return $author->name;
             }),
+            // The branch that reassigns `$author` returns, so the read after it still holds the User.
+            'exiting_branch' => $this->whenLoaded('author', function (User $author) {
+                if ($author->name === 'x') {
+                    $author = $author->profile;
+
+                    return $author?->bio;
+                }
+
+                return $author->name;
+            }),
+            // A branch that falls through can run the write before the read.
+            'falling_branch' => $this->whenLoaded('author', function (User $author) {
+                if ($author->name === 'x') {
+                    $author = $author->profile;
+                }
+
+                return $author->name;
+            }),
             'concat_value' => $this->whenHas('title', function ($title) {
                 $title .= '!';
 

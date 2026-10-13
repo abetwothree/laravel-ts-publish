@@ -125,6 +125,18 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
     'a write whose value names no class' => ['$p = $p->comments->first(); return $p;', [true, true, true]],
     'a write an inline @var names another class for' => ['/** @var \\Workbench\\App\\Models\\Comment $p */ $p = $p->comments->first(); return $p;', [true, true, false]],
     'a nested write, from where its statement starts' => ['if ($p->id) { $p = $p->profile; } return $p;', [false, false, false, false]],
+    'a write in a block that always exits, ended only inside it' => [
+        'if ($p->id) { $p = $p->profile; return $p; } return $p;',
+        [true, true, true, false, true],
+    ],
+    'a write in an else that always exits' => ['if ($p->id) { } else { $p = $p->profile; throw new \\Exception($p); } return $p;', [true, true, true, false, true]],
+    'a write in an elseif that always exits' => ['if ($p->id) { } elseif ($p->x) { $p = $p->profile; return $p; } return $p;', [true, true, true, true, false, true]],
+    'a write in a switch case that always exits' => ['switch ($p->id) { case 1: $p = $p->profile; return $p; } return $p;', [true, true, true, false, true]],
+    'a nested write in a block that always exits' => ['if ($p->id) { if ($p->x) { $p = $p->profile; } return $p; } return $p;', [true, false, false, false, false, true]],
+    'a write in a closure inside a block that falls through' => [
+        'if ($p->id) { $f = function () use (&$p) { $p = $p->profile; return 1; }; } return $p;',
+        [false, false, false, false, false],
+    ],
     'a write through a property or a key' => ['$p->name = "x"; $p["k"] = 1; return $p;', [true, true, true]],
     'a destructuring write' => ['[$p] = [$p->profile]; return $p;', [true, true, false]],
     'a foreach target' => ['foreach ([] as $p) {} return $p;', [false, false]],
@@ -218,7 +230,12 @@ it('binds a local across a by-reference built-in that keeps its value in some fo
     expect(byReferenceSeededLocals($body))->toBe($bound);
 })->with([
     'ksort(), any form' => ['$x = []; ksort($x);', ['x' => []]],
-    'uksort(), any form' => ['$x = []; uksort($x, fn ($a, $b) => 0);', ['x' => []]],
+    'uksort(), an object' => ['$x = []; uksort($x, fn ($a, $b) => 0);', ['x' => ['KeepsObject']]],
+    'ksort() comparing keys as strings, an object' => ['$x = []; ksort($x, SORT_STRING);', ['x' => ['KeepsObject']]],
+    'array_pop(), a list' => ['$x = []; array_pop($x);', ['x' => ['KeepsList']]],
+    'array_shift(), a list' => ['$x = []; array_shift($x);', ['x' => ['KeepsList']]],
+    'array_splice(), a list of its replacement' => ['$x = []; array_splice($x, 1, 1, ["z"]);', ['x' => ['Appends']]],
+    'array_splice() with an unpacked replacement' => ['$x = []; array_splice($x, 1, 1, [...$y]);', []],
     'sort(), a list' => ['$x = []; sort($x);', ['x' => ['KeepsList']]],
     'rsort(), a list' => ['$x = []; rsort($x);', ['x' => ['KeepsList']]],
     'usort(), a list' => ['$x = []; usort($x, fn ($a, $b) => 0);', ['x' => ['KeepsList']]],

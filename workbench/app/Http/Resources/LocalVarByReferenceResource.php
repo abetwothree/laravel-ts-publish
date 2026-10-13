@@ -9,9 +9,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Locals a by-reference built-in rewrites in a form that keeps their type: a sort of a list, a key sort of anything, a
- * key-keeping sort of an object, a count out-parameter, a push of the list's own element type, a walk or a by-reference
- * loop that writes each element within its type, and a recursive walk or a sort of one of a local's keys likewise.
+ * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
+ * push, pop, shift or splice of a list, a walk or a by-reference loop writing each element within its type, and a
+ * recursive walk or a sort of a key likewise. A resource re-indexes a list a key-keeping sort reorders.
  *
  * @mixin Post
  */
@@ -102,6 +102,41 @@ class LocalVarByReferenceResource extends JsonResource
         $keySortedMember = ['x' => ['b' => 1, 'a' => 2]];
         ksort($keySortedMember['x']);
 
+        $popped = ['a', 'b'];
+        array_pop($popped);
+
+        $shifted = ['a', 'b'];
+        array_shift($shifted);
+
+        $spliced = ['a', 'b'];
+        array_splice($spliced, 1, 1, ['z']);
+
+        $valueSortedList = ['b', 'a'];
+        asort($valueSortedList);
+
+        $valueSortedMember = ['x' => ['b', 'a']];
+        asort($valueSortedMember['x']);
+
+        $walkedKeys = ['a' => 'x'];
+        array_walk($walkedKeys, function (string &$value, string $key): void {
+            $value = $key;
+        });
+
+        $suffix = '!';
+        $walkedImport = ['a', 'b'];
+        array_walk($walkedImport, function (string &$value) use ($suffix): void {
+            $value = $suffix;
+        });
+
+        $preWritten = 1;
+        $preWrittenList = ['a', 'b'];
+
+        foreach ($preWrittenList as &$preWritten) {
+            $preWritten = trim($preWritten);
+        }
+
+        unset($preWritten);
+
         $looped = ['a', 'b'];
 
         foreach ($looped as &$item) {
@@ -138,6 +173,14 @@ class LocalVarByReferenceResource extends JsonResource
             'nested_sorted_member' => $nestedSortedMember,
             'key_sorted_member' => $keySortedMember,
             'looped' => $looped,
+            'popped' => $popped,
+            'shifted' => $shifted,
+            'spliced' => $spliced,
+            'value_sorted_list' => $valueSortedList,
+            'value_sorted_member' => $valueSortedMember,
+            'walked_keys' => $walkedKeys,
+            'walked_import' => $walkedImport,
+            'pre_written_loop' => $preWrittenList,
         ];
     }
 }

@@ -316,10 +316,11 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $outer;
-        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => []]];
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
+        $scope->bindingGaps[$name] = [[5, 9, null]];
     }
 
     $before = $scope->nameBindings();
@@ -498,6 +499,8 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'by_value_use_write?' => 'string',
         'by_value_use_bare?' => 'User',
         'by_reference_use_write?' => 'unknown',
+        'exiting_branch?' => 'string | null',
+        'falling_branch?' => 'unknown',
         'concat_value?' => 'string',
         'branch_value?' => 'string',
     ]);

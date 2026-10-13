@@ -5,28 +5,32 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Closure;
 
 /**
  * What a call leaves in a variable it passes to a by-reference parameter: the value it held, while that value has
  * the form the call keeps, or a value the scan does not follow.
  *
+ * @phpstan-type Written Closure(string, string): list<string>
+ * @phpstan-type KeyedElement array{string, string}
+ *
  * @internal
  */
 enum ByReferenceEffect
 {
-    /** ksort() and uksort() move keys in order, which keeps any array. */
+    /** ksort() moves keys into ascending order, which keeps any array. */
     case KeepsAny;
 
-    /** sort(), rsort(), usort() and shuffle() re-index, which keeps a list but lists an object's values. */
+    /** sort(), rsort(), usort(), shuffle(), array_pop() and array_shift() keep a list; an object loses its keys. */
     case KeepsList;
 
-    /** asort(), krsort() and the other sorts that keep each key keep an object, but turn a list into one. */
+    /** asort(), uksort() and the other sorts that keep each key keep an object, and key a list out of order. */
     case KeepsObject;
 
     /** A count out-parameter writes an int. */
     case KeepsNumber;
 
-    /** array_push() and array_unshift() add values to a list. */
+    /** array_push(), array_unshift() and array_splice() add values to a list. */
     case Appends;
 
     /** array_walk() and a by-reference `foreach` write each element in place. */
@@ -39,54 +43,87 @@ enum ByReferenceEffect
     case Replaces;
 
     /**
-     * Whether a value of a type keeps it past the call, given the types of the values the call adds or writes, and the
-     * key path to the member the call takes, which must keep its own form.
+     * The type a value of a type holds once the call returns, or null when the scan cannot tell: the type itself while
+     * the call keeps its form, and a list a key-keeping sort keys out of order as `Record<number, T>`, which
+     * json_encode() writes as an object. A key path names the member the call takes.
      *
-     * A `null` arm is left out of the form test: the call takes only an array, so a null never gets past it.
+     * A `null` arm stays as it is: the call takes only an array, so a null never gets past it.
      *
-     * @param  list<string>  $values
+     * @param  Written  $written  the types the call adds, or writes into an element of the first type under a key of
+     *                            the second
      * @param  list<string>  $path
      */
-    public function keeps(string $type, array $values = [], array $path = []): bool
+    public function left(string $type, Closure $written, array $path = []): ?string
     {
-        foreach ($path as $key) {
-            // Whatever the call leaves in a member typed `unknown`, the type published for it still holds.
-            if ($type === 'unknown') {
-                return $this !== self::Replaces;
+        if ($path === []) {
+            return $this->leftWhole($type, $written);
+        }
+
+        $key = array_shift($path);
+        $member = TsTypeShape::memberType($type, $key)
+            ?? (is_numeric($key) ? self::listElements($type)[0] ?? null : null);
+
+        // Whatever the call leaves in a member typed `unknown`, the type published for it still holds.
+        if ($member === null || $member === 'unknown') {
+            return $member === null || $this === self::Replaces ? null : $type;
+        }
+
+        $left = $this->left($member, $written, $path);
+
+        return match (true) {
+            $left === null => null,
+            $left === $member => $type,
+            default => self::withMember($type, $key, $left),
+        };
+    }
+
+    /**
+     * What the call leaves in the whole value.
+     *
+     * @param  Written  $written
+     */
+    private function leftWhole(string $type, Closure $written): ?string
+    {
+        if ($this === self::KeepsNumber) {
+            return $type === 'number' ? $type : null;
+        }
+
+        $arms = TsTypeShape::splitTopLevel($type, ['|']);
+
+        if (! array_any($arms, static fn (string $arm): bool => $arm !== 'null')) {
+            return $this === self::KeepsAny ? $type : null;
+        }
+
+        $left = [];
+
+        foreach ($arms as $arm) {
+            $kept = $arm === 'null' ? $arm : $this->leftArm($arm, $written);
+
+            if ($kept === null) {
+                return null;
             }
 
-            $member = TsTypeShape::memberType($type, $key)
-                ?? (is_numeric($key) ? self::listElements($type)[0] ?? null : null);
-
-            if ($member === null) {
-                return false;
-            }
-
-            $type = $member;
+            $left[] = $kept;
         }
 
-        if ($path !== [] && $type === 'unknown') {
-            return $this !== self::Replaces;
-        }
+        return $left === $arms ? $type : implode(' | ', array_values(array_unique($left)));
+    }
 
-        $arms = array_values(array_filter(
-            TsTypeShape::splitTopLevel($type, ['|']),
-            static fn (string $arm): bool => $arm !== 'null',
-        ));
-
-        if ($arms === [] && $this !== self::KeepsAny) {
-            return false;
-        }
-
+    /**
+     * What the call leaves in one arm that is not `null`.
+     *
+     * @param  Written  $written
+     */
+    private function leftArm(string $arm, Closure $written): ?string
+    {
         return match ($this) {
-            self::KeepsAny => true,
-            self::KeepsList => array_all($arms, static fn (string $arm): bool => self::listElements($arm) !== null),
-            self::KeepsObject => array_all($arms, TsTypeShape::isObjectLike(...)),
-            self::KeepsNumber => $type === 'number',
-            self::Appends => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::listElements($arm), $values)),
-            self::WritesElements => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::elementTypes($arm), $values)),
-            self::WritesLeaves => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::leafTypes($arm), $values)),
-            self::Replaces => false,
+            self::KeepsAny => $arm,
+            self::KeepsList => self::listElements($arm) === null ? null : $arm,
+            self::KeepsObject => TsTypeShape::isObjectLike($arm) ? $arm : self::keyedOutOfOrder($arm),
+            self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
+            self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
+            self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,
+            self::KeepsNumber, self::Replaces => null,
         };
     }
 
@@ -103,46 +140,84 @@ enum ByReferenceEffect
     }
 
     /**
-     * The type of each element a list, a tuple, an object or a Record holds, or null when the arm holds none the scan
-     * can name.
+     * A list's one element under an int key, or null for any other type.
      *
-     * @return list<string>|null
+     * @return list<KeyedElement>|null
      */
-    private static function elementTypes(string $arm): ?array
+    private static function listedElements(string $arm): ?array
     {
-        $list = self::listElements($arm);
+        $element = self::listElements($arm)[0] ?? null;
 
-        if ($list !== null) {
-            return $list;
+        return $element === null ? null : [[$element, 'number']];
+    }
+
+    /**
+     * What a list or a tuple becomes once its keys are out of order: an object of its elements under int keys. An
+     * empty tuple has no key to move. Null for any other type.
+     */
+    private static function keyedOutOfOrder(string $arm): ?string
+    {
+        if ($arm === '[]') {
+            return $arm;
+        }
+
+        $elements = self::listedElements($arm) ?? (TsTypeShape::isWrapped($arm, '[', ']') ? self::elements($arm) : null);
+
+        return $elements === null
+            ? null
+            : 'Record<number, '.implode(' | ', array_values(array_unique(array_column($elements, 0)))).'>';
+    }
+
+    /**
+     * Each element a list, a tuple, an object or a Record holds, with the type of the key it sits under: an int for a
+     * list, a tuple or a numeric key, else a string. Null when the arm holds none the scan can name.
+     *
+     * @return list<KeyedElement>|null
+     */
+    private static function elements(string $arm): ?array
+    {
+        $listed = self::listedElements($arm);
+
+        if ($listed !== null) {
+            return $listed;
         }
 
         if (TsTypeShape::isWrapped($arm, '[', ']')) {
             return array_map(
-                static fn (string $member): string => rtrim($member, '?'),
+                static fn (string $member): array => [rtrim($member, '?'), 'number'],
                 TsTypeShape::splitTopLevel(substr($arm, 1, -1), [',']),
             );
         }
 
         if (str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')) {
-            $value = TsTypeShape::splitTopLevel(substr($arm, 7, -1), [','])[1] ?? null;
+            $arguments = TsTypeShape::splitTopLevel(substr($arm, 7, -1), [',']);
 
-            return $value === null ? null : [$value];
+            return count($arguments) === 2
+                ? [[$arguments[1], match ($arguments[0]) {
+                    'number' => 'number',
+                    'string' => 'string',
+                    default => 'string | number',
+                }]]
+                : null;
         }
 
         $members = TsTypeShape::members($arm);
 
-        return $members === null ? null : array_map(static fn (array $member): string => $member[1], $members);
+        return $members === null ? null : array_map(
+            static fn (array $member): array => [$member[1], TsTypeShape::isNumericKey($member[0]) ? 'number' : 'string'],
+            $members,
+        );
     }
 
     /**
-     * The types of the values a recursive walk visits below an array arm: at each element, the union of its arms that
-     * hold no array, and below each that does, the same again. Null when the arm holds no array.
+     * The values a recursive walk visits below an array arm, with their keys: at each element, the union of its arms
+     * that hold no array, and below each that does, the same again. Null when the arm holds no array.
      *
-     * @return list<string>|null
+     * @return list<KeyedElement>|null
      */
-    private static function leafTypes(string $arm): ?array
+    private static function leaves(string $arm): ?array
     {
-        $elements = self::elementTypes($arm);
+        $elements = self::elements($arm);
 
         if ($elements === null) {
             return null;
@@ -150,11 +225,11 @@ enum ByReferenceEffect
 
         $leaves = [];
 
-        foreach ($elements as $element) {
+        foreach ($elements as [$element, $key]) {
             $values = [];
 
             foreach (TsTypeShape::splitTopLevel($element, ['|']) as $part) {
-                $below = self::leafTypes($part);
+                $below = self::leaves($part);
 
                 if ($below === null) {
                     $values[] = $part;
@@ -164,7 +239,7 @@ enum ByReferenceEffect
             }
 
             if ($values !== []) {
-                $leaves[] = implode(' | ', $values);
+                $leaves[] = [implode(' | ', $values), $key];
             }
         }
 
@@ -172,18 +247,53 @@ enum ByReferenceEffect
     }
 
     /**
-     * Whether every value's type falls within every element type, so writing any value into any element keeps it.
-     *
-     * @param  list<string>|null  $elements
-     * @param  list<string>  $values
+     * A type with the member under a key replaced in each object literal arm, or null when no such arm holds the key.
      */
-    private static function holdsEach(?array $elements, array $values): bool
+    private static function withMember(string $type, string $key, string $member): ?string
+    {
+        $found = false;
+        $arms = [];
+
+        foreach (TsTypeShape::splitTopLevel($type, ['|']) as $arm) {
+            $members = TsTypeShape::members($arm);
+
+            if ($members === null) {
+                $arms[] = $arm;
+
+                continue;
+            }
+
+            $printed = [];
+
+            foreach ($members as [$name, $value]) {
+                if (trim(rtrim($name, '?'), '\'"') === $key) {
+                    $found = true;
+                    $value = $member;
+                }
+
+                $printed[] = $name.': '.$value;
+            }
+
+            $arms[] = '{ '.implode('; ', $printed).' }';
+        }
+
+        return $found ? implode(' | ', $arms) : null;
+    }
+
+    /**
+     * Whether every value the call writes into each element falls within that element's type, so writing any of them
+     * keeps it.
+     *
+     * @param  list<KeyedElement>|null  $elements
+     * @param  Written  $written
+     */
+    private static function holdsEach(?array $elements, Closure $written): bool
     {
         return $elements !== null && array_all(
             $elements,
-            static fn (string $element): bool => array_all(
-                $values,
-                static fn (string $value): bool => self::within($value, $element),
+            static fn (array $element): bool => array_all(
+                $written($element[0], $element[1]),
+                static fn (string $value): bool => self::within($value, $element[0]),
             ),
         );
     }

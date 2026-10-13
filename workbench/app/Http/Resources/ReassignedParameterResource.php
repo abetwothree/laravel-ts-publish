@@ -12,7 +12,8 @@ use Workbench\App\Models\User;
 
 /**
  * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned,
- * and a read before it, or a reassignment to the same model, keeps the parameter's own binding.
+ * and a read before it, past a branch that reassigns it and returns, or a reassignment to the same model, keeps the
+ * parameter's own binding.
  *
  * @mixin Post
  */
@@ -45,6 +46,15 @@ class ReassignedParameterResource extends JsonResource
                 $author = $author->profile;
 
                 return $author?->bio;
+            }),
+            'exiting_branch' => $this->whenLoaded('author', function (User $author) {
+                if ($author->name === 'x') {
+                    $author = $author->profile;
+
+                    return $author?->bio;
+                }
+
+                return $author->name;
             }),
             // `website` is the Profile's own column: a User has none.
             'new_model_name' => $this->whenLoaded('author', function (User $author) {

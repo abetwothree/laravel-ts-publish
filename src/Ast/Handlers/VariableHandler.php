@@ -179,7 +179,7 @@ final class VariableHandler implements ExpressionHandler
     private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if (! $scope->holdsBinding($variable)) {
-            $local = $scope->localVarBindings[$name] ?? null;
+            $local = $scope->gapValue($variable) ?? $scope->localVarBindings[$name] ?? null;
 
             return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
         }
@@ -290,16 +290,22 @@ final class VariableHandler implements ExpressionHandler
         }
 
         $scope->resolvingLocalVars[$name] = true;
+        $type = $value['type'];
 
         try {
             foreach ($forms as $form) {
-                $written = array_map(fn (Expr $written): string => match (true) {
-                    $written instanceof PreInc, $written instanceof PostInc,
-                    $written instanceof PreDec, $written instanceof PostDec => 'number',
-                    default => $engine->resolve($written)['type'],
-                }, $form['values']);
+                $read = [];
+                $written = function (string $element, string $key) use ($form, &$read, $scope, $engine): array {
+                    $callback = $form['callback'];
+                    $at = $callback === null ? '' : $element."\0".$key;
 
-                if (! $form['effect']->keeps($value['type'], $written, $form['path'])) {
+                    return $read[$at] ??= $callback === null
+                        ? array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $form['values'])
+                        : $this->writtenByCallback($callback, $form['values'], $element, $key, $scope, $engine);
+                };
+                $type = $form['effect']->left($type, $written, $form['path']);
+
+                if ($type === null) {
                     return null;
                 }
             }
@@ -307,7 +313,75 @@ final class VariableHandler implements ExpressionHandler
             unset($scope->resolvingLocalVars[$name]);
         }
 
+        if ($type !== $value['type']) {
+            // A form that rewrites the type keys a list anew, so the resource's re-index must read it again.
+            $value['type'] = $type;
+            unset($value['keepsKeys']);
+        }
+
         return $value;
+    }
+
+    /**
+     * The types a walk's callback writes into an element of one type under a key of another, each read in the
+     * callback's own scope: its first parameter bound to the element and its second to the key, beside what a closure
+     * imports, or all an arrow function captures, and the body's own locals. No other outer binding reaches it.
+     *
+     * @param  list<Expr>  $values
+     * @return list<string>
+     */
+    private function writtenByCallback(
+        ArrowFunction|ClosureExpr $callback,
+        array $values,
+        string $element,
+        string $key,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): array {
+        $caller = $scope->nameBindings();
+        $ambient = $scope->closureRelationModelClass;
+
+        try {
+            if ($callback instanceof ClosureExpr) {
+                $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
+                $scope->closureRelationModelClass = null;
+
+                foreach ($callback->uses as $use) {
+                    if (is_string($use->var->name)) {
+                        $scope->copyBindings($use->var, $use->var->name, $caller);
+                    }
+                }
+            } else {
+                $scope->releaseUnclaimedParameters($callback);
+            }
+
+            foreach ([$element, $key] as $index => $type) {
+                $parameter = $callback->params[$index] ?? null;
+
+                if ($parameter !== null && $parameter->var instanceof Variable && is_string($parameter->var->name)) {
+                    $scope->varValueBindings[$parameter->var->name] = ['type' => $type, 'optional' => false];
+                }
+            }
+
+            if ($callback instanceof ClosureExpr) {
+                $this->seedBody($callback->stmts, $scope);
+            }
+
+            return array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values);
+        } finally {
+            $scope->restoreNameBindings($caller);
+            $scope->closureRelationModelClass = $ambient;
+        }
+    }
+
+    /**
+     * The type a write puts in an element: an increment or a decrement leaves a number, any other value its own type.
+     */
+    private function writtenType(Expr $written, ExpressionEngine $engine): string
+    {
+        return $written instanceof PreInc || $written instanceof PostInc || $written instanceof PreDec || $written instanceof PostDec
+            ? 'number'
+            : $engine->resolve($written)['type'];
     }
 
     /**

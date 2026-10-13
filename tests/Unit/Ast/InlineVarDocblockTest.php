@@ -545,6 +545,8 @@ describe('an inline @var on a local assignment', function () {
                     decoded: { a: number };
                     literal_keys: { a?: number; b?: number };
                     quoted_key: { a: number; b: string };
+                    comma_key: { "a,b": number; c: string };
+                    numeric_keyed_tuple: [(string | number)[], number];
                     kept_title: string;
                     kept_record: { a: number; b: string };
                     kept_shape: { a: number; b: string };

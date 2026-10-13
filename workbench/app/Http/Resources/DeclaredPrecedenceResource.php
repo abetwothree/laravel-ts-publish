@@ -77,6 +77,12 @@ final class DeclaredPrecedenceResource extends JsonResource
         /** @var array{'a': int, b: string} $quotedKey */
         $quotedKey = json_decode('{"a":1,"b":"x"}', true);
 
+        /** @var array{'a,b': int, c: string} $commaKey */
+        $commaKey = json_decode('{"a,b":1,"c":"x"}', true);
+
+        /** @var array{0: array{3: string, 5: int}, 1: int} $numericKeyedTuple */
+        $numericKeyedTuple = json_decode('[{"3":"a","5":1},1]', true);
+
         /** @var string|null $keptTitle */
         $keptTitle = $this->resource->id > 0 ? $this->resource->title : json_decode('"x"');
 
@@ -112,6 +118,8 @@ final class DeclaredPrecedenceResource extends JsonResource
             'decoded' => $decoded,
             'literal_keys' => $literalKeys,
             'quoted_key' => $quotedKey,
+            'comma_key' => $commaKey,
+            'numeric_keyed_tuple' => $numericKeyedTuple,
             'kept_title' => $keptTitle,
             'kept_record' => $keptRecord,
             'kept_shape' => $keptShape,

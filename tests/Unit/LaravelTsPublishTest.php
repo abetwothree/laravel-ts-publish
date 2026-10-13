@@ -1430,6 +1430,20 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
         'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
         'a quoted literal member holding a colon' => ["list{'a:b', int}", "['a:b', number]"],
+        'a quoted key holding a comma' => ["array{'a,b': int, c: string}", '{ "a,b": number; c: string }'],
+        'a double-quoted key holding a comma' => ['array{"a,b": int, c: string}', '{ "a,b": number; c: string }'],
+        'a quoted key holding a comma and a brace' => ["array{'a,{b': int, c: string}", '{ "a,{b": number; c: string }'],
+        'a quoted literal member holding a comma' => ["list{'a,b', int}", "['a,b', number]"],
+    ]);
+
+    test('splits at the commas outside brackets and quoted literals', function (string $input, array $parts) {
+        expect($this->service->splitAtTopLevelCommas($input))->toBe($parts);
+    })->with([
+        'generic arguments' => ['int, array<string, int>', ['int', 'array<string, int>']],
+        'a single-quoted literal' => ["'a,b': int, c: string", ["'a,b': int", 'c: string']],
+        'a double-quoted literal' => ['"a,b": int, c', ['"a,b": int', 'c']],
+        'an escaped quote inside a literal' => ["'it\\'s, x': int, c", ["'it\\'s, x': int", 'c']],
+        'a quote of the other kind inside a literal' => ["'say \"hi, there\"', c", ["'say \"hi, there\"'", 'c']],
     ]);
 
     test('reads a parenthesized group as the union it holds', function (string $phpType, string $expected) {

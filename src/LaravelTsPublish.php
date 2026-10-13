@@ -2400,7 +2400,7 @@ class LaravelTsPublish
 
     /**
      * Split a string on commas at the top level (depth 0),
-     * respecting nested `{}`, `<>`, and `()`.
+     * respecting nested `{}`, `<>`, and `()`, and `'…'` or `"…"` literals, such as a quoted shape key.
      *
      * @return list<string>
      */
@@ -2409,11 +2409,22 @@ class LaravelTsPublish
         $parts = [];
         $depth = 0;
         $current = '';
+        $quote = null;
 
         for ($i = 0; $i < strlen($input); $i++) {
             $char = $input[$i];
 
-            if ($char === '{' || $char === '<' || $char === '(') {
+            if ($quote !== null) {
+                if ($char === '\\' && $i + 1 < strlen($input)) {
+                    $current .= $char.$input[++$i];
+
+                    continue;
+                }
+
+                $quote = $char === $quote ? null : $quote;
+            } elseif ($char === '\'' || $char === '"') {
+                $quote = $char;
+            } elseif ($char === '{' || $char === '<' || $char === '(') {
                 $depth++;
             } elseif ($char === '}' || $char === '>' || $char === ')') {
                 $depth--;

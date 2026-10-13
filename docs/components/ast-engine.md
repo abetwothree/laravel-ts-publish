@@ -288,8 +288,10 @@ Inside the span the assigned value's reading wins, and `T` fills in only where t
 and `VariableHandler::ambientModel()` to the ambient model inside a `whenLoaded()` closure. Each states its own test for
 vague. A parameter's own binding holds until the body's first write that replaces it with a value naming another class.
 `AnalysisScope::$bindingEnds` records where, and past it every read takes the body's own binding, a ternary narrowing it
-only past its test, as `ReassignedClosureParamResource` pins. A span still outlives a write through a by-reference
-parameter of a callee the scan cannot name.
+only past its test, as `ReassignedClosureParamResource` pins. A write in an `if`, `elseif`, `else` or `case` block that
+always returns or throws ends it only inside that block, in `AnalysisScope::$bindingGaps`, where a read takes the value
+the block's own `$x = …;` assigned. A span still outlives a write through a by-reference parameter of a callee the scan
+cannot name.
 
 `VarTypeWhitelist` lists the forms a tag may use. A callable inside a shape reads `unknown` by design, so
 `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
@@ -297,15 +299,19 @@ no more.
 
 ### By-reference calls
 
-`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes, as
-a [`ByReferenceEffect`]: `ksort()` keeps any value, `sort()` a list, `asort()` an object, a count out-parameter a
-number, `array_push()` a list of the values it adds, `array_walk()` or a by-reference `foreach` each element its writes
-stay within, and `array_walk_recursive()` each leaf below the arrays it descends likewise. A call on a literal key of a
-local, such as `sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a computed
-key, replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write and records
-its form in `AnalysisScope::$byReferenceForms`; `VariableHandler` drops a read whose value lacks one. A class binding
-ends there, since no form but `ksort()`'s is an object's. A reader that takes a local by its syntax, such as an array
-literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
+`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes,
+as a [`ByReferenceEffect`]: `ksort()` keeps any value, unless flags it cannot read or a string comparison can reorder
+int keys; `sort()`, `array_pop()` and `array_shift()` a list; `asort()` and `uksort()` an object, and a list keyed out
+of order as `Record<number, T>`, which an API resource re-indexes back to `T[]`; a count out-parameter a number;
+`array_push()` and `array_splice()` a list of the values they add; `array_walk()` or a by-reference `foreach` each
+element its writes stay within, and `array_walk_recursive()` each leaf. A walk's callback values are read in the
+callback's own scope, its parameters bound to the element and its key. A `foreach` element written before the loop
+counts only when a loop around both can run it again. A call on a literal key of a local, such as
+`sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a computed key, replaces
+the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write and records its form in
+`AnalysisScope::$byReferenceForms`; `VariableHandler` reads the value the forms leave, or drops a read whose value
+lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a local by
+its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
 
 ### What deliberately stays unbound
 

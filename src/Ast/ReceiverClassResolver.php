@@ -271,7 +271,13 @@ final class ReceiverClassResolver
         $span = $scope->declaredAt($variable);
 
         if ($span === null) {
-            return $scope->holdsBinding($variable) ? $this->fromBindings($name, $scope) : $this->fromLocal($name, $scope);
+            if ($scope->holdsBinding($variable)) {
+                return $this->fromBindings($name, $scope);
+            }
+
+            $gap = $scope->gapValue($variable);
+
+            return $gap === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $gap, $scope);
         }
 
         return $this->resolveDeclared($name, $span, $scope);

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -33,9 +34,15 @@ final class ByReferenceArguments
     /** By-reference functions that only move an array's internal pointer, so the value keeps its type. */
     private const array POINTER_FUNCTIONS = ['end', 'next', 'prev', 'reset'];
 
+    /** The sort flags that compare int keys as numbers, so ksort() leaves a list's keys in order. */
+    private const array NUMERIC_SORT_FLAGS = ['SORT_REGULAR', 'SORT_NUMERIC'];
+
     /** What a built-in leaves in the variable a by-reference parameter takes, by function and parameter name. */
     private const array EFFECTS = [
+        'array_pop' => ['array' => ByReferenceEffect::KeepsList],
         'array_push' => ['array' => ByReferenceEffect::Appends],
+        'array_shift' => ['array' => ByReferenceEffect::KeepsList],
+        'array_splice' => ['array' => ByReferenceEffect::Appends],
         'array_unshift' => ['array' => ByReferenceEffect::Appends],
         'array_walk' => ['array' => ByReferenceEffect::WritesElements],
         'array_walk_recursive' => ['array' => ByReferenceEffect::WritesLeaves],
@@ -53,7 +60,8 @@ final class ByReferenceArguments
         'str_ireplace' => ['count' => ByReferenceEffect::KeepsNumber],
         'str_replace' => ['count' => ByReferenceEffect::KeepsNumber],
         'uasort' => ['array' => ByReferenceEffect::KeepsObject],
-        'uksort' => ['array' => ByReferenceEffect::KeepsAny],
+        // A comparator can put a list's keys out of order.
+        'uksort' => ['array' => ByReferenceEffect::KeepsObject],
         'usort' => ['array' => ByReferenceEffect::KeepsList],
     ];
 
@@ -102,8 +110,12 @@ final class ByReferenceArguments
         foreach ($effects === [] ? [] : $call->getArgs() as $index => $arg) {
             if ($arg->value === $argument) {
                 $parameter = $this->parameterAt($function?->getParameters() ?? [], $index, $arg);
+                $effect = $effects[$parameter?->getName() ?? ''] ?? ByReferenceEffect::Replaces;
 
-                return $effects[$parameter?->getName() ?? ''] ?? ByReferenceEffect::Replaces;
+                // A string comparison puts `10` before `2`, keying a list out of order.
+                return $effect === ByReferenceEffect::KeepsAny && ! $this->comparesKeysAsNumbers($call)
+                    ? ByReferenceEffect::KeepsObject
+                    : $effect;
             }
         }
 
@@ -149,6 +161,17 @@ final class ByReferenceArguments
         }
 
         return null;
+    }
+
+    /**
+     * Whether a key sort's flags, when it passes any, are a constant that compares int keys as numbers.
+     */
+    private function comparesKeysAsNumbers(CallLike $call): bool
+    {
+        $flags = CallArguments::fromNames($call->getArgs(), ['array', 'flags'])->named('flags')?->value;
+
+        return $flags === null
+            || ($flags instanceof ConstFetch && in_array($flags->name->toString(), self::NUMERIC_SORT_FLAGS, true));
     }
 
     /**

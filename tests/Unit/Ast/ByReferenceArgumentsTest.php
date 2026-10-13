@@ -91,6 +91,13 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     expect(resolve(ByReferenceArguments::class)->effect($call, $argument))->toBe($effect);
 })->with([
     'ksort()' => ['ksort($x);', ByReferenceEffect::KeepsAny],
+    'ksort() comparing keys as numbers' => ['ksort($x, SORT_NUMERIC);', ByReferenceEffect::KeepsAny],
+    'ksort() comparing keys as strings, which puts 10 before 2' => ['ksort($x, SORT_STRING);', ByReferenceEffect::KeepsObject],
+    'ksort() with flags it cannot read' => ['ksort($x, $flags);', ByReferenceEffect::KeepsObject],
+    'uksort(), whose comparator can put a list\'s keys out of order' => ['uksort($x, "f");', ByReferenceEffect::KeepsObject],
+    'array_pop()' => ['array_pop($x);', ByReferenceEffect::KeepsList],
+    'array_shift()' => ['array_shift($x);', ByReferenceEffect::KeepsList],
+    'array_splice()' => ['array_splice($x, 1, 1, ["z"]);', ByReferenceEffect::Appends],
     'sort(), named' => ['sort(array: $x);', ByReferenceEffect::KeepsList],
     'asort()' => ['asort($x);', ByReferenceEffect::KeepsObject],
     'str_replace()\'s count' => ['str_replace("a", "b", "c", $x);', ByReferenceEffect::KeepsNumber],

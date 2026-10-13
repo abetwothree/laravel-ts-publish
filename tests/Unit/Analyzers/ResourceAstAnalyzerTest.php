@@ -7388,8 +7388,27 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
     ]);
 });
 
+/**
+ * Each property an API resource publishes, as `name => type`, `?` marking an optional key, with the numeric-keyed
+ * arrays re-indexed into the lists the resource sends.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function publishedResourceKeyTypes(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze($resource, 'toArray', $model)->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
 it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
-    expect(resourceKeyTypes(LocalVarByReferenceResource::class, Post::class)[$key] ?? null)->toBe($type);
+    expect(publishedResourceKeyTypes(LocalVarByReferenceResource::class, Post::class)[$key] ?? null)->toBe($type);
 })->with([
     'sort() of a list' => ['sorted', 'string[]'],
     'rsort() of a list' => ['reversed', 'number[]'],
@@ -7418,6 +7437,14 @@ it('keeps a local across a by-reference built-in that leaves its value in a form
     'sort() of a nested list member' => ['nested_sorted_member', '{ x: { y: number[] } }'],
     'ksort() of an object member' => ['key_sorted_member', '{ x: { b: number; a: number } }'],
     'a by-reference foreach writing the element type' => ['looped', 'string[]'],
+    'array_pop() of a list' => ['popped', 'string[]'],
+    'array_shift() of a list' => ['shifted', 'string[]'],
+    'array_splice() of a list with its element type' => ['spliced', 'string[]'],
+    'asort() of a list, which the resource re-indexes' => ['value_sorted_list', 'string[]'],
+    'asort() of a list member, which the resource re-indexes' => ['value_sorted_member', '{ x: string[] }'],
+    'array_walk() writing each key' => ['walked_keys', '{ a: string }'],
+    'array_walk() reading an import' => ['walked_import', 'string[]'],
+    'a by-reference foreach whose element is written only before it' => ['pre_written_loop', 'string[]'],
 ]);
 
 it('sends the type a local a by-reference built-in keeps publishes', function () {
@@ -7457,16 +7484,24 @@ it('sends the type a local a by-reference built-in keeps publishes', function ()
         'nested_sorted_member' => ['x' => ['y' => [1, 2]]],
         'key_sorted_member' => ['x' => ['a' => 2, 'b' => 1]],
         'looped' => ['a', 'b'],
+        'popped' => ['a'],
+        'shifted' => ['b'],
+        'spliced' => ['a', 'z'],
+        'value_sorted_list' => ['a', 'b'],
+        'value_sorted_member' => ['x' => ['a', 'b']],
+        'walked_keys' => ['a' => 'a'],
+        'walked_import' => ['!', '!'],
+        'pre_written_loop' => ['a', 'b'],
     ]));
 });
 
-// O7: Laravel sends none of the types these locals were bound to, so each reads unknown but the contrasts.
-// shuffle() keeps a list too; the security preset keeps it out of the workbench.
+// O7: Laravel sends none of the types these locals were bound to, so each reads unknown but the contrasts. A resource
+// re-indexes a list a key-keeping sort reorders; shuffle() keeps a list, out of the workbench by preset.
 it('leaves unknown a local a by-reference built-in reshapes, or writes with a value the scan cannot follow', function () {
-    expect(resourceKeyTypes(ByReferenceReshapedResource::class, Post::class))->toBe([
+    expect(publishedResourceKeyTypes(ByReferenceReshapedResource::class, Post::class))->toBe([
         'object_sorted' => 'unknown',
-        'list_value_sorted' => 'unknown',
-        'list_reverse_key_sorted' => 'unknown',
+        'list_value_sorted' => 'string[]',
+        'list_reverse_key_sorted' => 'string[]',
         'pushed_other' => 'unknown',
         'pushed_object' => 'unknown',
         'pushed_unpacked' => 'unknown',
@@ -7479,7 +7514,14 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'object_member_sorted' => 'unknown',
         'dynamic_member_sorted' => 'unknown',
         'walked_nested_other' => 'unknown',
+        'popped_object' => 'unknown',
+        'labels_by_key' => 'unknown',
+        'words_by_local' => 'unknown',
+        'post_written_loop' => 'unknown',
+        'round_written_loop' => 'unknown',
         'kept_list' => 'string[]',
+        'key' => 'string',
+        'tmp' => 'string',
         'shuffled' => 'number[]',
     ]);
 });
