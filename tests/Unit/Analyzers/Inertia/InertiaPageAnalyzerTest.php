@@ -189,7 +189,7 @@ it('reads a route-bound parameter past its reassignment through what the action 
 // Inertia sends what json_encode() writes, so a list asort() keys out of order arrives as an object.
 it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
     expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[] }');
+        ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract

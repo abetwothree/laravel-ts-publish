@@ -120,6 +120,16 @@ class ByReferenceReshapedResource extends JsonResource
             $value .= '!';
         });
 
+        $bitwise = [1, 2];
+        array_walk($bitwise, function (int &$value): void {
+            $value |= 4;
+        });
+
+        $shifted = [1, 2];
+        array_walk($shifted, function (int &$value): void {
+            $value <<= 1;
+        });
+
         $keptList = ['b', 'a'];
         sort($keptList);
 
@@ -149,6 +159,8 @@ class ByReferenceReshapedResource extends JsonResource
             'round_written_loop' => $roundList,
             'copied_after_sort' => $copiedAfterSort,
             'concat_numbers' => $concatNumbers,
+            'bitwise' => $bitwise,
+            'shifted' => $shifted,
             'kept_list' => $keptList,
             'key' => $key,
             'tmp' => $tmp,

@@ -14680,6 +14680,11 @@
                     "optional": false
                 },
                 {
+                    "name": "mixed_member",
+                    "type": "{ x: string[]; c: { \"3\": string } }",
+                    "optional": false
+                },
+                {
                     "name": "walked_keys",
                     "type": "{ a: string }",
                     "optional": false
@@ -17738,6 +17743,11 @@
                 {
                     "name": "exiting_branch",
                     "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "nested_branch",
+                    "type": "string | number | null",
                     "optional": true
                 },
                 {

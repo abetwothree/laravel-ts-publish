@@ -320,7 +320,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false]];
     }
 
     $before = $scope->nameBindings();
@@ -501,6 +501,12 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'by_reference_use_write?' => 'unknown',
         'exiting_branch?' => 'string | null',
         'falling_branch?' => 'unknown',
+        // Each branch a continue, a break or a caught throw leaves ends the binding, so the read past it is unknown and
+        // the closure's union leaves it out (known gap); it no longer reads the User's `name`.
+        'continued_branch?' => 'number',
+        'broken_branch?' => 'number',
+        'caught_branch?' => 'number',
+        'nested_falling_branch?' => 'string | number | null',
         'concat_value?' => 'string',
         'branch_value?' => 'string',
     ]);

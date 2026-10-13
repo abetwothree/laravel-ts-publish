@@ -50,6 +50,7 @@ use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Global_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Static_;
+use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
@@ -64,6 +65,7 @@ use ReflectionClass;
  * @phpstan-type PartitionedWrites = array{VariableWrites, KeptWrites}
  *
  * @phpstan-import-type ByReferenceForm from AnalysisScope
+ * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
  */
@@ -179,17 +181,19 @@ trait CollectsLocalVarBindings
 
             if ($block === null) {
                 $scope->bindingEnds[$name] = min($scope->bindingEnds[$name] ?? $end, $end);
-            } else {
-                $assigned = $node instanceof Assign && array_any(
-                    $block,
-                    fn (Node\Stmt $stmt): bool => $stmt instanceof ExpressionStmt && $stmt->expr === $node,
-                );
-                $scope->bindingGaps[$name][] = [
-                    $end,
-                    $block[array_key_last($block)]->getEndFilePos(),
-                    $assigned ? $node->expr : null,
-                ];
+
+                continue;
             }
+
+            // A write nested in a block that falls through, or a `??=`, may leave the old binding standing past it.
+            $nested = ! array_any($block, fn (Node\Stmt $stmt): bool => $stmt instanceof ExpressionStmt && $stmt->expr === $node);
+            $assigned = ($node instanceof Assign || $node instanceof CoalesceAssign) && $node->var instanceof Variable;
+            $this->addGap($scope, $name, [
+                $end,
+                $block[array_key_last($block)]->getEndFilePos(),
+                $assigned ? [$node->expr] : null,
+                $nested || $node instanceof CoalesceAssign,
+            ]);
         }
     }
 
@@ -615,8 +619,9 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always returns or
-     * throws, or null when none does; a block inside a nested function exits that function, not the body.
+     * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always leaves the
+     * function, or null when none does. A block inside a nested function leaves that function, and one inside a `try`
+     * whose `catch` or `finally` can run after it may resume past it.
      *
      * @param  array<Node>  $stmts
      * @return non-empty-list<Node\Stmt>|null
@@ -624,8 +629,9 @@ trait CollectsLocalVarBindings
     private function exitingBlock(array $stmts, Node $node): ?array
     {
         $finder = new NodeFinder;
-        $functions = $finder->find($stmts, fn (Node $function): bool => $function instanceof ClosureExpr
-            || $function instanceof ArrowFunction || $function instanceof Function_ || $function instanceof ClassLike);
+        $enclosures = $finder->find($stmts, fn (Node $around): bool => $around instanceof ClosureExpr
+            || $around instanceof ArrowFunction || $around instanceof Function_ || $around instanceof ClassLike
+            || ($around instanceof TryCatch && ($around->catches !== [] || $around->finally !== null)));
         $innermost = null;
 
         foreach ($finder->find($stmts, fn (Node $owner): bool => $owner instanceof If_ || $owner instanceof ElseIf_
@@ -635,7 +641,7 @@ trait CollectsLocalVarBindings
 
             if ($block !== [] && $this->alwaysExits($block)
                 && array_any($block, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $node))
-                && ! array_any($functions, fn (Node $function): bool => $this->encloses($function, $owner))
+                && ! array_any($enclosures, fn (Node $around): bool => $this->encloses($around, $owner))
                 && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
             ) {
                 $innermost = $block;
@@ -643,6 +649,29 @@ trait CollectsLocalVarBindings
         }
 
         return $innermost;
+    }
+
+    /**
+     * Record a gap for a name, joining the values of another write that opens the same span, since either may land.
+     *
+     * @param  BindingGap  $gap
+     */
+    private function addGap(AnalysisScope $scope, string $name, array $gap): void
+    {
+        foreach ($scope->bindingGaps[$name] ?? [] as $index => $known) {
+            if ($known[0] === $gap[0] && $known[1] === $gap[1]) {
+                $scope->bindingGaps[$name][$index] = [
+                    $gap[0],
+                    $gap[1],
+                    $known[2] === null || $gap[2] === null ? null : [...$known[2], ...$gap[2]],
+                    true,
+                ];
+
+                return;
+            }
+        }
+
+        $scope->bindingGaps[$name][] = $gap;
     }
 
     /**

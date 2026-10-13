@@ -3815,6 +3815,7 @@ declare global {
             spliced: string[];
             value_sorted_list: string[];
             value_sorted_member: { x: string[] };
+            mixed_member: { x: string[]; c: { "3": string } };
             walked_keys: { a: string };
             walked_import: string[];
             pre_written_loop: string[];
@@ -4781,9 +4782,9 @@ declare global {
             fake_relation?: unknown;
         }
         /**
-         * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned,
-         * and a read before it, past a branch that reassigns it and returns, or a reassignment to the same model, keeps the
-         * parameter's own binding.
+         * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned, or
+         * either value past a reassignment that may not run, and a read before it, past a branch that reassigns it and
+         * returns, or a reassignment to the same model, keeps the parameter's own binding.
          */
         export interface ReassignedParameterResource {
             declared_content?: string;
@@ -4791,6 +4792,7 @@ declare global {
             same_model?: string;
             relation_bio?: string | null;
             exiting_branch?: string | null;
+            nested_branch?: string | number | null;
             new_model_name?: string | null;
         }
         /**

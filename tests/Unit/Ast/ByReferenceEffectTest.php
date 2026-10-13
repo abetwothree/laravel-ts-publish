@@ -53,6 +53,15 @@ it('leaves a value the type it held while it has the form the call keeps', funct
     'a replacing call' => [ByReferenceEffect::Replaces, 'string[]', [], null],
 ]);
 
+// An API resource re-indexes a list a key-keeping sort reorders, so there it sends the list it was.
+it('leaves a list a key-keeping sort reorders as it was where the response re-indexes it', function (string $type, array $path, string $left) {
+    expect(ByReferenceEffect::KeepsObject->left($type, fn (): array => [], $path, reindexed: true))->toBe($left);
+})->with([
+    'a list' => ['string[]', [], 'string[]'],
+    'a list member' => ['{ x: string[]; c: { 3: string } }', ['x'], '{ x: string[]; c: { 3: string } }'],
+    'an object' => ['{ b: number }', [], '{ b: number }'],
+]);
+
 // A walk's callback reads its element and its key: a list's key is an int, an object's or a string Record's a string.
 it('checks what a walk writes into each element against that element, under its own key', function (string $type, ?string $left) {
     expect(ByReferenceEffect::WritesElements->left($type, fn (string $element, string $key): array => [$element, $key]))
@@ -79,7 +88,8 @@ it('leaves a value the member a key path names keeps, rewritten where a key-keep
     'ksort() of any member' => [ByReferenceEffect::KeepsAny, '{ x: { b: number } }', ['x'], '{ x: { b: number } }'],
     'asort() of a list member' => [ByReferenceEffect::KeepsObject, '{ x: string[]; y: number }', ['x'], '{ x: Record<number, string>; y: number }'],
     'asort() of a nested list member' => [ByReferenceEffect::KeepsObject, '{ x: { y: string[] } }', ['x', 'y'], '{ x: { y: Record<number, string> } }'],
-    'asort() of a list in a Record' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]>', ['k'], null],
+    'asort() of a list in a Record, whose other keys keep theirs' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]>', ['k'], 'Record<string, string[] | Record<number, string>>'],
+    'asort() of a list member beside a Record arm' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]> | { x: string[] }', ['x'], 'Record<string, string[] | Record<number, string>> | { x: Record<number, string> }'],
     'a member the type does not hold' => [ByReferenceEffect::KeepsList, '{ x: number[] }', ['y'], null],
     'a member of a list by a name' => [ByReferenceEffect::KeepsList, 'number[][]', ['x'], null],
     'a member of an opaque type' => [ByReferenceEffect::KeepsList, 'User', ['x'], null],

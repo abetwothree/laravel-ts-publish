@@ -44,8 +44,8 @@ enum ByReferenceEffect
 
     /**
      * The type a value of a type holds once the call returns, or null when the scan cannot tell: the type itself while
-     * the call keeps its form, and a list a key-keeping sort keys out of order as `Record<number, T>`, which
-     * json_encode() writes as an object. A key path names the member the call takes.
+     * the call keeps its form, and a list a key-keeping sort reorders as `Record<number, T>`, json_encode()'s object,
+     * unless the response re-indexes it into the list it was. A key path names the member the call takes.
      *
      * A `null` arm stays as it is: the call takes only an array, so a null never gets past it.
      *
@@ -53,10 +53,10 @@ enum ByReferenceEffect
      *                            the second
      * @param  list<string>  $path
      */
-    public function left(string $type, Closure $written, array $path = []): ?string
+    public function left(string $type, Closure $written, array $path = [], bool $reindexed = false): ?string
     {
         if ($path === []) {
-            return $this->leftWhole($type, $written);
+            return $this->leftWhole($type, $written, $reindexed);
         }
 
         $key = array_shift($path);
@@ -68,7 +68,7 @@ enum ByReferenceEffect
             return $member === null || $this === self::Replaces ? null : $type;
         }
 
-        $left = $this->left($member, $written, $path);
+        $left = $this->left($member, $written, $path, $reindexed);
 
         return match (true) {
             $left === null => null,
@@ -82,7 +82,7 @@ enum ByReferenceEffect
      *
      * @param  Written  $written
      */
-    private function leftWhole(string $type, Closure $written): ?string
+    private function leftWhole(string $type, Closure $written, bool $reindexed): ?string
     {
         if ($this === self::KeepsNumber) {
             return $type === 'number' ? $type : null;
@@ -97,7 +97,7 @@ enum ByReferenceEffect
         $left = [];
 
         foreach ($arms as $arm) {
-            $kept = $arm === 'null' ? $arm : $this->leftArm($arm, $written);
+            $kept = $arm === 'null' ? $arm : $this->leftArm($arm, $written, $reindexed);
 
             if ($kept === null) {
                 return null;
@@ -114,12 +114,14 @@ enum ByReferenceEffect
      *
      * @param  Written  $written
      */
-    private function leftArm(string $arm, Closure $written): ?string
+    private function leftArm(string $arm, Closure $written, bool $reindexed): ?string
     {
         return match ($this) {
             self::KeepsAny => $arm,
             self::KeepsList => self::listElements($arm) === null ? null : $arm,
-            self::KeepsObject => TsTypeShape::isObjectLike($arm) ? $arm : self::keyedOutOfOrder($arm),
+            self::KeepsObject => TsTypeShape::isObjectLike($arm) || ($reindexed && self::keyedOutOfOrder($arm) !== null)
+                ? $arm
+                : self::keyedOutOfOrder($arm),
             self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
             self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
             self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,
@@ -247,7 +249,8 @@ enum ByReferenceEffect
     }
 
     /**
-     * A type with the member under a key replaced in each object literal arm, or null when no such arm holds the key.
+     * A type with the member under a key replaced in each object literal arm, and joined to the value of each Record
+     * arm, whose other keys keep theirs; null when no such arm holds the key.
      */
     private static function withMember(string $type, string $key, string $member): ?string
     {
@@ -255,6 +258,20 @@ enum ByReferenceEffect
         $arms = [];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $arm) {
+            $arguments = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
+                ? TsTypeShape::splitTopLevel(substr($arm, 7, -1), [','])
+                : [];
+
+            if (count($arguments) === 2) {
+                $found = true;
+                $arms[] = 'Record<'.$arguments[0].', '.implode(' | ', array_values(array_unique([
+                    ...TsTypeShape::splitTopLevel($arguments[1], ['|']),
+                    $member,
+                ]))).'>';
+
+                continue;
+            }
+
             $members = TsTypeShape::members($arm);
 
             if ($members === null) {

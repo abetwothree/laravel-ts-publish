@@ -79,7 +79,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false]];
     }
 
     return $scope;
@@ -167,7 +167,7 @@ it('holds a binding for a read up to its end, and always for a name with no end 
 
 it('holds no binding inside a gap, and holds it again past the gap', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $scope->bindingGaps['post'] = [[10, 20, null]];
+    $scope->bindingGaps['post'] = [[10, 20, null, false]];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
     expect($scope->holdsBinding($at(10)))->toBeTrue()
@@ -176,17 +176,32 @@ it('holds no binding inside a gap, and holds it again past the gap', function ()
         ->and($scope->holdsBinding($at(21)))->toBeTrue();
 });
 
-it('reads a variable inside gaps as the latest write before it assigned', function () {
+it('finds the gap a read falls in, the one whose write came latest', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $first = new Variable('first');
-    $second = new Variable('second');
-    $scope->bindingGaps['post'] = [[10, 30, $first], [20, 30, $second], [40, 50, null]];
+    $first = [10, 30, [new Variable('first')], false];
+    $second = [20, 30, [new Variable('second')], true];
+    $third = [40, 50, null, false];
+    $scope->bindingGaps['post'] = [$first, $second, $third];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
-    expect($scope->gapValue($at(15)))->toBe($first)
-        ->and($scope->gapValue($at(25)))->toBe($second)
-        ->and($scope->gapValue($at(45)))->toBeNull()
-        ->and($scope->gapValue($at(35)))->toBeNull();
+    expect($scope->gapAt($at(15)))->toBe($first)
+        ->and($scope->gapAt($at(25)))->toBe($second)
+        ->and($scope->gapAt($at(45)))->toBe($third)
+        ->and($scope->gapAt($at(35)))->toBeNull();
+});
+
+it('lifts one gap for a read, and puts it back', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $lifted = [10, 30, null, true];
+    $kept = [40, 50, null, false];
+    $scope->bindingGaps['post'] = [$lifted, $kept];
+
+    $during = $scope->beforeGap('post', $lifted, fn (): array => $scope->bindingGaps);
+
+    expect($during)->toBe(['post' => [$kept]])
+        ->and($scope->bindingGaps)->toBe(['post' => [$lifted, $kept]])
+        ->and($scope->beforeGap('post', $kept, fn (): bool => $scope->holdsBinding(new Variable('post', ['startFilePos' => 45]))))
+        ->toBeTrue();
 });
 
 it('passes a variable inside a gap on as one past its end', function () {

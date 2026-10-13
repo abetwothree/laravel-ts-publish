@@ -39,6 +39,7 @@ export interface LocalVarByReferenceResource
     spliced: string[];
     value_sorted_list: string[];
     value_sorted_member: { x: string[] };
+    mixed_member: { x: string[]; c: { "3": string } };
     walked_keys: { a: string };
     walked_import: string[];
     pre_written_loop: string[];

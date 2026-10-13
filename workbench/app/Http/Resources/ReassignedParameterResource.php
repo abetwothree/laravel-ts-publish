@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned,
- * and a read before it, past a branch that reassigns it and returns, or a reassignment to the same model, keeps the
- * parameter's own binding.
+ * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned, or
+ * either value past a reassignment that may not run, and a read before it, past a branch that reassigns it and
+ * returns, or a reassignment to the same model, keeps the parameter's own binding.
  *
  * @mixin Post
  */
@@ -55,6 +55,17 @@ class ReassignedParameterResource extends JsonResource
                 }
 
                 return $author->name;
+            }),
+            'nested_branch' => $this->whenLoaded('author', function (User $author) {
+                if ($author->name === 'x') {
+                    if ($author->email === 'y') {
+                        $author = $author->profile;
+                    }
+
+                    return $author?->bio;
+                }
+
+                return 5;
             }),
             // `website` is the Profile's own column: a User has none.
             'new_model_name' => $this->whenLoaded('author', function (User $author) {

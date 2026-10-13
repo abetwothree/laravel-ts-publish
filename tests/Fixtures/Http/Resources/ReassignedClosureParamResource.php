@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use RuntimeException;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
@@ -182,6 +183,62 @@ class ReassignedClosureParamResource extends JsonResource
                 }
 
                 return $author->name;
+            }),
+            // A continue, a break or a caught throw leaves the branch early, so the write reaches the read after.
+            'continued_branch' => $this->whenLoaded('author', function (User $author) {
+                foreach ([1, 2] as $round) {
+                    if ($author->name === 'x') {
+                        $author = $author->profile;
+
+                        if ($round === 1) {
+                            continue;
+                        }
+
+                        return 5;
+                    }
+                }
+
+                return $author->name;
+            }),
+            'broken_branch' => $this->whenLoaded('author', function (User $author) {
+                foreach ([1, 2] as $round) {
+                    if ($author->name === 'x') {
+                        $author = $author->profile;
+
+                        if ($round === 1) {
+                            break;
+                        }
+
+                        return 5;
+                    }
+                }
+
+                return $author->name;
+            }),
+            'caught_branch' => $this->whenLoaded('author', function (User $author) {
+                try {
+                    if ($author->name === 'x') {
+                        $author = $author->profile;
+
+                        throw new RuntimeException('x');
+                    }
+                } catch (RuntimeException) {
+                    return $author->name;
+                }
+
+                return 5;
+            }),
+            // A write nested in a block that falls through may not run, so the read takes the old value or the new.
+            'nested_falling_branch' => $this->whenLoaded('author', function (User $author) {
+                if ($author->name === 'x') {
+                    if ($author->email === 'y') {
+                        $author = $author->profile;
+                    }
+
+                    return $author?->bio;
+                }
+
+                return 5;
             }),
             'concat_value' => $this->whenHas('title', function ($title) {
                 $title .= '!';

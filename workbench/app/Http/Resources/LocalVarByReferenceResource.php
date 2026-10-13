@@ -117,6 +117,9 @@ class LocalVarByReferenceResource extends JsonResource
         $valueSortedMember = ['x' => ['b', 'a']];
         asort($valueSortedMember['x']);
 
+        $mixedMember = ['x' => ['b', 'a'], 'c' => collect([3 => 'a'])];
+        asort($mixedMember['x']);
+
         $walkedKeys = ['a' => 'x'];
         array_walk($walkedKeys, function (string &$value, string $key): void {
             $value = $key;
@@ -196,6 +199,7 @@ class LocalVarByReferenceResource extends JsonResource
             'spliced' => $spliced,
             'value_sorted_list' => $valueSortedList,
             'value_sorted_member' => $valueSortedMember,
+            'mixed_member' => $mixedMember,
             'walked_keys' => $walkedKeys,
             'walked_import' => $walkedImport,
             'pre_written_loop' => $preWrittenList,

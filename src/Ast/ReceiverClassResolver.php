@@ -47,6 +47,7 @@ use ReflectionUnionType;
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type VarDocBinding from AnalysisScope
+ * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
  */
@@ -275,9 +276,9 @@ final class ReceiverClassResolver
                 return $this->fromBindings($name, $scope);
             }
 
-            $gap = $scope->gapValue($variable);
+            $gap = $scope->gapAt($variable);
 
-            return $gap === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $gap, $scope);
+            return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($name, $gap, $scope);
         }
 
         return $this->resolveDeclared($name, $span, $scope);
@@ -327,6 +328,33 @@ final class ReceiverClassResolver
         $bound = $scope->closureParamExprBindings[$name] ?? null;
 
         return $bound === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $bound, $scope);
+    }
+
+    /**
+     * Resolve a variable inside a gap through the values its writes assigned, joined with the binding the name came in
+     * with where that may still hold; null when one of them names no class.
+     *
+     * @param  BindingGap  $gap
+     */
+    private function fromGap(string $name, array $gap, AnalysisScope $scope): ?ReceiverType
+    {
+        $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $value): ?ReceiverType => $this->fromBoundExpression($name, $value, $scope),
+            $gap[2] ?? [],
+        ));
+        $receivers = $gap[3] ? [$this->fromBindings($name, $scope), ...$written] : $written;
+
+        if ($gap[2] === null || $receivers === [] || in_array(null, $receivers, true)) {
+            return null;
+        }
+
+        /** @var non-empty-list<ReceiverType> $receivers */
+        return count($receivers) === 1
+            ? $receivers[0]
+            : new ReceiverType(array_values(array_unique(array_merge(...array_map(
+                fn (ReceiverType $receiver): array => $receiver->classes,
+                $receivers,
+            )))));
     }
 
     /**

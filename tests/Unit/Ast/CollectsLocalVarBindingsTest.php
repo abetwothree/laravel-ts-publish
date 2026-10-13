@@ -133,6 +133,23 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
     'a write in an elseif that always exits' => ['if ($p->id) { } elseif ($p->x) { $p = $p->profile; return $p; } return $p;', [true, true, true, true, false, true]],
     'a write in a switch case that always exits' => ['switch ($p->id) { case 1: $p = $p->profile; return $p; } return $p;', [true, true, true, false, true]],
     'a nested write in a block that always exits' => ['if ($p->id) { if ($p->x) { $p = $p->profile; } return $p; } return $p;', [true, false, false, false, false, true]],
+    'a write in a block a continue leaves before it returns' => [
+        'foreach ($xs as $i) { if ($p->id) { $p = $p->profile; if ($i) { continue; } return $p; } } return $p;',
+        [false, false, false, false, false],
+    ],
+    'a write in a block a break leaves before it returns' => [
+        'foreach ($xs as $i) { if ($p->id) { $p = $p->profile; if ($i) { break; } return $p; } } return $p;',
+        [false, false, false, false, false],
+    ],
+    'a write in a block a break inside a loop of its own does not leave' => [
+        'if ($p->id) { $p = $p->profile; foreach ($xs as $x) { break; } return $p; } return $p;',
+        [true, true, true, false, true],
+    ],
+    'a write in a block whose throw a catch around it resumes from' => [
+        'try { if ($p->id) { $p = $p->profile; throw new \\Exception(); } } catch (\\Exception) { return $p; } return $p;',
+        [false, false, false, false, false],
+    ],
+    'a write in a block that exits' => ['if ($p->id) { $p = $p->profile; exit(); } return $p;', [true, true, true, true]],
     'a write in a closure inside a block that falls through' => [
         'if ($p->id) { $f = function () use (&$p) { $p = $p->profile; return 1; }; } return $p;',
         [false, false, false, false, false],

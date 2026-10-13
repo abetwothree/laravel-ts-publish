@@ -152,6 +152,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
+            $this->scope->reindexesNumericKeys = self::reindexes($this->resourceReflection);
         }
 
         $this->ownsScope = $scope === null;
@@ -223,6 +224,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether a class's response re-indexes a numeric-keyed array into a list: an API resource that does not preserve
+     * keys.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    private static function reindexes(ReflectionClass $resource): bool
+    {
+        return $resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource);
+    }
+
+    /**
      * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
      * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
      *
@@ -235,7 +249,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
     {
-        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
+        if (self::reindexes($resource)) {
             $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
         }
     }

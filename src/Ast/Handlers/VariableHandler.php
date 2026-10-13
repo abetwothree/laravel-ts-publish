@@ -172,18 +172,44 @@ final class VariableHandler implements ExpressionHandler
 
     /**
      * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding; past
-     * the write that ended its parameter binding, from the local assignment alone.
+     * the write that ended its parameter binding, from the local assignment alone, or inside a gap from the value its
+     * write assigned, joined with the old binding where that may still hold.
      *
      * @return ValueExpressionResult|null
      */
     private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (! $scope->holdsBinding($variable)) {
-            $local = $scope->gapValue($variable) ?? $scope->localVarBindings[$name] ?? null;
+        if ($scope->holdsBinding($variable)) {
+            return $this->heldValue($name, $scope, $engine);
+        }
+
+        $gap = $scope->gapAt($variable);
+
+        if ($gap === null) {
+            $local = $scope->localVarBindings[$name] ?? null;
 
             return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
         }
 
+        // The old binding may still hold past a write nested in a block that falls through, so both are read.
+        $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $written): ?array => $this->boundExpressionValue($name, $written, $scope, $engine),
+            $gap[2] ?? [],
+        ));
+        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : $values;
+
+        return $gap[2] === null || $gap[2] === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
+            ? null
+            : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
+    }
+
+    /**
+     * A bare variable's value from the binding its name came into the body with, or its local assignment.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function heldValue(string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
         // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
         // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
         if (isset($scope->varModelBindings[$name])) {
@@ -314,7 +340,7 @@ final class VariableHandler implements ExpressionHandler
                         ? array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $form['values'])
                         : $this->writtenByCallback($callback, $form['values'], $element, $key, $scope, $engine);
                 };
-                $type = $form['effect']->left($type, $written, $form['path']);
+                $type = $form['effect']->left($type, $written, $form['path'], $scope->reindexesNumericKeys);
 
                 if ($type === null) {
                     return null;
@@ -324,13 +350,7 @@ final class VariableHandler implements ExpressionHandler
             unset($scope->resolvingLocalVars[$name]);
         }
 
-        if ($type !== $value['type']) {
-            // A form that rewrites the type keys a list anew, so the resource's re-index must read it again.
-            $value['type'] = $type;
-            unset($value['keepsKeys']);
-        }
-
-        return $value;
+        return [...$value, 'type' => $type];
     }
 
     /**

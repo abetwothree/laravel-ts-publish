@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -17,7 +18,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
@@ -57,11 +58,12 @@ use ReflectionClass;
  *      effect: ByReferenceEffect,
  *      values: list<Expr>,
  *      path: list<string>,
- *      callback: ArrowFunction|Closure|null,
+ *      callback: ArrowFunction|ClosureExpr|null,
  *      after: int,
  *      before: int|null
  * }
- * @phpstan-type BindingGap array{int, int, Expr|null}
+ * @phpstan-type BindingGap array{int, int, list<Expr>|null, bool}
+ * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type NameBindingsSnapshot array{
@@ -79,7 +81,7 @@ use ReflectionClass;
  *      requestVarNames: RequestVarNamesMap,
  *      claimedClosures: array<int, true>,
  *      bindingEnds: array<string, int>,
- *      bindingGaps: array<string, non-empty-list<BindingGap>>
+ *      bindingGaps: BindingGapsMap
  * }
  * @phpstan-type CallerState array{
  *      bindings: NameBindingsSnapshot,
@@ -133,6 +135,13 @@ final class AnalysisScope
      * most specific answer that names none.
      */
     public bool $carriesImports = true;
+
+    /**
+     * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
+     * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
+     * ResourceAstAnalyzer for a scope it owns.
+     */
+    public bool $reindexesNumericKeys = false;
 
     /**
      * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
@@ -250,11 +259,11 @@ final class AnalysisScope
     public array $bindingEnds = [];
 
     /**
-     * The spans, after one offset and up to another, where a name does not hold the binding it came into the body with
-     * though it takes it back past them: from a write inside a block that always returns or throws to that block's end,
-     * with the value the write assigns when it is the block's own `$x = …;` statement.
+     * The spans where a name may not hold the binding it came in with though it takes it back past them: from a write
+     * in a block that always leaves the function to that block's end. Each carries its writes' values, or null where
+     * one assigns none the scan reads, and whether the old binding may still hold there, past a write that may not run.
      *
-     * @var array<string, non-empty-list<BindingGap>>
+     * @var BindingGapsMap
      */
     public array $bindingGaps = [];
 
@@ -351,10 +360,11 @@ final class AnalysisScope
     }
 
     /**
-     * The value a read inside a gap takes: the one the latest write before it in that block assigned, or null when
-     * that write assigns no value the scan reads, or the read is in no gap.
+     * The gap a read falls inside, the one whose write came latest, or null when it falls in none.
+     *
+     * @return BindingGap|null
      */
-    public function gapValue(Variable $variable): ?Expr
+    public function gapAt(Variable $variable): ?array
     {
         $position = $variable->getStartFilePos();
         $latest = null;
@@ -365,7 +375,38 @@ final class AnalysisScope
             }
         }
 
-        return $latest[2] ?? null;
+        return $latest;
+    }
+
+    /**
+     * Run a read with one gap of a name lifted, so a value a write inside it assigns reads the name as it was before.
+     *
+     * @template TRead
+     *
+     * @param  BindingGap  $gap
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function beforeGap(string $name, array $gap, Closure $read): mixed
+    {
+        $gaps = $this->bindingGaps[$name] ?? null;
+        $others = array_values(array_filter($gaps ?? [], fn (array $other): bool => $other !== $gap));
+
+        if ($others === []) {
+            unset($this->bindingGaps[$name]);
+        } else {
+            $this->bindingGaps[$name] = $others;
+        }
+
+        try {
+            return $read();
+        } finally {
+            if ($gaps === null) {
+                unset($this->bindingGaps[$name]);
+            } else {
+                $this->bindingGaps[$name] = $gaps;
+            }
+        }
     }
 
     /**
@@ -482,7 +523,7 @@ final class AnalysisScope
      */
     public function claimParameters(Expr $closure): void
     {
-        if ($closure instanceof ArrowFunction || $closure instanceof Closure) {
+        if ($closure instanceof ArrowFunction || $closure instanceof ClosureExpr) {
             $this->releaseParameterNames($closure);
             $this->claimedClosures[spl_object_id($closure)] = true;
         }
@@ -493,7 +534,7 @@ final class AnalysisScope
      */
     public function releaseUnclaimedParameters(Expr $closure): void
     {
-        if (! $closure instanceof ArrowFunction && ! $closure instanceof Closure) {
+        if (! $closure instanceof ArrowFunction && ! $closure instanceof ClosureExpr) {
             return;
         }
 
@@ -509,7 +550,7 @@ final class AnalysisScope
      */
     public function bindUnpassedParameters(Expr $closure, int $passedCount, ExpressionEngine $engine): void
     {
-        if (! $closure instanceof ArrowFunction && ! $closure instanceof Closure) {
+        if (! $closure instanceof ArrowFunction && ! $closure instanceof ClosureExpr) {
             return;
         }
 
@@ -610,7 +651,7 @@ final class AnalysisScope
      * Whether a name holds the binding it came into the body with at an offset, past no end and inside no gap.
      *
      * @param  array<string, int>  $ends
-     * @param  array<string, non-empty-list<BindingGap>>  $gaps
+     * @param  BindingGapsMap  $gaps
      */
     private static function holdsAt(string $name, int $offset, array $ends, array $gaps): bool
     {
@@ -636,7 +677,7 @@ final class AnalysisScope
             }
 
             // PHP 8.5 allows a static closure or a first-class callable here; json_encode() writes the Closure as `{}`.
-            if (($default instanceof Closure && $default->static)
+            if (($default instanceof ClosureExpr && $default->static)
                 || (($default instanceof FuncCall || $default instanceof StaticCall) && $default->isFirstClassCallable())
             ) {
                 return ['type' => TsTypeString::EMPTY_OBJECT, 'optional' => false];
@@ -655,7 +696,7 @@ final class AnalysisScope
             // A list of values the evaluator failed on is left unbound, but a keyed one, whose keys the engine types,
             // still binds even when a value throws, such as `[0 => 1 / 0]`; a variable is no constant expression.
             $unreadable = new NodeFinder()->findFirst($default, fn (Node $node): bool => $node instanceof Variable
-                || $node instanceof Closure
+                || $node instanceof ClosureExpr
                 || $node instanceof ArrowFunction
                 || ($node instanceof CallLike && $node->isFirstClassCallable())
                 || (! $readsOwnList && $node instanceof Array_ && ! $this->isKeyedLiteral($node)));
@@ -701,7 +742,7 @@ final class AnalysisScope
      * Each reader ranks the tables differently, so an outer binding of the name left in any one of them would outrank
      * the parameter's own binding for some reader: a closure parameter owns its name inside its closure.
      */
-    private function releaseParameterNames(ArrowFunction|Closure $closure): void
+    private function releaseParameterNames(ArrowFunction|ClosureExpr $closure): void
     {
         foreach ($closure->params as $param) {
             if (! $param->var instanceof Variable || ! is_string($param->var->name)) {
