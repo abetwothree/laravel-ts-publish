@@ -269,7 +269,9 @@ A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is f
 the body, where `$x` is what the test excluded.
 
 `ClosureHandler` runs both passes over a `Closure`'s statements after unsetting every name the body writes from the
-outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice.
+outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice. A write
+inside a nested function reaches the body around it only through a `use (&$x)`: an arrow function or a by-value `use`
+writes its own copy.
 
 [Receiver types § A ternary's `instanceof` condition][ternary] covers how a proven arm's classes narrow, and
 [known gaps][gap-narrowing] records what each spelling publishes.

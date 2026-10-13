@@ -53,6 +53,34 @@ class ReassignedRouteModelController
         return Inertia::render('Reassigned/Compacted', compact('post'));
     }
 
+    /** Reassigns a copy of the bound post that a closure captures by value, leaving the action's own post as it is. */
+    public function capturedByValue(Post $post): Response
+    {
+        $author = function () use ($post) {
+            $post = $post->author;
+
+            return $post;
+        };
+
+        return Inertia::render('Reassigned/CapturedByValue', [
+            'title' => $post->title,
+        ]);
+    }
+
+    /** Reassigns the bound post through a closure that captures it by reference. */
+    public function capturedByReference(Post $post): Response
+    {
+        $author = function () use (&$post) {
+            $post = $post->author;
+
+            return $post;
+        };
+
+        return Inertia::render('Reassigned/CapturedByReference', [
+            'title' => $post->title,
+        ]);
+    }
+
     /** Reassigns the bound post to its own fresh copy. */
     public function fresh(Post $post): Response
     {

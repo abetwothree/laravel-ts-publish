@@ -136,6 +136,35 @@ class ReassignedClosureParamResource extends JsonResource
 
                 return $author->name;
             }),
+            // A by-value import writes the inner closure's own copy of `$author`, never the outer closure's.
+            'by_value_use_write' => $this->whenLoaded('author', function (User $author) {
+                $profile = function () use ($author) {
+                    $author = $author->profile;
+
+                    return $author;
+                };
+
+                return $author->name;
+            }),
+            'by_value_use_bare' => $this->whenLoaded('author', function (User $author) {
+                $profile = function () use ($author) {
+                    $author = $author->profile;
+
+                    return $author;
+                };
+
+                return $author;
+            }),
+            // A by-reference import writes the outer closure's `$author` itself, so its binding ends.
+            'by_reference_use_write' => $this->whenLoaded('author', function (User $author) {
+                $profile = function () use (&$author) {
+                    $author = $author->profile;
+
+                    return $author;
+                };
+
+                return $author->name;
+            }),
             'concat_value' => $this->whenHas('title', function ($title) {
                 $title .= '!';
 

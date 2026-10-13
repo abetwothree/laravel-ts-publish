@@ -68,11 +68,14 @@ it('reports each write kind', function (string $body, array $names) {
     'foreach by reference over a call result' => ['foreach (array_values($l) as &$v) {}', ['v']],
     'closure parameter write' => ['$f = function ($x) { $x = 1; };', ['f']],
     'closure local write' => ['$f = function () { $y = 1; };', ['f']],
-    'closure by-value use write' => ['$f = function () use ($y) { $y = 1; };', ['f', 'y']],
+    'closure by-value use write' => ['$f = function () use ($y) { $y = 1; };', ['f']],
     'closure by-ref use' => ['$f = function () use (&$y) {};', ['f', 'y']],
+    'closure by-ref use write' => ['$f = function () use (&$y) { $y = 1; };', ['f', 'y', 'y']],
+    'arrow write inside a by-ref use' => ['$f = function () use (&$y) { $g = fn () => $y = 1; };', ['f', 'y']],
     'closure $this write' => ['$f = function () { $this->x = 1; };', ['f', 'this']],
     'arrow parameter write' => ['$f = fn ($x) => $x = 1;', ['f']],
-    'arrow capture write' => ['$f = fn () => $y = 1;', ['f', 'y']],
+    'arrow capture write' => ['$f = fn () => $y = 1;', ['f']],
+    'arrow $this write' => ['$f = fn () => $this->x = 1;', ['f', 'this']],
     'nested class' => ['$o = new class { public function m() { $z = 1; } };', ['o']],
 ]);
 

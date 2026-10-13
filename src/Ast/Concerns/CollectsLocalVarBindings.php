@@ -142,15 +142,12 @@ trait CollectsLocalVarBindings
             return;
         }
 
-        // An arrow function captures by value, so no write inside one reaches the body's own variable.
-        $arrows = new NodeFinder()->findInstanceOf($stmts, ArrowFunction::class);
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($writes as [$name, $node, $target]) {
             // A write past an end already recorded cannot move it earlier.
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
-                || array_any($arrows, fn (ArrowFunction $arrow): bool => $this->encloses($arrow, $node))
                 || ! $this->replacesVariable($target, $name)
                 || $this->keepsBinding($name, $node, $this->byReferenceForm($node, $target, $writes, $scope), $scope)
             ) {
@@ -193,8 +190,8 @@ trait CollectsLocalVarBindings
      * Only an assignment, an increment, a `foreach` target and a `use` count every variable they spell; the rest count
      * just the variable they name or key into, so `unset($a[$k])` writes `$a` and `unset($o->p)` writes nothing.
      *
-     * A nested closure or arrow function's write reaches the body only for a name it does not own; a nested class's or
-     * named function's never does.
+     * A nested closure's write reaches the body only for a name it imports by reference; an arrow function's, a nested
+     * class's or a named function's never does.
      *
      * @param  array<Node>  $stmts
      * @param  ReflectionClass<object>|null  $subject  the class `$this`, `self` and `static` name, for a call's callee
@@ -668,27 +665,19 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether a write inside nested functions reaches the body around them: a parameter of any of them owns its name,
-     * and so does a `function () use (…)` closure for every name other than `$this` it does not import.
+     * Whether a write inside nested functions reaches the body around them: only where each is a closure importing the
+     * name by reference, since a by-value import or an arrow function writes a copy. A write through `$this` always
+     * reaches, as every function shares the object and none can reassign it.
      *
      * @param  list<ArrowFunction|ClosureExpr>  $enclosing
      */
     private function reachesBody(string $name, array $enclosing): bool
     {
-        foreach ($enclosing as $function) {
-            foreach ($function->params as $param) {
-                if ($param->var instanceof Variable && $param->var->name === $name) {
-                    return false;
-                }
-            }
-
-            if ($function instanceof ClosureExpr && $name !== 'this'
-                && ! array_any($function->uses, fn (ClosureUse $use): bool => $use->var->name === $name)
-            ) {
-                return false;
-            }
+        if ($name === 'this') {
+            return true;
         }
 
-        return true;
+        return array_all($enclosing, fn (ArrowFunction|ClosureExpr $function): bool => $function instanceof ClosureExpr
+            && array_any($function->uses, fn (ClosureUse $use): bool => $use->byRef && $use->var->name === $name));
     }
 }

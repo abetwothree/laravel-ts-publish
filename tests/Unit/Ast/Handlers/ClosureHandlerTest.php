@@ -495,6 +495,9 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'reassigned_resources?' => 'CommentResource[]',
         'coalesce_assign?' => 'string',
         'arrow_write?' => 'string',
+        'by_value_use_write?' => 'string',
+        'by_value_use_bare?' => 'User',
+        'by_reference_use_write?' => 'unknown',
         'concat_value?' => 'string',
         'branch_value?' => 'string',
     ]);

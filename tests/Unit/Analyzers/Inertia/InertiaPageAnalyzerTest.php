@@ -178,7 +178,11 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { post: unknown }');
+        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm.
