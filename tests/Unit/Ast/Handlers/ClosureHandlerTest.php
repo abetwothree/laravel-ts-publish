@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedPostParamResource;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -17,6 +21,8 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Models\Comment;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
@@ -43,6 +49,12 @@ function closureHandlerThrowingEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -78,6 +90,12 @@ final class ClosureHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -111,6 +129,12 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -142,6 +166,12 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     /** Fails the test: no array is analyzed in this case. */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
@@ -165,6 +195,12 @@ function closureHandlerBlowingUpEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('body resolution exploded');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -276,11 +312,15 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
+        $scope->varDeclaredBindings[$name] = [stdClass::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $outer;
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
+        $scope->bindingEnds[$name] = 0;
+        $scope->bindingGaps[$name] = [[5, 9, null, false]];
     }
 
     $before = $scope->nameBindings();
@@ -327,6 +367,12 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -406,4 +452,67 @@ it('drops an outer inline @var binding of a name the closure body writes, and bi
     expect(array_keys($rewritten))->toBe(['kept'])
         ->and(array_column($annotated['u'] ?? [], 'type'))->toBe(['\Workbench\App\Models\Post'])
         ->and($scope->nameBindings())->toBe($before);
+});
+
+/**
+ * Each key a resource publishes, its name suffixed `?` when optional, mapped to its type.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function closureHandlerResourceKeys(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('reads a whenLoaded() parameter past its reassignment through what the body assigned', function () {
+    expect(closureHandlerResourceKeys(ReassignedClosureParamResource::class, Post::class))->toBe([
+        'declared_name?' => 'unknown',
+        'declared_content?' => 'string',
+        'declared_nullsafe?' => 'string | null',
+        'declared_bare?' => 'Comment',
+        'read_before?' => 'string',
+        'same_model?' => 'string',
+        'relation_bio?' => 'string | null',
+        'relation_website?' => 'string | null',
+        // A relation read through a model-bound variable is unknown, so the local it binds is too (#93).
+        'relation_bare?' => 'unknown',
+        'narrowed_bio?' => 'string | null',
+        'narrowed_website?' => 'string | null',
+        'mapped_reassigned?' => 'unknown',
+        // Collection::first() names no class, so the old binding is all that is known and stands (known gap).
+        'unnamed_name?' => 'string',
+        'sorted_pluck?' => 'string[]',
+        'filtered_pluck?' => 'string[]',
+        'values_map?' => 'string[]',
+        'sorted_resources?' => 'CommentResource[]',
+        'reassigned_resources?' => 'CommentResource[]',
+        'coalesce_assign?' => 'string',
+        'arrow_write?' => 'string',
+        'by_value_use_write?' => 'string',
+        'by_value_use_bare?' => 'User',
+        'by_reference_use_write?' => 'unknown',
+        'exiting_branch?' => 'string | null',
+        'falling_branch?' => 'unknown',
+        // Each branch a continue, a break or a caught throw leaves ends the binding, so the read past it is unknown and
+        // the closure's union leaves it out (known gap); it no longer reads the User's `name`.
+        'continued_branch?' => 'number',
+        'broken_branch?' => 'number',
+        'caught_branch?' => 'number',
+        'nested_falling_branch?' => 'string | number | null',
+        'concat_value?' => 'string',
+        'branch_value?' => 'string',
+    ]);
+});
+
+it('drops the old binding\'s member and method for a parameter reassigned to another model', function () {
+    expect(closureHandlerResourceKeys(ReassignedPostParamResource::class, Comment::class))
+        ->toBe(['old_prop?' => 'unknown', 'new_prop?' => 'string', 'old_method?' => 'unknown']);
 });

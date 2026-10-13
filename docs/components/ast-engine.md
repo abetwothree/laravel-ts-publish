@@ -79,9 +79,10 @@ element array. Placed later, the two additions would be unreachable for those sh
 pins the structure and the three orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
-`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's route-bound
-models, `Request` parameters and locals. The seeded scope is why `compact()`, a route-bound `$post` and
-`$request->integer()` type with no Inertia-specific handler code.
+`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
+parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
+every other typed parameter. The seeded scope is why `compact()`, a route-bound `$post` and `$request->integer()` type
+with no Inertia-specific handler code.
 
 ### The honest ordering inventory
 
@@ -92,7 +93,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
 | `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
-| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, a model method the receiver rules type, such as a concrete model's own `toArray()`, every answer that is only `unknown`, and every chain whose last step is not a relation, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
@@ -104,9 +105,8 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
 - **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler`, `MethodChainHandler` and
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
   on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
-  still reflects `$this->post->only([...])` to `Record<string, unknown>` and `except($keys)` to `unknown[]`. Those
-  answers win over the receiver rules' `Pick<Post, …>` and `Record<string, unknown>`, and the matrix runs only a
-  resource scope, so that divergence is unpinned.
+  declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with
+  `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`.
 - **`RelationFilterHandler` and `ReceiverMethodCallHandler`**: both claim a single-model relation filter, and they agree
   by construction, as [ResourceAstAnalyzer § Attribute filters][attribute-filters] explains. `ReceiverHandlersTest`'s
   "both claim … and answer it the same" cases pin the agreement.
@@ -116,7 +116,8 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
 - **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, so
   `RelationCollectionChainHandler` never floors `$this->when()` or `$this->can()` at `unknown`. It rejects
-  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()`.
+  `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded `$this->getKey()` or
+  `$this->resource->getKey()`.
 
 One `PropertyFetch` pair can disagree where the corpus is silent. `VariableHandler` types `$x->member` from the
 attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()` closure's relation model. It answers a
@@ -130,17 +131,20 @@ pairs, and the matrix does not run this profile.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These three facts span other classes:
+docblocks say what each binding table holds. These four facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
   alike, then restores both. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not
   describe the model a nested resolution ran under.
-- **`requestVarNames` skips a resource's `Request` parameter**: `ResourceAstAnalyzer::resolveRequestVarNames()` seeds it
-  for any subject but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move
-  committed resource output.
+- **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
+  but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
+  output.
 - **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback, and a getter that
   `AstEngine::analyzeModelClosure()` reads without imports. See [Receiver types § The body fallback][body-fallback].
+- **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
+  `ReceiverClassResolver` reads it after `varModelBindings` and below the narrowing tables. In `varClassBindings` it
+  would outrank an early-exit guard, as `GuardWritePostResource` pins.
 
 ### Writing a scope binding
 
@@ -153,8 +157,7 @@ property with a wrong but plausible type, far from the writer that leaked it. Re
 you believe you wrote.
 
 Closure writers and `ClosureHandler` snapshot with `AnalysisScope::nameBindings()` and restore with
-`restoreNameBindings()`. `ResourceAstAnalyzer::analyzeThisMethodSpread()` and
-`NarrowsInstanceofSubjects::resolveNarrowed()` hand-roll their snapshots.
+`restoreNameBindings()`. `NarrowsInstanceofSubjects::resolveNarrowed()` hand-rolls its snapshot.
 `ResourceAstAnalyzer::bindForeachLoopVariables()` takes none, because a `foreach` binding is method-wide by design. The
 closure writers' snapshots restore over it, so a same-named closure parameter still resolves against its own binding, as
 `ClosureParamShadowResource` pins.
@@ -167,10 +170,10 @@ So an outer binding of a parameter's name, left in any table, outranks the param
 Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
 
 Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
-claim drops each parameter name from every table and marks the closure claimed. The writer reads the value the call
-passes before it claims, since the claim can release a name that value shares, then binds the parameter to it.
-`ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no writer claimed, such
-as a `whenNotNull()` value closure.
+claim drops each parameter name from every table, its binding end included, and marks the closure claimed. The writer
+reads the value the call passes before it claims, since the claim can release a name that value shares, then binds the
+parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no
+writer claimed, such as a `whenNotNull()` value closure.
 
 Each writer binds the first parameter to what Laravel passes the closure:
 
@@ -184,6 +187,9 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
 | `transform()`'s default | The blank value | The value's full type, `null` included |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
+
+A first-class callable in a position where Laravel passes one value binds the same way:
+`FirstClassCallableHandler::passingOneValue()` reads it as `fn ($v) => m($v)`.
 
 These rules settle the cases the table leaves open:
 
@@ -211,20 +217,46 @@ These rules settle the cases the table leaves open:
 `ClosureHandlerTest` pins the release, and each writer's own tests pin its claim. `ShadowedClosureParamResource` stays
 green with either mechanism alone, so it pins neither.
 
+#### A called method's parameters
+
+A method body read apart from its call, such as a spread helper, the body fallback, `SubjectHelperReturnResolver`'s
+helper or any analyzer that builds its own scope, binds its parameters with [`ParameterBinder`]'s `bindCall()`, by
+the type they declare: the native type, else a whitelisted `@phpstan-param`, `@psalm-param` or `@param` where the native
+type is vague. One concrete, non-null model goes in `varModelBindings`; any other parameter puts its classes, when it
+names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` goes in `requestVarNames`,
+except in an API resource, and a name already bound stays as it is. `CollectsLocalVarBindings::seedBody()` then seeds
+the body's own bindings, ends and guards from one write scan, in every body reader, a closure's included.
+
+A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
+says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
+outlive a write naming no class such as `$n = (string) $n`, so its local answers. The binding reads only the
+declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds each
+parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`) to what
+its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterSubjectMethod()`
+sets the caller's tables aside. A value read keys its memo on what the call binds ([The run memo replays what it
+recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
+keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,
+interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A call binds
+nothing for a closure argument, whose value hangs on whether the method calls it, unless the caller calls every
+callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`). A value read binds nothing for a
+first-class callable either; a spread binds it to the `Closure` it creates, which Laravel sends as `{}`.
+
 ### Narrowing
 
 Two mechanisms decide which class a variable holds at one point in a body, and each restores its binding in a `finally`:
 
 - **An early-exit guard**: [`CollectsInstanceofGuards`] reads a top-level `if` with no `elseif` or `else` whose body
-  ends in `return` or `throw`, and whose condition is `! $x instanceof C` or an `||` chain holding one. It binds `$x` to
-  `C` in `varGuardBindings` with the offset where the `if` ends. An earlier `return` and the guard's own body therefore
-  read `$x` unnarrowed.
+  always leaves the function, by a last `return`, `throw` or `exit()` no `break` or `continue` skips, and whose
+  condition is `! $x instanceof C` or an `||` chain holding one. It binds `$x` to `C` in `varGuardBindings` with the
+  offset where the `if` ends. An earlier `return` and the guard's own body therefore read `$x` unnarrowed.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varClassBindings`, or sets `modelClass` for `$this->resource` when one model is left. An arm that
   writes its subject is not narrowed.
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
-`GuardWritePostResource` pins both cases. Neither mechanism sees a write through a reference.
+`GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee
+the scan can name, but a built-in's that keeps the value in some form ([By-reference calls](#by-reference-calls));
+neither sees one on a receiver it cannot name.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -238,7 +270,9 @@ A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is f
 the body, where `$x` is what the test excluded.
 
 `ClosureHandler` runs both passes over a `Closure`'s statements after unsetting every name the body writes from the
-outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice.
+outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice. A write
+inside a nested function reaches the body around it only through a `use (&$x)`: an arrow function or a by-value `use`
+writes its own copy.
 
 [Receiver types § A ternary's `instanceof` condition][ternary] covers how a proven arm's classes narrow, and
 [known gaps][gap-narrowing] records what each spelling publishes.
@@ -252,8 +286,36 @@ that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`,
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, `ReceiverClassResolver::fromVariable()` to a receiver,
 and `VariableHandler::ambientModel()` to the ambient model inside a `whenLoaded()` closure. Each states its own test for
-vague. A `$x->prop` on a parameter bound in `varModelBindings` still reads that binding first, and a span can outlive a
-write through a reference.
+vague. A parameter's own binding holds until the body's first write that replaces it with a value naming another class.
+`AnalysisScope::$bindingEnds` records where, and past it every read takes the body's own binding, a ternary narrowing it
+only past its test, as `ReassignedClosureParamResource` pins. A write in an `if`, `elseif`, `else` or `case` block that
+always leaves the function, outside a `try` whose `catch` or `finally` could resume past it, ends it only inside that
+block, in `AnalysisScope::$bindingGaps`, where a read takes the value the block's own `$x = …;` assigned. Past a write
+nested there in a block that falls through, a read takes that value or the old binding's. A span still outlives a write
+through a by-reference parameter of a callee the scan cannot name.
+
+`VarTypeWhitelist` lists the forms a tag may use. A callable inside a shape reads `unknown` by design, so
+`extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
+no more.
+
+### By-reference calls
+
+`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes, as
+a [`ByReferenceEffect`]: `ksort()` keeps any value, unless flags it cannot read or a string comparison can reorder int
+keys; `sort()`, `array_pop()` and `array_shift()` a list; `asort()` and `uksort()` an object, and a list keyed out of
+order as `Record<number, T>`, except where `AnalysisScope::$reindexesNumericKeys` says an API resource re-indexes it
+back to the list it was, a tuple to the list of its members; a count out-parameter a number; `array_push()` and
+`array_splice()` a list of the values they add; `array_walk()` or a by-reference `foreach` each element its writes stay
+within, and `array_walk_recursive()` each leaf. A walk's callback values are read in the callback's own scope, its
+parameters bound to the element and its key, and `.=` or an arithmetic operator as the operation it performs. A
+`foreach` element written before the loop counts only when a loop around both can run it again. A call on a literal key
+of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a
+computed key, replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write
+and records its form in `AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end
+or gap is: a copy taken before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or
+drops a read whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader
+that takes a local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a
+local out.
 
 ### What deliberately stays unbound
 
@@ -263,6 +325,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
   guard still narrows one reassigned only before it, and an inline `@var` types it for its span.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
+- **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
+  or an operator such as `.=`, leaves the binding standing, since only the old binding is known; a `foreach`, `catch`
+  or by-reference write ends it, but a call that keeps the value's form.
 
 ## Subject mode
 
@@ -285,10 +350,10 @@ an untyped property's default, typed by `ValueResolver::resolveConstantValue()` 
 non-public property declared without a value publishes `null`; a public one left `null` declines, since code outside
 the class fills it. The default counts only while no method the class runs writes the property, an ancestor's or a
 trait's included. In application code a computed `$this->{$name}` write counts as one. So does an argument to a
-by-reference parameter of a callee the scan can name, such as `array_push($this->tags, 5)`, except the pointer
-functions `end()`, `next()`, `prev()` and `reset()`. The check cannot see a subclass's write, including a child's that
-inherits `toArray()` and so publishes its parent's analysis (#79), a by-reference parameter on a receiver it cannot
-resolve, or a write from outside the class.
+by-reference parameter of a callee the scan can name ([`ByReferenceArguments`], which the local write scan shares), such
+as `array_push($this->tags, 5)`, except the pointer functions `end()`, `next()`, `prev()` and `reset()`. The check
+cannot see a subclass's write, including a child's that inherits `toArray()` and so publishes its parent's analysis
+(#79), a by-reference parameter on a receiver it cannot resolve, or a write from outside the class.
 
 The dispatcher never hands a chain's inner node to a handler, so there are two arms. `ThisPropertyHandler` types a leaf
 such as `$this->teamId`. `PropertyChainHandler` receives `$this->post->title` whole and resolves its root itself. With
@@ -306,10 +371,12 @@ A type read from reflection records the class it reads with `DependencyRecorder:
 interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
 member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
 `ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
-`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`, and
-`ModelAttributeResolver`'s contexts and caster reads. A cache in front of such a read records before its lookup, or
-replays what it recorded, as `resolveAttributeClass()` does. Recording never deduplicates, because a memo frame keeps
-the paths recorded after its mark.
+`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`,
+`ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
+published model, and `ByReferenceArguments` for the class whose method it reads by-reference parameters from. A cache in
+front of such a read records before its lookup, or replays what it recorded, as `resolveAttributeClass()` and
+`LaravelTsPublish::resolvePhpstanTypeAlias()`, which reads each class an alias import names, do. Recording never
+deduplicates, because a memo frame keeps the paths recorded after its mark.
 
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
@@ -327,6 +394,12 @@ helper changes.
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
 import mode, gains an `@importless` suffix for an analysis that carries no imports.
+
+`analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
+suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that
+bind alike share one answer, and a call that binds nothing keeps the plain key. The arguments are read in the caller's
+scope before the callee's frame opens, so what they record is the caller's. The `method-body:` cycle guard stays per
+method, so a recursion that passes a new value each time stops at its first repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse
 records them again. The generation cache and the accessor `null` rule therefore see what a fresh computation would have
@@ -388,6 +461,7 @@ the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known
 see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
 makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
+An arm left out still makes the union optional when it can be a `MissingValue`.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
@@ -464,7 +538,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
 | `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
-| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
 
@@ -495,6 +569,8 @@ These pages cover the engine's neighbors:
 [`AnalysisScope`]: ../../src/Ast/AnalysisScope.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/AstParser.php
+[`ByReferenceArguments`]: ../../src/Ast/ByReferenceArguments.php
+[`ByReferenceEffect`]: ../../src/Ast/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
 [`ControllerExpressionHandlers`]: ../../src/Ast/ControllerExpressionHandlers.php
 [`DroppedUnionArms`]: ../../src/Ast/DroppedUnionArms.php
@@ -503,6 +579,7 @@ These pages cover the engine's neighbors:
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
 [`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/MethodLocator.php
+[`ParameterBinder`]: ../../src/Ast/ParameterBinder.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php

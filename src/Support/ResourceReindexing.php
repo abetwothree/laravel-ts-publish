@@ -90,6 +90,10 @@ final class ResourceReindexing
             return self::reindexedArm(trim(substr($arm, 0, -2))).'[]';
         }
 
+        if (TsTypeShape::isWrapped($arm, '[', ']')) {
+            return self::reindexedTuple($arm);
+        }
+
         $values = self::numericKeyedValues([$arm]);
 
         return $values === null ? self::reindexedMembers($arm) : TsTypeShape::listType($values);
@@ -116,6 +120,22 @@ final class ResourceReindexing
         }
 
         return $part;
+    }
+
+    /**
+     * A tuple, already the list it sends, its members rewritten, an optional one keeping its `?`.
+     */
+    private static function reindexedTuple(string $tuple): string
+    {
+        $members = TsTypeShape::splitTopLevel(substr($tuple, 1, -1), [',']);
+        $rewritten = array_map(static function (string $member): string {
+            $optional = str_ends_with($member, '?');
+            $type = $optional ? substr($member, 0, -1) : $member;
+
+            return self::reindexedType($type).($optional ? '?' : '');
+        }, $members);
+
+        return $rewritten === $members ? $tuple : '['.implode(', ', $rewritten).']';
     }
 
     /**

@@ -74,19 +74,24 @@ A method that builds an array in a variable and returns it publishes the keys it
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk cannot read, and
-  one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `unset($data['key'])`, or a
-  `??=` to a key it does not hold. When no branch read completely has a key and every `return` is a literal or a
-  variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk reads instead; with a
-  `return` of another kind, the first `return` is read.
+  one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `unset($data['key'])`,
+  `sort($data)` or any other by-reference call, or a `??=` to a key it does not hold. When no branch read completely
+  has a key and every `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it
+  publishes the writes the walk reads instead; with a `return` of another kind, the first `return` is read.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
+
+A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
+`$validator->normalize($data)`, or through `extract()`, keeps its earlier type.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes
 `{ a?: number } | null` under a `?array` signature and `{ a?: number }` under `array`, but `json_encode([])` writes a
 JSON array, not an object. `MethodReturnTypeResolver::shapeReadsEveryReturn()` reads the empty `[]` as a branch that
-omits the keys. Under `?array`, return `null` on that path instead, which publishes `{ a: number } | null`.
+omits the keys. Under `?array`, return `null` on that path instead, which publishes `{ a: number } | null`. A declared
+shape whose keys can all be absent, such as `array{a?: int}` or `array<'a'|'b', int>`, publishes the same object and
+has the same gap: an empty array is sent as `[]`.
 
 ### `#[TsCasts]` and the top-level spread flatten disagree by scope, in three separate ways
 
@@ -255,12 +260,17 @@ so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
 ### A shape whose values name a class loses those values, in one of two ways
 
 Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
-(`MethodReturnTypeResolver::bodyType()`) drops its whole shape when one value names a class, except that `only()` and
-`except()` answer with that member as `unknown`, as
-[Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
-degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, while `Record<string, User>` has
-nothing to recurse into and degrades whole. Cast the property with an import-aware `#[TsCasts]`, or give the method a
-native return type that names the class.
+(`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
+shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock
+shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member,
+`list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole.
+Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+
+### An open shape publishes only its named keys
+
+An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
+An open positional shape, `array{int, ...}`, publishes `unknown[]` too, though it may carry string keys and encode as an
+object.
 
 ### An index signature its body types can fail to compile beside a key it cannot take in
 
@@ -274,14 +284,16 @@ join, the signature publishes the last entry's value alone. A publisher warns ab
 union out; type the key, or rename it out of the pattern. The rules are under
 [Index signatures](./components/resource-ast-analyzer.md#index-signatures-are-reconciled-with-the-keys-beside-them).
 
-### `Model::toArray()` on a receiver declines, deliberately
+### `Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately
 
-`ReceiverMethodReturnResolver::resolveOn()` gives no shape for `$model->toArray()` in value position, even when the
-model declares one, because the relations it serializes are whatever is loaded at runtime. `ReceiverHandlersTest` pins
-the decline, but nothing pins what such a call publishes instead, since the workbench only spreads a model's
-`toArray()`, so expect something vague. The spread form is typed: `[...$user->toArray(), 'flag' => true]` publishes
-`Omit<User, 'flag'> & { flag: boolean }`. [Receiver types](./components/receiver-types.md#the-order-for-one-class)
-gives the order the receiver rules run in.
+`$model->toArray()` in value position publishes `Record<string, unknown>`, as `except($keys)` does, and a relation's
+`$this->comments->toArray()` a list of it, because the relations a model serializes are whatever is loaded at runtime.
+A model with no attributes encodes `[]`, which TypeScript does not assign to that `Record`. An override of `toArray()`,
+or an abstract model's, publishes `unknown` on a receiver, even when it declares a shape. `$this->resource->toArray()`,
+and a model-less subject's `$this->prop->toArray()`, publish what the override declares, and an abstract model's
+`$this->resource->toArray()` publishes `unknown[]`. The spread form is typed:
+`[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
+[Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
 ### A model spread inside a `collect()->map()` closure names the wrong model, or none
 
@@ -308,6 +320,12 @@ though Laravel sends `null` for a relation loaded as `null`.
 `whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
+
+### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
+
+`$this->assignable->label()` publishes `unknown` in every spelling when the relation names no target, even if the
+resource's own model declares `label()`, since the related model could be any. Name the targets in
+`@return MorphTo<A|B, $this>`.
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
@@ -459,7 +477,16 @@ as `strlen(...)` is read by where it sits. Props an Inertia controller delegates
 helper method the action calls, are read as that method's own values, so a first-class callable there publishes
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
-read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
+read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead. A closure held in a
+local and passed to a helper, read as a value or spread, publishes what it returns, as in `$f = fn () => 1;
+$this->hold($f)` where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that
+key with `#[TsCasts]`.
+
+### A callable in a docblock publishes `unknown`
+
+`callable(int): string`, alone or as a shape member, publishes `unknown`, because what it sends depends on who
+serializes it: an API resource writes a `Closure` as `{}`, Inertia calls it, and a callable string or array is sent as
+itself. Type the key with `#[TsCasts]`.
 
 ### A `Collection` beside an array an API resource lists or under numeric keys, and the arrays one holds, publish as lists
 
@@ -490,6 +517,13 @@ cast's native return type, or type the key with `#[TsCasts]`.
 A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
 re-indexes the numeric-keyed arrays of an element resource that preserves keys. The element's interface still shows
 them keyed. Give the collection `$preserveKeys` too, or collect through the element's own `collection()`.
+
+### A list a key-keeping sort reorders publishes as a list inside a `Collection` in an API resource
+
+`asort()`, `uasort()` and the other sorts that keep keys leave a list keyed out of order. An API resource re-indexes
+such an array back into a list, so it publishes `string[]`. Inside a `Collection`, as in `collect($tags)`,
+`collect(['x' => $tags])` or a `->map()` over it, the resource never re-indexes the array, so Laravel sends it keyed, as
+an object, while the type stays `string[]`. Use `sort()`, or `array_values()` before the collection wraps it.
 
 ### An API resource whose top-level keys are all numeric publishes an interface of quoted keys
 
@@ -523,7 +557,7 @@ or on the left of `+`.
 
 ### An operand of `+` not typed as one object adds no keys beside a keyed literal
 
-`$this->resource->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
+`$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
 adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
@@ -547,6 +581,29 @@ subclass's write, including a child's that inherits `toArray()` and so publishes
 parameter on a receiver the scan cannot resolve, such as `$other->fill($this->tags)`, and a write from outside the class
 all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
 it a `@var` docblock.
+
+### A parameter reassigned to a value the package cannot name keeps its old binding
+
+`whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
+`$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
+`/** @var Comment $a */`, and the read follows it. A closure parameter passed a value does the same: after
+`$t = json_decode($t)`, `$t` keeps the type it was passed.
+
+### An abstract model's key type misses a subclass the run does not publish
+
+`getKey()`, `modelKeys()` and `Auth::id()` on an abstract model publish the key type the class declares, joined with
+each concrete subclass the run publishes. A subclass the run leaves out, which the collector skips or a package
+holds, adds nothing when it keys differently. So does a key a constructor sets through another method. A
+`uniqueIds()` override publishes `unknown` even when its list leaves the key out. A concrete receiver class never
+looks at its subclasses.
+
+### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
+
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent
+call such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A
+helper parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes
+`new Post`, so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes
+`number | null`.
 
 ## Deliberate non-goals
 

@@ -64,13 +64,14 @@ every profile, the order handlers run in decides which one answers; see
   optional, except in a `do` body before its first `break` or `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
-  the method in its class, a trait or a parent through `MethodLocator::locate()`. It empties the method-local tables
-  (`localVarBindings`, `varModelBindings`, `varClassBindings`, `varGuardBindings` and `varDocBindings`) and the
-  `resolvingLocalVars` guard, and keeps only the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names in
-  `nonNullReads`. It re-derives `requestVarNames` and `declaringFileClass` for the spread method, and restores all of
-  them in a `finally`. `closureParamExprBindings`, `varCollectionBindings` and `varValueBindings` stay as the caller
-  left them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis instead of
-  recursing until memory runs out.
+  the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
+  spread the same way. It sets every name-keyed table aside through `AnalysisScope::nameBindings()`, keeping only the
+  guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, empties the `resolvingLocalVars` guard and clears
+  `closureRelationModelClass`, since the helper's `$this` is the subject. It re-derives `requestVarNames` and
+  `declaringFileClass`, binds the method's parameters, and what the call passes them through `CallSite::passedTo()`, as
+  [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and restores all of them
+  in a `finally`. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis
+  instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
@@ -201,7 +202,10 @@ runtime key list, on the resource's own model, a single-model relation and a man
 
 `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` write the same filters both ways, and
 `ResourceAstAnalyzerTest` asserts they publish identical properties and imports. Two shapes stay outside the pair.
-`...$this->author->only([...])` flattens under neither spelling. `$this?->only($keys)` publishes
+A top-level `...$receiver->only([...])` on another receiver holding one concrete model flattens
+(`analyzeReceiverModelFilter()`, sharing `ReceiverMethodReturnResolver::singleModel()` with the value rule), while
+`except()` does not, since its pool would list accessors and relations `Model::except()` never returns.
+`$this?->only($keys)` publishes
 `Record<string, unknown>`, while `$this->resource?->only($keys)` adds `| null`, since only the resource can wrap
 nothing.
 
@@ -298,15 +302,21 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
   `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
   its import channels. Joining the type strings by hand would emit a token with no import.
+  The key stays optional when the value or the default can itself be a `MissingValue`, as in
+  `when($c, $this->whenLoaded('author'), 'x')`.
+- **A `MissingValue` passed on stays optional**: `ValueResult::unionResults()` makes a union optional when an arm is, so
+  `??`, a ternary, `match` and a closure's several returns carry it, and `CoalesceHandler` counts the right operand only
+  past a left that can be `null`. A form-request field absent from the request reads `null`, so `??` and a short `?:`
+  replace it (`ValueResult::checkedOperand()`); a ternary or closure over it stays optional, as a direct read does.
 - **An `unknown` arm is never unioned in**: an `unknown` default leaves the value arm's type, and an `unknown` value
   arm, such as `whenPivotLoaded()`'s or an untypable `whenHas()` or `whenAppended()` value, keeps the key `unknown`,
-  since `T | unknown` is `unknown`. The key stays required either way. A default left out is recorded in
+  since `T | unknown` is `unknown`. The key is optional only if the value arm is. A default left out is recorded in
   `DroppedUnionArms` as `conditional-default`; see
   [AST engine § Dropped union arms](ast-engine.md#dropped-union-arms) for the policy.
 - **A default closure that needs more arguments than Laravel passes is skipped**: Laravel calls a default as
   `value($default)` with no arguments, except `transform()`, whose helper calls `$default($value)`. A closure requiring
   more parameters would throw `ArgumentCountError`, so `InspectsAstNodes::closureRequiresArguments()` keeps it out of
-  the union, and the key stays required with the value arm's type.
+  the union, and the key keeps the value arm's type and optionality.
 - **A `never[]` arm drops beside an array arm**: a literal `[]` is `never[]`, since `json_encode([])` is `[]`, and it
   adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
@@ -365,13 +375,13 @@ on a key no cast covers.
 
 ## `$this->resource` inside a relation closure is the resource's own model
 
-Inside a `whenLoaded()` closure, `AnalysisScope::$closureRelationModelClass` holds the relation's model, and a bare
-`$this->prop` reads that relation. `$this->resource->…` always reads the resource's own model, whichever closure it is
-in. So [`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and
-[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) root a chain whose first step is `resource` at
-`$modelClass`. They also skip the `startIndex` shortcut that treats a closure chain's first step as the relation
-proxy, which would drop the chain's first real relation. A model that declares a real `resource` relation keeps the
-relation walk. `ClosureResourceRootResource` pins both spellings.
+Inside a `whenLoaded()` closure `$this` is still the resource.
+[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) and
+[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
+`RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
+`AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
+keeps the relation walk. `ClosureResourceRootResource` pins a property chain and a method call on `$this->resource`
+inside such a closure.
 
 ## Collection pipelines
 
@@ -826,9 +836,10 @@ in every subject: an enum branch returns before `resourceWrapType()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
-ternary of those, and one wraps, so no other helper's body is read. The body is its own scope: the caller's name tables
-and relation model are set aside, and a union that types no wrap declines. An untyped helper that can end without a
-value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
+ternary of those, and one wraps, so no other helper's body is read. The body is seeded as a spread's is: the caller's
+name tables and relation model are set aside, but for its proofs of `$this` reads, its parameters bind by what they
+declare and what the call passes, and its guards narrow. A union that types no wrap declines. An untyped helper that can
+end without a value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
 
 ## Related
 
@@ -851,7 +862,7 @@ These [known gaps](../known-gaps.md) come from the rules on this page:
 - [A helper that returns an empty `[]` on one path publishes an object shape](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
 - [`#[TsCasts]` and the top-level spread flatten disagree by scope](../known-gaps.md#tscasts-and-the-top-level-spread-flatten-disagree-by-scope-in-three-separate-ways)
 - [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)
-- [`Model::toArray()` on a receiver declines, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-declines-deliberately)
+- [`Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
 - [A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals](../known-gaps.md#a-mixed-enum-ternary-whose-arms-are-both-array-shaped-ships-a-duplicated-union-member-in-the-globals)

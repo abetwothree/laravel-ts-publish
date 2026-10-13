@@ -5,17 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionProperty;
 
 /**
@@ -25,10 +22,10 @@ use ReflectionProperty;
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type PassedBinding from ParameterBinder
  */
 final class AstEngine
 {
-    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
     /**
@@ -39,6 +36,7 @@ final class AstEngine
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
      * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
+     * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      *
      * @internal
      */
@@ -47,6 +45,7 @@ final class AstEngine
         string $method = 'toArray',
         ?string $modelClass = null,
         bool $carriesImports = true,
+        array $passed = [],
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -54,11 +53,12 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
+            .CallSite::signature($passed);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed),
         );
 
         return clone $analysis;
@@ -101,9 +101,9 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
-     * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
-     * `Request $request` is a fact the resource path never had.
+     * Build the starting scope for a located method: its subject, its body's file, its parameters, bound as a helper's
+     * are, and its body's own bindings. A route-bound `Post $post` binds as its model, a `?Post $post` as that model or
+     * null, and an injected `Request $request` as a request.
      *
      * @internal
      */
@@ -111,31 +111,16 @@ final class AstEngine
     {
         $scope = new AnalysisScope($context->reflection);
         $methodName = $context->method->name->toString();
+        $stmts = $context->method->stmts ?? [];
 
         if ($context->reflection->hasMethod($methodName)) {
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($context->reflection->getMethod($methodName));
+            $method = $context->reflection->getMethod($methodName);
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
 
-            foreach ($context->reflection->getMethod($methodName)->getParameters() as $parameter) {
-                $type = $parameter->getType();
-
-                if (! $type instanceof ReflectionNamedType || $type->isBuiltin()) {
-                    continue;
-                }
-
-                $class = $type->getName();
-
-                if (is_a($class, Model::class, true)) {
-                    /** @var class-string<Model> $class */
-                    $scope->varModelBindings[$parameter->getName()] = $class;
-                } elseif (is_a($class, Request::class, true)) {
-                    /** @var class-string<Request> $class */
-                    $scope->requestVarNames[$parameter->getName()] = $class;
-                }
-            }
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, [], $scope);
         }
 
-        $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
-        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
+        $this->seedBody($stmts, $scope);
 
         return $scope;
     }
@@ -224,6 +209,7 @@ final class AstEngine
      *
      * @param  ReflectionClass<object>  $reflection
      * @param  class-string<Model>|null  $modelClass
+     * @param  array<string, PassedBinding>  $passed
      */
     private function analyzeOnce(
         ReflectionClass $reflection,
@@ -231,6 +217,7 @@ final class AstEngine
         ?string $modelClass,
         bool $carriesImports,
         string $key,
+        array $passed,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -241,7 +228,9 @@ final class AstEngine
         }
 
         try {
-            return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
+            $analyzer = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports, passed: $passed);
+
+            return $analyzer->analyze();
         } finally {
             $memo->leave($key);
         }

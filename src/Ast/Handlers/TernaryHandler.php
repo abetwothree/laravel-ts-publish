@@ -76,12 +76,16 @@ final class TernaryHandler implements ExpressionHandler
 
         if ($narrowed === [] && $nonNull === [[], []]) {
             return ValueResult::withEnumArmShapes(
-                ValueResult::analyzeClosureUnion($arms, $engine, $scope),
+                ValueResult::analyzeClosureUnion($arms, $engine, $scope, firstIsChecked: $expr->if === null),
                 static fn (): array => array_map($engine->resolve(...), $arms),
             );
         }
 
         $results = [$narrowed[0] ?? $resolveArm(0), $narrowed[1] ?? $resolveArm(1)];
+
+        if ($expr->if === null) {
+            $results[0] = ValueResult::checkedOperand($results[0]);
+        }
 
         // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
         foreach ($results as $index => $armResult) {

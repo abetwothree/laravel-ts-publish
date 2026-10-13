@@ -268,7 +268,7 @@ class InertiaPageAnalyzer
         }
 
         if ($propsArg instanceof Variable && is_string($propsArg->name)) {
-            $bound = $scope->localVarBindings[$propsArg->name] ?? null;
+            $bound = $scope->literalLocalBindings()[$propsArg->name] ?? null;
 
             return $bound === null ? [] : $this->propsArrayLiterals($bound, $scope, $hops + 1);
         }
@@ -280,7 +280,7 @@ class InertiaPageAnalyzer
                 return [$compacted];
             }
 
-            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->localVarBindings);
+            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->literalLocalBindings());
 
             if ($merged !== null) {
                 return [$merged];
@@ -292,7 +292,8 @@ class InertiaPageAnalyzer
 
     /**
      * Re-express `compact('post', 'comments')` as `['post' => $post, 'comments' => $comments]`, so the
-     * variable bindings type the props exactly as the equivalent literal would.
+     * variable bindings type the props exactly as the equivalent literal would. Each variable sits where its name
+     * does, so a read past the write that ended a parameter's binding takes what the action assigned.
      */
     protected function compactedArrayLiteral(FuncCall $call): ?Array_
     {
@@ -307,7 +308,7 @@ class InertiaPageAnalyzer
                 return null;
             }
 
-            $items[] = new ArrayItem(new Variable($arg->value->value), new String_($arg->value->value));
+            $items[] = new ArrayItem(new Variable($arg->value->value, $arg->value->getAttributes()), new String_($arg->value->value));
         }
 
         return $items === [] ? null : new Array_($items);

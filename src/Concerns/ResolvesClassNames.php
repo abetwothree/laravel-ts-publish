@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node;
 use ReflectionClass;
@@ -37,7 +38,7 @@ trait ResolvesClassNames
      *
      * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
-     * Short names are resolved to FQCNs using the file's use-statement map.
+     * Each `@var` union member, `?` stripped, resolves through the file's imports, then the class's own namespace.
      *
      * @template T of object
      *
@@ -61,33 +62,30 @@ trait ResolvesClassNames
 
         // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
         $docComment = $declaringClass->getProperty($property)->getDocComment();
-        if ($docComment === false || ! preg_match('/@var\s+([^\s*]+)/', $docComment, $m)) {
+        $declared = $docComment === false
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+
+        if ($declared === null || $declared === '') {
             return null; // @codeCoverageIgnore
         }
 
         // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
         $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
             'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
-        $useStatements = $this->resolveUseStatements($declaringClass);
 
-        foreach (explode('|', $m[1]) as $token) {
-            $token = trim($token);
+        foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $token) {
+            $token = ltrim(trim($token), '?');
 
             if ($token === '' || in_array(strtolower($token), $skip, true)) {
                 continue;
             }
 
-            foreach ($useStatements as $alias => $fqcn) {
-                if ($alias === $token && (class_exists($fqcn) || enum_exists($fqcn))) {
-                    return $fqcn;
-                }
-            }
+            $fqcn = $this->resolveDocblockType($token, $declaringClass);
 
-            // @codeCoverageIgnoreStart
-            if (class_exists($token) || enum_exists($token)) {
-                return $token;
+            if (class_exists($fqcn) || enum_exists($fqcn)) {
+                return $fqcn;
             }
-            // @codeCoverageIgnoreEnd
         }
 
         return null;

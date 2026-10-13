@@ -43,21 +43,6 @@ final class SubjectHelperReturnResolver
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
-    /** Every name-keyed binding table, empty: a helper's body is a function scope no caller's name reaches. */
-    private const array EMPTY_NAME_BINDINGS = [
-        'closureParamExprBindings' => [],
-        'varClassBindings' => [],
-        'varGuardBindings' => [],
-        'nonNullReads' => [],
-        'varDocBindings' => [],
-        'varModelBindings' => [],
-        'varCollectionBindings' => [],
-        'varValueBindings' => [],
-        'localVarBindings' => [],
-        'requestVarNames' => [],
-        'claimedClosures' => [],
-    ];
-
     /**
      * The union of a `$this->m()` helper's returns, or null for any other call or body, or a union that types no wrap.
      *
@@ -90,27 +75,21 @@ final class SubjectHelperReturnResolver
             return null;
         }
 
-        $bindings = $scope->nameBindings();
-        $resolvingLocalVars = $scope->resolvingLocalVars;
-        $declaringFileClass = $scope->declaringFileClass;
-        $relationModel = $scope->closureRelationModelClass;
+        // Read in the caller's names, before they are set aside.
+        $passed = new CallSite($call, $scope, $engine)->passedTo($method, valueRead: true);
+        $caller = $scope->enterSubjectMethod(
+            $name,
+            LaravelTsPublish::methodDeclaringFileClass($method),
+            $this->proofsAcrossCall($scope, $call),
+        );
 
         try {
-            $scope->visitedSpreadMethods[$name] = true;
-            $scope->restoreNameBindings(self::EMPTY_NAME_BINDINGS);
-            $scope->resolvingLocalVars = [];
-            // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
-            $scope->closureRelationModelClass = null;
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-            $this->collectLocalVarBindings($stmts, $scope);
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+            $this->seedBody($stmts, $scope);
 
             $result = ValueResult::analyzeClosureUnion($returns, $engine, $scope);
         } finally {
-            $scope->restoreNameBindings($bindings);
-            $scope->resolvingLocalVars = $resolvingLocalVars;
-            $scope->declaringFileClass = $declaringFileClass;
-            $scope->closureRelationModelClass = $relationModel;
-            unset($scope->visitedSpreadMethods[$name]);
+            $scope->leaveSubjectMethod($name, $caller);
         }
 
         // Without an enum channel no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.

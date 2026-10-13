@@ -7,16 +7,15 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 
 /**
- * Late-stage method-name rules fixed by Laravel convention, shared by the two chain handlers and by
- * KnownMethodRuleHandler, the dispatch floor. Requires the host to also use Ast\Concerns\InspectsAstNodes,
- * InspectsResourceSubject and ResolvesModelRelationTypes.
+ * Late-stage method-name rules fixed by Laravel convention, shared by MethodChainHandler and by KnownMethodRuleHandler,
+ * the dispatch floor. Requires the host to also use Ast\Concerns\InspectsAstNodes, InspectsResourceSubject and
+ * ResolvesModelRelationTypes.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -27,8 +26,8 @@ trait AppliesKnownMethodRules
     /**
      * Late-stage rules fixed by Laravel convention (can/cannot/canAny → boolean; count/exists → number/boolean).
      *
-     * count()/exists()/getKey() are receiver-gated (unlike can()) since those names are commonly overloaded;
-     * getKey() is further scoped to `$this->resource->getKey()` since its type depends on the receiver's key type.
+     * count()/exists() are receiver-gated (unlike can()) since those names are commonly overloaded. getKey() is
+     * ReceiverMethodReturnResolver's, which reads the receiver's own model.
      *
      * @return ValueExpressionResult|null
      */
@@ -42,17 +41,6 @@ trait AppliesKnownMethodRules
 
         if (in_array($method, ['can', 'cannot', 'canAny'], true)) {
             return [...ValueResult::unknown(), 'type' => 'boolean', 'optional' => false];
-        }
-
-        if ($method === 'getKey') {
-            if (! $this->isResourceFetch($expr->var) || $scope->modelClass === null) {
-                return null;
-            }
-
-            // An uninstantiable model names no key type; this caller has always fallen back to string.
-            $type = resolve(ModelAttributeResolver::class)->keyTsType($scope->modelClass) ?? 'string';
-
-            return [...ValueResult::unknown(), 'type' => $type, 'optional' => false];
         }
 
         if (! in_array($method, ['count', 'exists'], true)) {

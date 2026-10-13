@@ -40,6 +40,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
@@ -107,6 +108,12 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -138,6 +145,12 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -206,6 +219,12 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -654,6 +673,11 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
     'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
     'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
+    // A User has no `website`: past the write the parameter holds the Profile the body assigned, not the old binding.
+    'a variable past the write that ended its binding' => [
+        '$this->whenLoaded("author", function (\\Workbench\\App\\Models\\User $author) { $author = $author->profile; return $this->transform($author, fn ($p) => $p->website); })',
+        'string | null',
+    ],
 ]);
 
 // Laravel returns the value whatever it is, so the attribute answers only a value-less call or an EnumResource wrap.
@@ -1011,6 +1035,28 @@ it('binds transform()\'s callback to a nullable model read without its null arm'
         ->toBe('Profile');
 });
 
+// transform() calls back for a model no row backs yet, whose key Laravel sends as null.
+it('binds transform()\'s callback to a model no row backs yet with its unsaved mark', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a new model\'s key' => ['$this->transform(new \\Workbench\\App\\Models\\Post, fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s key' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s attribute' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->title)', 'string'],
+    'a copy, bare' => ['$this->transform($this->resource->replicate(), fn ($p) => $p)', 'Post'],
+]);
+
+// A MissingValue drops the key, and `??` never sees it as null, so the field's absent null cannot make it required.
+it('keeps a when() key optional across ?? when its value is a form-request field that may be absent', function () {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->requestVarNames['request'] = UpdatePostRequest::class;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+
+    expect($engine->resolve($parse('$request->validated("title") ?? "none"'))['optional'])->toBeFalse()
+        ->and($engine->resolve($parse('$this->when($this->title !== null, $request->validated("title")) ?? "none"')))
+        ->toBe(['type' => 'string', 'optional' => true]);
+});
+
 // A parameter holding its default or a list must not reach a receiver chain through a value the call does not pass.
 it('keeps an optional or variadic parameter off the property its writer would bind a required one to', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
@@ -1144,6 +1190,30 @@ it('drops an empty-array arm only where the other arm holds an array', function 
     'an empty default beside an array value' => ['string[]', 'never[]', 'string[]'],
     'an empty value beside a default that is no array' => ['never[]', 'string', 'never[] | string'],
 ]);
+
+// A default makes the key required unless the value or the default can itself be a MissingValue.
+it('keeps the key optional when the value or the default of a when() can be a MissingValue', function (array $value, array $default, bool $optional) {
+    expect(conditionalMethodHandlerResolveArms('when', $value, $default)['optional'] ?? null)->toBe($optional);
+})->with([
+    'a required value and default' => [['type' => 'string', 'optional' => false], ['type' => 'number', 'optional' => false], false],
+    'an optional value' => [['type' => 'User', 'optional' => true], ['type' => 'string', 'optional' => false], true],
+    'an optional default' => [['type' => 'string', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'an optional value beside an untyped default' => [['type' => 'User', 'optional' => true], ['type' => 'unknown', 'optional' => false], true],
+    'an untyped value beside an optional default' => [['type' => 'unknown', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'a required value beside an untyped default' => [['type' => 'string', 'optional' => false], ['type' => 'unknown', 'optional' => false], false],
+]);
+
+// A default closure Laravel cannot call leaves the value arm alone, with the optional of its own.
+it('keeps the value arm\'s optional when the default closure needs an argument', function (bool $optional) {
+    $valueExpr = new Variable('valueArm');
+    $default = new ArrowFunction(['params' => [new Param(new Variable('x'))], 'expr' => new String_('y')]);
+    $expr = new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('condition')), new Arg($valueExpr), new Arg($default)]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([[$valueExpr, ['type' => 'User', 'optional' => $optional]]]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'User', 'optional' => $optional]);
+})->with([true, false]);
 
 // Where no two classes share a name, the union by class is the union by text.
 it('unions a value and a default of two different names as a merge by text does', function (string $method, string $type) {

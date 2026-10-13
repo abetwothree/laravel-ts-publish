@@ -10,6 +10,9 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -17,6 +20,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -107,6 +112,20 @@ it('marks the lazy Inertia wrappers optional and keeps the wrapped value type', 
         ->and($data['classFqcns'])->toBe([Comment::class]);
 });
 
+it('keeps a ternary prop required over plain arms and optional over a lazy one', function () {
+    $data = pageData(ControllerWithUnionProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { y: number | string, z?: number }');
+});
+
+// A field absent from the request reads null, which `??` and a short `?:` replace; a direct read, a full ternary and a
+// closure keep the field's optional, and so does an optional prop, which `??` never sees as null.
+it('drops a form-request field\'s optional across ?? and ?:, and keeps it across a ternary, a closure or an optional prop', function () {
+    $data = pageData(ControllerWithValidatedProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { a: string, b: number, c?: string, d?: string, e: { search: string }, f: string, h: string, i?: string, j?: string }');
+});
+
 it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {
     $compacted = pageData(InertiaUserShapesController::class.'@compacted');
     $merged = pageData(InertiaUserShapesController::class.'@merged');
@@ -146,6 +165,46 @@ it('types the route-bound model parameter and the injected service call', functi
     $data = pageData(InertiaUserShapesController::class.'@bound');
 
     expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, stats: { views: number; likes: number } }');
+});
+
+// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
+// model, in a branch or not, keeps the parameter's binding.
+it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
+    expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown }');
+});
+
+// Inertia sends what json_encode() writes, so a list asort() keys out of order arrives as an object.
+it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
+    expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
+});
+
+// Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract
+// `Model` names no class a published file exports, so its bare read publishes unknown, importing nothing.
+it('types the props an action reads from its scalar, enum, union and nullable model parameters', function () {
+    $show = pageData(TypedActionParametersController::class.'@show');
+    $abstract = pageData(TypedActionParametersController::class.'@abstractModel');
+
+    expect($show['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null, post: Post | null }')
+        ->and($show['classFqcns'] ?? null)->toBe([Status::class, Post::class])
+        ->and($abstract['pageType'] ?? null)->toBe('Inertia.SharedData & { model: unknown }')
+        ->and($abstract['classFqcns'] ?? null)->toBe([])
+        ->and(pageData(TypedActionParametersController::class.'@filter')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { term: string | null, key: string | number }');
 });
 
 it('types a resource collection from what it wraps', function () {

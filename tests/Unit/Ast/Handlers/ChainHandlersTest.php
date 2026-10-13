@@ -77,6 +77,12 @@ final class ChainHandlersMapStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -343,7 +349,7 @@ test('$this->resource inside a whenLoaded closure roots at the resource model', 
         ->and($nullsafe)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
-// Pins both `startIndex` uses in MethodChainHandler: the walk loop and the last-step relation branch.
+// The chain starts at the resource model whatever relation the closure loads: the walk loop and the last step.
 test('a nullsafe method chain on $this->resource roots at the resource model inside a closure', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
     $scope->closureRelationModelClass = Comment::class;
@@ -371,7 +377,7 @@ test('$this->resource->options reads the resource model type, not the closure mo
     expect($result)->toBe(['type' => 'Record<string, string> | null', 'optional' => false]);
 });
 
-// Pins the walk loop under $rootedAtResource: after the shift a relation step still has to be walked.
+// After `resource` is shifted off, each relation step after it is still walked.
 test('a 3-deep nullsafe method chain on $this->resource walks the resource model', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
     $scope->closureRelationModelClass = Comment::class;

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -22,7 +23,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -74,6 +74,7 @@ final class StaticCallHandler implements ExpressionHandler
             && is_string($expr->class->name)
             && $expr->class->name !== 'this'
             && $expr->name instanceof Identifier
+            && $scope->holdsBinding($expr->class)
         ) {
             return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
         }
@@ -125,10 +126,12 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->class->name === 'this'
             && $expr->name instanceof Identifier
         ) {
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString());
+            $site = new CallSite($expr, $scope, $engine);
+
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site);
         }
 
-        // `$this->resource::staticMethod()`. Must precede the closure-context PropertyFetch handler below.
+        // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
         if ($expr instanceof StaticCall
             && $expr->class instanceof PropertyFetch
             && $expr->class->var instanceof Variable
@@ -137,20 +140,7 @@ final class StaticCallHandler implements ExpressionHandler
             && $expr->class->name->toString() === 'resource'
             && $expr->name instanceof Identifier
         ) {
-            return $this->analyzeStaticMethodOnResource($expr->name->toString(), $scope);
-        }
-
-        // `$this->relation::staticMethod()` inside a whenLoaded closure — use the related model.
-        if ($expr instanceof StaticCall
-            && $expr->class instanceof PropertyFetch
-            && $expr->name instanceof Identifier
-        ) {
-            /** @var class-string<Model>|null $closureModelClass */
-            $closureModelClass = $scope->closureRelationModelClass;
-
-            if ($closureModelClass !== null) {
-                return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
-            }
+            return $this->analyzeStaticMethodOnResource($expr, $expr->name->toString(), $scope, $engine);
         }
 
         // `Auth::user()`/`Auth::id()`. Must precede the general StaticCall arm below, whose reflection
@@ -255,7 +245,9 @@ final class StaticCallHandler implements ExpressionHandler
         // Any other existing class — its declared return type, else the shape its literal body spells.
         // Accepted only when it cannot break generated imports; see MethodReturnTypeResolver::resolve().
         if (class_exists($className)) {
-            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName) ?? $result;
+            $site = new CallSite($call, $scope, $engine);
+
+            return resolve(MethodReturnTypeResolver::class)->resolve($className, $methodName, $site) ?? $result;
         }
 
         return $result;
@@ -343,8 +335,7 @@ final class StaticCallHandler implements ExpressionHandler
             return false;
         }
 
-        // extractReturnTypeFromDocblock()'s final fallback is `\S+`, so the token it returns
-        // can never carry surrounding whitespace — no trim() needed before comparing.
+        // extractReturnTypeFromDocblock() trims the type and collapses its whitespace, so no trim() before comparing.
         return LaravelTsPublish::extractReturnTypeFromDocblock($docComment) === '$this';
     }
 
@@ -418,34 +409,11 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
      *
-     * Each answer is accepted only when its tokens can be imported; see MethodReturnTypeResolver::resolve().
-     *
      * @return ValueExpressionResult
      */
-    private function analyzeStaticMethodOnResource(string $methodName, AnalysisScope $scope): array
+    private function analyzeStaticMethodOnResource(StaticCall $call, string $methodName, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $result = ValueResult::unknown();
-        $wrappedClass = $this->resolveWrappedClass($scope);
-
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
-            /** @var class-string $wrappedClass */
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
-            /** @var class-string $modelClass */
-            $modelClass = $scope->modelClass;
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        return $result;
+        return resolve(SubjectMethodTypeResolver::class)
+            ->resolveForwarded($scope, $methodName, new CallSite($call, $scope, $engine)) ?? ValueResult::unknown();
     }
 }

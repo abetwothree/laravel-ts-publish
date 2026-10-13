@@ -35,6 +35,9 @@ it('rewrites each array a resource re-indexes into the list it sends, at any dep
     'a nested array beside an arrow function' => ['{ a: () => void; inner: { "7": string } }', '{ a: () => void; inner: string[] }'],
     'two arrays that list alike' => ['{ "1": string } | { "2": string }', 'string[]'],
     'an array beside the list it sends and null' => ['{ "1": string } | string[] | null', 'string[] | null'],
+    'a tuple member, the tuple kept' => ['[{ 3: string; 5: number }, number]', '[(string | number)[], number]'],
+    'an optional tuple member' => ['[number, { "1": string }?]', '[number, string[]?]'],
+    'a tuple nested in an object' => ['{ pair: [{ "1": string }, number] }', '{ pair: [string[], number] }'],
 ]);
 
 it('keeps every array that holds a named key, and every named type', function (string $type) {
@@ -46,6 +49,8 @@ it('keeps every array that holds a named key, and every named type', function (s
     'a resource' => ['UserResource'],
     'a generic' => ["Pick<User, 'id'>"],
     'a list' => ['string[]'],
+    'a tuple of named-key arrays' => ['[{ a: number }, string]'],
+    'an empty tuple' => ['[]'],
     'a quoted key holding a colon' => ['{ "a:b": string }'],
     'a spread arm' => ["Omit<UserResource, 'x'> & { x: string }"],
 ]);

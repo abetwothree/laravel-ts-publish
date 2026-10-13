@@ -549,3 +549,33 @@ describe('ValueResult::withNullArm() and hasNullArm()', function () {
         'a trailing null arm' => ['string | null', 'string | null', true],
     ]);
 });
+
+describe('ValueResult::unionResults() over an arm that can be a MissingValue', function () {
+    test('an optional typed arm beside a required null arm makes the union optional', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => true],
+            ['type' => 'null', 'optional' => false],
+        ])['optional'])->toBeTrue();
+    });
+
+    test('an optional arm with no type alone leaves an optional unknown', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'unknown', 'optional' => true],
+            ['type' => 'unknown', 'optional' => false],
+        ]))->toBe(['type' => 'unknown', 'optional' => true]);
+    });
+
+    test('an optional arm with no type still makes a typed union optional', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => false],
+            ['type' => 'unknown', 'optional' => true],
+        ]))->toBe(['type' => 'string', 'optional' => true]);
+    });
+
+    test('arms that are all required leave the union required', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => false],
+            ['type' => 'number', 'optional' => false],
+        ])['optional'])->toBeFalse();
+    });
+});

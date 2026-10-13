@@ -648,6 +648,24 @@ declare global {
             child_rows_count: number;
             child_rows_exists: boolean;
         }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms, in either order:
+         * an `@property` tag, a cast's get() `@return` and an accessor's `Attribute<…>`. The enum column and accessor keep
+         * the model's Resource interface, printed as a list of the AsEnum wrap or the wrap alone.
+         */
+        export interface DocblockUnionFixture {
+            // Columns
+            id: number;
+            tags: User[] | User | null;
+            related_users: User[] | User | null;
+            meta_info: app.enums.StatusType[] | app.enums.StatusType | null;
+            owner_snapshot: Record<string, User> | User | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** The grades, a list of statuses or one status. */
+            grades: app.enums.StatusType[] | app.enums.StatusType;
+        }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {
             // Columns
@@ -2566,6 +2584,18 @@ declare global {
             clearance_type: crm.enums.ClearanceTypeType;
             summary: { clearance: app.enums.ClearanceType; clearance_type: crm.enums.ClearanceTypeType };
         }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms: a model's
+         * `@property`, a property's `@var`, a helper's `@return` and a local's `@var`.
+         */
+        export interface BareBesideContainerResource {
+            tags: app.models.User[] | app.models.User | null;
+            related_users: app.models.User[] | app.models.User | null;
+            crew: app.models.User[] | app.models.User | null;
+            lead: app.models.User[] | app.models.User;
+            statuses: app.enums.StatusType[] | app.enums.StatusType;
+            either: app.models.Comment[] | app.models.Comment;
+        }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
             morphValue: string;
@@ -2771,6 +2801,7 @@ declare global {
             when_label?: string;
             label_or_zero: number | string;
             supervisor?: UserResource | null;
+            supervisor_card?: { name: string } | null;
         }
         /**
          * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
@@ -2921,6 +2952,7 @@ declare global {
             mapped_members: app.models.User[];
             loaded_owner?: app.models.User;
             loaded_members_bare?: app.models.User[];
+            shadowed: string;
         }
         /**
          * Reads `$this->resource` inside whenLoaded closures bound to a different relation's model, so each
@@ -3031,6 +3063,7 @@ declare global {
         export interface CommentRelationFiltersResource {
             id: number;
             summary: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
+            summary_via_resource: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
             picks: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
             picks_summary: { id: number; picks: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] } };
         }
@@ -3256,13 +3289,15 @@ declare global {
             title_as_totals: string;
             verifiable_email: string;
             callable: unknown;
-            callable_shape: unknown;
+            callable_shape: { fn: unknown };
             closure: unknown;
             intersection: unknown;
-            tuple: unknown;
-            decoded: unknown;
-            literal_keys: unknown;
-            quoted_key: unknown;
+            tuple: [number, string];
+            decoded: { a: number };
+            literal_keys: { a?: number; b?: number };
+            quoted_key: { a: number; b: string };
+            comma_key: { "a,b": number; c: string };
+            numeric_keyed_tuple: [(string | number)[], number];
             kept_title: string;
             kept_record: { a: number; b: string };
             kept_shape: { a: number; b: string };
@@ -3743,6 +3778,54 @@ declare global {
             data: unknown;
         }
         /**
+         * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
+         * push, pop, shift or splice of a list, a walk or a by-reference loop writing each element within its type, and a
+         * recursive walk or a sort of a key likewise. A resource re-indexes a list a key-keeping sort reorders.
+         */
+        export interface LocalVarByReferenceResource {
+            sorted: string[];
+            reversed: number[];
+            user_sorted: string[];
+            plucked: string[];
+            key_sorted: { b: number; a: number };
+            key_sorted_list: string[];
+            user_key_sorted: { b: number; a: number };
+            reverse_key_sorted: { a: number; b: number };
+            value_sorted: { b: number; a: number };
+            reverse_value_sorted: { a: number; b: number };
+            user_value_sorted: { b: number; a: number };
+            natural_sorted: { b: string; a: string };
+            natural_case_sorted: { b: string; a: string };
+            replaced_count: number;
+            case_replaced_count: number;
+            pattern_count: number;
+            callback_count: number;
+            pushed: string[];
+            unshifted: string[];
+            walked: { x: number };
+            walked_list: string[];
+            read_only_walk: { b: number };
+            walked_nested: { a: { b: number } };
+            sorted_member: { x: number[] };
+            nested_sorted_member: { x: { y: number[] } };
+            key_sorted_member: { x: { b: number; a: number } };
+            looped: string[];
+            popped: string[];
+            shifted: string[];
+            spliced: string[];
+            value_sorted_list: string[];
+            value_sorted_member: { x: string[] };
+            mixed_member: { x: string[]; c: { "3": string } };
+            sorted_tuple: (string | number)[];
+            walked_keys: { a: string };
+            walked_import: string[];
+            pre_written_loop: string[];
+            concat_walked: string[];
+            plus_walked: number[];
+            copied_before_sort: { k: number };
+            list_copied_after_sort: string[];
+        }
+        /**
          * Regression fixture (Task 12 review, Critical 2): two TOP-LEVEL assignments to the
          * same variable, separated by a guard-clause return, must not resolve either return
          * branch through a single static binding — which assignment was "last" depends on
@@ -3966,6 +4049,15 @@ declare global {
         }
         export interface MiscCollection {
             data: unknown;
+        }
+        /** A MissingValue passed on through `??`, a `when()` default and a ternary keeps its key optional. */
+        export interface MissingValueOperatorsResource {
+            direct_coalesce?: app.models.User | string;
+            when_wrap_default?: app.models.User | string;
+            when_missing_default?: string | app.models.User;
+            ternary?: app.models.User | string;
+            nested_coalesce: { inner?: app.models.User | string };
+            coalesce_right_missing: string | app.models.User;
         }
         /**
          * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
@@ -4267,6 +4359,20 @@ declare global {
             search_index: unknown;
         }
         /**
+         * Helpers whose parameters declare no type, read as values: each body reads what its call passes, a first-class
+         * callable's included, which Laravel calls with the loaded relation, the attribute or the transformed value.
+         */
+        export interface PassedArgumentHelpersResource {
+            row: { pk: number; title: string };
+            author_card: { name: string; email: string };
+            static_row: { static_pk: number };
+            outer: { inner: { pk: number; title: string } };
+            loaded_card?: { name: string; email: string };
+            loaded_count?: { count: number };
+            has_title?: { value: string };
+            transformed?: { value: string };
+        }
+        /**
          * Every return branch of a spread method counts, and the method's own @return shape types
          * what its body cannot.
          */
@@ -4341,6 +4447,26 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /**
+         * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
+         * nested call, a static helper and a trait's.
+         */
+        export interface PostHelperParamsResource {
+            id: number;
+            title: string;
+            extra: number;
+            summary: { id: number; title: string; extra: number };
+            card: { card_id: number; card_title: string };
+            nested: { inner: { card_id: number; card_title: string } };
+            static_card: { static_id: number };
+            headline_id: number;
+            headline: string;
+            maybe: { maybe_title: string | null };
+            status_label: { label: string; value: number };
+            status_payload: { payload_status: unknown; payload_name: string };
+            payload_status: app.enums.StatusType;
+            payload_name: string;
+        }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
             error: Record<string, never>;
@@ -4448,6 +4574,10 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            blockers: { message: string; route?: string }[];
+            checks_count: string;
+            loaded_checks_count?: string;
+            loaded_checks_label?: string;
         }
         /**
          * Wraps the post's enums in an EnumResource reached through a local, a helper on the resource and a method that returns
@@ -4653,6 +4783,20 @@ declare global {
             fake_relation?: unknown;
         }
         /**
+         * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned, or
+         * either value past a reassignment that may not run, and a read before it, past a branch that reassigns it and
+         * returns, or a reassignment to the same model, keeps the parameter's own binding.
+         */
+        export interface ReassignedParameterResource {
+            declared_content?: string;
+            read_before?: string;
+            same_model?: string;
+            relation_bio?: string | null;
+            exiting_branch?: string | null;
+            nested_branch?: string | number | null;
+            new_model_name?: string | null;
+        }
+        /**
          * Method return types followed through every receiver kind: an enum cast, a Carbon cast, a local model,
          * a variable class for a static call, and an enum static constructor.
          */
@@ -4676,6 +4820,8 @@ declare global {
             resource_author_key: number | null;
             bare_key: number;
             resource_key: number;
+            draft_key: number | null;
+            copy_key: number | null;
             bare_comments_count: number;
             resource_comments_count: number;
             author_bound: app.models.User | null;
@@ -4935,6 +5081,25 @@ declare global {
             handover_note: string | null;
             next_bell: string;
             checked_at: string | null;
+        }
+        /**
+         * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a
+         * helper's `@return` keeps a spaced `| null`, an array of collections and a union of spaced generics.
+         */
+        export interface SpacedDocblockResource {
+            title: string;
+            subtitle: string | null;
+            pages: app.models.Comment[][];
+            threads: app.models.Comment[] | app.models.Post[];
+        }
+        /** A spread helper called inside closures whose parameter is named like a local the helper writes itself. */
+        export interface SpreadHelperScopeResource {
+            has_t?: { v: number; k: number };
+            transform_t?: { v: number };
+            loaded_t?: { v: number };
+            author_named?: { n: unknown };
+            author_passed?: { n: string };
+            v: number;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
@@ -6034,6 +6199,11 @@ declare global {
             team: number;
             kind: string;
             count: number;
+        }
+        export interface PostHelperPayloadEvent {
+            post_id: number;
+            post_title: string;
+            row: { post_id: number; post_title: string };
         }
         export interface PostPublishedEvent {
             post: Partial<app.models.Post>;

@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
 use Workbench\App\Models\Depot;
+use Workbench\App\Models\User;
 
 /**
  * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
@@ -37,6 +38,17 @@ class CallableValueResource extends JsonResource
             'when_label' => $this->when($request->has('label'), $this->label(...)),
             'label_or_zero' => $this->when($request->has('zero'), 0, $this->label(...)),
             'supervisor' => $this->whenLoaded('supervisor', UserResource::make(...)),
+            'supervisor_card' => $this->whenLoaded('supervisor', $this->supervisorCard(...)),
         ];
+    }
+
+    /**
+     * The supervisor's name, which whenLoaded() calls the callable with.
+     *
+     * @return array<string, mixed>
+     */
+    private function supervisorCard(User $supervisor): array
+    {
+        return ['name' => $supervisor->name];
     }
 }

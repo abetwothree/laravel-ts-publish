@@ -10,4 +10,8 @@ export interface PostStatsResource
     stats: { views: number; shares: number } | null;
     views: number | null;
     share_count: number | null;
+    blockers: { message: string; route?: string }[];
+    checks_count: string;
+    loaded_checks_count?: string;
+    loaded_checks_label?: string;
 }

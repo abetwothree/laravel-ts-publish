@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedS
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CoalescingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
@@ -652,6 +653,17 @@ test('a non-resource subject reads $this->when() as its own method, not as a res
 
     expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
         ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
+});
+
+// No MissingValue reaches an event payload, so a `??` fallback there stays required.
+test('a ?? fallback in an event payload stays required', function () {
+    $properties = array_column(
+        resolve(AstEngine::class)->analyzeMethod(CoalescingBroadcastEvent::class, 'broadcastWith')->properties,
+        null,
+        'name',
+    );
+
+    expect($properties['x']['optional'])->toBeFalse();
 });
 
 // A key no payload property names adds none on an event, so its import would be unused (TS6196).

@@ -10,12 +10,16 @@ use Illuminate\Database\Eloquent\Model;
 final class TupleShapeMetadataProvider implements ModelMetadataProvider
 {
     /**
-     * Provide a PHP list whose declared shape is an object literal with numeric keys.
+     * Provide two PHP lists: one whose declared shape is an object literal with numeric keys, one whose shape is the
+     * tuple its keys 0 and 1 in order declare.
      *
-     * @return array{tuple: array{0: array<string, int>, 1: list<int>}}
+     * @return array{
+     *     numeric_keys: array{1: list<int>, 0: array<string, int>},
+     *     tuple: array{0: array<string, int>, 1: list<int>},
+     * }
      */
     public function provide(Model $model): array
     {
-        return ['tuple' => [[], []]];
+        return ['numeric_keys' => [[], []], 'tuple' => [[], []]];
     }
 }

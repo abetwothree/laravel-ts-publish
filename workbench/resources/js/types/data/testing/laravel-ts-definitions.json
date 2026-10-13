@@ -244,6 +244,28 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\PostHelperPayloadEvent": {
+            "name": "PostHelperPayloadEvent",
+            "eventName": "PostHelperPayloadEvent",
+            "broadcastName": ".Workbench.App.Events.PostHelperPayloadEvent",
+            "properties": [
+                {
+                    "name": "post_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "post_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "row",
+                    "type": "{ post_id: number; post_title: string }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\PostPublishedEvent": {
             "name": "PostPublishedEvent",
             "eventName": "PostPublishedEvent",
@@ -6017,6 +6039,43 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\DocblockUnionFixture": {
+            "name": "DocblockUnionFixture",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "tags",
+                    "type": "User[] | User | null"
+                },
+                {
+                    "name": "related_users",
+                    "type": "User[] | User | null"
+                },
+                {
+                    "name": "meta_info",
+                    "type": "StatusType[] | StatusType | null"
+                },
+                {
+                    "name": "owner_snapshot",
+                    "type": "Record<string, User> | User | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "grades",
+                    "type": "StatusType[] | StatusType"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\ExcludableModel": {
             "name": "ExcludableModel",
             "properties": [
@@ -10611,6 +10670,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\BareBesideContainerResource": {
+            "name": "BareBesideContainerResource",
+            "properties": [
+                {
+                    "name": "tags",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "related_users",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "crew",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "lead",
+                    "type": "User[] | User",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "StatusType[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "Comment[] | Comment",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BareFuncCallResource": {
             "name": "BareFuncCallResource",
             "properties": [
@@ -11317,6 +11411,11 @@
                     "name": "supervisor",
                     "type": "UserResource | null",
                     "optional": true
+                },
+                {
+                    "name": "supervisor_card",
+                    "type": "{ name: string } | null",
+                    "optional": true
                 }
             ]
         },
@@ -11781,6 +11880,11 @@
                     "name": "loaded_members_bare",
                     "type": "User[]",
                     "optional": true
+                },
+                {
+                    "name": "shadowed",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },
@@ -12164,6 +12268,11 @@
                 },
                 {
                     "name": "summary",
+                    "type": "{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
+                    "optional": false
+                },
+                {
+                    "name": "summary_via_resource",
                     "type": "{ id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] }",
                     "optional": false
                 },
@@ -12879,7 +12988,7 @@
                 },
                 {
                     "name": "callable_shape",
-                    "type": "unknown",
+                    "type": "{ fn: unknown }",
                     "optional": false
                 },
                 {
@@ -12894,22 +13003,32 @@
                 },
                 {
                     "name": "tuple",
-                    "type": "unknown",
+                    "type": "[number, string]",
                     "optional": false
                 },
                 {
                     "name": "decoded",
-                    "type": "unknown",
+                    "type": "{ a: number }",
                     "optional": false
                 },
                 {
                     "name": "literal_keys",
-                    "type": "unknown",
+                    "type": "{ a?: number; b?: number }",
                     "optional": false
                 },
                 {
                     "name": "quoted_key",
-                    "type": "unknown",
+                    "type": "{ a: number; b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "comma_key",
+                    "type": "{ \"a,b\": number; c: string }",
+                    "optional": false
+                },
+                {
+                    "name": "numeric_keyed_tuple",
+                    "type": "[(string | number)[], number]",
                     "optional": false
                 },
                 {
@@ -14397,6 +14516,216 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\LocalVarByReferenceResource": {
+            "name": "LocalVarByReferenceResource",
+            "properties": [
+                {
+                    "name": "sorted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "reversed",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "user_sorted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "plucked",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "user_key_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "reverse_key_sorted",
+                    "type": "{ a: number; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "reverse_value_sorted",
+                    "type": "{ a: number; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "user_value_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "natural_sorted",
+                    "type": "{ b: string; a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "natural_case_sorted",
+                    "type": "{ b: string; a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "replaced_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "case_replaced_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pattern_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "callback_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pushed",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "unshifted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "walked",
+                    "type": "{ x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "read_only_walk",
+                    "type": "{ b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_nested",
+                    "type": "{ a: { b: number } }",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_member",
+                    "type": "{ x: number[] }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_sorted_member",
+                    "type": "{ x: { y: number[] } }",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted_member",
+                    "type": "{ x: { b: number; a: number } }",
+                    "optional": false
+                },
+                {
+                    "name": "looped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "popped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "shifted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "spliced",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted_member",
+                    "type": "{ x: string[] }",
+                    "optional": false
+                },
+                {
+                    "name": "mixed_member",
+                    "type": "{ x: string[]; c: { \"3\": string } }",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_tuple",
+                    "type": "(string | number)[]",
+                    "optional": false
+                },
+                {
+                    "name": "walked_keys",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_import",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "pre_written_loop",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "concat_walked",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "plus_walked",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "copied_before_sort",
+                    "type": "{ k: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_copied_after_sort",
+                    "type": "string[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\LocalVarGuardClauseResource": {
             "name": "LocalVarGuardClauseResource",
             "properties": [
@@ -14993,6 +15322,41 @@
                 {
                     "name": "data",
                     "type": "unknown",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\MissingValueOperatorsResource": {
+            "name": "MissingValueOperatorsResource",
+            "properties": [
+                {
+                    "name": "direct_coalesce",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "when_wrap_default",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "when_missing_default",
+                    "type": "string | User",
+                    "optional": true
+                },
+                {
+                    "name": "ternary",
+                    "type": "User | string",
+                    "optional": true
+                },
+                {
+                    "name": "nested_coalesce",
+                    "type": "{ inner?: User | string }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesce_right_missing",
+                    "type": "string | User",
                     "optional": false
                 }
             ]
@@ -15916,6 +16280,51 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PassedArgumentHelpersResource": {
+            "name": "PassedArgumentHelpersResource",
+            "properties": [
+                {
+                    "name": "row",
+                    "type": "{ pk: number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "author_card",
+                    "type": "{ name: string; email: string }",
+                    "optional": false
+                },
+                {
+                    "name": "static_row",
+                    "type": "{ static_pk: number }",
+                    "optional": false
+                },
+                {
+                    "name": "outer",
+                    "type": "{ inner: { pk: number; title: string } }",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_card",
+                    "type": "{ name: string; email: string }",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_count",
+                    "type": "{ count: number }",
+                    "optional": true
+                },
+                {
+                    "name": "has_title",
+                    "type": "{ value: string }",
+                    "optional": true
+                },
+                {
+                    "name": "transformed",
+                    "type": "{ value: string }",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PermissionsSpreadResource": {
             "name": "PermissionsSpreadResource",
             "properties": [
@@ -16119,6 +16528,81 @@
         "Workbench\\App\\Http\\Resources\\PostFlatCollection": {
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
+        },
+        "Workbench\\App\\Http\\Resources\\PostHelperParamsResource": {
+            "name": "PostHelperParamsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "extra",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "summary",
+                    "type": "{ id: number; title: string; extra: number }",
+                    "optional": false
+                },
+                {
+                    "name": "card",
+                    "type": "{ card_id: number; card_title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ inner: { card_id: number; card_title: string } }",
+                    "optional": false
+                },
+                {
+                    "name": "static_card",
+                    "type": "{ static_id: number }",
+                    "optional": false
+                },
+                {
+                    "name": "headline_id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "headline",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "maybe",
+                    "type": "{ maybe_title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "status_label",
+                    "type": "{ label: string; value: number }",
+                    "optional": false
+                },
+                {
+                    "name": "status_payload",
+                    "type": "{ payload_status: unknown; payload_name: string }",
+                    "optional": false
+                },
+                {
+                    "name": "payload_status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "payload_name",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
         },
         "Workbench\\App\\Http\\Resources\\PostNewValueResource": {
             "name": "PostNewValueResource",
@@ -16512,6 +16996,26 @@
                     "name": "share_count",
                     "type": "number | null",
                     "optional": false
+                },
+                {
+                    "name": "blockers",
+                    "type": "{ message: string; route?: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "checks_count",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_checks_count",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_checks_label",
+                    "type": "string",
+                    "optional": true
                 }
             ]
         },
@@ -17218,6 +17722,46 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\ReassignedParameterResource": {
+            "name": "ReassignedParameterResource",
+            "properties": [
+                {
+                    "name": "declared_content",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "read_before",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "same_model",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "relation_bio",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "exiting_branch",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "nested_branch",
+                    "type": "string | number | null",
+                    "optional": true
+                },
+                {
+                    "name": "new_model_name",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ReceiverMethodResource": {
             "name": "ReceiverMethodResource",
             "properties": [
@@ -17314,6 +17858,16 @@
                 {
                     "name": "resource_key",
                     "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "draft_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "copy_key",
+                    "type": "number | null",
                     "optional": false
                 },
                 {
@@ -18028,6 +18582,66 @@
                 {
                     "name": "checked_at",
                     "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\SpacedDocblockResource": {
+            "name": "SpacedDocblockResource",
+            "properties": [
+                {
+                    "name": "title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "subtitle",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "pages",
+                    "type": "Comment[][]",
+                    "optional": false
+                },
+                {
+                    "name": "threads",
+                    "type": "Comment[] | Post[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\SpreadHelperScopeResource": {
+            "name": "SpreadHelperScopeResource",
+            "properties": [
+                {
+                    "name": "has_t",
+                    "type": "{ v: number; k: number }",
+                    "optional": true
+                },
+                {
+                    "name": "transform_t",
+                    "type": "{ v: number }",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_t",
+                    "type": "{ v: number }",
+                    "optional": true
+                },
+                {
+                    "name": "author_named",
+                    "type": "{ n: unknown }",
+                    "optional": true
+                },
+                {
+                    "name": "author_passed",
+                    "type": "{ n: string }",
+                    "optional": true
+                },
+                {
+                    "name": "v",
+                    "type": "number",
                     "optional": false
                 }
             ]

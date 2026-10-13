@@ -25,6 +25,7 @@ final class CommentRelationFiltersResource extends JsonResource
         return [
             'id' => $this->id,
             'summary' => $this->relationSummary(),
+            'summary_via_resource' => $this->resource->relationSummary(),
             'picks' => $this->relation_picks,
             'picks_summary' => $this->picksSummary(),
         ];

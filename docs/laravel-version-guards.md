@@ -14,11 +14,12 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsResourceCalls.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php` (see below) | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Analyzers/Concerns/ChecksPreserveKeys.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
-| `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Appends` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Connection` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Initialize` | `12.22.0` | `src/ModelAttributeResolver.php` (`setsKeyInCode()`) | `tests/Unit/ModelAttributeResolverTest.php` | `12.22.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
 
@@ -36,10 +37,11 @@ covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so 
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute
 but also follows the `FooCollection` to `FooResource` naming convention, so it resolves either way.
 
-The five `Attributes\{Table,Hidden,Visible,Appends,Connection}` rows have no `src/` guard. Laravel applies those
-attributes itself in `Model::__construct()`, and this package reads only the results, through `getTable()`,
-`getAppends()` and the inspector's `attributeIsHidden()`, as
-[ModelAttributeResolver](./components/model-attribute-resolver.md) describes.
+The four `Attributes\{Hidden,Visible,Appends,Connection}` rows have no `src/` guard. Laravel applies those
+attributes itself in `Model::__construct()`, and this package reads only the results, through `getAppends()` and the
+inspector's `attributeIsHidden()`, as [ModelAttributeResolver](./components/model-attribute-resolver.md) describes.
+`Table` has one: `tableKeyDeclaration()` reads its `key` and `keyType` for a model the package cannot instantiate,
+where `Model::__construct()` never runs to apply them.
 
 Their only `class_exists()` is the `->skip()` on each attribute's test in `ModelTransformerTest.php`. The
 `Laravel13AttributesSummaryResource` test in `ResourceAstAnalyzerTest.php` reads `#[Table]`, `#[Hidden]` and
@@ -63,6 +65,7 @@ that release more reliably than changelog prose:
 - **`Collects`, `PreserveKeys`, `Table`, `Hidden`, `Visible`, `Appends` and `Connection`**: absent at `v12.0.0` and
   `v12.69.2`, present at `v13.0.0`. Recorded as `13.0.0`, the first tag proven to contain them, since no 12.x release
   was found to carry them.
+- **`Initialize`**: absent through `v12.21.0`, present from `v12.22.0`. An exact minimum.
 - **`RouteKey`**: absent through `v13.20.0`, present from `v13.21.0`. An exact minimum.
 
 ## Scanner coverage and blind spots

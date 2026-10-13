@@ -38,6 +38,12 @@ function dispatcherTestEngine(): ExpressionEngine
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('dispatch() must not call back into the engine in these tests');

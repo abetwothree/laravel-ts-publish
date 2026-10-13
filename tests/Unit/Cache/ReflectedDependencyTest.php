@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 use Workbench\App\Casts\CoordinateCast;
 use Workbench\App\Enums\Priority;
@@ -23,6 +24,7 @@ use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ShiftResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Warehouse;
 use Workbench\App\Services\ShiftClock;
@@ -66,6 +68,17 @@ it('records the service a resource calls a method on through a subject method', 
     $paths = recordedWhile(fn () => new ResourceTransformer(ShiftResource::class));
 
     expect($paths)->toContain(fileOf(ShiftClock::class));
+});
+
+it('records the element model of a collection receiver a method is typed on', function () {
+    $receiver = new ReceiverType([EloquentCollection::class], elementModel: Comment::class);
+    $paths = recordedWhile(fn () => resolve(ReceiverMethodReturnResolver::class)->resolve(
+        $receiver,
+        'count',
+        new AnalysisScope(new ReflectionClass(PostStatsResource::class), Post::class),
+    ));
+
+    expect($paths)->toContain(fileOf(Comment::class));
 });
 
 it('records the value object a resource reads a public property off', function () {

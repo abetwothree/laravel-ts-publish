@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Config;
 /**
  * Shared enum FQCN/const tracking properties for transformers.
  *
- * @phpstan-type EnumPropertyFqcnInfo = array{fqcn: string, nullable: bool, isCollection?: bool}
+ * @phpstan-type EnumPropertyFqcnInfo = array{fqcn: string, nullable: bool, isCollection?: bool, alsoBare?: bool}
  * @phpstan-type EnumPropertyFqcnMap = array<array-key, EnumPropertyFqcnInfo>
  */
 trait TracksEnumImports
@@ -34,8 +34,8 @@ trait TracksEnumImports
     /**
      * Return the enum property info array for this transformer.
      *
-     * `isCollection` is only present on implementations that need to distinguish a single
-     * enum value from an enum collection (e.g. ModelTransformer); others omit the key.
+     * `isCollection` and `alsoBare` are only present on implementations that tell a single enum value from a list
+     * of it, or from a list beside it (e.g. ModelTransformer); others omit the keys.
      *
      * @return EnumPropertyFqcnMap
      */

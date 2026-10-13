@@ -32,7 +32,8 @@ use PhpParser\Node\Expr;
  *      carriedFqcns?: CarriedMap,
  *      wrapIsCollection?: bool,
  *      directIsArray?: bool,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      absentReadsNull?: bool
  * }
  *
  * @internal

@@ -18,12 +18,14 @@ final readonly class ReceiverType
      * @param  bool  $shortCircuits  a `?->` earlier in the chain can end the whole expression as null
      * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
      * @param  class-string<Model>|null  $relatedModel  set for a relation instance, such as `$post->comments()`
+     * @param  bool  $unsaved  the model may be one no row backs yet: `new`, or a `replicate()` copy
      */
     public function __construct(
         public array $classes,
         public bool $shortCircuits = false,
         public ?string $elementModel = null,
         public ?string $relatedModel = null,
+        public bool $unsaved = false,
     ) {}
 
     /**
@@ -41,7 +43,15 @@ final readonly class ReceiverType
      */
     public function withShortCircuit(bool $shortCircuits): self
     {
-        return new self($this->classes, $shortCircuits, $this->elementModel, $this->relatedModel);
+        return new self($this->classes, $shortCircuits, $this->elementModel, $this->relatedModel, $this->unsaved);
+    }
+
+    /**
+     * The same receiver marked as a model no row backs yet.
+     */
+    public function asUnsaved(): self
+    {
+        return new self($this->classes, $this->shortCircuits, $this->elementModel, $this->relatedModel, true);
     }
 
     /**

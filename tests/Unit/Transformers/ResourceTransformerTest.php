@@ -21,9 +21,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HandoverRewritten
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptConditionalListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedDepotTierSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedTierCollectionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericKeyMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
@@ -2047,6 +2050,18 @@ describe('ResourceTransformer with MediaTypeUnknownResource (no type hints)', fu
         expect($data->properties['name']['type'])->toBe('unknown');
         expect($data->properties['value']['type'])->toBe('unknown');
     });
+});
+
+describe('ResourceTransformer with a `@var` on `$resource`', function () {
+    test('names the model a `@var` gives, read through imports, then the class namespace', function (string $resource, string $model) {
+        $data = (new ResourceTransformer($resource))->data();
+
+        expect($data->modelClass)->toBe($model)
+            ->and($data->properties['title']['type'])->toBe('string');
+    })->with([
+        'a nullable shorthand' => [NullableShorthandWrappedResource::class, Post::class],
+        'a class in the resource namespace, with no import' => [SameNamespaceWrappedResource::class, SameNamespacePost::class],
+    ]);
 });
 
 describe('ResourceTransformer with AddressMixinResource and AddressExtendsResource', function () {

@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -18,19 +20,31 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClosureNamesakePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocblockFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HeldReceiversCommentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
@@ -47,8 +61,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverVarProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserListFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueDirtyOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -59,8 +75,10 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
+use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
@@ -281,7 +299,25 @@ describe('ReceiverMethodReturnResolver', function () {
             ->toBe(['type' => 'string', 'optional' => false]);
     });
 
-    test('a model toArray() declines even when it declares a precise shape', function () {
+    test('a model running Model::toArray() publishes an attribute record, where an abstract model declines', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+
+        expect($resolver->resolve(ReceiverType::of(Post::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'Record<string, unknown>', 'optional' => false])
+            ->and($resolver->resolve(ReceiverType::of(CallPathAbstractModel::class), 'toArray', receiverProbeScope()))->toBeNull();
+    });
+
+    test('a relation\'s collection lists each model\'s toArray(), an attribute record unless the model overrides it', function () {
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $collection = fn (string $model): ReceiverType => new ReceiverType([EloquentCollection::class], elementModel: $model);
+
+        expect($resolver->resolve($collection(Post::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'Record<string, unknown>[]', 'optional' => false])
+            ->and($resolver->resolve($collection(ReceiverShapedToArrayModel::class), 'toArray', receiverProbeScope()))
+            ->toBe(['type' => 'unknown[]', 'optional' => false]);
+    });
+
+    test('a model toArray() override declines even when it declares a precise shape', function () {
         $resolver = resolve(ReceiverMethodReturnResolver::class);
         $model = ReceiverType::of(ReceiverShapedToArrayModel::class);
 
@@ -289,9 +325,55 @@ describe('ReceiverMethodReturnResolver', function () {
             ->and($resolver->resolve($model, 'shape', receiverProbeScope())['type'] ?? null)->toBe('{ id: number }');
     });
 
-    test('a vague array return declines', function () {
-        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of(Post::class), 'attributesToArray', receiverProbeScope()))
-            ->toBeNull();
+    test('a vague array return declines, save the attribute record a concrete model inherits from Model', function (string $model, string $method, ?string $type) {
+        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($model), $method, receiverProbeScope())['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        [Post::class, 'attributesToArray', 'Record<string, unknown>'],
+        [User::class, 'getAttributes', 'Record<string, unknown>'],
+        [User::class, 'getDirty', 'Record<string, unknown>'],
+        [User::class, 'getChanges', 'Record<string, unknown>'],
+        [User::class, 'getPrevious', 'Record<string, unknown>'],
+        [VagueDirtyOverrideModel::class, 'getDirty', null],
+        [CallPathAbstractModel::class, 'getAttributes', null],
+    ]);
+
+    test('Model\'s own loosely declared arrays type by what they hold, where an override declines', function (string $model, string $method, ?string $type) {
+        expect(resolve(ReceiverMethodReturnResolver::class)->resolve(ReceiverType::of($model), $method, receiverProbeScope())['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        [User::class, 'getAppends', 'string[]'],
+        [User::class, 'getMutatedAttributes', 'string[]'],
+        [User::class, 'getTouchedRelations', 'string[]'],
+        [User::class, 'uniqueIds', 'string[]'],
+        [User::class, 'getQueueableRelations', 'string[]'],
+        [User::class, 'getCasts', 'Record<string, string>'],
+        [User::class, 'getGlobalScopes', 'Record<string, unknown>'],
+        [User::class, 'getRelations', 'Record<string, unknown>'],
+        [User::class, 'relationsToArray', 'Record<string, unknown>'],
+        [User::class, 'guessResourceName', 'string[]'],
+        [User::class, 'qualifyColumns', 'string[]'],
+        [User::class, 'resolveGlobalScopeAttributes', 'string[]'],
+        [User::class, 'resolveObserveAttributes', 'string[]'],
+        [User::class, 'getAllGlobalScopes', 'Record<string, Record<string, unknown>>'],
+        [User::class, 'all', 'unknown[]'],
+        [VagueDirtyOverrideModel::class, 'getCasts', null],
+        [CallPathAbstractModel::class, 'getCasts', null],
+    ]);
+
+    test('a method the model does not have is never Model\'s own, so nothing reflects it', function () {
+        $inherits = fn (string $class, string $method): bool => $this->inheritsModelMethod($class, $method);
+
+        expect($inherits->call(resolve(ReceiverMethodReturnResolver::class), User::class, 'notAModelMethod'))->toBeFalse()
+            ->and($inherits->call(resolve(ReceiverMethodReturnResolver::class), User::class, 'getCasts'))->toBeTrue();
+    });
+
+    test('an overridden toArray() publishes its declared shape through $this->resource and on a controller\'s property', function () {
+        $resource = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), ReceiverShapedToArrayModel::class);
+        $controller = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+
+        expect($resource->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])->toBe('{ id: number }')
+            ->and($controller->resolve(receiverHandlerExpr('$this->shaped->toArray()'))['type'])->toBe('{ id: number }');
     });
 });
 
@@ -763,6 +845,51 @@ describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert agains
     });
 });
 
+describe('a read on $this->prop types from the class the property holds', function () {
+    test('a column the held model does not have is unknown, where a column it has still types', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ModelWrappedPropResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a held model without the column' => ['$this->author->title', 'unknown'],
+        'a held model with the column' => ['$this->author->name', 'string'],
+        'the resource model\'s own column' => ['$this->resource->title', 'string'],
+    ]);
+
+    test('an accessor typed as one model is followed, and a to-many relation is not, in every spelling', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ModelWrappedPropResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'an accessor column' => ['$this->latestComment->content', 'string'],
+        'an accessor key' => ['$this->latestComment->id', 'number'],
+        'an accessor flag' => ['$this->resource->latestComment->is_flagged', 'boolean'],
+        'a nullsafe accessor date' => ['$this->latestComment?->created_at', 'string | null'],
+        'through the resource' => ['$this->resource->latestComment->id', 'number'],
+        'inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->latestComment->id)', 'number'],
+        'a morph-many column' => ['$this->tags->slug', 'unknown'],
+        'a has-many key' => ['$this->comments->id', 'unknown'],
+        'a to-many nullsafe' => ['$this->comments?->id', 'unknown'],
+        'a to-many inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags->slug)', 'unknown'],
+        'a to-many nullsafe inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags?->slug)', 'unknown'],
+    ]);
+
+    test('a model-less resource reading a property it does not declare is unknown', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->other->name'))['type'])->toBe('unknown');
+    });
+
+    test('inside a whenLoaded closure a read still types from the property, never from the closure relation', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a column the relation lacks' => ['$this->whenLoaded("author", fn () => $this->categoryRel->email)', 'unknown'],
+        'the same read nullsafe' => ['$this->whenLoaded("author", fn () => $this->categoryRel?->email)', 'unknown'],
+    ]);
+});
+
 describe('PropertyChainHandler declines an unknown-only chain', function () {
     test('a nullsafe chain rooted at a variable declines for the receiver handler', function () {
         expect(new PropertyChainHandler()->resolve(receiverHandlerExpr('$post?->title'), receiverPropertyScope(), chainHandlersThrowingEngine()))
@@ -959,4 +1086,235 @@ describe('narrowing', function () {
             ->and(narrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
             ->toBe([]);
     });
+});
+
+describe('getKey()', function () {
+    test('publishes the key type an abstract model declares in every spelling, where it once guessed string', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getKey()', 'number'],
+        ['$this->resource?->getKey()', 'number | null'],
+        ['$this->getKey()', 'number'],
+    ]);
+
+    test('declines in every spelling on an abstract model whose key code decides', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyTypeOverrideModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with(['$this->resource->getKey()', '$this->resource?->getKey()', '$this->getKey()']);
+
+    test('unions an abstract model\'s key type with a published subclass that keys differently', function (string $php, string $type) {
+        PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyedModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getKey()', 'number | string'],
+        ['$this->resource?->getKey()', 'number | string | null'],
+        ['$this->getKey()', 'number | string'],
+    ]);
+
+    test('adds null for a receiver no row backs yet, and keeps the bare key type for one a row backs', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['(new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+        ['(new \Workbench\App\Models\Product)->getKey()', 'string | null'],
+        ['$this->resource->replicate()->getKey()', 'number | null'],
+        ['$this->replicate()->getKey()', 'number | null'],
+        ['$this->resource->replicateQuietly()->getKey()', 'number | null'],
+        ['$this->resource->newInstance()->getKey()', 'number | null'],
+        ['$this->resource?->replicate()->getKey()', 'number | null'],
+        ['$this->resource->getKey()', 'number'],
+        ['$this->getKey()', 'number'],
+        ['$this->author->getKey()', 'number'],
+        ['$this->resource->fresh()->getKey()', 'number'],
+        ['(true ? new \Workbench\App\Models\Post : $this->resource)->getKey()', 'number | null'],
+        ['($this->resource ?? new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+    ]);
+
+    test('a local bound to a new model carries the unsaved flag to its getKey()', function (string $bound, string $type) {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $scope->localVarBindings['draft'] = receiverHandlerExpr($bound);
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope)?->unsaved)->toBeTrue()
+            ->and(resolve(ReceiverMethodReturnResolver::class)->resolve(
+                resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope),
+                'getKey',
+                $scope,
+            )['type'] ?? null)->toBe($type);
+    })->with([
+        ['new \Workbench\App\Models\Post', 'number | null'],
+        ['$this->resource->replicate()', 'number | null'],
+    ]);
+
+    // Past the write that ended its parameter binding the variable reads its local again, so the flag survives.
+    test('a parameter reassigned to a new model carries the unsaved flag past the write', function () {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $scope->varModelBindings['draft'] = User::class;
+        $scope->localVarBindings['draft'] = receiverHandlerExpr('new \Workbench\App\Models\Post');
+        $scope->bindingEnds['draft'] = 0;
+
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope))
+            ->toEqual(new ReceiverType([Post::class], unsaved: true));
+    });
+
+    test('a null key prints null once and an abstract model\'s union gains one null arm when unsaved', function () {
+        PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+        $nullKey = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $abstract = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyedModel::class);
+
+        expect($nullKey->resolve(receiverHandlerExpr('(new \\'.NullKeyPost::class.')->replicate()->getKey()'))['type'])->toBe('null')
+            ->and($abstract->resolve(receiverHandlerExpr('$this->resource->replicate()->getKey()'))['type'])->toBe('number | string | null')
+            ->and($abstract->resolve(receiverHandlerExpr('$this->replicate()->getKey()'))['type'])->toBe('number | string | null');
+    });
+
+    test('the dispatch floor no longer answers getKey()', function () {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);
+
+        expect(new KnownMethodRuleHandler()->resolve(receiverHandlerExpr('$this->resource->getKey()'), $scope, chainHandlersThrowingEngine()))
+            ->toBeNull();
+    });
+});
+
+describe('a call on $this->prop types from the class the property holds, never from the scope model', function () {
+    test('a value object a resource holds publishes its own declarations, not its model namesakes', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostStatsResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['blockers'])->toBe('{ message: string; route?: string }[]')
+            ->and($props['checks_count'])->toBe('string')
+            ->and($props['loaded_checks_count'])->toBe('string')
+            ->and($props['loaded_checks_label'])->toBe('string');
+    });
+
+    test('a relation call reads the related model, so a method only the scope model declares declines', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->author->commentsCount()', 'unknown'],
+        ['$this->author->toArray()', 'Record<string, unknown>'],
+        ['$this->resource->commentsCount()', 'number'],
+        ['$this->resource->toArray()', 'Record<string, unknown>'],
+        ['$this->comments->toArray()', 'Record<string, unknown>[]'],
+        ['$this->resource->comments->toArray()', 'Record<string, unknown>[]'],
+        ['$this->author?->toArray()', 'Record<string, unknown> | null'],
+        ['$this->comments?->toArray()', 'Record<string, unknown>[] | null'],
+        ['$this->author->attributesToArray()', 'Record<string, unknown>'],
+        ['$this->author->getAttributes()', 'Record<string, unknown>'],
+        ['$this->author->getDirty()', 'Record<string, unknown>'],
+        ['$this->author->getAppends()', 'string[]'],
+        ['$this->author->getMutatedAttributes()', 'string[]'],
+        ['$this->author->getTouchedRelations()', 'string[]'],
+        ['$this->author->uniqueIds()', 'string[]'],
+        ['$this->author->getQueueableRelations()', 'string[]'],
+        ['$this->author->getCasts()', 'Record<string, string>'],
+        ['$this->author->getGlobalScopes()', 'Record<string, unknown>'],
+        ['$this->author->getRelations()', 'Record<string, unknown>'],
+        ['$this->author->relationsToArray()', 'Record<string, unknown>'],
+        ['$this->author->guessResourceName()', 'string[]'],
+        ['$this->author->qualifyColumns([\'id\'])', 'string[]'],
+        ['$this->author->resolveGlobalScopeAttributes()', 'string[]'],
+        ['$this->author->resolveObserveAttributes()', 'string[]'],
+        ['$this->author->getAllGlobalScopes()', 'Record<string, Record<string, unknown>>'],
+        ['$this->author->all()', 'unknown[]'],
+        ['$this->author?->getCasts()', 'Record<string, string> | null'],
+        ['$this->resource->getCasts()', 'Record<string, string>'],
+        ['$this->resource->getAppends()', 'string[]'],
+        ['$this->getCasts()', 'Record<string, string>'],
+        ['$this::getAppends()', 'string[]'],
+        ['$this::all()', 'unknown[]'],
+        ['$this::getCasts()', 'Record<string, string>'],
+        ['$this->resource::getAppends()', 'string[]'],
+        ['$this->resource::all()', 'unknown[]'],
+        ['$this->resource::getCasts()', 'Record<string, string>'],
+        ['$this->comments?->all()', 'unknown[] | null'],
+    ]);
+
+    test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostStatsResource::class), ClosureNamesakePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->published_at?->format(\'Y\'))', 'string | null'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->published_at->format(\'Y\'))', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->checks->commentsCount())', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->checks::label())', 'string'],
+        ['$this->whenLoaded(\'namesakeAuthor\', fn () => $this->namesakeAuthor?->format())', 'number | null'],
+    ]);
+
+    test('a model-less scope types a filter on a held model by the receiver rules', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostReceiverController::class), null, '__construct', ControllerExpressionHandlers::make());
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->post->except($keys)', 'Record<string, unknown>'],
+        ['$this->post->only([\'id\', \'title\'])', "Pick<Post, 'id' | 'title'>"],
+        ['$this->checks->toArray()', '{ message: string; route?: string }[]'],
+        ['$this->post->commentsCount()', 'number'],
+        ['$this->post->toArray()', 'Record<string, unknown>'],
+        ['$this->formatter->title()', 'string'],
+        // PHP calls no protected method from outside the class, so the read declines.
+        ['$this->formatter->heading()', 'unknown'],
+    ]);
+
+    test('a resource types a property it holds from that class, nullable or not, and never from its own model', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(HeldReceiversCommentResource::class), Comment::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->checks?->toArray()', '{ message: string; route?: string }[] | null'],
+        ['$this->other->commentsCount()', 'number'],
+        ['$this->other->only([\'id\'])', "Pick<Post, 'id'>"],
+        ['$this->other->toArray()', 'Record<string, unknown>'],
+    ]);
+});
+
+describe('$this->resource->m() publishes what the bare $this->m() does', function () {
+    test('a vague array helper types from its body in every spelling, a trait\'s included', function (string $method, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), ClosureNamesakePost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource->'.$method.'()'))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->'.$method.'()'))['type'])->toBe($type)
+            ->and($analyzer->resolve(receiverHandlerExpr('$this->resource?->'.$method.'()'))['type'])->toBe($type.' | null');
+    })->with([
+        ['meta', '{ a: number; b: string }'],
+        ['traitMeta', '{ c: boolean; d: number }'],
+    ]);
+
+    test('the workbench summary publishes the same shape through the proxy', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(CommentRelationFiltersResource::class), Comment::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['summary_via_resource'])->toBe($props['summary'])
+            ->and($props['summary'])->toStartWith('{ id: number;');
+    });
+});
+
+describe('a forwarded model method reads the same in every spelling', function () {
+    $spellings = ['$this->%s()', '$this::%s()', '$this->resource::%s()', '$this->resource->%s()'];
+
+    test('the wrapped class answers when it declares the method, else the model does', function (string $method, string $type) use ($spellings) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
+
+        foreach ($spellings as $spelling) {
+            expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe($type);
+        }
+    })->with([
+        ['onBoth', 'number'],
+        ['onWrapped', 'boolean'],
+        ['onModel', 'string'],
+    ]);
+
+    test('a protected method declines, as PHP sends it to __call', function (string $method) use ($spellings) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
+
+        foreach ($spellings as $spelling) {
+            expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe('unknown');
+        }
+    })->with(['guarded', 'hiddenOnWrapped']);
 });

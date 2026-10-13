@@ -10,6 +10,7 @@ export * from './MixedTypesEvent';
 export * from './MultiModelEvent';
 export * from './OrderShipped';
 export * from './PayloadDiffersEvent';
+export * from './PostHelperPayloadEvent';
 export * from './PostPublishedEvent';
 export * from './PostStatusBroadcast';
 export * from './PureEnumEvent';

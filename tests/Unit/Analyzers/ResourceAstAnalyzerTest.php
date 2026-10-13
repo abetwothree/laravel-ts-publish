@@ -17,25 +17,31 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCas
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceReshapedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastNoImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadDeclinesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
@@ -48,6 +54,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCol
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
@@ -76,6 +83,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingRe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
@@ -150,6 +159,7 @@ use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
 use Workbench\App\Http\Resources\LedgerCollection;
 use Workbench\App\Http\Resources\LedgerResource;
+use Workbench\App\Http\Resources\LocalVarByReferenceResource;
 use Workbench\App\Http\Resources\LocalVarGuardClauseResource;
 use Workbench\App\Http\Resources\LocalVarReassignResource;
 use Workbench\App\Http\Resources\LocalVarRecursionResource;
@@ -5586,7 +5596,8 @@ describe('helper and receiver method inference', function () {
         expect($this->props['to_immutable']['type'])->toBe('string');
     });
 
-    // Resources leave `$request` unbound (resolveRequestVarNames()), so `$request->user()` names no receiver model.
+    // An API resource leaves `$request` out of requestVarNames (ParameterBinder::bindCall()), so `$request->user()`
+    // names no receiver model.
     test('getKey() on an unbound request user stays unknown', function () {
         expect($this->props['user_key']['type'])->toBe('unknown');
     });
@@ -5621,7 +5632,9 @@ describe('local variable bindings', function () {
         expect($props['mapped_members']['type'])->toBe('User[]')
             ->and($props['loaded_owner']['type'])->toBe('User')
             // The shadowing closure param no longer suppresses the outer $member local's own binding.
-            ->and($props['outer_member']['type'])->toBe('string');
+            ->and($props['outer_member']['type'])->toBe('string')
+            // Nor does a closure's write to its own same-named parameter.
+            ->and($props['shadowed']['type'])->toBe('string');
     });
 
     // Guards the regression narrowing collectWrittenVariableNames() alone would introduce: with no
@@ -7013,7 +7026,23 @@ test('a spread helper\'s `@return` publishes its literal types, and each union a
     'two arms typed alike' => ['amount', 'number'],
     'a name no class answers to' => ['custom', 'CustomObject'],
     'a class the shape cannot import' => ['text', 'unknown'],
+    'a quoted key spaced before its optional marker' => ['quoted-key', "'a' | 'b'"],
 ]);
+
+test('a helper declaring a list shape publishes the tuple, whether or not the resource preserves keys', function (string $resource) {
+    $props = collect(resolve(AstEngine::class)->analyze($resource, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['pair']['type'])->toBe('[number, string]');
+})->with([
+    'a re-indexing resource' => [DeclaredTupleHelperResource::class],
+    'a resource that preserves keys' => [KeptDeclaredTupleHelperResource::class],
+]);
+
+test('a call whose `@return` is conditional keeps its first-token reading', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(DeclaredTupleHelperResource::class, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['title_first']['type'])->toBe('string');
+});
 
 test('toArray()\'s own `@return` types its literals but never ships a class name its file does not import', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DocShapePostResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -7271,3 +7300,270 @@ test('a variable built from + is read whole beside a literal return, so only the
         ->and($optional['title'])->toBeTrue()
         ->and($optional['extra'])->toBeTrue();
 });
+
+/**
+ * Each analyzed key of a resource as its type, the name suffixed with `?` when the key is optional.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function resourceKeyTypes(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('keeps a key optional when a MissingValue can pass through ??, a when*() default, a ternary or a match', function () {
+    expect(resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class))->toMatchArray([
+        'local_loaded_coalesce?' => 'User | string',
+        'declared_coalesce?' => 'User | string',
+        'local_when_coalesce?' => 'string',
+        'local_has_coalesce?' => 'string',
+        'direct_coalesce?' => 'User | string',
+        'coalesce_right_missing' => 'string | User',
+        'null_left_coalesce?' => 'User',
+        'when_wrap?' => 'User',
+        'when_wrap_default?' => 'User | string',
+        'when_true_default?' => 'User | string',
+        'unless_wrap_default?' => 'User | string',
+        'when_missing_default?' => 'string | User',
+        'when_closure_default?' => 'User | string',
+        'when_local_default?' => 'User | string',
+        'when_not_null_default?' => 'User | string',
+        'nested' => '{ inner?: User }',
+        'nested_coalesce' => '{ inner?: User | string }',
+        'ternary?' => 'User | string',
+        'match?' => 'User | string',
+        'kept' => 'number',
+    ]);
+});
+
+it('publishes required only keys that Laravel sends over an unloaded relation', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Hello']);
+    $sent = [
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '0'])),
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])),
+    ];
+
+    foreach (resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class) as $key => $type) {
+        if (! str_ends_with($key, '?') && ! in_array($key, ['nested', 'nested_coalesce'], true)) {
+            expect($sent)->toHaveKey($key);
+        }
+    }
+
+    $post->setRelation('author', new User);
+
+    expect(new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])))
+        ->toHaveKey('when_wrap_default');
+});
+
+// Laravel sends none of the types these locals held before the rewrite; `shadowed`'s closure writes only its parameter.
+it('unbinds a local a catch, a by-reference argument, unset(), static or global rewrites', function () {
+    expect(resourceKeyTypes(UnseenWritesResource::class, Post::class))->toBe([
+        'caught' => 'unknown',
+        'declared_caught' => 'unknown',
+        'matches' => 'unknown',
+        'sorted' => 'unknown',
+        'static_filled' => 'unknown',
+        'instance_filled' => 'unknown',
+        'gone' => 'null',
+        'counter' => 'unknown',
+        'glob' => 'unknown',
+        'by_ref_loop' => 'unknown',
+        'shadowed' => 'string',
+        'doubled' => 'number[]',
+        'arrow_shadowed' => 'string',
+        'mapped' => 'number[]',
+        'key' => 'string',
+        'field' => 'string',
+        'items' => 'number[]',
+        'author' => 'User',
+    ]);
+});
+
+/**
+ * Each property an API resource publishes, as `name => type`, `?` marking an optional key, with the numeric-keyed
+ * arrays re-indexed into the lists the resource sends.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function publishedResourceKeyTypes(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze($resource, 'toArray', $model)->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
+    expect(publishedResourceKeyTypes(LocalVarByReferenceResource::class, Post::class)[$key] ?? null)->toBe($type);
+})->with([
+    'sort() of a list' => ['sorted', 'string[]'],
+    'rsort() of a list' => ['reversed', 'number[]'],
+    'usort() of a list' => ['user_sorted', 'string[]'],
+    'sort() of a plucked list' => ['plucked', 'string[]'],
+    'ksort() of an object' => ['key_sorted', '{ b: number; a: number }'],
+    'ksort() of a list' => ['key_sorted_list', 'string[]'],
+    'uksort() of an object' => ['user_key_sorted', '{ b: number; a: number }'],
+    'krsort() of an object' => ['reverse_key_sorted', '{ a: number; b: number }'],
+    'asort() of an object' => ['value_sorted', '{ b: number; a: number }'],
+    'arsort() of an object' => ['reverse_value_sorted', '{ a: number; b: number }'],
+    'uasort() of an object' => ['user_value_sorted', '{ b: number; a: number }'],
+    'natsort() of an object' => ['natural_sorted', '{ b: string; a: string }'],
+    'natcasesort() of an object' => ['natural_case_sorted', '{ b: string; a: string }'],
+    'str_replace()\'s count' => ['replaced_count', 'number'],
+    'str_ireplace()\'s count' => ['case_replaced_count', 'number'],
+    'preg_replace()\'s count' => ['pattern_count', 'number'],
+    'preg_replace_callback()\'s count' => ['callback_count', 'number'],
+    'array_push() of the element type' => ['pushed', 'string[]'],
+    'array_unshift() of the element type' => ['unshifted', 'string[]'],
+    'array_walk() incrementing each element' => ['walked', '{ x: number }'],
+    'array_walk() writing the element type' => ['walked_list', 'string[]'],
+    'array_walk() by value' => ['read_only_walk', '{ b: number }'],
+    'array_walk_recursive() incrementing each leaf' => ['walked_nested', '{ a: { b: number } }'],
+    'sort() of a list member' => ['sorted_member', '{ x: number[] }'],
+    'sort() of a nested list member' => ['nested_sorted_member', '{ x: { y: number[] } }'],
+    'ksort() of an object member' => ['key_sorted_member', '{ x: { b: number; a: number } }'],
+    'a by-reference foreach writing the element type' => ['looped', 'string[]'],
+    'array_pop() of a list' => ['popped', 'string[]'],
+    'array_shift() of a list' => ['shifted', 'string[]'],
+    'array_splice() of a list with its element type' => ['spliced', 'string[]'],
+    'asort() of a list, which the resource re-indexes' => ['value_sorted_list', 'string[]'],
+    'asort() of a list member, which the resource re-indexes' => ['value_sorted_member', '{ x: string[] }'],
+    'asort() of a list member beside a collection, which keeps its keys' => ['mixed_member', '{ x: string[]; c: { "3": string } }'],
+    'asort() of a docblock tuple, re-indexed in sorted order' => ['sorted_tuple', '(string | number)[]'],
+    'array_walk() writing each key' => ['walked_keys', '{ a: string }'],
+    'array_walk() reading an import' => ['walked_import', 'string[]'],
+    'a by-reference foreach whose element is written only before it' => ['pre_written_loop', 'string[]'],
+    'array_walk() appending to each string' => ['concat_walked', 'string[]'],
+    'array_walk() adding to each number' => ['plus_walked', 'number[]'],
+    'a copy taken before sort() reshapes the original' => ['copied_before_sort', '{ k: number }'],
+    'a copy taken after sort() of a list' => ['list_copied_after_sort', 'string[]'],
+]);
+
+it('sends the type a local a by-reference built-in keeps publishes', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $comment = new Comment;
+    $comment->forceFill(['content' => 'x']);
+    $post->setRelation('comments', new EloquentCollection([$comment]));
+
+    $sent = json_decode((string) json_encode(new LocalVarByReferenceResource($post)->resolve(Request::create('/'))), true);
+
+    expect(json_encode($sent))->toBe(json_encode([
+        'sorted' => ['a', 'b'],
+        'reversed' => [3, 2, 1],
+        'user_sorted' => ['a', 'b'],
+        'plucked' => ['x'],
+        'key_sorted' => ['a' => 2, 'b' => 1],
+        'key_sorted_list' => ['b', 'a'],
+        'user_key_sorted' => ['a' => 2, 'b' => 1],
+        'reverse_key_sorted' => ['b' => 2, 'a' => 1],
+        'value_sorted' => ['a' => 1, 'b' => 2],
+        'reverse_value_sorted' => ['b' => 2, 'a' => 1],
+        'user_value_sorted' => ['a' => 1, 'b' => 2],
+        'natural_sorted' => ['a' => 'img10', 'b' => 'img12'],
+        'natural_case_sorted' => ['a' => 'img10', 'b' => 'IMG12'],
+        'replaced_count' => 3,
+        'case_replaced_count' => 3,
+        'pattern_count' => 3,
+        'callback_count' => 3,
+        'pushed' => ['a', 'b'],
+        'unshifted' => ['a', 'b'],
+        'walked' => ['x' => 2],
+        'walked_list' => ['A', 'B'],
+        'read_only_walk' => ['b' => 1],
+        'walked_nested' => ['a' => ['b' => 2]],
+        'sorted_member' => ['x' => [1, 3]],
+        'nested_sorted_member' => ['x' => ['y' => [1, 2]]],
+        'key_sorted_member' => ['x' => ['a' => 2, 'b' => 1]],
+        'looped' => ['a', 'b'],
+        'popped' => ['a'],
+        'shifted' => ['b'],
+        'spliced' => ['a', 'z'],
+        'value_sorted_list' => ['a', 'b'],
+        'value_sorted_member' => ['x' => ['a', 'b']],
+        'mixed_member' => ['x' => ['a', 'b'], 'c' => [3 => 'a']],
+        'sorted_tuple' => [1, 'b'],
+        'walked_keys' => ['a' => 'a'],
+        'walked_import' => ['!', '!'],
+        'pre_written_loop' => ['a', 'b'],
+        'concat_walked' => ['a!', 'b!'],
+        'plus_walked' => [2, 3],
+        'copied_before_sort' => ['k' => 1],
+        'list_copied_after_sort' => ['a', 'b'],
+    ]));
+});
+
+// O7: Laravel sends none of the types these locals were bound to, so each reads unknown but the contrasts. A resource
+// re-indexes a list a key-keeping sort reorders; shuffle() keeps a list, out of the workbench by preset.
+it('leaves unknown a local a by-reference built-in reshapes, or writes with a value the scan cannot follow', function () {
+    expect(publishedResourceKeyTypes(ByReferenceReshapedResource::class, Post::class))->toBe([
+        'object_sorted' => 'unknown',
+        'list_value_sorted' => 'string[]',
+        'list_reverse_key_sorted' => 'string[]',
+        'pushed_other' => 'unknown',
+        'pushed_object' => 'unknown',
+        'pushed_unpacked' => 'unknown',
+        'counted_string' => 'unknown',
+        'walked_other' => 'unknown',
+        'walked_key' => 'unknown',
+        'walked_named' => 'unknown',
+        'looped_other' => 'unknown',
+        'matched' => 'unknown',
+        'object_member_sorted' => 'unknown',
+        'dynamic_member_sorted' => 'unknown',
+        'walked_nested_other' => 'unknown',
+        'popped_object' => 'unknown',
+        'labels_by_key' => 'unknown',
+        'words_by_local' => 'unknown',
+        'post_written_loop' => 'unknown',
+        'round_written_loop' => 'unknown',
+        'copied_after_sort' => 'unknown',
+        'concat_numbers' => 'unknown',
+        // Known gap: a Collection the response never re-indexes sends the sorted list keyed, as an object.
+        'collected_sorted' => 'string[]',
+        'bitwise' => 'unknown',
+        'shifted' => 'unknown',
+        'kept_list' => 'string[]',
+        'key' => 'string',
+        'tmp' => 'string',
+        'shuffled' => 'number[]',
+    ]);
+});
+
+it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
+    expect(resourceKeyTypes(ReceiverOnlySpreadResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'name' => 'string',
+        'email' => 'string',
+        'nested' => "Omit<Pick<User, 'id'>, 'x'> & { x: number }",
+    ]);
+});
+
+it('a top-level only() spread flattens nothing on a receiver that holds no one concrete model', function (string $method, string $model) {
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze(ReceiverOnlySpreadDeclinesResource::class, $method, $model)->properties as $property) {
+        $keys[$property['name']] = $property['type'];
+    }
+
+    expect($keys)->toBe(['x' => 'number']);
+})->with([
+    'a nullsafe call' => ['nullsafe', Post::class],
+    'a morphTo relation' => ['morphed', Image::class],
+    'a to-many relation' => ['toMany', Post::class],
+    'an abstract model' => ['abstractModel', Post::class],
+]);

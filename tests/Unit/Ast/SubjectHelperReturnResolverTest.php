@@ -4,19 +4,25 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Enums\WeekDays;
@@ -102,6 +108,20 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     {
         return new JsonResource($this->resource);
     }
+
+    /**
+     * The latest status of the team the container holds, once a guard proves it is one, else null.
+     */
+    public function guardedStatusResource(): ?EnumResource
+    {
+        $team = app('team');
+
+        if (! $team instanceof Team) {
+            return null;
+        }
+
+        return EnumResource::make($team->latest_status);
+    }
 }
 
 /**
@@ -119,6 +139,12 @@ function subjectHelperReturnThrowingEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -194,6 +220,27 @@ it('reads a helper on the subject\'s own model, and the collection it wraps', fu
     'a collection' => ['statusHistoryResource', ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class]],
     'two enums, one per return' => ['statusOrWeekDaysResource', ['type' => 'StatusType | WeekDaysType[] | null', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, WeekDays::class]]],
 ]);
+
+// The helper's body is seeded as any method body is: its guards narrow, and a Request parameter binds as a request.
+it('reads a helper\'s body with its guards, and with its request parameter outside an API resource', function (MethodCall|string $call, string $subject, array $expected) {
+    expect(subjectHelperReturn($call, $subject, Team::class)[0])->toBe($expected);
+})->with([
+    'an early-exit instanceof guard' => [
+        'guardedStatusResource',
+        SubjectHelperReturnProbeResource::class,
+        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class],
+    ],
+    'a broadcast event\'s Request parameter' => [
+        new MethodCall(new Variable('this'), 'roleOf', [new Arg(new FuncCall(new Name('request')))]),
+        RequestRoleHelperEvent::class,
+        ['type' => 'RoleType | null', 'optional' => false, 'enumFqcn' => Role::class],
+    ],
+]);
+
+it('publishes a broadcast event\'s helper that wraps what its request reads', function () {
+    expect(resolve(AstEngine::class)->analyze(RequestRoleHelperEvent::class, 'broadcastWith')->properties)
+        ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | null', 'optional' => false, 'description' => '']]);
+});
 
 it('never reads a call or a body the rule leaves alone', function (MethodCall|string $call) {
     expect(subjectHelperReturn($call, SubjectHelperReturnProbeResource::class, Team::class, subjectHelperReturnThrowingEngine())[0])

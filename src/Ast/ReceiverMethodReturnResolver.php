@@ -36,11 +36,34 @@ final class ReceiverMethodReturnResolver
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
 
     /**
+     * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
+     * row of the class, each serialized as the loaded relations decide.
+     */
+    private const array MODEL_ARRAY_RETURNS = [
+        'getAppends' => 'string[]',
+        'getMutatedAttributes' => 'string[]',
+        'getTouchedRelations' => 'string[]',
+        'uniqueIds' => 'string[]',
+        'getQueueableRelations' => 'string[]',
+        'guessResourceName' => 'string[]',
+        'qualifyColumns' => 'string[]',
+        'resolveGlobalScopeAttributes' => 'string[]',
+        'resolveObserveAttributes' => 'string[]',
+        'getCasts' => 'Record<string, string>',
+        'getGlobalScopes' => 'Record<string, unknown>',
+        'getRelations' => 'Record<string, unknown>',
+        'relationsToArray' => 'Record<string, unknown>',
+        'getAllGlobalScopes' => 'Record<string, Record<string, unknown>>',
+        'all' => 'unknown[]',
+    ];
+
+    /**
      * Type a method on every class the receiver holds, unioning the answers.
      *
      * @param  bool  $fromInside  a non-public method is reachable, as through `self::`, `static::` or `parent::`; only
      *                            a direct caller passes it: StaticCallHandler answers every named-class call first
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call node, for a rule that reads its arguments
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null null when any receiver class cannot type the method
      */
     public function resolve(
@@ -49,13 +72,19 @@ final class ReceiverMethodReturnResolver
         AnalysisScope $scope,
         bool $fromInside = false,
         MethodCall|NullsafeMethodCall|StaticCall|null $call = null,
+        ?CallSite $site = null,
     ): ?array {
         $results = [];
+
+        if ($receiver->elementModel !== null) {
+            DependencyRecorder::recordClass($receiver->elementModel);
+        }
 
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
-            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call) ?? $this->resolveOn($class, $methodName, $fromInside);
+            $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
+                ?? $this->resolveOn($class, $methodName, $fromInside, $site);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
             if ($result === null) {
@@ -89,6 +118,32 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * The one Eloquent model a receiver holds when every class it holds is that model; null otherwise.
+     *
+     * @return class-string<Model>|null
+     */
+    public function singleModel(ReceiverType $receiver): ?string
+    {
+        $models = $receiver->models();
+
+        return count($models) === 1 && $models === $receiver->classes ? $models[0] : null;
+    }
+
+    /**
+     * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
+     *
+     * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
+     *
+     * @param  class-string  $class
+     */
+    public function typesModelMethod(string $class, string $methodName): bool
+    {
+        DependencyRecorder::recordClass($class);
+
+        return ($methodName === 'toArray' || isset(self::MODEL_ARRAY_RETURNS[$methodName])) && $this->runsModelMethod($class, $methodName);
+    }
+
+    /**
      * Convention rules that need the receiver's model rather than a reflected signature.
      *
      * @param  class-string  $class
@@ -103,10 +158,13 @@ final class ReceiverMethodReturnResolver
     ): ?array {
         $resolver = resolve(ModelAttributeResolver::class);
 
-        if ($methodName === 'getKey' && $this->runsModelMethod($class, $methodName)) {
+        // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
+        if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
             $keyType = $resolver->keyTsType($class);
 
-            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType];
+            return $keyType === null
+                ? null
+                : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? ValueResult::withNullArm($keyType) : $keyType];
         }
 
         // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
@@ -119,7 +177,23 @@ final class ReceiverMethodReturnResolver
         if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
             $keyType = $resolver->keyTsType($receiver->elementModel);
 
-            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $keyType.'[]'];
+            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($keyType)];
+        }
+
+        // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
+        if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
+            return $this->attributeRecordResult(nullable: false);
+        }
+
+        if (isset(self::MODEL_ARRAY_RETURNS[$methodName]) && $this->runsModelMethod($class, $methodName)) {
+            return [...ValueResult::unknown(), 'type' => self::MODEL_ARRAY_RETURNS[$methodName]];
+        }
+
+        // A relation's collection is keyed 0..n-1, so it lists what each model's own toArray() writes.
+        if ($methodName === 'toArray' && $receiver->elementModel !== null) {
+            $element = $this->runsModelMethod($receiver->elementModel, $methodName) ? 'Record<string, unknown>' : 'unknown';
+
+            return [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($element)];
         }
 
         if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
@@ -150,9 +224,9 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $models = $receiver->models();
+        $model = $this->singleModel($receiver);
 
-        if (count($models) !== 1 || $models !== $receiver->classes) {
+        if ($model === null) {
             return null;
         }
 
@@ -162,7 +236,7 @@ final class ReceiverMethodReturnResolver
             return $this->attributeRecordResult(nullable: false);
         }
 
-        $result = $this->literalKeyFilterResult($models[0], $keys, $methodName === 'only', $scope->carriesImports);
+        $result = $this->literalKeyFilterResult($model, $keys, $methodName === 'only', $scope->carriesImports);
 
         // Model::only() keys a name it cannot find to null, so the value is still an attribute-keyed array.
         if ($result === null) {
@@ -246,8 +320,18 @@ final class ReceiverMethodReturnResolver
      */
     private function runsModelMethod(string $class, string $methodName): bool
     {
-        return is_a($class, Model::class, true)
-            && ! new ReflectionClass($class)->isAbstract()
+        return $this->inheritsModelMethod($class, $methodName) && ! new ReflectionClass($class)->isAbstract();
+    }
+
+    /**
+     * Whether a model class, abstract or not, inherits Model's own declaration of a method; `Model` itself does not.
+     *
+     * @param  class-string  $class
+     */
+    private function inheritsModelMethod(string $class, string $methodName): bool
+    {
+        return is_subclass_of($class, Model::class)
+            && method_exists($class, $methodName)
             && new ReflectionMethod($class, $methodName)->getDeclaringClass()->getName() === Model::class;
     }
 
@@ -257,7 +341,7 @@ final class ReceiverMethodReturnResolver
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function resolveOn(string $class, string $methodName, bool $fromInside): ?array
+    private function resolveOn(string $class, string $methodName, bool $fromInside, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName)) {
             return null;
@@ -277,10 +361,13 @@ final class ReceiverMethodReturnResolver
 
         $result = resolve(ReceiverClassResolver::class)->returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
-            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
 
         // A vague `unknown[]` claims a list where an associative array or a keyBy() collection is a JSON object.
-        if ($result === null || TsTypeString::isVagueTsType($result['type'])) {
+        // Model's own `array<string, mixed>`, such as getDirty()'s, is keyed by attribute name, so its record stands.
+        $modelRecord = $result !== null && $result['type'] === 'Record<string, unknown>' && $this->runsModelMethod($class, $methodName);
+
+        if ($result === null || (TsTypeString::isVagueTsType($result['type']) && ! $modelRecord)) {
             return null;
         }
 

@@ -197,8 +197,9 @@ the class that wrote the shape. A definition spanning several docblock lines is 
 brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias give `unknown`.
 
 The alias resolves against its defining class's imports and namespace, not the referencing class's.
-`resolveDocblockTypePartOrAlias()` expands a hit through the plain pipeline, never alias-aware again, so two local
-aliases naming each other cannot recurse outside the `$seen` guard. A nullable `?Alias` resolves the bare name and then
+An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
+property's `@var`, against the class whose docblock is read; one already being expanded, as in
+`@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
 appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
 `filters?:`.
 
@@ -235,6 +236,9 @@ a `selectRaw()` column a resource reads. It first tries the snake_case accessor 
 relation suffixes. It skips a relation name, because an ide-helper tag on a relation ignores relation nullability and
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
+
+A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
+`null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
 
 ## MorphTo targets
 
@@ -331,13 +335,22 @@ in tests.
 
 ## Laravel 13 model attributes need instance reads
 
-Laravel 13's `#[Table]`, `#[Connection]`, `#[Hidden]`, `#[Visible]` and `#[Appends]` need no code here. Laravel
-applies them in `Model::__construct()`, and the package reads the results through instance calls: `getTable()`,
-`getConnection()` and `getAppends()` in `ModelTransformer::initInstance()` and `databaseColumnNames()`, and
-`attributeIsHidden()` on the instance the inspector makes. A refactor that reads these attributes through
-`ReflectionClass::getAttributes()` would break all five, and the failing `ModelTransformerTest` cases would not point
-back here. Keep the reads on an instance. The test-only version guards they need, and why the workbench fixtures may
-still `use`-import them, are in [Version-guarded Laravel classes](../laravel-version-guards.md).
+Laravel 13's `#[Table]`, `#[Connection]`, `#[Hidden]`, `#[Visible]` and `#[Appends]` need no code here, but the key read
+in [Key types](#key-types). Laravel applies them in `Model::__construct()`, and the package reads the results through
+instance calls: `getTable()`, `getConnection()` and `getAppends()` in `ModelTransformer::initInstance()` and
+`databaseColumnNames()`, and `attributeIsHidden()` on the instance the inspector makes. A refactor that reads these
+attributes through `ReflectionClass::getAttributes()` would break all five, and the failing `ModelTransformerTest` cases
+would not point back here. Keep the reads on an instance. The test-only version guards they need, and why the workbench
+fixtures may still `use`-import them, are in [Version-guarded Laravel classes](../laravel-version-guards.md).
+
+## Key types
+
+`keyTsType()` reads a model's key type from its instance, built without its table when that cannot be read. With no
+instance at all, `declaredKeyTsType()` reads `$primaryKey`, `$keyType`, Laravel 13's `#[Table]` and
+`HasUuids`/`HasUlids` from the class, and declines where code decides the key. For an abstract model,
+`subclassKeyTsType()` unions in each published concrete subclass's type and records every published model, since any of
+them could become a subclass. `tableKeyDeclaration()` is the one place `#[Table]` is read through reflection, because no
+constructor runs there.
 
 ## A missing table is reported, not guessed
 

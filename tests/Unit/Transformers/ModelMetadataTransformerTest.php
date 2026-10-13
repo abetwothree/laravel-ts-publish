@@ -522,7 +522,17 @@ test('spells a list member by the object literal key its type declares', functio
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
-    expect($data->propertyTypes['tuple'])->toBe('{ 0: Record<string, number>; 1: number[] }')
+    expect($data->propertyTypes['numeric_keys'])->toBe('{ 1: number[]; 0: Record<string, number> }')
+        ->and($data->properties['numeric_keys'][0])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['numeric_keys'][1])->toBe([]);
+});
+
+test('spells a tuple member by the type at its position', function () {
+    config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes['tuple'])->toBe('[Record<string, number>, number[]]')
         ->and($data->properties['tuple'][0])->toBeInstanceOf(stdClass::class)
         ->and($data->properties['tuple'][1])->toBe([]);
 });

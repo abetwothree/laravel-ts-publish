@@ -95,7 +95,8 @@ final class KnownMethodRuleHandler implements ExpressionHandler
         if (! $expr->name instanceof Identifier
             || ! $expr->var instanceof Variable
             || ! is_string($expr->var->name)
-            || ! isset($scope->requestVarNames[$expr->var->name])) {
+            || ! isset($scope->requestVarNames[$expr->var->name])
+            || ! $scope->holdsBinding($expr->var)) {
             return null;
         }
 
@@ -195,9 +196,12 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // The request's own interface renders the override and then appends ` | null` from the rule,
         // so the suffix stays outside the override here too.
+        $optional = $casts['optionalOverrides'][$key] ?? ! $field->isRequired;
+
         return [
             'type' => $type.($field->isNullable ? ' | null' : ''),
-            'optional' => $casts['optionalOverrides'][$key] ?? ! $field->isRequired,
+            'optional' => $optional,
+            ...($optional ? ['absentReadsNull' => true] : []),
             ...($customImports !== [] ? ['customImports' => $customImports] : []),
         ];
     }

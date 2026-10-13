@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -70,11 +71,15 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
+        $scope->varDeclaredBindings[$name] = [User::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
+        $scope->bindingEnds[$name] = 0;
+        $scope->bindingGaps[$name] = [[5, 9, null, false]];
     }
 
     return $scope;
@@ -123,24 +128,199 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });
 
-// A proof spells the read it proves, `$item` here, so it never holds for a read of another name.
-it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs', function () {
+// A proof spells the read it proves, `$item` here, so it never holds for a read of another name, and a binding's end
+// is an offset in the caller's body, which the parameter's body never reaches.
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs, ends and gaps', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
-    $scope->copyBindings('item', 'param', $captured);
+    $scope->copyBindings(new Variable('item'), 'param', $captured);
 
-    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true])))->each->toBe(['param'])
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true, 'bindingGaps' => true])))->each->toBe(['param'])
         ->and($scope->nonNullReads)->toBe([])
+        ->and($scope->bindingEnds)->toBe([])
+        ->and($scope->bindingGaps)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
         ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
         ->and($scope->varDocBindings['param'])->toBe($captured['varDocBindings']['item'])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
+        ->and($scope->varDeclaredBindings['param'])->toBe([User::class])
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
+        ->and($scope->byReferenceForms['param'])->toBe($captured['byReferenceForms']['item'])
         ->and($scope->requestVarNames['param'])->toBe(Request::class);
+});
+
+it('holds a binding for a read up to its end, and always for a name with no end or a variable with no name', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->bindingEnds['post'] = 10;
+    $at = fn (string $name, int $offset): Variable => new Variable($name, ['startFilePos' => $offset]);
+
+    expect($scope->holdsBinding($at('post', 10)))->toBeTrue()
+        ->and($scope->holdsBinding($at('post', 11)))->toBeFalse()
+        ->and($scope->holdsBinding(new Variable('post')))->toBeTrue()
+        ->and($scope->holdsBinding($at('other', 11)))->toBeTrue()
+        ->and($scope->holdsBinding(new Variable(new Variable('post'), ['startFilePos' => 11])))->toBeTrue();
+});
+
+it('holds no binding inside a gap, and holds it again past the gap', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->bindingGaps['post'] = [[10, 20, null, false]];
+    $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
+
+    expect($scope->holdsBinding($at(10)))->toBeTrue()
+        ->and($scope->holdsBinding($at(11)))->toBeFalse()
+        ->and($scope->holdsBinding($at(20)))->toBeFalse()
+        ->and($scope->holdsBinding($at(21)))->toBeTrue();
+});
+
+it('finds the gap a read falls in, the one whose write came latest', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $first = [10, 30, [new Variable('first')], false];
+    $second = [20, 30, [new Variable('second')], true];
+    $third = [40, 50, null, false];
+    $scope->bindingGaps['post'] = [$first, $second, $third];
+    $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
+
+    expect($scope->gapAt($at(15)))->toBe($first)
+        ->and($scope->gapAt($at(25)))->toBe($second)
+        ->and($scope->gapAt($at(45)))->toBe($third)
+        ->and($scope->gapAt($at(35)))->toBeNull();
+});
+
+it('lifts one gap for a read, and puts it back', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $lifted = [10, 30, null, true];
+    $kept = [40, 50, null, false];
+    $scope->bindingGaps['post'] = [$lifted, $kept];
+
+    $during = $scope->beforeGap('post', $lifted, fn (): array => $scope->bindingGaps);
+
+    expect($during)->toBe(['post' => [$kept]])
+        ->and($scope->bindingGaps)->toBe(['post' => [$lifted, $kept]])
+        ->and($scope->beforeGap('post', $kept, fn (): bool => $scope->holdsBinding(new Variable('post', ['startFilePos' => 45]))))
+        ->toBeTrue();
+});
+
+it('passes a variable inside a gap on as one past its end', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $captured['bindingEnds'] = [];
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 6]), 'param', $captured);
+
+    expect($scope->varModelBindings)->toBe([])
+        ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
+});
+
+it('binds a name a parameter or a seeded binding holds, never one only the body\'s own tables hold', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $bodyOnly = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bodyOnly->localVarBindings['item'] = new Variable('outer');
+    $bodyOnly->varDocBindings['item'] = $scope->varDocBindings['item'];
+    $bodyOnly->varGuardBindings['item'] = $scope->varGuardBindings['item'];
+    $bodyOnly->nonNullReads['item'] = $scope->nonNullReads['item'];
+    $tables = ['varModelBindings', 'varDeclaredBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
+
+    foreach ($tables as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $scope->{$table}['item'];
+
+        expect($one->bindsName('item'))->toBeTrue("{$table} binds the name");
+    }
+
+    expect($bodyOnly->bindsName('item'))->toBeFalse()
+        ->and($scope->bindsName('missing'))->toBeFalse();
+});
+
+// Past its end the variable holds only what the body assigned, so the parameter must not inherit the old class.
+it('copies only the body\'s own bindings of a variable passed past its end, and ends the parameter\'s before any read', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
+
+    expect(array_keys(array_filter(array_diff_key($scope->nameBindings(), ['claimedClosures' => true]))))
+        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds'])
+        ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
+});
+
+// The tables a body write can end are the ones a variable passed past its end stops passing on: a new table must join
+// both lists or neither.
+it('ends a name\'s binding in exactly the tables a variable passed past its end no longer passes on', function () {
+    $every = analysisScopeWithEveryTableBound();
+
+    foreach (array_keys(array_diff_key(AnalysisScope::NO_NAME_BINDINGS, ['claimedClosures' => true, 'bindingEnds' => true])) as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $every->{$table}['item'];
+        $captured = [...$one->nameBindings(), 'bindingEnds' => ['item' => 0]];
+        $within = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $past = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+        $within->copyBindings(new Variable('item', ['startFilePos' => 0]), 'param', $captured);
+        $past->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
+
+        expect($one->bindsName('item'))->toBe(isset($within->{$table}['param']) && ! isset($past->{$table}['param']), $table);
+    }
+});
+
+it('captures every public array table but the re-entrancy guards as a name binding', function () {
+    $tables = array_map(
+        fn (ReflectionProperty $property): string => $property->getName(),
+        array_filter(
+            new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+            fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
+        ),
+    );
+    $guards = ['resolvingLocalVars', 'visitedSpreadMethods'];
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    expect(array_values(array_diff($tables, $guards)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
+        ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
+});
+
+// leaveSubjectMethod() restores by hand each field enterSubjectMethod() set aside, so this round trip guards it.
+it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $scope->resolvingLocalVars = ['item' => true];
+    $scope->closureRelationModelClass = User::class;
+    $declaring = $scope->declaringFileClass;
+    $before = $scope->nameBindings();
+    $proofs = ['this' => [['read' => new Variable('this'), 'after' => null, 'before' => null]]];
+
+    $caller = $scope->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs);
+
+    expect($scope->nameBindings())->toBe([...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs])
+        ->and($scope->resolvingLocalVars)->toBe([])
+        ->and($scope->closureRelationModelClass)->toBeNull()
+        ->and($scope->declaringFileClass->getName())->toBe(Post::class)
+        ->and($scope->visitedSpreadMethods)->toBe(['helper' => true]);
+
+    $scope->localVarBindings['inner'] = new Variable('body');
+    $scope->bindingEnds['inner'] = 3;
+    $scope->resolvingLocalVars['inner'] = true;
+    $scope->closureRelationModelClass = Post::class;
+    $scope->declaringFileClass = new ReflectionClass(User::class);
+
+    $scope->leaveSubjectMethod('helper', $caller);
+
+    expect($scope->nameBindings())->toBe($before)
+        ->and($scope->resolvingLocalVars)->toBe(['item' => true])
+        ->and($scope->closureRelationModelClass)->toBe(User::class)
+        ->and($scope->declaringFileClass)->toBe($declaring)
+        ->and($scope->visitedSpreadMethods)->toBe([]);
+});
+
+it('binds any name only while a parameter table holds one', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $scope->localVarBindings['item'] = new Variable('outer');
+    $bound = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bound->requestVarNames['item'] = Request::class;
+
+    expect($scope->bindsAnyName())->toBeFalse()
+        ->and($bound->bindsAnyName())->toBeTrue();
 });
 
 it('binds each parameter a call passes nothing to what it holds: a default, or an empty list', function () {

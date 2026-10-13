@@ -42,6 +42,12 @@ function coalesceHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -74,6 +80,12 @@ final class CoalesceArmStubEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -313,6 +325,26 @@ it('records the operand it drops', function (string $leftType, string $rightType
     'the right one' => ['string', 'unknown', ['$b at coalesce-right']],
     'the left one alone when neither has a type' => ['unknown', 'unknown', ['$a at coalesce-left']],
     'none when both have a type' => ['string | null', 'number', []],
+]);
+
+// A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null.
+it('keeps the key optional by the rule for each operand of ??', function (string $left, bool $leftOptional, string $right, bool $rightOptional, bool $optional) {
+    $leftExpr = new Variable('a');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$leftExpr, ['type' => $left, 'optional' => $leftOptional]],
+        [$rightExpr, ['type' => $right, 'optional' => $rightOptional]],
+    ]);
+
+    $result = (new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine);
+
+    expect($result['optional'] ?? null)->toBe($optional);
+})->with([
+    'an optional left' => ['User', true, 'string', false, true],
+    'an optional right past a left that is never null' => ['string', false, 'User', true, false],
+    'an optional right past a left that can be null' => ['string | null', false, 'User', true, true],
+    'an optional right past an untyped left' => ['unknown', false, 'User', true, true],
+    'neither optional' => ['string | null', false, 'number', false, false],
 ]);
 
 it('declines a non-coalesce BinaryOp', function () {

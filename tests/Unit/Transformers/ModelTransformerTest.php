@@ -6,16 +6,20 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Enums\Status;
@@ -26,7 +30,9 @@ use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Consignment;
 use Workbench\App\Models\Depot;
+use Workbench\App\Models\DocblockUnionFixture;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Grade;
@@ -715,9 +721,9 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toHaveKey('visibility')
             ->toHaveKey('priority');
 
-        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false]);
-        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false]);
-        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false]);
+        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
     });
 
     test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
@@ -843,15 +849,57 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(Team::class))->data();
 
         expect($data->enumColumns['week_days'])
-            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true]);
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false]);
     });
 
     test('enumColumns marks a scalar enum column as not a collection', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
         expect($data->enumColumns['status'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
     });
+
+    test('keeps the enum of a column or accessor that publishes a list of it or the enum alone', function () {
+        $data = (new ModelTransformer(DocblockUnionFixture::class))->data();
+
+        expect($data->columns['meta_info']['type'])->toBe('StatusType[] | StatusType | null')
+            ->and($data->enumColumns['meta_info'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->and($data->appends['grades']['type'])->toBe('StatusType[] | StatusType')
+            ->and($data->enumAppends['grades'])
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true]);
+    });
+
+    test('prints a list of the AsEnum wrap or the wrap alone in the Resource interface', function (string $template) {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(DocblockUnionFixture::class));
+
+        expect($content)
+            ->toContain("export interface DocblockUnionFixtureResource extends Omit<DocblockUnionFixture, 'meta_info' | 'grades'>")
+            ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
+            ->toContain('    grades: AsEnum<typeof Status>[] | AsEnum<typeof Status>;');
+    })->with(['model-full', 'model-split']);
+
+    test('prints the same for the enum before its list, and the list alone for a list of the enum', function (string $template) {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        $data = (new ModelTransformer(EnumListUnionModel::class))->data();
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(EnumListUnionModel::class));
+
+        expect($data->columns['meta_info']['type'])->toBe('StatusType | StatusType[] | null')
+            ->and($data->enumColumns['meta_info'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->and($data->columns['tags']['type'])->toBe('StatusType[] | null')
+            ->and($data->enumColumns['tags'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false])
+            ->and($content)
+            ->toContain("export interface EnumListUnionModelResource extends Omit<EnumListUnionModel, 'tags' | 'meta_info'>")
+            ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
+            ->toContain('    tags: AsEnum<typeof Status>[] | null;');
+    })->with(['model-full', 'model-split']);
 });
 
 describe('ModelTransformer with Warehouse model', function () {
@@ -1693,7 +1741,7 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
             ->and($data->combinedMutators)->toBe([])
             ->and($data->combinedAppends)->toBe([])
             ->and($data->combinedEnums)
-            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false]])
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]])
             ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
             ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
     });
@@ -1909,5 +1957,20 @@ describe('ModelTransformer with accessors that union two models sharing a name',
                 '../../../../../workbench/app/models' => ['User as SenderUser'],
                 '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
+    });
+});
+
+describe('a nullable column whose declared type holds a nested null', function () {
+    test('keeps its own null on a primitive cast, never on a class cast', function () {
+        $columns = (new ModelTransformer(NestedNullShapeModel::class))->data()->columns;
+
+        expect($columns['owner_snapshot']['type'])->toBe('{ a: number | null } | null')
+            ->and($columns['meta_info']['type'])->toBe('{ a: number | null }');
+    });
+
+    test('leaves a class cast that returns a list on a nullable column as it is', function () {
+        $legs = (new ModelTransformer(Consignment::class))->data()->columns['legs']['type'];
+
+        expect($legs)->not->toEndWith('| null');
     });
 });

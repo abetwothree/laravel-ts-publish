@@ -119,19 +119,21 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve `$var->toArray()` to the name of `$var`, or null when the expression is not that shape.
+     * Resolve `$var->toArray()` to the name of `$var`, or null when the expression is not that shape, or `$var` is read
+     * past the write that ended its parameter binding, which then names no model `$var` holds.
      *
      * `$this->toArray()` is the resource's own method and is handled elsewhere, so it is excluded
      * by name — `$this` parses as a `Variable` too, which would otherwise match incidentally.
      */
-    private static function spreadToArrayVarName(Expr $expr): ?string
+    private static function spreadToArrayVarName(Expr $expr, AnalysisScope $scope): ?string
     {
         if (! $expr instanceof MethodCall
             || ! $expr->name instanceof Identifier
             || $expr->name->toString() !== 'toArray'
             || ! $expr->var instanceof Variable
             || ! is_string($expr->var->name)
-            || $expr->var->name === 'this') {
+            || $expr->var->name === 'this'
+            || ! $scope->holdsBinding($expr->var)) {
             return null;
         }
 
@@ -145,7 +147,7 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     private static function spreadModelToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
     {
-        $varName = self::spreadToArrayVarName($expr);
+        $varName = self::spreadToArrayVarName($expr, $scope);
 
         if ($varName === null) {
             return null;
@@ -173,7 +175,7 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     private static function spreadCollectionToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
     {
-        $varName = self::spreadToArrayVarName($expr);
+        $varName = self::spreadToArrayVarName($expr, $scope);
 
         return $varName === null ? null : ($scope->varCollectionBindings[$varName]['modelFqcn'] ?? null);
     }

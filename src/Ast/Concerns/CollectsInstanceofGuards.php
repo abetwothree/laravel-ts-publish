@@ -9,11 +9,17 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\Exit_;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
+use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
@@ -27,8 +33,8 @@ use PhpParser\Node\Stmt\While_;
 
 /**
  * The guard pass: an early-exit `instanceof` guard narrows a variable, and an `if` condition proves reads non-null in
- * the blocks it runs and past the branches that exit. Hosts must also use CollectsLocalVarBindings: its write
- * collection is what decides a binding or a proof is safe, and both passes read the same statement list.
+ * the blocks it runs and past the branches that exit. CollectsLocalVarBindings composes it: its write collection is
+ * what decides a binding or a proof is safe, and both passes read the same statement list.
  *
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
@@ -47,10 +53,11 @@ trait CollectsInstanceofGuards
      * still reads the variable unnarrowed. A variable written after the guard tests it is not bound at all.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
      */
-    protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope): void
+    protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes = $this->collectVariableWrites($stmts);
+        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof If_ || $stmt->elseifs !== [] || $stmt->else !== null || ! $this->alwaysExits($stmt->stmts)) {
@@ -73,12 +80,17 @@ trait CollectsInstanceofGuards
     protected function proveClosureGuards(Expr $closure, AnalysisScope $scope): void
     {
         if ($closure instanceof ClosureExpr) {
-            $this->proveGuardedReads($closure->stmts, $scope, $this->collectVariableWrites($closure->stmts));
+            $this->proveGuardedReads(
+                $closure->stmts,
+                $scope,
+                $this->collectVariableWrites($closure->stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            );
         }
     }
 
     /**
-     * Whether a block's last statement leaves the function.
+     * Whether a block always leaves the function: its last statement returns, throws or exits, and no `break` or
+     * `continue` in it leaves the block first.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -86,7 +98,53 @@ trait CollectsInstanceofGuards
     {
         $last = $stmts === [] ? null : $stmts[array_key_last($stmts)];
 
-        return $last instanceof Return_ || ($last instanceof ExpressionStmt && $last->expr instanceof Throw_);
+        return ($last instanceof Return_
+            || ($last instanceof ExpressionStmt && ($last->expr instanceof Throw_ || $last->expr instanceof Exit_)))
+            && ! $this->leavesEarly($stmts, 0);
+    }
+
+    /**
+     * Whether a `break` or `continue` in some nodes leaves past the loops and `switch` statements around it there,
+     * $depth of them already, outside any nested function.
+     *
+     * @param  array<mixed>|Node  $nodes
+     */
+    private function leavesEarly(array|Node $nodes, int $depth): bool
+    {
+        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
+            if (is_array($node)) {
+                if ($this->leavesEarly($node, $depth)) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
+                continue;
+            }
+
+            if ($node instanceof Break_ || $node instanceof Continue_) {
+                if (($node->num instanceof Int_ ? $node->num->value : 1) > $depth) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            $inner = $node instanceof For_ || $node instanceof Foreach_ || $node instanceof While_ || $node instanceof Do_
+                || $node instanceof Switch_ ? $depth + 1 : $depth;
+
+            foreach ($node->getSubNodeNames() as $name) {
+                $child = $node->{$name};
+
+                if (($child instanceof Node || is_array($child)) && $this->leavesEarly($child, $inner)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

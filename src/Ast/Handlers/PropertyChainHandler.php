@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
@@ -37,7 +36,6 @@ final class PropertyChainHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
-    use ResolvesRelatedModelTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -54,21 +52,12 @@ final class PropertyChainHandler implements ExpressionHandler
             return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
-        // $this->anyProp->subProp — e.g. $this->resource->name / ->value on a backed enum
-        if ($expr instanceof PropertyFetch && $this->isThisPropertyFetch($expr->var)) {
+        // $this->resource->subProp — e.g. ->name / ->value on a backed enum, or a column of a wrapped model
+        if ($expr instanceof PropertyFetch && $this->isResourceFetch($expr->var)) {
             $info = $this->analyzeWrappedEnumResourceProperty($expr, $scope);
 
             if ($info['type'] === 'unknown') {
                 $info = $this->analyzeWrappedModelResourceProperty($expr, $scope);
-            }
-
-            // `$this->resource->prop` reads the resource's own model, never the closure's relation model.
-            if ($info['type'] === 'unknown'
-                && $scope->closureRelationModelClass !== null
-                && $expr->name instanceof Identifier
-                && ! $this->isResourceFetch($expr->var)
-            ) {
-                $info = $this->analyzeRelatedModelProperty($expr->name->toString(), $scope);
             }
 
             if ($info['type'] === 'unknown') {
@@ -78,8 +67,7 @@ final class PropertyChainHandler implements ExpressionHandler
             return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
 
-        // Plain 3+-deep chains rooted at `$this` (e.g. `$this->resource->user->role`): the 2-deep handler
-        // above doesn't match, because `$expr->var` is not a direct `$this->prop`.
+        // Any other chain rooted at `$this`: `$this->author->name`, or 3+ deep as `$this->resource->user->role`.
         if ($expr instanceof PropertyFetch) {
             $info = $this->analyzePropertyChain($expr, $scope);
 
@@ -95,7 +83,7 @@ final class PropertyChainHandler implements ExpressionHandler
      * Analyze a property-fetch chain rooted at `$this`, traversing relation steps until the final
      * property resolves. Handles `->` and `?->` in any mix; any `?->` step appends `| null`.
      *
-     * The starting model is $closureRelationModelClass inside a whenLoaded closure, else $modelClass.
+     * The chain starts at $modelClass, inside a relation's closure too, since `$this` is still the resource there.
      *
      * @return ValueExpressionResult
      */
@@ -116,7 +104,7 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         /** @var class-string<Model>|null $currentModel */
-        $currentModel = $scope->closureRelationModelClass ?? $scope->modelClass;
+        $currentModel = $scope->modelClass;
 
         // Subject mode: no backing model, so the chain's first segment must be the subject's own
         // property, and the relation/attribute walk below starts from the model it is typed as.
@@ -136,16 +124,12 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        $rootedAtResource = false;
-
-        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
+        // `$this->resource` is the resource's own model.
         if ($chain[0]['name'] === 'resource'
             && $scope->modelClass !== null
             && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
         ) {
-            $currentModel = $scope->modelClass;
             array_shift($chain);
-            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -156,26 +140,12 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $count = count($chain);
 
-        // Inside a whenLoaded closure the first step may be the resource's proxy to the already-loaded
-        // relation model (`$this->user` in `whenLoaded('user', fn() => $this->user?->name)`) — skip it.
-        $startIndex = 0;
+        for ($i = 0; $i < $count - 1; $i++) {
+            $currentModel = $this->stepModel($currentModel, $chain[$i]['name'], $scope);
 
-        if (! $rootedAtResource && $scope->closureRelationModelClass !== null && $count >= 2) {
-            $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
-
-            if ($firstRelation['type'] === 'unknown') {
-                $startIndex = 1;
-            }
-        }
-
-        for ($i = $startIndex; $i < $count - 1; $i++) {
-            $relationInfo = $resolver->resolveRelation($currentModel, $chain[$i]['name']);
-
-            if ($relationInfo['type'] === 'unknown' || $relationInfo['modelFqcn'] === null) {
+            if ($currentModel === null) {
                 return ValueResult::unknown();
             }
-
-            $currentModel = $relationInfo['modelFqcn'];
         }
 
         $lastStep = $chain[$count - 1];
@@ -215,6 +185,35 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
+     * The one model a chain step holds: a to-one relation's model, or an accessor typed as a single model.
+     *
+     * A to-many relation holds a collection, which has none of the model's properties, so it declines.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Model>|null
+     */
+    private function stepModel(string $model, string $name, AnalysisScope $scope): ?string
+    {
+        $resolver = resolve(ModelAttributeResolver::class);
+        $relation = $resolver->resolveRelation($model, $name);
+
+        if ($relation['type'] !== 'unknown') {
+            return $relation['modelFqcn'] !== null && ! str_contains($relation['type'], '[]')
+                ? $relation['modelFqcn']
+                : null;
+        }
+
+        $attribute = $resolver->resolveAttribute($model, $name, $scope->carriesImports);
+        $held = $attribute['classFqcns'];
+
+        return count($held) === 1
+            && is_a($held[0], Model::class, true)
+            && preg_match('/^\w+( \| null)?$/', $attribute['type']) === 1
+            ? $held[0]
+            : null;
+    }
+
+    /**
      * Resolve a model-less subject's own property to the model it is typed as, or null when it is
      * typed as anything else — `@var` docblock first, native declared type second.
      *
@@ -229,7 +228,7 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->anyProp->subProp` — a property fetch on one of `$this`'s properties.
+     * Analyze `$this->resource->subProp` where `$this->resource` holds a wrapped enum.
      *
      * PHP enum universals: `->name` is always string, `->value` follows the enum's backing type.
      *
@@ -270,7 +269,7 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->anyProp->subProp` where `$this->anyProp` is a wrapped model resource
+     * Analyze `$this->resource->subProp` where `$this->resource` is a wrapped model resource
      * (i.e. has a `@var ModelType|null` docblock on `$resource`).
      *
      * @return ValueExpressionResult

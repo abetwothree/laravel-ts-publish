@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
@@ -10,11 +11,17 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
@@ -39,7 +46,9 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
@@ -600,6 +609,11 @@ describe('Arrayable DTO shape inference', function () {
         expect($result['type'])->toBe('{ meta: { owner: string } }');
     });
 
+    test('a quoted shape key that is no identifier publishes quoted, and an optional one keeps its marker', function () {
+        expect($this->service->toTsType(ArrayableWithQuotedKeyValueObject::class)['type'])
+            ->toBe('{ "a-b": number; "c d"?: string; plain: boolean }');
+    });
+
     test('subclass inheriting toArray() resolves the shape from the declaring base class docblock', function () {
         // method_exists() is true for inherited methods; getDeclaringClass() points at the class defining toArray().
         $result = $this->service->toTsType(ArrayableShapeSubclassValueObject::class);
@@ -1013,6 +1027,15 @@ describe('docblockReturnTypes', function () {
         expect($result['type'])->toBe('OrderItem[] | null')
             ->and($result['classFqcns'])->toBe([OrderItem::class]);
     });
+
+    test('docblockReturnTypes reads the whole tag', function (string $method, string $type) {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(DocblockReturnClass::class, $method))['type'])
+            ->toBe($type);
+    })->with([
+        'a spaced union' => ['spacedUnion', 'string | null'],
+        'an array of collections' => ['arrayOfCollections', 'OrderItem[][]'],
+        'two int-keyed arrays, spaced inside' => ['spacedGenericUnion', 'OrderItem[] | StatusType[]'],
+    ]);
 });
 
 describe('extractReturnTypeFromDocblock', function () {
@@ -1091,7 +1114,7 @@ describe('extractReturnTypeFromDocblock', function () {
         DOC;
 
         $result = $this->service->extractReturnTypeFromDocblock($doc);
-        expect($result)->toBe('array{name: string, age: int}|null');
+        expect($result)->toBe('array{name: string, age: int} | null');
     });
 
     test('extracts multiline array shape with spaced trailing union', function () {
@@ -1108,8 +1131,55 @@ describe('extractReturnTypeFromDocblock', function () {
         expect($result)->toContain('array{')
             ->and($result)->toContain('name: string')
             ->and($result)->toContain('age: int')
-            ->and($result)->toContain('|null');
+            ->and($result)->toEndWith('} | null');
     });
+
+    test('reads the whole type a tag spells, whatever its spacing', function (string $doc, string $type) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($type);
+    })->with([
+        'an array of a generic' => ['/** @return Collection<int, Post>[] */', 'Collection<int, Post>[]'],
+        'a spaced union after a plain type' => ['/** @return Foo | null */', 'Foo | null'],
+        'a trailing union whose generic holds a space' => [
+            '/** @return array<int, User>|array<int, CrmUser> */',
+            'array<int, User>|array<int, CrmUser>',
+        ],
+        'a spaced union after a shape' => [
+            '/** @return array{a: int} | array<int, string> */',
+            'array{a: int} | array<int, string>',
+        ],
+        'a description after the type' => ['/** @return int|null The count */', 'int|null'],
+        'a list shape' => ['/** @return list{int, string} The pair */', 'list{int, string}'],
+        'an object shape' => ['/** @return object{a: int} The object */', 'object{a: int}'],
+        'a nullable shape' => ['/** @return ?array{a: int} The shape */', '?array{a: int}'],
+        'a list shape or null' => ['/** @return list{int, string} | null The pair */', 'list{int, string} | null'],
+        'a callable' => ['/** @return callable(int): string The callback */', 'callable(int): string'],
+        'a callable spaced before its colon' => ['/** @return callable(int) : string The callback */', 'callable(int) : string'],
+    ]);
+
+    test('keeps the first-token reading of a conditional return type', function () {
+        expect($this->service->extractReturnTypeFromDocblock("/** @return (\$value is '' ? '' : string) */"))
+            ->toBe('($value');
+    });
+
+    test('keeps the first-token reading of a conditional return type Laravel declares', function (
+        string $class,
+        string $method,
+        string $reading,
+    ) {
+        $doc = (string) (new ReflectionMethod($class, $method))->getDocComment();
+
+        if (preg_match('/@return\s+\(/', $doc) !== 1) {
+            $this->markTestSkipped("The installed Laravel declares no conditional @return on {$method}().");
+        }
+
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+    })->with([
+        'Str::upper' => [Str::class, 'upper', '($value'],
+        'Str::contains' => [Str::class, 'contains', '($needles'],
+        'Str::password' => [Str::class, 'password', '($letters'],
+        'Arr::random' => [Arr::class, 'random', '($number'],
+        'Collection::sum' => [Collection::class, 'sum', '($callback'],
+    ]);
 });
 
 describe('phpstan-return docblock support', function () {
@@ -1330,6 +1400,150 @@ describe('parseArrayShapeToTsTypes', function () {
     });
 });
 
+describe('PHPDoc shapes, tuples and callables', function () {
+    test('reads each shape form as json_encode() writes it, through every docblock reader', function (string $phpType, string $expected) {
+        $useMap = ['User' => User::class];
+
+        expect($this->service->resolvePhpDocTypeToTs($phpType, $useMap, ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, $useMap, '')['type'])->toBe($expected)
+            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", $useMap, '')['type'] ?? null)
+            ->toBe(str_contains($expected, '|') ? "({$expected})[]" : "{$expected}[]");
+    })->with([
+        'a positional list shape' => ['list{int, string}', '[number, string]'],
+        'a positional array shape' => ['array{int, string}', '[number, string]'],
+        'a list shape with explicit keys and an optional last member' => ['list{0: int, 1?: string}', '[number, string?]'],
+        'an empty list shape' => ['list{}', '[]'],
+        'an unsealed list shape' => ['list{int, ...}', 'unknown[]'],
+        'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
+        'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
+        'a quoted key' => ["array{'a': int, b: string}", '{ a: number; b: string }'],
+        'a double-quoted key that is no identifier' => ['array{"a-b": int}', '{ "a-b": number }'],
+        'a key with an escaped quote' => ["array{'it\\'s': int}", '{ "it\'s": number }'],
+        'a dashed bare key' => ['array{a-b: int}', '{ "a-b": number }'],
+        'a space before the optional marker' => ['array{a ?: int}', '{ a?: number }'],
+        'a space before the colon' => ['array{a : int}', '{ a: number }'],
+        'a nullable shape inside a shape' => ['array{a: ?array{b: int}}', '{ a: { b: number } | null }'],
+        'a nullable list inside a shape' => ['array{a: ?list<int>}', '{ a: number[] | null }'],
+        'a tuple inside a shape' => ['array{pair: list{int, string}}', '{ pair: [number, string] }'],
+        'a callable inside a shape' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
+        'a mixed shape, whose positional member takes the next int key' => ['array{int, a: string}', '{ 0: number; a: string }'],
+        'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
+        'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
+        'a quoted literal member holding a colon' => ["list{'a:b', int}", "['a:b', number]"],
+        'a quoted key holding a comma' => ["array{'a,b': int, c: string}", '{ "a,b": number; c: string }'],
+        'a double-quoted key holding a comma' => ['array{"a,b": int, c: string}', '{ "a,b": number; c: string }'],
+        'a quoted key holding a comma and a brace' => ["array{'a,{b': int, c: string}", '{ "a,{b": number; c: string }'],
+        'a quoted literal member holding a comma' => ["list{'a,b', int}", "['a,b', number]"],
+    ]);
+
+    test('splits at the commas outside brackets and quoted literals', function (string $input, array $parts) {
+        expect($this->service->splitAtTopLevelCommas($input))->toBe($parts);
+    })->with([
+        'generic arguments' => ['int, array<string, int>', ['int', 'array<string, int>']],
+        'a single-quoted literal' => ["'a,b': int, c: string", ["'a,b': int", 'c: string']],
+        'a double-quoted literal' => ['"a,b": int, c', ['"a,b": int', 'c']],
+        'an escaped quote inside a literal' => ["'it\\'s, x': int, c", ["'it\\'s, x': int", 'c']],
+        'a quote of the other kind inside a literal' => ["'say \"hi, there\"', c", ["'say \"hi, there\"'", 'c']],
+    ]);
+
+    test('reads a parenthesized group as the union it holds', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected);
+    })->with([
+        'a group' => ['(int|string)', 'number | string'],
+        'a nullable group' => ['?(int|string)', 'number | string | null'],
+    ]);
+
+    test('reads a tuple and a quoted-key shape through a cast get() @return, a property @var and a promoted @var', function () {
+        $property = fn (string $name): ?string => resolve(PropertyDocblockTypeReader::class)
+            ->read(new ReflectionProperty(DeclaredShapeProperties::class, $name))['type'] ?? null;
+
+        expect($this->service->toTsType(TupleDocblockCast::class)['type'])->toBe('[number, string]')
+            ->and($this->service->toTsType(QuotedKeyDocblockCast::class)['type'])->toBe('{ a: number; b: string }')
+            ->and($property('pair'))->toBe('[number, string]')
+            ->and($property('keyed'))->toBe('{ a: number; b: string }')
+            ->and($property('promotedPair'))->toBe('[number, string]')
+            ->and($property('promotedKeyed'))->toBe('{ a: number; b: string }');
+    });
+
+    test('publishes a DTO whose toArray() declares a list shape as the tuple, not its public properties', function (string $dto) {
+        expect($this->service->toTsType($dto)['type'])->toBe('[number, string]');
+    })->with([
+        'explicit keys 0 and 1' => [ArrayableExplicitKeyTupleValueObject::class],
+        'positional members' => [ArrayablePositionalTupleValueObject::class],
+        'a list shape' => [ArrayableListTupleValueObject::class],
+    ]);
+
+    test('reads an array shape keyed exactly 0 to n-1 in order as a tuple, and any other int keys as an object', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected);
+    })->with([
+        'keys 0 and 1' => ['array{0: int, 1: string}', '[number, string]'],
+        'a positional member, then key 1' => ['array{int, 1: string}', '[number, string]'],
+        'keys out of order' => ['array{1: string, 0: int}', '{ 1: string; 0: number }'],
+        'a gap in the keys' => ['array{0: int, 2: string}', '{ 0: number; 2: string }'],
+        'an optional member before a required one, which no list holds' => ['list{0?: int, 1: string}', '[number?, string?]'],
+        'an optional union member, parenthesized for its marker' => ['list{0: int, 1?: string|null}', '[number, (string | null)?]'],
+        'an optional member before a required one in an array' => ['array{0?: int, 1: string}', '{ 0?: number; 1: string }'],
+    ]);
+
+    test('reads a nullable shape or list once, adding a top-level null a nested one does not count as', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected);
+    })->with([
+        'a nullable shape' => ['?array{a: int}', '{ a: number } | null'],
+        'a nullable shape holding a null member' => ['?array{a: ?int}', '{ a: number | null } | null'],
+        'a nullable list of nullables' => ['?list<?int>', '(number | null)[] | null'],
+        'a nullable tuple' => ['?list{int, string}', '[number, string] | null'],
+        'a parenthesized union in a list' => ['(int|string)[]', '(number | string)[]'],
+    ]);
+
+    test('reads a callable as unknown, since what it sends depends on who serializes it', function (string $phpType) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe('unknown')
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe('unknown');
+    })->with([
+        'a callable signature' => ['callable(int): string'],
+        'a callable signature with no space' => ['callable(int):string'],
+        'a pure callable' => ['pure-callable(int): string'],
+        'a closure signature' => ['\Closure(int): string'],
+    ]);
+
+    test('keeps the first-token reading of a conditional return type through every docblock reader', function () {
+        expect($this->service->resolvePhpDocTypeToTs('($string', [], ''))->toBe('string')
+            ->and($this->service->resolveDocblockTypePart('($string', [], '')['type'])->toBe('string');
+    });
+
+    test('keeps a shape whose entries fail the key grammar as the shape of the ones that pass', function () {
+        expect($this->service->resolvePhpDocTypeToTs('array{a.b: int, c: string}', [], ''))->toBe('{ c: string }')
+            ->and($this->service->parseArrayShapeToTsTypes("array{'a': int, b?: string, c: int}", [], ''))
+            ->toBe(['a' => 'number', 'b?' => 'string', 'c' => 'number'])
+            ->and($this->service->parseArrayShapeToTsTypes('list{int, string}', [], ''))->toBe([]);
+    });
+
+    test('splits a shape into its entries, a positional one taking the next int key', function () {
+        expect($this->service->arrayShapeEntries("non-empty-array{int, 5: string, bool, 'k'?: int, ...}"))->toBe([
+            'kind' => 'array',
+            'entries' => [
+                ['key' => '0', 'implicit' => true, 'optional' => false, 'type' => 'int'],
+                ['key' => '5', 'implicit' => false, 'optional' => false, 'type' => 'string'],
+                ['key' => '6', 'implicit' => true, 'optional' => false, 'type' => 'bool'],
+                ['key' => 'k', 'implicit' => false, 'optional' => true, 'type' => 'int'],
+            ],
+            'sealed' => false,
+        ])
+            ->and($this->service->arrayShapeEntries('array{a: int} | null'))->toBeNull()
+            ->and($this->service->arrayShapeEntries('array {a: int}'))->toBeNull()
+            ->and($this->service->arrayShapeEntries('object{a: int}')['kind'] ?? null)->toBe('object')
+            ->and($this->service->arrayShapeEntries('non-empty-list{int}')['kind'] ?? null)->toBe('list');
+    });
+
+    test('leaves a numeric literal key, or a literal beside a scalar key, as the list it read before', function (string $phpType, string $expected) {
+        expect($this->service->resolveGenericContainerType($phpType, [], '')['type'] ?? null)->toBe($expected);
+    })->with([
+        'numeric string keys' => ["array<'1'|'2', int>", 'number[]'],
+        'a literal beside a string key' => ["array<'a'|string, int>", 'number[]'],
+    ]);
+});
+
 describe('phpstan type aliases', function () {
     test('a locally-defined alias resolves', function () {
         $alias = $this->service->resolvePhpstanTypeAlias(
@@ -1382,6 +1596,24 @@ describe('phpstan type aliases', function () {
             ->and($alias['class']->getName())->toBe(PhpstanTypeAliasChainZ::class);
     });
 
+    test('records each class an alias import reads, and replays them when the answer is reused', function () {
+        $read = function (): array {
+            DependencyRecorder::start();
+
+            try {
+                $this->service->resolvePhpstanTypeAlias('Row', new ReflectionClass(ImportedAliasProperties::class));
+
+                return DependencyRecorder::paths();
+            } finally {
+                DependencyRecorder::stop();
+            }
+        };
+        $source = (string) new ReflectionClass(TypeAliasShapeModel::class)->getFileName();
+
+        expect($read())->toContain($source)
+            ->and($read())->toContain($source);
+    });
+
     test('a cyclical @phpstan-import-type chain terminates instead of recursing forever', function () {
         $alias = $this->service->resolvePhpstanTypeAlias(
             'LoopAlias', new ReflectionClass(PhpstanTypeAliasCycleA::class),
@@ -1420,6 +1652,58 @@ describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
         $context = new ReflectionClass(DocblockGenericsFixture::class);
 
         expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
+    });
+});
+
+describe('@phpstan-type aliases inside containers and shapes', function () {
+    test('resolves an alias inside a container, a shape, a tuple, a group and another alias', function (string $part, string $expected) {
+        $context = new ReflectionClass(TypeAliasShapeModel::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias($part, [], $context->getNamespaceName(), $context)['type'])
+            ->toBe($expected);
+    })->with([
+        'a list' => ['list<Row>', '{ a: number }[]'],
+        'the [] shorthand' => ['Row[]', '{ a: number }[]'],
+        'a string-keyed array' => ['array<string, Row>', 'Record<string, { a: number }>'],
+        'a shape member' => ['array{row: Row}', '{ row: { a: number } }'],
+        'a nullable shape member' => ['array{row: ?Row}', '{ row: { a: number } | null }'],
+        'a tuple member' => ['list{Row, int}', '[{ a: number }, number]'],
+        'a group' => ['(Row)', '{ a: number }'],
+        'an alias whose definition names another' => ['Rows', '{ a: number }[]'],
+        'a self-referential alias' => ['Tree', 'unknown[]'],
+        'two aliases naming each other' => ['Left', 'unknown[][]'],
+    ]);
+
+    test('resolves an alias inside a method @return container', function () {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(TypeAliasShapeModel::class, 'rows'))['type'])
+            ->toBe('{ a: number }[]');
+    });
+
+    test('keeps each class once where an alias union stands beside one of its own classes', function () {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(TypeAliasShapeModel::class, 'party'))['type'])
+            ->toBe('User | Team | null');
+    });
+
+    test('resolves an imported alias on a property @var and on a promoted @var, whole or inside a list', function () {
+        $property = fn (string $name): ?string => resolve(PropertyDocblockTypeReader::class)
+            ->read(new ReflectionProperty(ImportedAliasProperties::class, $name))['type'] ?? null;
+
+        expect($property('plain'))->toBe('{ a: number }')
+            ->and($property('promoted'))->toBe('{ a: number }')
+            ->and($property('promotedList'))->toBe('{ a: number }[]');
+    });
+
+    test('resolves a class named inside an alias context against that class\'s own aliases', function () {
+        $context = new ReflectionClass(TypeAliasShapeModel::class);
+
+        $info = $this->service->resolveDocblockTypePartOrAlias(
+            'OwnAliasShapeData',
+            ['OwnAliasShapeData' => OwnAliasShapeData::class],
+            $context->getNamespaceName(),
+            $context,
+        );
+
+        expect($info['type'])->toBe('{ row: { b: string } }');
     });
 });
 
@@ -1931,6 +2215,71 @@ describe('mergeTypeScriptInfos', function () {
         'a list of each model' => ['list<User>|list<CrmUser>', 'User[] | User[]', [User::class, CrmUser::class]],
         'two forms of an array of one model' => ['User[]|array<int, User>', 'User[]', null],
     ]);
+
+    test('keeps a bare arm whose class or enum an earlier arm holds only inside a container', function (string $docblock, string $type, array $classFqcns, array $enumFqcns) {
+        $useMap = ['User' => User::class, 'Status' => Status::class, 'Collection' => Collection::class];
+        $arms = array_map(
+            fn (string $part): array => $this->service->resolveDocblockTypePart(trim($part), $useMap, 'Workbench\\App\\Models'),
+            $this->service->splitPhpDocUnionType($docblock),
+        );
+
+        $result = $this->service->mergeTypeScriptInfos($arms);
+
+        expect($result['type'])->toBe($type)
+            ->and($result['classFqcns'])->toBe($classFqcns)
+            ->and($result['enumFqcns'])->toBe($enumFqcns)
+            ->and($result['enumTypes'])->toBe(array_map(fn (): string => 'StatusType', $enumFqcns))
+            ->and($result)->not->toHaveKey('classTokenFqcns');
+    })->with([
+        'an array, then the class' => ['User[]|User', 'User[] | User', [User::class], []],
+        'the class, then an array' => ['User|User[]', 'User | User[]', [User::class], []],
+        'a collection, the class and null' => ['Collection<int, User>|User|null', 'User[] | User | null', [User::class], []],
+        'a list, then the class' => ['list<User>|User', 'User[] | User', [User::class], []],
+        'a record, then the class' => ['array<string, User>|User', 'Record<string, User> | User', [User::class], []],
+        'an enum array, then the enum' => ['Status[]|Status', 'StatusType[] | StatusType', [], [Status::class]],
+        'an enum collection, then the enum' => ['Collection<int, Status>|Status', 'StatusType[] | StatusType', [], [Status::class]],
+        'the class twice beside an array' => ['User[]|User|User', 'User[] | User', [User::class], []],
+    ]);
+
+    test('leaves out a bare arm an earlier arm already spells bare at its top level', function (array $arms, string $type) {
+        $result = $this->service->mergeTypeScriptInfos(array_map(fn (array $arm): array => [...$this->service->emptyTypeScriptInfo(), ...$arm], $arms));
+
+        expect($result['type'])->toBe($type);
+    })->with([
+        'a nullable class' => [
+            [
+                ['type' => 'User | null', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            'User | null',
+        ],
+        'a nullable enum' => [
+            [
+                ['type' => 'StatusType | null', 'enums' => ['Status'], 'enumTypes' => ['StatusType'], 'enumFqcns' => [Status::class]],
+                ['type' => 'StatusType', 'enums' => ['Status'], 'enumTypes' => ['StatusType'], 'enumFqcns' => [Status::class]],
+            ],
+            'StatusType | null',
+        ],
+        'the other class of a shared name, which stays' => [
+            [
+                ['type' => 'User | null', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            'User | null | User',
+        ],
+    ]);
+
+    test('queues a token for a bare class kept after an array of it, once another class shares its name', function () {
+        $result = $this->service->mergeTypeScriptInfos([
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+        ]);
+
+        expect($result['type'])->toBe('User[] | User | User')
+            ->and($result['classFqcns'])->toBe([User::class, CrmUser::class])
+            ->and($result['classTokenFqcns'] ?? null)->toBe([User::class, CrmUser::class, User::class]);
+    });
 });
 
 describe('callCommandUsing and callCommandWith', function () {
@@ -2153,6 +2502,68 @@ class ArrayableWithClassArrayValueObject implements Arrayable
 class ArrayableWithNestedPrimitiveValueObject implements Arrayable
 {
     /** @return array{meta: array{owner: string}} */
+    public function toArray(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * A value object whose toArray() declares explicit keys 0 and 1, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayableExplicitKeyTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return array{0: int, 1: string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
+    }
+}
+
+/**
+ * A value object whose toArray() declares positional members, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayablePositionalTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return array{int, string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
+    }
+}
+
+/**
+ * A value object whose toArray() declares a list shape, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayableListTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return list{int, string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
+    }
+}
+
+/**
+ * A value object whose toArray() shape quotes keys that are no identifier.
+ *
+ * @implements Arrayable<string, mixed>
+ */
+class ArrayableWithQuotedKeyValueObject implements Arrayable
+{
+    /** @return array{'a-b': int, "c d"?: string, plain: bool} */
     public function toArray(): array
     {
         return [];
@@ -2520,6 +2931,30 @@ class DocblockReturnClass
     public function nullableGenericCollection()
     {
         return null;
+    }
+
+    /**
+     * @return string | null
+     */
+    public function spacedUnion()
+    {
+        return null;
+    }
+
+    /**
+     * @return Collection<int, OrderItem>[]
+     */
+    public function arrayOfCollections()
+    {
+        return [];
+    }
+
+    /**
+     * @return array<int, OrderItem>|array<int, Status>
+     */
+    public function spacedGenericUnion()
+    {
+        return [];
     }
 }
 

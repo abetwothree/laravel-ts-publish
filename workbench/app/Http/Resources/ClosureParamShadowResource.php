@@ -25,6 +25,12 @@ class ClosureParamShadowResource extends JsonResource
     {
         $member = $this->slug;
         $owner = $this->description;
+        $shadowed = $this->name;
+
+        // The closure writes only its own `$shadowed` parameter, so the outer local keeps its binding.
+        $this->members->each(function ($shadowed) {
+            $shadowed = $shadowed->name;
+        });
 
         return [
             'outer_member' => $member,
@@ -35,6 +41,7 @@ class ClosureParamShadowResource extends JsonResource
             // 'members' is a to-many relation: the closure param holds the whole collection, not one
             // element, so it resolves to the collection type `User[]` — never the bare element `User`.
             'loaded_members_bare' => $this->whenLoaded('members', fn ($members) => $members),
+            'shadowed' => $shadowed,
         ];
     }
 }

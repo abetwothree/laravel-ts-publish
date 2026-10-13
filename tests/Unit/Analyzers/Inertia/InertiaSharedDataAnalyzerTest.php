@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMerg
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
@@ -131,6 +132,12 @@ test('each spread body derives its own Request variable names', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ spreadUrl: string, decoy: unknown, top: string }');
+});
+
+// Inertia calls a callable wherever it sits, so a helper holding one, read as a value or spread, holds what it returns.
+test('a first-class callable passed to a shared-data helper reads as what it returns', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithCallableHelperArguments::class)['sharedPageProps'] ?? null)
+        ->toBe('{ held_value: { held: string }, spread_held: string }');
 });
 
 test('array_merge and the spread form agree on a parent chain', function () {

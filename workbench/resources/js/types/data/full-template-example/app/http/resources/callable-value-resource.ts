@@ -18,4 +18,5 @@ export interface CallableValueResource
     when_label?: string;
     label_or_zero: number | string;
     supervisor?: UserResource | null;
+    supervisor_card?: { name: string } | null;
 }

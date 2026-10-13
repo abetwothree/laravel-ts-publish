@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
+use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -23,12 +23,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -43,7 +47,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node;
@@ -52,11 +55,13 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -70,23 +75,21 @@ use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionNamedType;
 
 /**
  * Analyzes a JsonResource's toArray() body to extract property names, types, and optional markers via AST.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type RequestVarNamesMap from AnalysisScope
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type PassedBinding from ParameterBinder
  *
  * @internal
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
     use ChecksPreserveKeys;
-    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
     use FiltersModelAttributes;
     use InspectsAstNodes;
@@ -113,6 +116,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /** The class declaring the share() whose casts InertiaSharedDataAnalyzer applies; a parent's analyzer keeps it. */
     protected ?string $sharedDataShareClass = null;
 
+    /** Whether this analyzer built its scope, so the analyzed method's parameters are its own to bind. */
+    private readonly bool $ownsScope;
+
+    /** Whether the handler profile invokes callables, read once from it by invokesCallables(). */
+    private ?bool $invokingProfile = null;
+
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -124,6 +133,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
+     * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -133,6 +143,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         ?AnalysisScope $scope = null,
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
+        private readonly array $passed = [],
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -140,43 +151,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
         );
 
         if ($scope === null) {
-            $this->scope->requestVarNames = $this->resolveRequestVarNames($this->methodName);
             $this->scope->carriesImports = $carriesImports;
+            $this->scope->reindexesNumericKeys = self::reindexes($this->resourceReflection);
         }
+
+        $this->ownsScope = $scope === null;
 
         if ($this->scope->modelClass !== null) {
             $this->loadModelInspectorData();
         }
-    }
-
-    /**
-     * Request-typed parameter names of one method, keyed to their bound class for O(1) lookup.
-     *
-     * Resources take `toArray(Request $request)` too, but their committed output was inferred without
-     * the Request rules; seeding them there would move it, so the resource path opts out.
-     *
-     * @return RequestVarNamesMap
-     */
-    private function resolveRequestVarNames(string $methodName): array
-    {
-        if (is_a($this->scope->subjectReflection->getName(), JsonResource::class, true)
-            || ! $this->scope->subjectReflection->hasMethod($methodName)) {
-            return [];
-        }
-
-        $names = [];
-
-        foreach ($this->scope->subjectReflection->getMethod($methodName)->getParameters() as $parameter) {
-            $type = $parameter->getType();
-
-            if ($type instanceof ReflectionNamedType && is_a($type->getName(), Request::class, true)) {
-                /** @var class-string<Request> $class */
-                $class = $type->getName();
-                $names[$parameter->getName()] = $class;
-            }
-        }
-
-        return $names;
     }
 
     /**
@@ -241,6 +224,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether a class's response re-indexes a numeric-keyed array into a list: an API resource that does not preserve
+     * keys.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    private static function reindexes(ReflectionClass $resource): bool
+    {
+        return $resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource);
+    }
+
+    /**
      * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
      * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
      *
@@ -253,7 +249,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
     {
-        if ($resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource)) {
+        if (self::reindexes($resource)) {
             $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
         }
     }
@@ -311,7 +307,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $this->scope->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
         $this->scope->forwardsUndeclaredMembersTo = $this->proxyTarget();
 
-        $this->seedVarBindings($toArrayMethod->stmts);
+        // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings,
+        // but no foreach variable over a relation, which bindForeachLoopVariables() binds only for a scope it owns.
+        if ($this->ownsScope) {
+            $subject = $this->scope->subjectReflection;
+            $method = $subject->hasMethod($this->methodName) ? $subject->getMethod($this->methodName) : null;
+
+            $this->seedVarBindings($method, $toArrayMethod->stmts, $this->passed);
+        }
 
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
@@ -380,6 +383,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): ResourceAnalysis
     {
         return $this->analyzeReturnArray($array, $topLevel);
+    }
+
+    /**
+     * Whether this analyzer's handler profile reads a callable as the call it stands for, as Inertia's profiles do.
+     */
+    public function invokesCallables(): bool
+    {
+        return $this->invokingProfile ??= array_any(
+            $this->handlers(),
+            fn (ExpressionHandler $handler): bool => $handler instanceof FirstClassCallableHandler && $handler->invokesCallables(),
+        );
     }
 
     /**
@@ -478,15 +492,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Seed the scope's variable bindings from a method body: single-write assignments, then the
-     * relation-typed foreach loop variables that only a model-backed scope can resolve.
+     * Seed the scope from a method body: its parameters, by what each declares and what its call passes, the body's
+     * own bindings, then the relation-typed foreach loop variables that only a model-backed scope can resolve.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  array<string, PassedBinding>  $passed
      */
-    protected function seedVarBindings(array $stmts): void
+    protected function seedVarBindings(?ReflectionMethod $method, array $stmts, array $passed = []): void
     {
-        $this->collectLocalVarBindings($stmts, $this->scope);
-        $this->collectInstanceofGuards($stmts, $this->scope);
+        if ($method !== null) {
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $this->scope);
+        }
+
+        $this->seedBody($stmts, $this->scope);
         $this->bindForeachLoopVariables($stmts);
     }
 
@@ -553,12 +571,40 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
+            // ...$post->only([...]) on any other receiver holding one model flattens as the own-model spread does.
+            if ($topLevel && $item->key === null && $item->unpack && $item->value instanceof MethodCall) {
+                $filterAnalysis = $this->analyzeReceiverModelFilter($item->value);
+
+                if ($filterAnalysis !== null) {
+                    $analysis->merge($filterAnalysis);
+
+                    continue;
+                }
+            }
+
             // Handle ...$this->method() spread (e.g., trait methods returning arrays)
             if ($item->key === null && $item->unpack
                 && $item->value instanceof MethodCall
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
+                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
+
+                if ($spreadAnalysis !== null) {
+                    $analysis->merge($spreadAnalysis);
+                }
+
+                continue;
+            }
+
+            // ...self::helper() or ...static::helper() spreads the subject's own method, as ...$this->helper() does.
+            if ($item->key === null && $item->unpack
+                && $item->value instanceof StaticCall
+                && $item->value->class instanceof Name
+                && in_array($item->value->class->toLowerString(), ['self', 'static'], true)
+                && $item->value->name instanceof Identifier
+                && $this->scope->subjectReflection->hasMethod($item->value->name->toString())
+            ) {
                 $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
 
                 if ($spreadAnalysis !== null) {
@@ -637,6 +683,43 @@ class ResourceAstAnalyzer implements ExpressionEngine
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
+    }
+
+    /**
+     * The keys `only()` keeps on a receiver other than the subject's own model that holds exactly one concrete model.
+     *
+     * `except()` is left out: its pool would list the accessors and relations `Model::except()` never returns.
+     */
+    private function analyzeReceiverModelFilter(MethodCall $call): ?ResourceAnalysis
+    {
+        if ($this->filtersOwnModel($call)
+            || ! $call->name instanceof Identifier
+            || $call->name->toLowerString() !== 'only'
+            || $call->isFirstClassCallable()
+        ) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $this->scope);
+        $resolver = resolve(ReceiverMethodReturnResolver::class);
+        $model = $receiver !== null && ! $receiver->shortCircuits ? $resolver->singleModel($receiver) : null;
+
+        if ($model === null
+            || new ReflectionClass($model)->isAbstract()
+            || ! $resolver->typesAsModelFilter($model, 'only')
+        ) {
+            return null;
+        }
+
+        $filtering = new self(
+            $this->scope->subjectReflection,
+            $model,
+            $this->methodName,
+            $this->handlerProfile,
+            carriesImports: $this->scope->carriesImports,
+        );
+
+        return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
     }
 
     /**
@@ -978,8 +1061,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
-     * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. Each
-     * binding table it clears is restored in a `finally`.
+     * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. The
+     * caller's state it sets aside is restored in a `finally`.
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
     {
@@ -999,30 +1082,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        $this->scope->visitedSpreadMethods[$methodName] = true;
+        // Read in the caller's tables, before they are set aside.
+        $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
+        $caller = $this->scope->enterSubjectMethod(
+            $methodName,
+            LaravelTsPublish::methodDeclaringFileClass($method),
+            $this->proofsAcrossCall($this->scope, $call),
+        );
 
-        $previousLocalVarBindings = $this->scope->localVarBindings;
-        $previousResolvingLocalVars = $this->scope->resolvingLocalVars;
-        $previousVarModelBindings = $this->scope->varModelBindings;
-        $previousVarClassBindings = $this->scope->varClassBindings;
-        $previousVarGuardBindings = $this->scope->varGuardBindings;
-        $previousVarDocBindings = $this->scope->varDocBindings;
-        $previousNonNullReads = $this->scope->nonNullReads;
-        $previousDeclaringFileClass = $this->scope->declaringFileClass;
-        $previousRequestVarNames = $this->scope->requestVarNames;
         try {
-            $this->scope->localVarBindings = [];
-            $this->scope->resolvingLocalVars = [];
-            $this->scope->varModelBindings = [];
-            $this->scope->varClassBindings = [];
-            $this->scope->varGuardBindings = [];
-            $this->scope->varDocBindings = [];
-            $this->scope->nonNullReads = $this->proofsAcrossCall($this->scope, $call);
-            $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-            // The spread method has its own signature: the entry method's Request params say nothing
-            // about which of ITS variables hold one. analyzeParentToArray() re-derives the same way.
-            $this->scope->requestVarNames = $this->resolveRequestVarNames($methodName);
-            $this->seedVarBindings($targetMethod->stmts);
+            $this->seedVarBindings($method, $targetMethod->stmts, $passed);
 
             $branches = [];
 
@@ -1041,16 +1110,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
-            $this->scope->localVarBindings = $previousLocalVarBindings;
-            $this->scope->resolvingLocalVars = $previousResolvingLocalVars;
-            $this->scope->varModelBindings = $previousVarModelBindings;
-            $this->scope->varClassBindings = $previousVarClassBindings;
-            $this->scope->varGuardBindings = $previousVarGuardBindings;
-            $this->scope->varDocBindings = $previousVarDocBindings;
-            $this->scope->nonNullReads = $previousNonNullReads;
-            $this->scope->declaringFileClass = $previousDeclaringFileClass;
-            $this->scope->requestVarNames = $previousRequestVarNames;
-            unset($this->scope->visitedSpreadMethods[$methodName]);
+            $this->scope->leaveSubjectMethod($methodName, $caller);
         }
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);

@@ -133,7 +133,7 @@ final class BinaryOpHandler implements ExpressionHandler
             [$kind, $union] = $this->boundUnion($plus, $scope, $engine);
 
             return $kind === self::ARRAY
-                ? $engine->resolve($this->arrayUnionLiteral($union, $scope->localVarBindings))
+                ? $engine->resolve($this->arrayUnionLiteral($union, $scope->literalLocalBindings()))
                 : ['type' => 'number', 'optional' => false];
         } finally {
             $scope->varValueBindings = $bindings;
@@ -177,7 +177,7 @@ final class BinaryOpHandler implements ExpressionHandler
      */
     private function boundOperand(Expr $operand, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $local = $operand instanceof Variable && is_string($operand->name) ? ($scope->localVarBindings[$operand->name] ?? null) : null;
+        $local = $operand instanceof Variable && is_string($operand->name) ? ($scope->literalLocalBindings()[$operand->name] ?? null) : null;
 
         if ($operand instanceof Array_ || $local instanceof Array_) {
             return [self::ARRAY, $operand];

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -23,9 +24,9 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Identifier;
 
 /**
- * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the
- * terminal relation model. The `?->` operator always makes the result nullable. A chain that does not
- * end on a relation, a method it cannot type, or an `only()`/`except()` filter declines.
+ * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the terminal relation model.
+ * The `?->` operator always makes the result nullable. A chain not ending on a relation, a method it cannot type, an
+ * `only()`/`except()` filter, or a model method the receiver rules type declines.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -79,8 +80,9 @@ final class MethodChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
+        // `$this` inside a relation's closure is still the resource, so the closure never moves where the chain starts.
         /** @var class-string<Model>|null $currentModel */
-        $currentModel = $scope->closureRelationModelClass ?? $scope->modelClass;
+        $currentModel = $scope->modelClass;
 
         if ($currentModel === null) {
             return ValueResult::unknown();
@@ -88,16 +90,9 @@ final class MethodChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        $rootedAtResource = false;
-
-        // `$this->resource` is the resource's own model even inside a closure bound to a relation's model.
-        if ($chain[0]['name'] === 'resource'
-            && $scope->modelClass !== null
-            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
-        ) {
-            $currentModel = $scope->modelClass;
+        // `$this->resource` is the resource's own model, unless the model declares a relation by that name.
+        if ($chain[0]['name'] === 'resource' && $resolver->resolveRelation($currentModel, 'resource')['type'] === 'unknown') {
             array_shift($chain);
-            $rootedAtResource = true;
         }
 
         if ($chain === []) {
@@ -106,19 +101,7 @@ final class MethodChainHandler implements ExpressionHandler
 
         $count = count($chain);
 
-        // Inside a whenLoaded closure the first step may be the resource's proxy to the already-loaded
-        // relation model (`$this->categoryRel` in `whenLoaded('categoryRel', ...)`) — skip it.
-        $startIndex = 0;
-
-        if (! $rootedAtResource && $scope->closureRelationModelClass !== null) {
-            $firstRelation = $resolver->resolveRelation($currentModel, $chain[0]['name']);
-
-            if ($firstRelation['type'] === 'unknown') {
-                $startIndex = 1;
-            }
-        }
-
-        for ($i = $startIndex; $i < $count - 1; $i++) {
+        for ($i = 0; $i < $count - 1; $i++) {
             $relationInfo = $resolver->resolveRelation($currentModel, $chain[$i]['name']);
 
             if ($relationInfo['type'] === 'unknown' || $relationInfo['modelFqcn'] === null) {
@@ -130,22 +113,26 @@ final class MethodChainHandler implements ExpressionHandler
             $currentModel = $relatedModel;
         }
 
-        if ($startIndex <= $count - 1) {
-            $lastStep = $chain[$count - 1];
-            $relationInfo = $resolver->resolveRelation($currentModel, $lastStep['name']);
+        $relationInfo = $resolver->resolveRelation($currentModel, $chain[$count - 1]['name']);
 
-            // Only a resolved relation moves the receiver; anything else belongs to the receiver-type handler.
-            if ($relationInfo['modelFqcn'] === null) {
-                return ValueResult::unknown();
-            }
+        // Only a resolved relation moves the receiver; anything else belongs to the receiver-type handler.
+        if ($relationInfo['modelFqcn'] === null) {
+            return ValueResult::unknown();
+        }
 
-            $currentModel = $relationInfo['modelFqcn'];
+        $currentModel = $relationInfo['modelFqcn'];
+
+        // The receiver rules type a model's own toArray() and loose arrays, and a relation collection's toArray().
+        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)
+            && ($methodName === 'toArray' || ! str_ends_with($relationInfo['type'], '[]'))
+        ) {
+            return ValueResult::unknown();
         }
 
         $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);
 
         if ($tsInfo['type'] === '' || TsTypeString::isUnknownOnly($tsInfo['type'])) {
-            // Same convention rules RelationCollectionChainHandler uses for the non-nullsafe chain.
+            // The convention rules KnownMethodRuleHandler applies to a non-nullsafe call.
             $result = $this->knownMethodRule($call, $scope) ?? ValueResult::unknown();
         } else {
             // The channels carry the token's import; a class with no published file, such as JsonResource, has none.
