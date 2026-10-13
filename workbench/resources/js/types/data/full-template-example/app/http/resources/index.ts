@@ -92,6 +92,7 @@ export * from './inherited-inline-fqcn-resource';
 export * from './inline-array-fqcn-resource';
 export * from './kpi-resource';
 export * from './ledger-collection';
+export * from './local-var-by-reference-resource';
 export * from './local-var-guard-clause-resource';
 export * from './local-var-reassign-resource';
 export * from './local-var-recursion-resource';

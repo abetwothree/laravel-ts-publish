@@ -53,6 +53,8 @@ use ReflectionClass;
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
+ * @phpstan-type ByReferenceForm array{effect: ByReferenceEffect, values: list<Expr>}
+ * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type NameBindingsSnapshot array{
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
@@ -65,6 +67,7 @@ use ReflectionClass;
  *      varCollectionBindings: VarCollectionBindingsMap,
  *      varValueBindings: VarValueBindingsMap,
  *      localVarBindings: LocalVarBindingsMap,
+ *      byReferenceForms: ByReferenceFormsMap,
  *      requestVarNames: RequestVarNamesMap,
  *      claimedClosures: array<int, true>,
  *      bindingEnds: array<string, int>
@@ -92,6 +95,7 @@ final class AnalysisScope
         'varCollectionBindings' => [],
         'varValueBindings' => [],
         'localVarBindings' => [],
+        'byReferenceForms' => [],
         'requestVarNames' => [],
         'claimedClosures' => [],
         'bindingEnds' => [],
@@ -217,6 +221,15 @@ final class AnalysisScope
      * @var LocalVarBindingsMap
      */
     public array $localVarBindings = [];
+
+    /**
+     * The by-reference calls that keep a variable's value only in some forms, by the name each writes: `sort()` keeps
+     * a list, `asort()` an object, `array_push()` a list of the values it adds. Written by CollectsLocalVarBindings,
+     * which binds the variable across them; a read of it holds its binding only while the value has each form.
+     *
+     * @var ByReferenceFormsMap
+     */
+    public array $byReferenceForms = [];
 
     /**
      * The offset at which each name stops holding the binding it came into the body with, a parameter's or a seeded
@@ -354,6 +367,7 @@ final class AnalysisScope
             'varCollectionBindings' => $this->varCollectionBindings,
             'varValueBindings' => $this->varValueBindings,
             'localVarBindings' => $this->localVarBindings,
+            'byReferenceForms' => $this->byReferenceForms,
             'requestVarNames' => $this->requestVarNames,
             'claimedClosures' => $this->claimedClosures,
             'bindingEnds' => $this->bindingEnds,
@@ -377,6 +391,7 @@ final class AnalysisScope
         $this->varCollectionBindings = $snapshot['varCollectionBindings'];
         $this->varValueBindings = $snapshot['varValueBindings'];
         $this->localVarBindings = $snapshot['localVarBindings'];
+        $this->byReferenceForms = $snapshot['byReferenceForms'];
         $this->requestVarNames = $snapshot['requestVarNames'];
         $this->claimedClosures = $snapshot['claimedClosures'];
         $this->bindingEnds = $snapshot['bindingEnds'];
@@ -537,6 +552,21 @@ final class AnalysisScope
         if (isset($snapshot['localVarBindings'][$from])) {
             $this->localVarBindings[$to] = $snapshot['localVarBindings'][$from];
         }
+
+        if (isset($snapshot['byReferenceForms'][$from])) {
+            $this->byReferenceForms[$to] = $snapshot['byReferenceForms'][$from];
+        }
+    }
+
+    /**
+     * The local bindings a reader may take by their syntax, such as an array literal's keys: each but those a
+     * by-reference call keeps only in some forms, which only a read of the value's type can check.
+     *
+     * @return LocalVarBindingsMap
+     */
+    public function literalLocalBindings(): array
+    {
+        return array_diff_key($this->localVarBindings, $this->byReferenceForms);
     }
 
     /**
@@ -642,6 +672,7 @@ final class AnalysisScope
                 $this->varCollectionBindings[$name],
                 $this->varValueBindings[$name],
                 $this->localVarBindings[$name],
+                $this->byReferenceForms[$name],
                 $this->requestVarNames[$name],
                 $this->bindingEnds[$name],
             );

@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use Illuminate\Support\Enumerable;
@@ -47,6 +49,8 @@ use ReflectionClass;
  *
  * @phpstan-type VariableWrites = list<array{string, Node, Expr}>
  *
+ * @phpstan-import-type ByReferenceForm from AnalysisScope
+ *
  * @internal
  */
 trait CollectsLocalVarBindings
@@ -58,21 +62,30 @@ trait CollectsLocalVarBindings
      * that replaces it, then its guards, all from one scan of its writes.
      *
      * A local shadows an outer binding of its name however often the body writes it; a method body starts with none.
+     * A by-reference call that keeps a value in some form writes none: its form is recorded for the read to check.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function seedBody(array $stmts, AnalysisScope $scope): void
     {
         $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        [$replacing, $kept] = $this->partitionWrites($writes, $scope);
 
-        foreach ($writes as [$name]) {
-            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name]);
+        foreach ($replacing as [$name]) {
+            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
         }
 
-        $this->collectLocalVarBindings($stmts, $scope, $writes);
+        foreach ($kept as [$name, $form]) {
+            if ($form['effect'] !== ByReferenceEffect::KeepsAny) {
+                $scope->byReferenceForms[$name][] = $form;
+            }
+        }
+
+        $this->collectLocalVarBindings($stmts, $scope, $replacing);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $this->endBindingsAtWrites($stmts, $scope, $writes);
-        $this->collectInstanceofGuards($stmts, $scope, $writes);
+        // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof.
+        $this->collectInstanceofGuards($stmts, $scope, $replacing);
     }
 
     /**
@@ -80,12 +93,17 @@ trait CollectsLocalVarBindings
      * skips a variable written more than once: this flat list can't tell which write is live at a given return branch,
      * so binding one risks a wrong-but-plausible type instead of unknown.
      *
+     * A by-reference call that keeps the value in some form is no write here; seedBody() records the form it keeps.
+     *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
+     * @param  VariableWrites|null  $writes  the body's writes that replace a variable, when the caller has sorted them
      */
     protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= $this->partitionWrites(
+            $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            $scope,
+        )[0];
         $writeCounts = array_count_values(array_column($writes, 0));
 
         foreach ($stmts as $stmt) {
@@ -134,7 +152,7 @@ trait CollectsLocalVarBindings
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
                 || array_any($arrows, fn (ArrowFunction $arrow): bool => $this->encloses($arrow, $node))
                 || ! $this->replacesVariable($target, $name)
-                || $this->keepsBinding($name, $node, $scope)
+                || $this->keepsBinding($name, $node, $this->byReferenceForm($node, $target, $writes, $scope), $scope)
             ) {
                 continue;
             }
@@ -153,17 +171,18 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Collect every local variable name written anywhere in a statement tree, as collectVariableWrites() counts writes.
+     * Collect every local variable name written anywhere in a statement tree, as collectVariableWrites() counts writes,
+     * but a by-reference call that keeps the value in some form, whose form the read checks.
      *
      * @param  array<Node>  $stmts
      * @return list<string>
      */
     protected function collectWrittenVariableNames(array $stmts, AnalysisScope $scope): array
     {
-        return array_column(
+        return array_column($this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
-            0,
-        );
+            $scope,
+        )[0], 0);
     }
 
     /**
@@ -274,8 +293,10 @@ trait CollectsLocalVarBindings
      * Whether a write leaves a binding standing. `.=` or `++` keeps the kind of value held; an assignment or `??=`
      * keeps it unless its value names a class the binding does not hold, other or fewer classes than a declared one,
      * or a collection of another element. An inline `@var` on an assignment answers where its value names none.
+     *
+     * @param  ByReferenceForm|null  $form  what a by-reference call or `foreach` leaves, when one makes the write
      */
-    private function keepsBinding(string $name, Node $node, AnalysisScope $scope): bool
+    private function keepsBinding(string $name, Node $node, ?array $form, AnalysisScope $scope): bool
     {
         if (($node instanceof AssignOp && ! $node instanceof CoalesceAssign)
             || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
@@ -283,7 +304,22 @@ trait CollectsLocalVarBindings
             return true;
         }
 
-        // A `foreach` target, `catch`, `unset()`, destructuring or by-reference write holds a value this does not read.
+        $element = $scope->varCollectionBindings[$name]['modelFqcn'] ?? null;
+        $classes = match (true) {
+            isset($scope->varModelBindings[$name]) => [$scope->varModelBindings[$name]],
+            isset($scope->varClassBindings[$name]) => $scope->varClassBindings[$name],
+            isset($scope->requestVarNames[$name]) => [$scope->requestVarNames[$name]],
+            default => null,
+        };
+        $declared = $scope->varDeclaredBindings[$name] ?? null;
+
+        // A by-reference call keeps only an array or a number, never the object a class binding holds.
+        if ($form !== null) {
+            return $form['effect'] === ByReferenceEffect::KeepsAny
+                || ($form['effect'] !== ByReferenceEffect::Replaces && $classes === null && $declared === null && $element === null);
+        }
+
+        // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
         if ((! $node instanceof Assign && ! $node instanceof CoalesceAssign) || ! $node->var instanceof Variable) {
             return false;
         }
@@ -293,14 +329,6 @@ trait CollectsLocalVarBindings
             ? array_find($scope->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $node->expr)
             : null;
         $held = $span === null ? $resolver->resolve($node->expr, $scope) : $resolver->resolveDeclared($name, $span, $scope);
-        $element = $scope->varCollectionBindings[$name]['modelFqcn'] ?? null;
-        $classes = match (true) {
-            isset($scope->varModelBindings[$name]) => [$scope->varModelBindings[$name]],
-            isset($scope->varClassBindings[$name]) => $scope->varClassBindings[$name],
-            isset($scope->requestVarNames[$name]) => [$scope->requestVarNames[$name]],
-            default => null,
-        };
-        $declared = $scope->varDeclaredBindings[$name] ?? null;
 
         return match (true) {
             $held === null => true,
@@ -315,6 +343,154 @@ trait CollectsLocalVarBindings
                 && ($held->elementModel === null || is_a($held->elementModel, $element, true)),
             default => false,
         };
+    }
+
+    /**
+     * Split a body's writes into those that replace a variable's value and the by-reference ones that keep it in some
+     * form, each with the form it keeps.
+     *
+     * @param  VariableWrites  $writes
+     * @return array{VariableWrites, list<array{string, ByReferenceForm}>}
+     */
+    private function partitionWrites(array $writes, AnalysisScope $scope): array
+    {
+        $replacing = [];
+        $kept = [];
+
+        foreach ($writes as $write) {
+            $form = $this->byReferenceForm($write[1], $write[2], $writes, $scope);
+
+            if ($form === null || $form['effect'] === ByReferenceEffect::Replaces) {
+                $replacing[] = $write;
+            } else {
+                $kept[] = [$write[0], $form];
+            }
+        }
+
+        return [$replacing, $kept];
+    }
+
+    /**
+     * What a by-reference argument or a by-reference `foreach` leaves in the variable it writes, with the values it
+     * adds or writes into an element; null for a write neither makes. A key of a variable is always replaced.
+     *
+     * @param  VariableWrites  $writes  every write of the body, for those a `foreach` element's variable makes
+     * @return ByReferenceForm|null
+     */
+    private function byReferenceForm(Node $node, Expr $target, array $writes, AnalysisScope $scope): ?array
+    {
+        if ($node instanceof Foreach_ && $node->byRef && $node->expr === $target) {
+            $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
+            // After the loop the variable still points at the last element, so every write to it counts, but unset().
+            $values = $element === null || ! $target instanceof Variable ? null : $this->elementValues(array_values(array_filter(
+                $writes,
+                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_,
+            )));
+
+            return $this->form($values === null ? ByReferenceEffect::Replaces : ByReferenceEffect::WritesElements, $values ?? []);
+        }
+
+        if (! $node instanceof CallLike) {
+            return null;
+        }
+
+        $effect = $target instanceof Variable
+            ? resolve(ByReferenceArguments::class)->effect($node, $target)
+            : ByReferenceEffect::Replaces;
+
+        return match ($effect) {
+            ByReferenceEffect::Appends => $this->appendedForm($node, $target),
+            ByReferenceEffect::WritesElements => $this->walkedForm($node, $scope),
+            default => $this->form($effect),
+        };
+    }
+
+    /**
+     * What array_push() or array_unshift() leaves: the list, with each value it adds, unless one is unpacked.
+     *
+     * @return ByReferenceForm
+     */
+    private function appendedForm(CallLike $call, Expr $target): array
+    {
+        $added = array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->value !== $target));
+
+        return array_any($added, fn (Arg $arg): bool => $arg->unpack)
+            ? $this->form(ByReferenceEffect::Replaces)
+            : $this->form(ByReferenceEffect::Appends, array_map(fn (Arg $arg): Expr => $arg->value, $added));
+    }
+
+    /**
+     * What array_walk() or array_walk_recursive() leaves: every element, when its callback takes none by reference,
+     * else each element with the values its callback writes into it, read only from a closure written at the call.
+     *
+     * @return ByReferenceForm
+     */
+    private function walkedForm(CallLike $call, AnalysisScope $scope): array
+    {
+        $callback = CallArguments::fromNames($call->getArgs(), ['array', 'callback', 'arg'])->named('callback')?->value;
+
+        if (! $callback instanceof ClosureExpr && ! $callback instanceof ArrowFunction) {
+            return $this->form(ByReferenceEffect::Replaces);
+        }
+
+        $parameter = $callback->params[0] ?? null;
+
+        if ($parameter === null || ! $parameter->byRef) {
+            return $this->form(ByReferenceEffect::KeepsAny);
+        }
+
+        $element = ! $parameter->variadic && $parameter->var instanceof Variable && is_string($parameter->var->name)
+            ? $parameter->var->name
+            : null;
+        $body = $callback instanceof ClosureExpr ? $callback->stmts : [$callback->expr];
+        $values = $element === null ? null : $this->elementValues(array_values(array_filter(
+            $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass),
+            fn (array $write): bool => $write[0] === $element,
+        )));
+
+        return $values === null
+            ? $this->form(ByReferenceEffect::Replaces)
+            : $this->form(ByReferenceEffect::WritesElements, $values);
+    }
+
+    /**
+     * The values writes to an element's variable put in the element, or null when one is a write the scan cannot type:
+     * anything but an assignment, `??=`, `++` or `--` of the variable itself. An increment stands for its own value.
+     *
+     * @param  VariableWrites  $writes
+     * @return list<Expr>|null
+     */
+    private function elementValues(array $writes): ?array
+    {
+        $values = [];
+
+        foreach ($writes as [, $node, $target]) {
+            $value = match (true) {
+                ! $target instanceof Variable => null,
+                $node instanceof Assign, $node instanceof CoalesceAssign => $node->expr,
+                $node instanceof PreInc, $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node,
+                default => null,
+            };
+
+            if ($value === null) {
+                return null;
+            }
+
+            $values[] = $value;
+        }
+
+        return $values;
+    }
+
+    /**
+     * A by-reference form of an effect, with the values the call adds or writes.
+     *
+     * @param  list<Expr>  $values
+     * @return ByReferenceForm
+     */
+    private function form(ByReferenceEffect $effect, array $values = []): array
+    {
+        return ['effect' => $effect, 'values' => $values];
     }
 
     /**

@@ -29,6 +29,10 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -144,10 +148,11 @@ final class VariableHandler implements ExpressionHandler
         }
 
         $span = $scope->declaredAt($expr);
-
-        return $span === null
+        $value = $span === null
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
+
+        return $value === null ? null : $this->keptByReference($expr->name, $value, $scope, $engine);
     }
 
     /**
@@ -263,6 +268,46 @@ final class VariableHandler implements ExpressionHandler
         } finally {
             unset($scope->resolvingLocalVars[$name]);
         }
+    }
+
+    /**
+     * A variable's bound value past the by-reference calls that keep it only in some forms, or null, as for a variable
+     * written twice, when it lacks one of them. A cyclic read, such as `array_push($a, $a)`, keeps nothing.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult|null
+     */
+    private function keptByReference(string $name, array $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $forms = $scope->byReferenceForms[$name] ?? [];
+
+        if ($forms === []) {
+            return $value;
+        }
+
+        if (isset($scope->resolvingLocalVars[$name])) {
+            return null;
+        }
+
+        $scope->resolvingLocalVars[$name] = true;
+
+        try {
+            foreach ($forms as $form) {
+                $written = array_map(fn (Expr $written): string => match (true) {
+                    $written instanceof PreInc, $written instanceof PostInc,
+                    $written instanceof PreDec, $written instanceof PostDec => 'number',
+                    default => $engine->resolve($written)['type'],
+                }, $form['values']);
+
+                if (! $form['effect']->keeps($value['type'], $written)) {
+                    return null;
+                }
+            }
+        } finally {
+            unset($scope->resolvingLocalVars[$name]);
+        }
+
+        return $value;
     }
 
     /**

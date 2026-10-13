@@ -254,7 +254,8 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
 `GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee
-the scan can name; neither sees one on a receiver it cannot name.
+the scan can name, but a built-in's that keeps the value in some form ([By-reference calls](#by-reference-calls));
+neither sees one on a receiver it cannot name.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -291,6 +292,16 @@ parameter of a callee the scan cannot name.
 `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
 no more.
 
+### By-reference calls
+
+`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes,
+as a [`ByReferenceEffect`]: `ksort()` keeps any value, `sort()` a list, `asort()` an object, a count out-parameter a
+number, `array_push()` a list of the values it adds, and `array_walk()` or a by-reference `foreach` each element its
+writes stay within. Every other callee replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no
+keeping call as a write and records its form in `AnalysisScope::$byReferenceForms`; `VariableHandler` drops a read
+whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a
+local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
+
 ### What deliberately stays unbound
 
 These shapes stay unbound on purpose, so they resolve as `unknown` rather than as a guess:
@@ -301,7 +312,7 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
   or an operator such as `.=`, leaves the binding standing, since only the old binding is known; a `foreach`, `catch`
-  or by-reference write ends it.
+  or by-reference write ends it, but a call that keeps the value's form.
 
 ## Subject mode
 
@@ -543,6 +554,7 @@ These pages cover the engine's neighbors:
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/AstParser.php
 [`ByReferenceArguments`]: ../../src/Ast/ByReferenceArguments.php
+[`ByReferenceEffect`]: ../../src/Ast/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
 [`ControllerExpressionHandlers`]: ../../src/Ast/ControllerExpressionHandlers.php
 [`DroppedUnionArms`]: ../../src/Ast/DroppedUnionArms.php

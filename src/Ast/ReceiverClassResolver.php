@@ -328,7 +328,7 @@ final class ReceiverClassResolver
      */
     private function fromLocal(string $name, AnalysisScope $scope): ?ReceiverType
     {
-        $bound = $scope->localVarBindings[$name] ?? null;
+        $bound = $scope->literalLocalBindings()[$name] ?? null;
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }

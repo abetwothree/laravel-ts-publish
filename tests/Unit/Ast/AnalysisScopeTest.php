@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -74,6 +75,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => []]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
@@ -145,6 +147,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
+        ->and($scope->byReferenceForms['param'])->toBe($captured['byReferenceForms']['item'])
         ->and($scope->requestVarNames['param'])->toBe(Request::class);
 });
 
@@ -188,7 +191,7 @@ it('copies only the body\'s own bindings of a variable passed past its end, and 
     $scope->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
 
     expect(array_keys(array_filter(array_diff_key($scope->nameBindings(), ['claimedClosures' => true]))))
-        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'bindingEnds'])
+        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds'])
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
 });
 

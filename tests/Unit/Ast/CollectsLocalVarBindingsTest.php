@@ -170,3 +170,100 @@ it('ends a value binding only at a write whose value names a class', function (s
     'a value naming no class' => ['$p = trim($p); return $p;', [true, true, true]],
     'a value naming a class' => ['$p = \\Workbench\\App\\Enums\\Status::from($p); return $p;', [true, true, false]],
 ]);
+
+/**
+ * The locals seedBody() binds in a parsed body, with UnseenWritesResource as the subject, each with the effect of every
+ * by-reference form recorded beside it.
+ *
+ * @return array<string, list<string>>
+ */
+function byReferenceSeededLocals(string $body): array
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the body.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function seed(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $scope = new AnalysisScope(new ReflectionClass(UnseenWritesResource::class), Post::class);
+    $host->seed($stmts, $scope);
+
+    $bound = [];
+
+    foreach (array_keys($scope->localVarBindings) as $name) {
+        $bound[$name] = array_map(fn (array $form): string => $form['effect']->name, $scope->byReferenceForms[$name] ?? []);
+    }
+
+    return $bound;
+}
+
+it('binds a local across a by-reference built-in that keeps its value in some form, and records that form', function (string $body, array $bound) {
+    expect(byReferenceSeededLocals($body))->toBe($bound);
+})->with([
+    'ksort(), any form' => ['$x = []; ksort($x);', ['x' => []]],
+    'uksort(), any form' => ['$x = []; uksort($x, fn ($a, $b) => 0);', ['x' => []]],
+    'sort(), a list' => ['$x = []; sort($x);', ['x' => ['KeepsList']]],
+    'rsort(), a list' => ['$x = []; rsort($x);', ['x' => ['KeepsList']]],
+    'usort(), a list' => ['$x = []; usort($x, fn ($a, $b) => 0);', ['x' => ['KeepsList']]],
+    'shuffle(), a list' => ['$x = []; shuffle($x);', ['x' => ['KeepsList']]],
+    'krsort(), an object' => ['$x = []; krsort($x);', ['x' => ['KeepsObject']]],
+    'asort(), an object' => ['$x = []; asort($x);', ['x' => ['KeepsObject']]],
+    'arsort(), an object' => ['$x = []; arsort($x);', ['x' => ['KeepsObject']]],
+    'uasort(), an object' => ['$x = []; uasort($x, fn ($a, $b) => 0);', ['x' => ['KeepsObject']]],
+    'natsort(), an object' => ['$x = []; natsort($x);', ['x' => ['KeepsObject']]],
+    'natcasesort(), an object' => ['$x = []; natcasesort($x);', ['x' => ['KeepsObject']]],
+    'str_replace()\'s count, a number' => ['$n = 0; str_replace("a", "b", "c", $n);', ['n' => ['KeepsNumber']]],
+    'str_ireplace()\'s count, a number' => ['$n = 0; str_ireplace("a", "b", "c", $n);', ['n' => ['KeepsNumber']]],
+    'preg_replace()\'s count, a number' => ['$n = 0; preg_replace("/a/", "b", "c", -1, $n);', ['n' => ['KeepsNumber']]],
+    'preg_replace_callback()\'s count, named' => ['$n = 0; preg_replace_callback("/a/", fn ($m) => "b", "c", count: $n);', ['n' => ['KeepsNumber']]],
+    'array_push(), a list of what it adds' => ['$x = []; array_push($x, 1, 2);', ['x' => ['Appends']]],
+    'array_unshift(), a list of what it adds' => ['$x = []; array_unshift($x, 1);', ['x' => ['Appends']]],
+    'array_walk() by reference, the elements it writes' => ['$x = []; array_walk($x, function (&$v) { $v = 1; });', ['x' => ['WritesElements']]],
+    'array_walk_recursive() by reference' => ['$x = []; array_walk_recursive($x, fn (&$v) => $v++);', ['x' => ['WritesElements']]],
+    'array_walk() by value, any form' => ['$x = []; array_walk($x, fn ($v) => $v);', ['x' => []]],
+    'a by-reference foreach, the elements it writes' => ['$x = []; foreach ($x as &$v) { $v = 1; } unset($v);', ['x' => ['WritesElements']]],
+    'preg_match()\'s matches' => ['$m = []; preg_match("/x/", "s", $m);', []],
+    'settype()' => ['$x = 1; settype($x, "string");', []],
+    'parse_str()' => ['$x = []; parse_str("a=1", $x);', []],
+    'a user method' => ['$x = 1; $this->fillInstance($x);', []],
+    'a key of the variable' => ['$x = []; sort($x["k"]);', []],
+    'array_push() of an unpacked list' => ['$x = []; array_push($x, ...$y);', []],
+    'array_walk() with a callback it cannot read' => ['$x = []; array_walk($x, "trim");', []],
+    'array_walk() writing a key of the element' => ['$x = []; array_walk($x, function (&$v) { $v["k"] = 1; });', []],
+    'a foreach writing a key of the element' => ['$x = []; foreach ($x as &$v) { $v["k"] = 1; }', []],
+    'a foreach whose element is written past the loop' => ['$x = []; foreach ($x as &$v) {} $v = 1;', ['x' => ['WritesElements']]],
+    'a foreach whose element a by-reference call writes' => ['$x = []; foreach ($x as &$v) { sort($v); }', []],
+]);
+
+it('keeps a parameter\'s value binding across a by-reference built-in that keeps it in some form', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
+        $scope->varValueBindings['p'] = ['type' => 'string[]', 'optional' => false];
+    }))->toBe($holding);
+})->with([
+    'sort()' => ['sort($p); return $p;', [true, true]],
+    'ksort()' => ['ksort($p); return $p;', [true, true]],
+    'array_push()' => ['array_push($p, "x"); return $p;', [true, true]],
+    'preg_match()\'s matches' => ['preg_match("/x/", "s", $p); return $p;', [false, false]],
+]);
+
+// No form a by-reference built-in keeps is an object's, but ksort(), which keeps any value it can take.
+it('ends a class binding at a by-reference built-in that keeps a value in another form', function (string $body, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
+        $scope->varModelBindings['p'] = User::class;
+    }))->toBe($holding);
+})->with([
+    'sort()' => ['sort($p); return $p;', [false, false]],
+    'a count out-parameter' => ['str_replace("a", "b", "c", $p); return $p;', [false, false]],
+    'ksort()' => ['ksort($p); return $p;', [true, true]],
+]);

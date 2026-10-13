@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use PhpParser\Node\Expr\CallLike;
@@ -81,3 +82,23 @@ it('reads only the arguments it is asked about, by their position', function () 
         ->toHaveCount(1)
         ->sequence(fn ($argument) => $argument->toBeInstanceOf(Variable::class));
 });
+
+it('reports what a built-in leaves in the variable it takes by reference', function (string $statement, ByReferenceEffect $effect) {
+    $call = new AstParser()->parseSource('<?php namespace App; '.$statement)[0]->stmts[0]->expr;
+    $argument = array_find($call->getArgs(), fn ($arg): bool => $arg->value instanceof Variable && $arg->value->name === 'x')->value;
+
+    expect(resolve(ByReferenceArguments::class)->effect($call, $argument))->toBe($effect);
+})->with([
+    'ksort()' => ['ksort($x);', ByReferenceEffect::KeepsAny],
+    'sort(), named' => ['sort(array: $x);', ByReferenceEffect::KeepsList],
+    'asort()' => ['asort($x);', ByReferenceEffect::KeepsObject],
+    'str_replace()\'s count' => ['str_replace("a", "b", "c", $x);', ByReferenceEffect::KeepsNumber],
+    'preg_replace_callback()\'s count, named' => ['preg_replace_callback("/a/", "f", "c", count: $x);', ByReferenceEffect::KeepsNumber],
+    'array_push()' => ['array_push($x, 1);', ByReferenceEffect::Appends],
+    'array_walk()' => ['array_walk($x, "f");', ByReferenceEffect::WritesElements],
+    'preg_match()\'s matches' => ['preg_match("/a/", "b", $x);', ByReferenceEffect::Replaces],
+    'settype()' => ['settype($x, "int");', ByReferenceEffect::Replaces],
+    'a by-value argument of a known built-in' => ['str_replace($x, "b", "c", $n);', ByReferenceEffect::Replaces],
+    'a function nobody declares' => ['missing_function($x);', ByReferenceEffect::Replaces],
+    'a method' => ['$this->fill($x);', ByReferenceEffect::Replaces],
+]);

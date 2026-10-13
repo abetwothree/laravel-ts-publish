@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCas
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceReshapedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
@@ -81,6 +82,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingRe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
@@ -156,6 +158,7 @@ use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
 use Workbench\App\Http\Resources\LedgerCollection;
 use Workbench\App\Http\Resources\LedgerResource;
+use Workbench\App\Http\Resources\LocalVarByReferenceResource;
 use Workbench\App\Http\Resources\LocalVarGuardClauseResource;
 use Workbench\App\Http\Resources\LocalVarReassignResource;
 use Workbench\App\Http\Resources\LocalVarRecursionResource;
@@ -7380,6 +7383,91 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
         'field' => 'string',
         'items' => 'number[]',
         'author' => 'User',
+    ]);
+});
+
+it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
+    expect(resourceKeyTypes(LocalVarByReferenceResource::class, Post::class)[$key] ?? null)->toBe($type);
+})->with([
+    'sort() of a list' => ['sorted', 'string[]'],
+    'rsort() of a list' => ['reversed', 'number[]'],
+    'usort() of a list' => ['user_sorted', 'string[]'],
+    'sort() of a plucked list' => ['plucked', 'string[]'],
+    'ksort() of an object' => ['key_sorted', '{ b: number; a: number }'],
+    'ksort() of a list' => ['key_sorted_list', 'string[]'],
+    'uksort() of an object' => ['user_key_sorted', '{ b: number; a: number }'],
+    'krsort() of an object' => ['reverse_key_sorted', '{ a: number; b: number }'],
+    'asort() of an object' => ['value_sorted', '{ b: number; a: number }'],
+    'arsort() of an object' => ['reverse_value_sorted', '{ a: number; b: number }'],
+    'uasort() of an object' => ['user_value_sorted', '{ b: number; a: number }'],
+    'natsort() of an object' => ['natural_sorted', '{ b: string; a: string }'],
+    'natcasesort() of an object' => ['natural_case_sorted', '{ b: string; a: string }'],
+    'str_replace()\'s count' => ['replaced_count', 'number'],
+    'str_ireplace()\'s count' => ['case_replaced_count', 'number'],
+    'preg_replace()\'s count' => ['pattern_count', 'number'],
+    'preg_replace_callback()\'s count' => ['callback_count', 'number'],
+    'array_push() of the element type' => ['pushed', 'string[]'],
+    'array_unshift() of the element type' => ['unshifted', 'string[]'],
+    'array_walk() incrementing each element' => ['walked', '{ x: number }'],
+    'array_walk() writing the element type' => ['walked_list', 'string[]'],
+    'array_walk() by value' => ['read_only_walk', '{ b: number }'],
+    'a by-reference foreach writing the element type' => ['looped', 'string[]'],
+]);
+
+it('sends the type a local a by-reference built-in keeps publishes', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $comment = new Comment;
+    $comment->forceFill(['content' => 'x']);
+    $post->setRelation('comments', new EloquentCollection([$comment]));
+
+    $sent = json_decode((string) json_encode(new LocalVarByReferenceResource($post)->resolve(Request::create('/'))), true);
+
+    expect(json_encode($sent))->toBe(json_encode([
+        'sorted' => ['a', 'b'],
+        'reversed' => [3, 2, 1],
+        'user_sorted' => ['a', 'b'],
+        'plucked' => ['x'],
+        'key_sorted' => ['a' => 2, 'b' => 1],
+        'key_sorted_list' => ['b', 'a'],
+        'user_key_sorted' => ['a' => 2, 'b' => 1],
+        'reverse_key_sorted' => ['b' => 2, 'a' => 1],
+        'value_sorted' => ['a' => 1, 'b' => 2],
+        'reverse_value_sorted' => ['b' => 2, 'a' => 1],
+        'user_value_sorted' => ['a' => 1, 'b' => 2],
+        'natural_sorted' => ['a' => 'img10', 'b' => 'img12'],
+        'natural_case_sorted' => ['a' => 'img10', 'b' => 'IMG12'],
+        'replaced_count' => 3,
+        'case_replaced_count' => 3,
+        'pattern_count' => 3,
+        'callback_count' => 3,
+        'pushed' => ['a', 'b'],
+        'unshifted' => ['a', 'b'],
+        'walked' => ['x' => 2],
+        'walked_list' => ['A', 'B'],
+        'read_only_walk' => ['b' => 1],
+        'looped' => ['a', 'b'],
+    ]));
+});
+
+// O7: Laravel sends none of the types these locals were bound to, so each reads unknown but the contrasts.
+// shuffle() keeps a list too; the security preset keeps it out of the workbench.
+it('leaves unknown a local a by-reference built-in reshapes, or writes with a value the scan cannot follow', function () {
+    expect(resourceKeyTypes(ByReferenceReshapedResource::class, Post::class))->toBe([
+        'object_sorted' => 'unknown',
+        'list_value_sorted' => 'unknown',
+        'list_reverse_key_sorted' => 'unknown',
+        'pushed_other' => 'unknown',
+        'pushed_object' => 'unknown',
+        'pushed_unpacked' => 'unknown',
+        'counted_string' => 'unknown',
+        'walked_other' => 'unknown',
+        'walked_key' => 'unknown',
+        'walked_named' => 'unknown',
+        'looped_other' => 'unknown',
+        'matched' => 'unknown',
+        'kept_list' => 'string[]',
+        'shuffled' => 'number[]',
     ]);
 });
 

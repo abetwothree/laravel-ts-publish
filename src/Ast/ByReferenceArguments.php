@@ -23,7 +23,7 @@ use ReflectionParameter;
 /**
  * The arguments a call passes to a by-reference parameter of the callee it names: a function, a method of `$this`,
  * `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
- * write scan both read a call's writes through it.
+ * write scan both read a call's writes through it, and the local write scan what a built-in leaves in each.
  *
  * @internal
  */
@@ -31,6 +31,30 @@ final class ByReferenceArguments
 {
     /** By-reference functions that only move an array's internal pointer, so the value keeps its type. */
     private const array POINTER_FUNCTIONS = ['end', 'next', 'prev', 'reset'];
+
+    /** What a built-in leaves in the variable a by-reference parameter takes, by function and parameter name. */
+    private const array EFFECTS = [
+        'array_push' => ['array' => ByReferenceEffect::Appends],
+        'array_unshift' => ['array' => ByReferenceEffect::Appends],
+        'array_walk' => ['array' => ByReferenceEffect::WritesElements],
+        'array_walk_recursive' => ['array' => ByReferenceEffect::WritesElements],
+        'arsort' => ['array' => ByReferenceEffect::KeepsObject],
+        'asort' => ['array' => ByReferenceEffect::KeepsObject],
+        'krsort' => ['array' => ByReferenceEffect::KeepsObject],
+        'ksort' => ['array' => ByReferenceEffect::KeepsAny],
+        'natcasesort' => ['array' => ByReferenceEffect::KeepsObject],
+        'natsort' => ['array' => ByReferenceEffect::KeepsObject],
+        'preg_replace' => ['count' => ByReferenceEffect::KeepsNumber],
+        'preg_replace_callback' => ['count' => ByReferenceEffect::KeepsNumber],
+        'rsort' => ['array' => ByReferenceEffect::KeepsList],
+        'shuffle' => ['array' => ByReferenceEffect::KeepsList],
+        'sort' => ['array' => ByReferenceEffect::KeepsList],
+        'str_ireplace' => ['count' => ByReferenceEffect::KeepsNumber],
+        'str_replace' => ['count' => ByReferenceEffect::KeepsNumber],
+        'uasort' => ['array' => ByReferenceEffect::KeepsObject],
+        'uksort' => ['array' => ByReferenceEffect::KeepsAny],
+        'usort' => ['array' => ByReferenceEffect::KeepsList],
+    ];
 
     /**
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
@@ -52,24 +76,37 @@ final class ByReferenceArguments
         }
 
         $parameters = $callee->getParameters();
-        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
         $arguments = [];
 
         foreach ($passed as $index => $arg) {
-            $named = $arg->name?->toString();
-            $parameter = $named === null
-                ? (is_int($index) ? $parameters[$index] ?? null : null)
-                : array_find($parameters, fn (ReflectionParameter $known): bool => $known->getName() === $named);
-
-            // PHP collects a surplus positional or unknown named argument into a trailing variadic.
-            $parameter ??= $last?->isVariadic() ? $last : null;
-
-            if ($parameter?->isPassedByReference()) {
+            if ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
                 $arguments[] = $arg->value;
             }
         }
 
         return $arguments;
+    }
+
+    /**
+     * What a call leaves in a variable it passes to a by-reference parameter: a built-in's effect on that parameter,
+     * else Replaces, as for every user function and method.
+     */
+    public function effect(CallLike $call, Expr $argument): ByReferenceEffect
+    {
+        $function = $call instanceof FuncCall && $call->name instanceof Name && ! $call->isFirstClassCallable()
+            ? $this->namedFunction($call->name)
+            : null;
+        $effects = $function !== null && $function->isInternal() ? self::EFFECTS[$function->getName()] ?? [] : [];
+
+        foreach ($effects === [] ? [] : $call->getArgs() as $index => $arg) {
+            if ($arg->value === $argument) {
+                $parameter = $this->parameterAt($function?->getParameters() ?? [], $index, $arg);
+
+                return $effects[$parameter?->getName() ?? ''] ?? ByReferenceEffect::Replaces;
+            }
+        }
+
+        return ByReferenceEffect::Replaces;
     }
 
     /**
@@ -108,6 +145,23 @@ final class ByReferenceArguments
         }
 
         return null;
+    }
+
+    /**
+     * The parameter an argument at a position, or of a name, lands in.
+     *
+     * @param  list<ReflectionParameter>  $parameters
+     */
+    private function parameterAt(array $parameters, int|string $index, Arg $arg): ?ReflectionParameter
+    {
+        $named = $arg->name?->toString();
+        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
+        $parameter = $named === null
+            ? (is_int($index) ? $parameters[$index] ?? null : null)
+            : array_find($parameters, fn (ReflectionParameter $known): bool => $known->getName() === $named);
+
+        // PHP collects a surplus positional or unknown named argument into a trailing variadic.
+        return $parameter ?? ($last?->isVariadic() ? $last : null);
     }
 
     /**

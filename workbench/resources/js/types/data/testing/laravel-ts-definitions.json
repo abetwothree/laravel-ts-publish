@@ -14506,6 +14506,126 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\LocalVarByReferenceResource": {
+            "name": "LocalVarByReferenceResource",
+            "properties": [
+                {
+                    "name": "sorted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "reversed",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "user_sorted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "plucked",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "user_key_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "reverse_key_sorted",
+                    "type": "{ a: number; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "value_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "reverse_value_sorted",
+                    "type": "{ a: number; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "user_value_sorted",
+                    "type": "{ b: number; a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "natural_sorted",
+                    "type": "{ b: string; a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "natural_case_sorted",
+                    "type": "{ b: string; a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "replaced_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "case_replaced_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pattern_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "callback_count",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "pushed",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "unshifted",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "walked",
+                    "type": "{ x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "walked_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "read_only_walk",
+                    "type": "{ b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "looped",
+                    "type": "string[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\LocalVarGuardClauseResource": {
             "name": "LocalVarGuardClauseResource",
             "properties": [

@@ -194,6 +194,7 @@
     "app\/Http\/Resources\/InlineArrayFqcnResource.php",
     "app\/Http\/Resources\/KpiResource.php",
     "app\/Http\/Resources\/LedgerCollection.php",
+    "app\/Http\/Resources\/LocalVarByReferenceResource.php",
     "app\/Http\/Resources\/LocalVarGuardClauseResource.php",
     "app\/Http\/Resources\/LocalVarReassignResource.php",
     "app\/Http\/Resources\/LocalVarRecursionResource.php",
