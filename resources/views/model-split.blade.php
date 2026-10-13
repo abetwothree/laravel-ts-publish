@@ -44,10 +44,10 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 export interface {{ $data->modelName }}Resource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumColumns as $name => $enum)
-    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['alsoBare'] ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! ($enum['alsoBare'] ?? false) ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 @foreach ($data->enumAppends as $name => $enum)
-    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['alsoBare'] ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! ($enum['alsoBare'] ?? false) ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
 @endif{{-- end $data->enumColumns --}}
@@ -71,7 +71,7 @@ export interface {{ $data->modelName }}Mutators
 export interface {{ $data->modelName }}MutatorsResource extends {!! $hasEnumsExtends !!}
 {
 @foreach ($data->enumMutators as $name => $enum)
-    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['alsoBare'] ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! ($enum['alsoBare'] ?? false) ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
 @endif{{-- end $data->enumMutators --}}
