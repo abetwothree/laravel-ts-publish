@@ -32,18 +32,43 @@ enum ByReferenceEffect
     /** array_walk() and a by-reference `foreach` write each element in place. */
     case WritesElements;
 
+    /** array_walk_recursive() writes each value below the arrays it descends, at any depth. */
+    case WritesLeaves;
+
     /** Anything else: the callee writes a value the scan does not follow. */
     case Replaces;
 
     /**
-     * Whether a value of a type keeps it past the call, given the types of the values the call adds or writes.
+     * Whether a value of a type keeps it past the call, given the types of the values the call adds or writes, and the
+     * key path to the member the call takes, which must keep its own form.
      *
      * A `null` arm is left out of the form test: the call takes only an array, so a null never gets past it.
      *
      * @param  list<string>  $values
+     * @param  list<string>  $path
      */
-    public function keeps(string $type, array $values = []): bool
+    public function keeps(string $type, array $values = [], array $path = []): bool
     {
+        foreach ($path as $key) {
+            // Whatever the call leaves in a member typed `unknown`, the type published for it still holds.
+            if ($type === 'unknown') {
+                return $this !== self::Replaces;
+            }
+
+            $member = TsTypeShape::memberType($type, $key)
+                ?? (is_numeric($key) ? self::listElements($type)[0] ?? null : null);
+
+            if ($member === null) {
+                return false;
+            }
+
+            $type = $member;
+        }
+
+        if ($path !== [] && $type === 'unknown') {
+            return $this !== self::Replaces;
+        }
+
         $arms = array_values(array_filter(
             TsTypeShape::splitTopLevel($type, ['|']),
             static fn (string $arm): bool => $arm !== 'null',
@@ -60,6 +85,7 @@ enum ByReferenceEffect
             self::KeepsNumber => $type === 'number',
             self::Appends => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::listElements($arm), $values)),
             self::WritesElements => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::elementTypes($arm), $values)),
+            self::WritesLeaves => array_all($arms, static fn (string $arm): bool => self::holdsEach(self::leafTypes($arm), $values)),
             self::Replaces => false,
         };
     }
@@ -77,7 +103,8 @@ enum ByReferenceEffect
     }
 
     /**
-     * The type of each element a list, an object or a Record holds, or null when the arm holds none the scan can name.
+     * The type of each element a list, a tuple, an object or a Record holds, or null when the arm holds none the scan
+     * can name.
      *
      * @return list<string>|null
      */
@@ -89,6 +116,13 @@ enum ByReferenceEffect
             return $list;
         }
 
+        if (TsTypeShape::isWrapped($arm, '[', ']')) {
+            return array_map(
+                static fn (string $member): string => rtrim($member, '?'),
+                TsTypeShape::splitTopLevel(substr($arm, 1, -1), [',']),
+            );
+        }
+
         if (str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')) {
             $value = TsTypeShape::splitTopLevel(substr($arm, 7, -1), [','])[1] ?? null;
 
@@ -98,6 +132,43 @@ enum ByReferenceEffect
         $members = TsTypeShape::members($arm);
 
         return $members === null ? null : array_map(static fn (array $member): string => $member[1], $members);
+    }
+
+    /**
+     * The types of the values a recursive walk visits below an array arm: at each element, the union of its arms that
+     * hold no array, and below each that does, the same again. Null when the arm holds no array.
+     *
+     * @return list<string>|null
+     */
+    private static function leafTypes(string $arm): ?array
+    {
+        $elements = self::elementTypes($arm);
+
+        if ($elements === null) {
+            return null;
+        }
+
+        $leaves = [];
+
+        foreach ($elements as $element) {
+            $values = [];
+
+            foreach (TsTypeShape::splitTopLevel($element, ['|']) as $part) {
+                $below = self::leafTypes($part);
+
+                if ($below === null) {
+                    $values[] = $part;
+                } else {
+                    array_push($leaves, ...$below);
+                }
+            }
+
+            if ($values !== []) {
+                $leaves[] = implode(' | ', $values);
+            }
+        }
+
+        return $leaves;
     }
 
     /**

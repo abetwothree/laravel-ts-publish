@@ -10,8 +10,8 @@ use Workbench\App\Models\Post;
 
 /**
  * Locals a by-reference built-in rewrites in a form that keeps their type: a sort of a list, a key sort of anything, a
- * key-keeping sort of an object, a count out-parameter, a push of the list's own element type, and a walk or a
- * by-reference loop that writes each element within its type.
+ * key-keeping sort of an object, a count out-parameter, a push of the list's own element type, a walk or a by-reference
+ * loop that writes each element within its type, and a recursive walk or a sort of one of a local's keys likewise.
  *
  * @mixin Post
  */
@@ -90,6 +90,18 @@ class LocalVarByReferenceResource extends JsonResource
         $readOnlyWalk = ['b' => 1];
         array_walk($readOnlyWalk, fn (int $value): int => $value * 2);
 
+        $walkedNested = ['a' => ['b' => 1]];
+        array_walk_recursive($walkedNested, fn (int &$value) => $value++);
+
+        $sortedMember = ['x' => [3, 1]];
+        sort($sortedMember['x']);
+
+        $nestedSortedMember = ['x' => ['y' => [2, 1]]];
+        sort($nestedSortedMember['x']['y']);
+
+        $keySortedMember = ['x' => ['b' => 1, 'a' => 2]];
+        ksort($keySortedMember['x']);
+
         $looped = ['a', 'b'];
 
         foreach ($looped as &$item) {
@@ -121,6 +133,10 @@ class LocalVarByReferenceResource extends JsonResource
             'walked' => $walked,
             'walked_list' => $walkedList,
             'read_only_walk' => $readOnlyWalk,
+            'walked_nested' => $walkedNested,
+            'sorted_member' => $sortedMember,
+            'nested_sorted_member' => $nestedSortedMember,
+            'key_sorted_member' => $keySortedMember,
             'looped' => $looped,
         ];
     }

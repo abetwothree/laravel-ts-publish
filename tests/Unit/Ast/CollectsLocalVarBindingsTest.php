@@ -176,7 +176,7 @@ it('ends a value binding only at a write whose value names a class', function (s
 
 /**
  * The locals seedBody() binds in a parsed body, with UnseenWritesResource as the subject, each with the effect of every
- * by-reference form recorded beside it.
+ * by-reference form recorded beside it, followed by the key path the form keeps, as `KeepsList[k]`.
  *
  * @return array<string, list<string>>
  */
@@ -205,7 +205,10 @@ function byReferenceSeededLocals(string $body): array
     $bound = [];
 
     foreach (array_keys($scope->localVarBindings) as $name) {
-        $bound[$name] = array_map(fn (array $form): string => $form['effect']->name, $scope->byReferenceForms[$name] ?? []);
+        $bound[$name] = array_map(
+            fn (array $form): string => $form['effect']->name.implode('', array_map(fn (string $key): string => "[{$key}]", $form['path'])),
+            $scope->byReferenceForms[$name] ?? [],
+        );
     }
 
     return $bound;
@@ -233,14 +236,21 @@ it('binds a local across a by-reference built-in that keeps its value in some fo
     'array_push(), a list of what it adds' => ['$x = []; array_push($x, 1, 2);', ['x' => ['Appends']]],
     'array_unshift(), a list of what it adds' => ['$x = []; array_unshift($x, 1);', ['x' => ['Appends']]],
     'array_walk() by reference, the elements it writes' => ['$x = []; array_walk($x, function (&$v) { $v = 1; });', ['x' => ['WritesElements']]],
-    'array_walk_recursive() by reference' => ['$x = []; array_walk_recursive($x, fn (&$v) => $v++);', ['x' => ['WritesElements']]],
+    'array_walk_recursive() by reference, the leaves it writes' => ['$x = []; array_walk_recursive($x, fn (&$v) => $v++);', ['x' => ['WritesLeaves']]],
     'array_walk() by value, any form' => ['$x = []; array_walk($x, fn ($v) => $v);', ['x' => []]],
     'a by-reference foreach, the elements it writes' => ['$x = []; foreach ($x as &$v) { $v = 1; } unset($v);', ['x' => ['WritesElements']]],
     'preg_match()\'s matches' => ['$m = []; preg_match("/x/", "s", $m);', []],
     'settype()' => ['$x = 1; settype($x, "string");', []],
     'parse_str()' => ['$x = []; parse_str("a=1", $x);', []],
     'a user method' => ['$x = 1; $this->fillInstance($x);', []],
-    'a key of the variable' => ['$x = []; sort($x["k"]);', []],
+    'sort() of a key of the variable, that member a list' => ['$x = []; sort($x["k"]);', ['x' => ['KeepsList[k]']]],
+    'sort() of a nested int key' => ['$x = []; sort($x["k"][0]);', ['x' => ['KeepsList[k][0]']]],
+    'ksort() of a key, any form' => ['$x = []; ksort($x["k"]);', ['x' => []]],
+    'array_push() into a key' => ['$x = []; array_push($x["k"], 1);', ['x' => ['Appends[k]']]],
+    'a by-reference foreach over a key' => ['$x = []; foreach ($x["k"] as &$v) { $v = 1; } unset($v);', ['x' => ['WritesElements[k]']]],
+    'a key read by a variable' => ['$x = []; sort($x[$k]);', []],
+    'an appended key' => ['$x = []; sort($x[]);', []],
+    'preg_match() into a key' => ['$x = []; preg_match("/x/", "s", $x["k"]);', []],
     'array_push() of an unpacked list' => ['$x = []; array_push($x, ...$y);', []],
     'array_walk() with a callback it cannot read' => ['$x = []; array_walk($x, "trim");', []],
     'array_walk() writing a key of the element' => ['$x = []; array_walk($x, function (&$v) { $v["k"] = 1; });', []],

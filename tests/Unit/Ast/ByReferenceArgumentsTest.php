@@ -97,12 +97,19 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'preg_replace_callback()\'s count, named' => ['preg_replace_callback("/a/", "f", "c", count: $x);', ByReferenceEffect::KeepsNumber],
     'array_push()' => ['array_push($x, 1);', ByReferenceEffect::Appends],
     'array_walk()' => ['array_walk($x, "f");', ByReferenceEffect::WritesElements],
+    'array_walk_recursive()' => ['array_walk_recursive($x, "f");', ByReferenceEffect::WritesLeaves],
     'preg_match()\'s matches' => ['preg_match("/a/", "b", $x);', ByReferenceEffect::Replaces],
     'settype()' => ['settype($x, "int");', ByReferenceEffect::Replaces],
     'a by-value argument of a known built-in' => ['str_replace($x, "b", "c", $n);', ByReferenceEffect::Replaces],
     'a function nobody declares' => ['missing_function($x);', ByReferenceEffect::Replaces],
     'a method' => ['$this->fill($x);', ByReferenceEffect::Replaces],
 ]);
+
+it('reports what a built-in leaves in a key of a variable it takes by reference', function () {
+    $call = new AstParser()->parseSource('<?php sort($x["k"]["j"]);')[0]->expr;
+
+    expect(resolve(ByReferenceArguments::class)->effect($call, $call->getArgs()[0]->value))->toBe(ByReferenceEffect::KeepsList);
+});
 
 it('records the class whose declaration says which parameters take a reference', function (string $statement, string $class) {
     DependencyRecorder::start();

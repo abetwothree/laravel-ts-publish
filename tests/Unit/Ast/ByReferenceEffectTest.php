@@ -36,3 +36,36 @@ it('keeps a value only while it has the form the call keeps', function (ByRefere
     'a walk over a class' => [ByReferenceEffect::WritesElements, 'User', [], false],
     'a replacing call' => [ByReferenceEffect::Replaces, 'string[]', [], false],
 ]);
+
+// A call on a key of a variable keeps the variable while the member at that key keeps its form.
+it('keeps a value while the member a key path names keeps the form the call keeps', function (ByReferenceEffect $effect, string $type, array $path, bool $keeps) {
+    expect($effect->keeps($type, [], $path))->toBe($keeps);
+})->with([
+    'sort() of a list member' => [ByReferenceEffect::KeepsList, '{ x: number[]; y: string }', ['x'], true],
+    'sort() of a nested list member' => [ByReferenceEffect::KeepsList, '{ x: { y: number[] } }', ['x', 'y'], true],
+    'sort() of a Record\'s list' => [ByReferenceEffect::KeepsList, 'Record<string, number[]>', ['k'], true],
+    'sort() of a list in a list' => [ByReferenceEffect::KeepsList, 'number[][]', ['0'], true],
+    'sort() of an optional list member' => [ByReferenceEffect::KeepsList, '{ x?: number[] }', ['x'], true],
+    'sort() of an object member, which it re-indexes' => [ByReferenceEffect::KeepsList, '{ x: { b: number } }', ['x'], false],
+    'ksort() of any member' => [ByReferenceEffect::KeepsAny, '{ x: { b: number } }', ['x'], true],
+    'a member the type does not hold' => [ByReferenceEffect::KeepsList, '{ x: number[] }', ['y'], false],
+    'a member of a list by a name' => [ByReferenceEffect::KeepsList, 'number[][]', ['x'], false],
+    'a member of an opaque type' => [ByReferenceEffect::KeepsList, 'User', ['x'], false],
+    'a member typed unknown, which any call leaves unknown' => [ByReferenceEffect::KeepsList, '{ x: unknown }', ['x'], true],
+    'a member below one typed unknown' => [ByReferenceEffect::KeepsList, '{ x: unknown }', ['x', 'y'], true],
+    'a replacing call on a member typed unknown' => [ByReferenceEffect::Replaces, '{ x: unknown }', ['x'], false],
+]);
+
+it('keeps a value a recursive walk writes while every leaf it visits holds each written value', function (string $type, array $values, bool $keeps) {
+    expect(ByReferenceEffect::WritesLeaves->keeps($type, $values))->toBe($keeps);
+})->with([
+    'a nested object\'s leaves' => ['{ a: { b: number } }', ['number'], true],
+    'a list of lists\' leaves' => ['number[][]', ['number'], true],
+    'leaves beside a nested array' => ['{ a: number; b: { c: number[] } }', ['number'], true],
+    'a tuple\'s leaves' => ['[number, { a: number }]', ['number'], true],
+    'a leaf of a union holding the value' => ['{ a: number | null }', ['number'], true],
+    'a leaf of another type' => ['{ a: { b: string } }', ['number'], false],
+    'a null leaf beside a nested array' => ['{ a: number[] | null }', ['number'], false],
+    'a walk that writes nothing' => ['{ a: { b: string } }', [], true],
+    'a value that is no array' => ['User', [], false],
+]);

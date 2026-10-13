@@ -299,7 +299,7 @@ final class VariableHandler implements ExpressionHandler
                     default => $engine->resolve($written)['type'],
                 }, $form['values']);
 
-                if (! $form['effect']->keeps($value['type'], $written)) {
+                if (! $form['effect']->keeps($value['type'], $written, $form['path'])) {
                     return null;
                 }
             }

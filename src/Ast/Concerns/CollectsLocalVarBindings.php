@@ -31,6 +31,8 @@ use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\StaticVar;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -368,61 +370,97 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * What a by-reference argument or a by-reference `foreach` leaves in the variable it writes, with the values it
-     * adds or writes into an element; null for a write neither makes. A key of a variable is always replaced.
+     * What a by-reference argument or a by-reference `foreach` leaves in the variable it writes, or in the member a key
+     * path of literal keys names, with the values it adds or writes into an element; null for a write neither makes.
      *
      * @param  VariableWrites  $writes  every write of the body, for those a `foreach` element's variable makes
      * @return ByReferenceForm|null
      */
     private function byReferenceForm(Node $node, Expr $target, array $writes, AnalysisScope $scope): ?array
     {
+        $path = $this->keyPath($target);
+
         if ($node instanceof Foreach_ && $node->byRef && $node->expr === $target) {
             $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
+
+            if ($element === null || $path === null) {
+                return $this->form(ByReferenceEffect::Replaces);
+            }
+
             // After the loop the variable still points at the last element, so every write to it counts, but unset().
-            $values = $element === null || ! $target instanceof Variable ? null : $this->elementValues(array_values(array_filter(
+            $values = $this->elementValues(array_values(array_filter(
                 $writes,
                 fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_,
             )));
 
-            return $this->form($values === null ? ByReferenceEffect::Replaces : ByReferenceEffect::WritesElements, $values ?? []);
+            return $values === null
+                ? $this->form(ByReferenceEffect::Replaces)
+                : $this->form(ByReferenceEffect::WritesElements, $values, $path);
         }
 
         if (! $node instanceof CallLike) {
             return null;
         }
 
-        $effect = $target instanceof Variable
-            ? resolve(ByReferenceArguments::class)->effect($node, $target)
-            : ByReferenceEffect::Replaces;
+        if ($path === null) {
+            return $this->form(ByReferenceEffect::Replaces);
+        }
+
+        $effect = resolve(ByReferenceArguments::class)->effect($node, $target);
 
         return match ($effect) {
-            ByReferenceEffect::Appends => $this->appendedForm($node, $target),
-            ByReferenceEffect::WritesElements => $this->walkedForm($node, $scope),
-            default => $this->form($effect),
+            ByReferenceEffect::Appends => $this->appendedForm($node, $target, $path),
+            ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves => $this->walkedForm($node, $effect, $path, $scope),
+            default => $this->form($effect, [], $path),
         };
+    }
+
+    /**
+     * The literal keys a target reaches into its variable through, outermost first: none for the variable itself, and
+     * null for a computed or appended key, or anything but a variable at the root.
+     *
+     * @return list<string>|null
+     */
+    private function keyPath(Expr $target): ?array
+    {
+        $path = [];
+
+        while ($target instanceof ArrayDimFetch) {
+            if (! $target->dim instanceof String_ && ! $target->dim instanceof Int_) {
+                return null;
+            }
+
+            array_unshift($path, (string) $target->dim->value);
+            $target = $target->var;
+        }
+
+        return $target instanceof Variable && is_string($target->name) ? $path : null;
     }
 
     /**
      * What array_push() or array_unshift() leaves: the list, with each value it adds, unless one is unpacked.
      *
+     * @param  list<string>  $path
      * @return ByReferenceForm
      */
-    private function appendedForm(CallLike $call, Expr $target): array
+    private function appendedForm(CallLike $call, Expr $target, array $path): array
     {
         $added = array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->value !== $target));
 
         return array_any($added, fn (Arg $arg): bool => $arg->unpack)
             ? $this->form(ByReferenceEffect::Replaces)
-            : $this->form(ByReferenceEffect::Appends, array_map(fn (Arg $arg): Expr => $arg->value, $added));
+            : $this->form(ByReferenceEffect::Appends, array_map(fn (Arg $arg): Expr => $arg->value, $added), $path);
     }
 
     /**
      * What array_walk() or array_walk_recursive() leaves: every element, when its callback takes none by reference,
-     * else each element with the values its callback writes into it, read only from a closure written at the call.
+     * else each element, or each leaf, with the values its callback writes into it, read only from a closure written
+     * at the call.
      *
+     * @param  list<string>  $path
      * @return ByReferenceForm
      */
-    private function walkedForm(CallLike $call, AnalysisScope $scope): array
+    private function walkedForm(CallLike $call, ByReferenceEffect $effect, array $path, AnalysisScope $scope): array
     {
         $callback = CallArguments::fromNames($call->getArgs(), ['array', 'callback', 'arg'])->named('callback')?->value;
 
@@ -433,7 +471,7 @@ trait CollectsLocalVarBindings
         $parameter = $callback->params[0] ?? null;
 
         if ($parameter === null || ! $parameter->byRef) {
-            return $this->form(ByReferenceEffect::KeepsAny);
+            return $this->form(ByReferenceEffect::KeepsAny, [], $path);
         }
 
         $element = ! $parameter->variadic && $parameter->var instanceof Variable && is_string($parameter->var->name)
@@ -445,9 +483,7 @@ trait CollectsLocalVarBindings
             fn (array $write): bool => $write[0] === $element,
         )));
 
-        return $values === null
-            ? $this->form(ByReferenceEffect::Replaces)
-            : $this->form(ByReferenceEffect::WritesElements, $values);
+        return $values === null ? $this->form(ByReferenceEffect::Replaces) : $this->form($effect, $values, $path);
     }
 
     /**
@@ -480,14 +516,15 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * A by-reference form of an effect, with the values the call adds or writes.
+     * A by-reference form of an effect, with the values the call adds or writes and the key path it takes.
      *
      * @param  list<Expr>  $values
+     * @param  list<string>  $path
      * @return ByReferenceForm
      */
-    private function form(ByReferenceEffect $effect, array $values = []): array
+    private function form(ByReferenceEffect $effect, array $values = [], array $path = []): array
     {
-        return ['effect' => $effect, 'values' => $values];
+        return ['effect' => $effect, 'values' => $values, 'path' => $path];
     }
 
     /**

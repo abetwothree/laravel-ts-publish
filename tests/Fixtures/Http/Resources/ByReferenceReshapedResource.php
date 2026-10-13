@@ -65,6 +65,18 @@ class ByReferenceReshapedResource extends JsonResource
         $matched = [];
         preg_match('/a/', 'a', $matched);
 
+        $objectMemberSorted = ['x' => ['b' => 2, 'a' => 1]];
+        sort($objectMemberSorted['x']);
+
+        $memberKey = 'x';
+        $dynamicMemberSorted = ['x' => [3, 1]];
+        sort($dynamicMemberSorted[$memberKey]);
+
+        $walkedNestedOther = ['a' => ['b' => 1]];
+        array_walk_recursive($walkedNestedOther, function (int|string &$value): void {
+            $value = 'z';
+        });
+
         $keptList = ['b', 'a'];
         sort($keptList);
 
@@ -84,6 +96,9 @@ class ByReferenceReshapedResource extends JsonResource
             'walked_named' => $walkedNamed,
             'looped_other' => $loopedOther,
             'matched' => $matched,
+            'object_member_sorted' => $objectMemberSorted,
+            'dynamic_member_sorted' => $dynamicMemberSorted,
+            'walked_nested_other' => $walkedNestedOther,
             'kept_list' => $keptList,
             'shuffled' => $shuffled,
         ];

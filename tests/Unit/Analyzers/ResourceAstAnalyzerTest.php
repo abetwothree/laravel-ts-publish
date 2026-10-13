@@ -7413,6 +7413,10 @@ it('keeps a local across a by-reference built-in that leaves its value in a form
     'array_walk() incrementing each element' => ['walked', '{ x: number }'],
     'array_walk() writing the element type' => ['walked_list', 'string[]'],
     'array_walk() by value' => ['read_only_walk', '{ b: number }'],
+    'array_walk_recursive() incrementing each leaf' => ['walked_nested', '{ a: { b: number } }'],
+    'sort() of a list member' => ['sorted_member', '{ x: number[] }'],
+    'sort() of a nested list member' => ['nested_sorted_member', '{ x: { y: number[] } }'],
+    'ksort() of an object member' => ['key_sorted_member', '{ x: { b: number; a: number } }'],
     'a by-reference foreach writing the element type' => ['looped', 'string[]'],
 ]);
 
@@ -7448,6 +7452,10 @@ it('sends the type a local a by-reference built-in keeps publishes', function ()
         'walked' => ['x' => 2],
         'walked_list' => ['A', 'B'],
         'read_only_walk' => ['b' => 1],
+        'walked_nested' => ['a' => ['b' => 2]],
+        'sorted_member' => ['x' => [1, 3]],
+        'nested_sorted_member' => ['x' => ['y' => [1, 2]]],
+        'key_sorted_member' => ['x' => ['a' => 2, 'b' => 1]],
         'looped' => ['a', 'b'],
     ]));
 });
@@ -7468,6 +7476,9 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'walked_named' => 'unknown',
         'looped_other' => 'unknown',
         'matched' => 'unknown',
+        'object_member_sorted' => 'unknown',
+        'dynamic_member_sorted' => 'unknown',
+        'walked_nested_other' => 'unknown',
         'kept_list' => 'string[]',
         'shuffled' => 'number[]',
     ]);

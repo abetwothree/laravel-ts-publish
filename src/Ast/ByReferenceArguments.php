@@ -38,7 +38,7 @@ final class ByReferenceArguments
         'array_push' => ['array' => ByReferenceEffect::Appends],
         'array_unshift' => ['array' => ByReferenceEffect::Appends],
         'array_walk' => ['array' => ByReferenceEffect::WritesElements],
-        'array_walk_recursive' => ['array' => ByReferenceEffect::WritesElements],
+        'array_walk_recursive' => ['array' => ByReferenceEffect::WritesLeaves],
         'arsort' => ['array' => ByReferenceEffect::KeepsObject],
         'asort' => ['array' => ByReferenceEffect::KeepsObject],
         'krsort' => ['array' => ByReferenceEffect::KeepsObject],

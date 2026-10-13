@@ -297,13 +297,15 @@ no more.
 
 ### By-reference calls
 
-`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes,
-as a [`ByReferenceEffect`]: `ksort()` keeps any value, `sort()` a list, `asort()` an object, a count out-parameter a
-number, `array_push()` a list of the values it adds, and `array_walk()` or a by-reference `foreach` each element its
-writes stay within. Every other callee replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no
-keeping call as a write and records its form in `AnalysisScope::$byReferenceForms`; `VariableHandler` drops a read
-whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a
-local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
+`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes, as
+a [`ByReferenceEffect`]: `ksort()` keeps any value, `sort()` a list, `asort()` an object, a count out-parameter a
+number, `array_push()` a list of the values it adds, `array_walk()` or a by-reference `foreach` each element its writes
+stay within, and `array_walk_recursive()` each leaf below the arrays it descends likewise. A call on a literal key of a
+local, such as `sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a computed
+key, replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write and records
+its form in `AnalysisScope::$byReferenceForms`; `VariableHandler` drops a read whose value lacks one. A class binding
+ends there, since no form but `ksort()`'s is an object's. A reader that takes a local by its syntax, such as an array
+literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
 
 ### What deliberately stays unbound
 

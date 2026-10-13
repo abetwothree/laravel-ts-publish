@@ -53,7 +53,7 @@ use ReflectionClass;
  * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
- * @phpstan-type ByReferenceForm array{effect: ByReferenceEffect, values: list<Expr>}
+ * @phpstan-type ByReferenceForm array{effect: ByReferenceEffect, values: list<Expr>, path: list<string>}
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type NameBindingsSnapshot array{
@@ -223,9 +223,9 @@ final class AnalysisScope
     public array $localVarBindings = [];
 
     /**
-     * The by-reference calls that keep a variable's value only in some forms, by the name each writes: `sort()` keeps
-     * a list, `asort()` an object, `array_push()` a list of the values it adds. Written by CollectsLocalVarBindings,
-     * which binds the variable across them; a read of it holds its binding only while the value has each form.
+     * The by-reference calls that keep a variable's value, or the member a key path names, only in some forms, by the
+     * name each writes: `sort()` keeps a list, `asort()` an object. Written by CollectsLocalVarBindings, which binds
+     * the variable across them; a read of it holds its binding only while each form holds.
      *
      * @var ByReferenceFormsMap
      */

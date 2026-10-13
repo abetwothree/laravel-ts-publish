@@ -14620,6 +14620,26 @@
                     "optional": false
                 },
                 {
+                    "name": "walked_nested",
+                    "type": "{ a: { b: number } }",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_member",
+                    "type": "{ x: number[] }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_sorted_member",
+                    "type": "{ x: { y: number[] } }",
+                    "optional": false
+                },
+                {
+                    "name": "key_sorted_member",
+                    "type": "{ x: { b: number; a: number } }",
+                    "optional": false
+                },
+                {
                     "name": "looped",
                     "type": "string[]",
                     "optional": false
