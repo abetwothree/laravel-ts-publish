@@ -23,6 +23,7 @@ export * from './crew';
 export * from './custom-key-post';
 export * from './depot';
 export * from './docblock-generics-fixture';
+export * from './docblock-union-fixture';
 export * from './excludable-model';
 export * from './facility';
 export * from './grade';

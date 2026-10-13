@@ -6039,6 +6039,43 @@
                 }
             ]
         },
+        "Workbench\\App\\Models\\DocblockUnionFixture": {
+            "name": "DocblockUnionFixture",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number"
+                },
+                {
+                    "name": "tags",
+                    "type": "User[] | User | null"
+                },
+                {
+                    "name": "related_users",
+                    "type": "User[] | User | null"
+                },
+                {
+                    "name": "meta_info",
+                    "type": "StatusType[] | StatusType | null"
+                },
+                {
+                    "name": "owner_snapshot",
+                    "type": "Record<string, User> | User | null"
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null"
+                },
+                {
+                    "name": "grades",
+                    "type": "StatusType[] | StatusType"
+                }
+            ]
+        },
         "Workbench\\App\\Models\\ExcludableModel": {
             "name": "ExcludableModel",
             "properties": [
@@ -10629,6 +10666,41 @@
                 {
                     "name": "summary",
                     "type": "{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\BareBesideContainerResource": {
+            "name": "BareBesideContainerResource",
+            "properties": [
+                {
+                    "name": "tags",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "related_users",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "crew",
+                    "type": "User[] | User | null",
+                    "optional": false
+                },
+                {
+                    "name": "lead",
+                    "type": "User[] | User",
+                    "optional": false
+                },
+                {
+                    "name": "statuses",
+                    "type": "StatusType[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "Comment[] | Comment",
                     "optional": false
                 }
             ]

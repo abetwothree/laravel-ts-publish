@@ -648,6 +648,24 @@ declare global {
             child_rows_count: number;
             child_rows_exists: boolean;
         }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms, in either order:
+         * an `@property` tag, a cast's get() `@return` and an accessor's `Attribute<…>`. The enum column and accessor keep
+         * the model's Resource interface, printed as a list of the AsEnum wrap or the wrap alone.
+         */
+        export interface DocblockUnionFixture {
+            // Columns
+            id: number;
+            tags: User[] | User | null;
+            related_users: User[] | User | null;
+            meta_info: app.enums.StatusType[] | app.enums.StatusType | null;
+            owner_snapshot: Record<string, User> | User | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** The grades, a list of statuses or one status. */
+            grades: app.enums.StatusType[] | app.enums.StatusType;
+        }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {
             // Columns
@@ -2565,6 +2583,18 @@ declare global {
             clearance: app.enums.ClearanceType;
             clearance_type: crm.enums.ClearanceTypeType;
             summary: { clearance: app.enums.ClearanceType; clearance_type: crm.enums.ClearanceTypeType };
+        }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms: a model's
+         * `@property`, a property's `@var`, a helper's `@return` and a local's `@var`.
+         */
+        export interface BareBesideContainerResource {
+            tags: app.models.User[] | app.models.User | null;
+            related_users: app.models.User[] | app.models.User | null;
+            crew: app.models.User[] | app.models.User | null;
+            lead: app.models.User[] | app.models.User;
+            statuses: app.enums.StatusType[] | app.enums.StatusType;
+            either: app.models.Comment[] | app.models.Comment;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {

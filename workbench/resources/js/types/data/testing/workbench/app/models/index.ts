@@ -48,6 +48,8 @@ export * from './depot';
 export * from './depot_meta';
 export * from './docblock-generics-fixture';
 export * from './docblock-generics-fixture_meta';
+export * from './docblock-union-fixture';
+export * from './docblock-union-fixture_meta';
 export * from './excludable-model';
 export * from './excludable-model_meta';
 export * from './facility';

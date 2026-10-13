@@ -2128,6 +2128,71 @@ describe('mergeTypeScriptInfos', function () {
         'a list of each model' => ['list<User>|list<CrmUser>', 'User[] | User[]', [User::class, CrmUser::class]],
         'two forms of an array of one model' => ['User[]|array<int, User>', 'User[]', null],
     ]);
+
+    test('keeps a bare arm whose class or enum an earlier arm holds only inside a container', function (string $docblock, string $type, array $classFqcns, array $enumFqcns) {
+        $useMap = ['User' => User::class, 'Status' => Status::class, 'Collection' => Collection::class];
+        $arms = array_map(
+            fn (string $part): array => $this->service->resolveDocblockTypePart(trim($part), $useMap, 'Workbench\\App\\Models'),
+            $this->service->splitPhpDocUnionType($docblock),
+        );
+
+        $result = $this->service->mergeTypeScriptInfos($arms);
+
+        expect($result['type'])->toBe($type)
+            ->and($result['classFqcns'])->toBe($classFqcns)
+            ->and($result['enumFqcns'])->toBe($enumFqcns)
+            ->and($result['enumTypes'])->toBe(array_map(fn (): string => 'StatusType', $enumFqcns))
+            ->and($result)->not->toHaveKey('classTokenFqcns');
+    })->with([
+        'an array, then the class' => ['User[]|User', 'User[] | User', [User::class], []],
+        'the class, then an array' => ['User|User[]', 'User | User[]', [User::class], []],
+        'a collection, the class and null' => ['Collection<int, User>|User|null', 'User[] | User | null', [User::class], []],
+        'a list, then the class' => ['list<User>|User', 'User[] | User', [User::class], []],
+        'a record, then the class' => ['array<string, User>|User', 'Record<string, User> | User', [User::class], []],
+        'an enum array, then the enum' => ['Status[]|Status', 'StatusType[] | StatusType', [], [Status::class]],
+        'an enum collection, then the enum' => ['Collection<int, Status>|Status', 'StatusType[] | StatusType', [], [Status::class]],
+        'the class twice beside an array' => ['User[]|User|User', 'User[] | User', [User::class], []],
+    ]);
+
+    test('leaves out a bare arm an earlier arm already spells bare at its top level', function (array $arms, string $type) {
+        $result = $this->service->mergeTypeScriptInfos(array_map(fn (array $arm): array => [...$this->service->emptyTypeScriptInfo(), ...$arm], $arms));
+
+        expect($result['type'])->toBe($type);
+    })->with([
+        'a nullable class' => [
+            [
+                ['type' => 'User | null', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            ],
+            'User | null',
+        ],
+        'a nullable enum' => [
+            [
+                ['type' => 'StatusType | null', 'enums' => ['Status'], 'enumTypes' => ['StatusType'], 'enumFqcns' => [Status::class]],
+                ['type' => 'StatusType', 'enums' => ['Status'], 'enumTypes' => ['StatusType'], 'enumFqcns' => [Status::class]],
+            ],
+            'StatusType | null',
+        ],
+        'the other class of a shared name, which stays' => [
+            [
+                ['type' => 'User | null', 'classes' => ['User'], 'classFqcns' => [User::class]],
+                ['type' => 'User', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            ],
+            'User | null | User',
+        ],
+    ]);
+
+    test('queues a token for a bare class kept after an array of it, once another class shares its name', function () {
+        $result = $this->service->mergeTypeScriptInfos([
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User[]', 'classes' => ['User'], 'classFqcns' => [User::class]],
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => [CrmUser::class]],
+            [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => [User::class]],
+        ]);
+
+        expect($result['type'])->toBe('User[] | User | User')
+            ->and($result['classFqcns'])->toBe([User::class, CrmUser::class])
+            ->and($result['classTokenFqcns'] ?? null)->toBe([User::class, CrmUser::class, User::class]);
+    });
 });
 
 describe('callCommandUsing and callCommandWith', function () {

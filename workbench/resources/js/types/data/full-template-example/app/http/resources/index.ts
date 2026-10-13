@@ -4,6 +4,7 @@ export * from './address-mixin-resource';
 export * from './api-post-resource';
 export * from './artist-resource';
 export * from './badge-resource';
+export * from './bare-beside-container-resource';
 export * from './bare-func-call-resource';
 export * from './bare-method-return-resource';
 export * from './base-shared-resource';

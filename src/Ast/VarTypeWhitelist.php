@@ -13,12 +13,12 @@ use ReflectionClass;
 /**
  * The PHPDoc forms an inline `@var` on a local may bind: scalars, classes the file names, unions, `?T`, `list<X>`,
  * `array<K, X>` keyed by `int`, `string` or string literals, keyed `array{…}` and `object{…}`, positional `list{…}` and
- * `array{…}`, and the two collections; not a generic's union of non-bare members, nor a class bare and contained.
+ * `array{…}`, and the two collections.
  *
  * A callable reads as `unknown`, so it is taken only as a shape's member, and counted.
  *
- * @phpstan-type Part array{end: int, classes: list<string>, bare: bool, unknowns: int}
- * @phpstan-type NextMember callable(list<string>, int, list<string>, int): ?Part
+ * @phpstan-type Part array{end: int, unknowns: int}
+ * @phpstan-type NextMember callable(list<string>, int, int): ?Part
  *
  * @internal
  */
@@ -63,7 +63,7 @@ final readonly class VarTypeWhitelist
     public function unknownLeaves(string $type): ?int
     {
         $tokens = $this->tokens($type) ?? [];
-        $part = $tokens === [] ? null : $this->type($tokens, 0, false);
+        $part = $tokens === [] ? null : $this->type($tokens, 0);
 
         return $part !== null && $part['end'] === count($tokens) ? $part['unknowns'] : null;
     }
@@ -88,21 +88,20 @@ final readonly class VarTypeWhitelist
     }
 
     /**
-     * A type starting at a token: `?T`, or a union of forms. A union may not name a class both bare and inside another
-     * member, which the union merge drops, and in a generic's value slot it takes only bare members.
+     * A type starting at a token: `?T`, or a union of forms.
      *
      * @param  list<string>  $tokens
      * @param  bool  $member  whether the type is a shape's member, the one place a callable may stand
      * @return Part|null
      */
-    private function type(array $tokens, int $at, bool $slot, bool $member = false): ?array
+    private function type(array $tokens, int $at, bool $member = false): ?array
     {
         // The resolution appends a top-level `| null` arm to a `?` form whose reading has none.
         if (($tokens[$at] ?? null) === '?') {
             return $this->form($tokens, $at + 1, $member);
         }
 
-        $parts = [];
+        $unknowns = 0;
 
         do {
             $part = $this->form($tokens, $at, $member);
@@ -111,26 +110,11 @@ final readonly class VarTypeWhitelist
                 return null;
             }
 
-            $parts[] = $part;
+            $unknowns += $part['unknowns'];
             $at = $part['end'] + 1;
         } while (($tokens[$part['end']] ?? null) === '|');
 
-        if (count($parts) === 1) {
-            return $parts[0];
-        }
-
-        $bare = array_filter($parts, fn (array $part): bool => $part['bare']);
-        $bareClasses = array_merge([], ...array_column($bare, 'classes'));
-        $containedClasses = array_merge([], ...array_column(array_diff_key($parts, $bare), 'classes'));
-
-        return ($slot && count($bare) < count($parts)) || array_intersect($bareClasses, $containedClasses) !== []
-            ? null
-            : [
-                'end' => $part['end'],
-                'classes' => [...$bareClasses, ...$containedClasses],
-                'bare' => false,
-                'unknowns' => array_sum(array_column($parts, 'unknowns')),
-            ];
+        return ['end' => $part['end'], 'unknowns' => $unknowns];
     }
 
     /**
@@ -146,12 +130,12 @@ final readonly class VarTypeWhitelist
         $next = $tokens[$at + 1] ?? null;
 
         return match (true) {
-            in_array($name, self::SCALARS, true) => ['end' => $at + 1, 'classes' => [], 'bare' => true, 'unknowns' => 0],
-            $name === 'list' && $next === '<' => $this->closed($tokens, $this->type($tokens, $at + 2, true)),
+            in_array($name, self::SCALARS, true) => ['end' => $at + 1, 'unknowns' => 0],
+            $name === 'list' && $next === '<' => $this->closed($tokens, $this->type($tokens, $at + 2)),
             $name === 'array' && $next === '<' => $this->keyed($tokens, $at + 2),
-            $name === 'array{' => $this->members($tokens, $at + 1, [], 0) ?? $this->positional($tokens, $at + 1, [], 0),
-            $name === 'object{' => $this->members($tokens, $at + 1, [], 0),
-            $name === 'list{' => $this->positional($tokens, $at + 1, [], 0),
+            $name === 'array{' => $this->members($tokens, $at + 1, 0) ?? $this->positional($tokens, $at + 1, 0),
+            $name === 'object{' => $this->members($tokens, $at + 1, 0),
+            $name === 'list{' => $this->positional($tokens, $at + 1, 0),
             $name === 'callable(' => $member ? $this->callable($tokens, $at + 1) : null,
             $next === '<' => in_array($this->className($name), self::COLLECTIONS, true) ? $this->keyed($tokens, $at + 2) : null,
             default => $this->bareClass($name, $at),
@@ -178,7 +162,7 @@ final readonly class VarTypeWhitelist
         }
 
         return ($tokens[$at + 1] ?? null) === ','
-            ? $this->closed($tokens, $this->type($tokens, $at + 2, true))
+            ? $this->closed($tokens, $this->type($tokens, $at + 2))
             : null;
     }
 
@@ -186,28 +170,26 @@ final readonly class VarTypeWhitelist
      * A shape's members, each a key token and a type, up to the closing `}`.
      *
      * @param  list<string>  $tokens
-     * @param  list<string>  $classes  the classes the members before this one name
      * @return Part|null
      */
-    private function members(array $tokens, int $at, array $classes, int $unknowns): ?array
+    private function members(array $tokens, int $at, int $unknowns): ?array
     {
-        $member = $this->isKey($tokens[$at] ?? '') ? $this->type($tokens, $at + 1, false, true) : null;
+        $member = $this->isKey($tokens[$at] ?? '') ? $this->type($tokens, $at + 1, true) : null;
 
-        return $member === null ? null : $this->next($tokens, $member, $classes, $unknowns, $this->members(...));
+        return $member === null ? null : $this->next($tokens, $member, $unknowns, $this->members(...));
     }
 
     /**
      * A list shape's members, each a type with no key, up to the closing `}`.
      *
      * @param  list<string>  $tokens
-     * @param  list<string>  $classes  the classes the members before this one name
      * @return Part|null
      */
-    private function positional(array $tokens, int $at, array $classes, int $unknowns): ?array
+    private function positional(array $tokens, int $at, int $unknowns): ?array
     {
-        $member = $this->isKey($tokens[$at] ?? '') ? null : $this->type($tokens, $at, false, true);
+        $member = $this->isKey($tokens[$at] ?? '') ? null : $this->type($tokens, $at, true);
 
-        return $member === null ? null : $this->next($tokens, $member, $classes, $unknowns, $this->positional(...));
+        return $member === null ? null : $this->next($tokens, $member, $unknowns, $this->positional(...));
     }
 
     /**
@@ -215,26 +197,19 @@ final readonly class VarTypeWhitelist
      *
      * @param  list<string>  $tokens
      * @param  Part  $member
-     * @param  list<string>  $classes
      * @param  NextMember  $continue
      * @return Part|null
      */
-    private function next(array $tokens, array $member, array $classes, int $unknowns, callable $continue): ?array
+    private function next(array $tokens, array $member, int $unknowns, callable $continue): ?array
     {
-        $classes = [...$classes, ...$member['classes']];
         $unknowns += $member['unknowns'];
         $end = $member['end'];
         $after = $tokens[$end] ?? null;
 
         return match (true) {
-            $after === '}' => ['end' => $end + 1, 'classes' => $classes, 'bare' => false, 'unknowns' => $unknowns],
-            $after === ',' && ($tokens[$end + 1] ?? null) === '}' => [
-                'end' => $end + 2,
-                'classes' => $classes,
-                'bare' => false,
-                'unknowns' => $unknowns,
-            ],
-            $after === ',' => $continue($tokens, $end + 1, $classes, $unknowns),
+            $after === '}' => ['end' => $end + 1, 'unknowns' => $unknowns],
+            $after === ',' && ($tokens[$end + 1] ?? null) === '}' => ['end' => $end + 2, 'unknowns' => $unknowns],
+            $after === ',' => $continue($tokens, $end + 1, $unknowns),
             default => null,
         };
     }
@@ -248,7 +223,7 @@ final readonly class VarTypeWhitelist
     private function callable(array $tokens, int $at): ?array
     {
         while (($tokens[$at] ?? null) !== ')') {
-            $parameter = $this->type($tokens, $at, false);
+            $parameter = $this->type($tokens, $at);
             $after = $parameter === null ? null : $tokens[$parameter['end']] ?? null;
 
             if ($parameter === null || ($after !== ',' && $after !== ')')) {
@@ -259,12 +234,12 @@ final readonly class VarTypeWhitelist
         }
 
         if (($tokens[$at + 1] ?? null) !== ':') {
-            return ['end' => $at + 1, 'classes' => [], 'bare' => false, 'unknowns' => 1];
+            return ['end' => $at + 1, 'unknowns' => 1];
         }
 
         $return = $this->form($tokens, $at + 2, false);
 
-        return $return === null ? null : ['end' => $return['end'], 'classes' => [], 'bare' => false, 'unknowns' => 1];
+        return $return === null ? null : ['end' => $return['end'], 'unknowns' => 1];
     }
 
     /**
@@ -277,7 +252,7 @@ final readonly class VarTypeWhitelist
     private function closed(array $tokens, ?array $value): ?array
     {
         return $value !== null && ($tokens[$value['end']] ?? null) === '>'
-            ? [...$value, 'end' => $value['end'] + 1, 'bare' => false]
+            ? ['end' => $value['end'] + 1, 'unknowns' => $value['unknowns']]
             : null;
     }
 
@@ -290,7 +265,7 @@ final readonly class VarTypeWhitelist
     {
         $class = $this->className($name);
 
-        return $class === null ? null : ['end' => $at + 1, 'classes' => [$class], 'bare' => true, 'unknowns' => 0];
+        return $class === null ? null : ['end' => $at + 1, 'unknowns' => 0];
     }
 
     /**

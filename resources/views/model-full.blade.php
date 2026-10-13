@@ -76,7 +76,7 @@ export interface {{ $data->modelName }}{!! count($data->tsExtends) > 0 ? ' exten
 export interface {{ $data->modelName }}Resource extends Omit<{{ $data->modelName }}, {!! $omitKeys !!}>
 {
 @foreach ($data->combinedEnums as $name => $enum)
-    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
+    {!! JsEmitter::validJsObjectKey($name) !!}: AsEnum<typeof {!! $enum['constName'] !!}>{!! $enum['isCollection'] ? '[]' : '' !!}{!! $enum['alsoBare'] ? ' | AsEnum<typeof '.$enum['constName'].'>' : '' !!}{!! $enum['nullable'] ? ' | null' : '' !!};
 @endforeach
 }
 @endif

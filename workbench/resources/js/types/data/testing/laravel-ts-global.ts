@@ -666,6 +666,24 @@ declare global {
             child_rows_count: number;
             child_rows_exists: boolean;
         }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms, in either order:
+         * an `@property` tag, a cast's get() `@return` and an accessor's `Attribute<…>`. The enum column and accessor keep
+         * the model's Resource interface, printed as a list of the AsEnum wrap or the wrap alone.
+         */
+        export interface DocblockUnionFixture {
+            // Columns
+            id: number;
+            tags: User[] | User | null;
+            related_users: User[] | User | null;
+            meta_info: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType | null;
+            owner_snapshot: Record<string, User> | User | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** The grades, a list of statuses or one status. */
+            grades: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+        }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {
             // Columns
@@ -2565,6 +2583,18 @@ declare global {
             clearance: workbench.app.enums.ClearanceType;
             clearance_type: workbench.crm.enums.ClearanceTypeType;
             summary: { clearance: workbench.app.enums.ClearanceType; clearance_type: workbench.crm.enums.ClearanceTypeType };
+        }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms: a model's
+         * `@property`, a property's `@var`, a helper's `@return` and a local's `@var`.
+         */
+        export interface BareBesideContainerResource {
+            tags: workbench.app.models.User[] | workbench.app.models.User | null;
+            related_users: workbench.app.models.User[] | workbench.app.models.User | null;
+            crew: workbench.app.models.User[] | workbench.app.models.User | null;
+            lead: workbench.app.models.User[] | workbench.app.models.User;
+            statuses: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+            either: workbench.app.models.Comment[] | workbench.app.models.Comment;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {

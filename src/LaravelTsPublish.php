@@ -2486,9 +2486,11 @@ class LaravelTsPublish
      * Merge a list of TypeScriptTypeInfo results into one, joining type strings with ' | '.
      *
      * Class-backed and bare-enum entries dedupe by FQCN, not short name, so two classes or enums sharing a name keep
-     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned. A
-     * decorated arm stays unless an earlier one repeats its text and classes, and once two classes share a name the
-     * result's `classTokenFqcns` names the class behind each token.
+     * separate tokens for rewriteTypeReferences() to alias independently. The enum channels stay index-aligned.
+     *
+     * A bare arm is left out only when an earlier arm spells its class or enum bare at its top level, so `User[]|User`
+     * keeps both. A decorated arm stays unless an earlier one repeats its text and classes, and once two classes share
+     * a name the result's `classTokenFqcns` names the class behind each token.
      *
      * @param  list<TypeScriptTypeInfo>  $infos
      * @return TypeScriptTypeInfo
@@ -2517,28 +2519,30 @@ class LaravelTsPublish
         /** @var list<class-string> $classTokenFqcns the class behind each class token kept, in order */
         $classTokenFqcns = [];
 
+        /** @var list<class-string> $bareFqcns the classes and enums the kept arms spell bare at their top level */
+        $bareFqcns = [];
+
         foreach ($infos as $info) {
             if ($info['classFqcns'] !== []) {
                 $isPlainClassUnion = $info['type'] === implode(' | ', $info['classes']);
 
+                // Register every FQCN so imports fire; a decorated arm keeps its string as one token
+                foreach ($info['classFqcns'] as $i => $fqcn) {
+                    if (! isset($classFqcnToName[$fqcn])) {
+                        $classFqcnToName[$fqcn] = $info['classes'][$i];
+                        $orderedClassFqcns[] = $fqcn;
+                    }
+                }
+
                 if ($isPlainClassUnion) {
                     foreach ($info['classFqcns'] as $i => $fqcn) {
-                        if (! isset($classFqcnToName[$fqcn])) {
-                            $classFqcnToName[$fqcn] = $info['classes'][$i];
-                            $orderedClassFqcns[] = $fqcn;
+                        if (! in_array($fqcn, $bareFqcns, true)) {
+                            $bareFqcns[] = $fqcn;
                             $types[] = $info['classes'][$i];
                             $classTokenFqcns[] = $fqcn;
                         }
                     }
                 } else {
-                    // Register every FQCN so imports fire, but keep the decorated string as one token
-                    foreach ($info['classFqcns'] as $i => $fqcn) {
-                        if (! isset($classFqcnToName[$fqcn])) {
-                            $classFqcnToName[$fqcn] = $info['classes'][$i];
-                            $orderedClassFqcns[] = $fqcn;
-                        }
-                    }
-
                     $queue = $this->unrepeatedArmQueue($info, $decoratedQueues, $seenTypeTokens);
 
                     if ($queue !== null) {
@@ -2546,18 +2550,19 @@ class LaravelTsPublish
                         $seenTypeTokens[] = $info['type'];
                         $types[] = $info['type'];
                         array_push($classTokenFqcns, ...$queue);
+                        array_push($bareFqcns, ...$this->topLevelBareFqcns($info));
                     }
                 }
             } elseif (count($info['enumFqcns']) === 1 && $info['type'] === $info['enumTypes'][0]) {
-                if (! in_array($info['enumFqcns'][0], $enumFqcns, true)) {
+                if (! in_array($info['enumFqcns'][0], $bareFqcns, true)) {
+                    $bareFqcns[] = $info['enumFqcns'][0];
                     $seenTypeTokens[] = $info['type'];
                     $types[] = $info['type'];
                 }
-            } else {
-                if (! in_array($info['type'], $seenTypeTokens, true)) {
-                    $seenTypeTokens[] = $info['type'];
-                    $types[] = $info['type'];
-                }
+            } elseif (! in_array($info['type'], $seenTypeTokens, true)) {
+                $seenTypeTokens[] = $info['type'];
+                $types[] = $info['type'];
+                array_push($bareFqcns, ...$this->topLevelBareFqcns($info));
             }
 
             // Readers take enumTypes[$i] and enums[$i] for enumFqcns[$i], so the three dedupe together.
@@ -2625,6 +2630,32 @@ class LaravelTsPublish
             : in_array($info['type'], $seenTypeTokens, true);
 
         return $repeats ? null : $queue;
+    }
+
+    /**
+     * The classes and enums a decorated arm spells as a whole member of its top-level union, such as `User` in
+     * `User | null`, where no other class or enum of the arm shares that name.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return list<class-string>
+     */
+    private function topLevelBareFqcns(array $info): array
+    {
+        $names = [...$info['classes'], ...$info['enumTypes']];
+        $fqcns = [...$info['classFqcns'], ...$info['enumFqcns']];
+
+        if ($fqcns === []) {
+            return [];
+        }
+
+        $counts = array_count_values($names);
+        $members = TsTypeShape::splitTopLevel($info['type'], ['|']);
+
+        return array_values(array_filter(
+            $fqcns,
+            fn (string $fqcn, int $i): bool => $counts[$names[$i]] === 1 && in_array($names[$i], $members, true),
+            ARRAY_FILTER_USE_BOTH,
+        ));
     }
 
     /**
