@@ -237,6 +237,9 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
+A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level `null`;
+a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+
 ## MorphTo targets
 
 `resolveMorphToTargets()` is the one source of a `morphTo`'s target union. `resolveRelation()` and

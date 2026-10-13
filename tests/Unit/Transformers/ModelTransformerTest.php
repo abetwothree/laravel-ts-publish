@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
@@ -29,6 +30,7 @@ use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Consignment;
 use Workbench\App\Models\Depot;
 use Workbench\App\Models\DocblockUnionFixture;
 use Workbench\App\Models\ExcludableModel;
@@ -1955,5 +1957,20 @@ describe('ModelTransformer with accessors that union two models sharing a name',
                 '../../../../../workbench/app/models' => ['User as SenderUser'],
                 '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
+    });
+});
+
+describe('a nullable column whose declared type holds a nested null', function () {
+    test('keeps its own null on a primitive cast, never on a class cast', function () {
+        $columns = (new ModelTransformer(NestedNullShapeModel::class))->data()->columns;
+
+        expect($columns['owner_snapshot']['type'])->toBe('{ a: number | null } | null')
+            ->and($columns['meta_info']['type'])->toBe('{ a: number | null }');
+    });
+
+    test('leaves a class cast that returns a list on a nullable column as it is', function () {
+        $legs = (new ModelTransformer(Consignment::class))->data()->columns['legs']['type'];
+
+        expect($legs)->not->toEndWith('| null');
     });
 });

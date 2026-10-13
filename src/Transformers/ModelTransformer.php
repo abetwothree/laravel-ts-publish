@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -367,7 +368,9 @@ class ModelTransformer extends CoreTransformer
             $typings = $this->exportedTypeInfo($typings);
             $type = $typings['type'];
 
-            if ($attribute['nullable'] && ! str_contains($type, 'null')) {
+            $hasNull = ModelAttributeResolver::sendsNullAsIs($cast) ? ValueResult::hasNullArm($type) : str_contains($type, 'null');
+
+            if ($attribute['nullable'] && ! $hasNull) {
                 $type .= ' | null';
             }
 

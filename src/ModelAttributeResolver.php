@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
@@ -133,6 +134,25 @@ class ModelAttributeResolver
     }
 
     /**
+     * Whether a `NULL` column reaches the published type as `null`: a database-typed column or a primitive cast,
+     * never an accessor or a class cast.
+     */
+    public static function sendsNullAsIs(?string $cast): bool
+    {
+        if ($cast === null || $cast === '') {
+            return true;
+        }
+
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return false;
+        }
+
+        $class = Str::before($cast, ':');
+
+        return enum_exists($class) || ! (class_exists($class) || interface_exists($class));
+    }
+
+    /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
      *
      * @param  class-string  $modelFqcn
@@ -175,7 +195,7 @@ class ModelAttributeResolver
 
             $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-            return $this->appendNullable($tsInfo, $attr['nullable']);
+            return $this->appendNullable($tsInfo, $attr['nullable'], self::sendsNullAsIs($cast));
         }
 
         if ($attr['type'] === null || $attr['type'] === '') {
@@ -190,7 +210,7 @@ class ModelAttributeResolver
 
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-        return $this->appendNullable($tsInfo, $attr['nullable']);
+        return $this->appendNullable($tsInfo, $attr['nullable'], true);
     }
 
     /**
@@ -1758,14 +1778,19 @@ class ModelAttributeResolver
     }
 
     /**
-     * Append ' | null' to a TypeScriptTypeInfo's type when nullable and not already present.
+     * Append ' | null' to a TypeScriptTypeInfo's type when nullable and it holds no `null` yet.
+     *
+     * A primitive cast or a database-typed column sends `null` for a `NULL` column, so only a top-level `null` arm
+     * counts there; a class cast or an accessor runs on `NULL` and returns what it returns, so any `null` counts.
      *
      * @param  TypeScriptTypeInfo  $tsInfo
      * @return TypeScriptTypeInfo
      */
-    protected function appendNullable(array $tsInfo, ?bool $nullable): array
+    protected function appendNullable(array $tsInfo, ?bool $nullable, bool $sendsNullAsIs = false): array
     {
-        if ($nullable && ! str_contains($tsInfo['type'], 'null')) {
+        $hasNull = $sendsNullAsIs ? ValueResult::hasNullArm($tsInfo['type']) : str_contains($tsInfo['type'], 'null');
+
+        if ($nullable && ! $hasNull) {
             $tsInfo['type'] .= ' | null';
         }
 

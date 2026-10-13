@@ -29,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
@@ -772,6 +773,13 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
     'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
+
+test('a nullable column keeps its own null beside a nested null on a primitive cast, never on a class cast', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NestedNullShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'a primitive cast' => ['owner_snapshot', '{ a: number | null } | null'],
+    'a class cast that never returns null' => ['meta_info', '{ a: number | null }'],
 ]);
 
 test('a @property tag naming a @phpstan-type alias whole, inside a list or inside a shape types its column', function (string $column, string $type) {
