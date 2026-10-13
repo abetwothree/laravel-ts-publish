@@ -149,7 +149,7 @@ trait CollectsLocalVarBindings
      *
      * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
      * nested in a statement ends it where that statement starts, since a loop can run the write before a read. A write
-     * in an `if` or `switch` block that always returns or throws ends it the same way inside that block alone.
+     * in an `if` or `switch` block that always leaves the function (exitingBlock()) ends it inside that block alone.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
@@ -639,10 +639,11 @@ trait CollectsLocalVarBindings
             /** @var If_|ElseIf_|Else_|Case_ $owner */
             $block = array_values($owner->stmts);
 
-            if ($block !== [] && $this->alwaysExits($block)
+            if ($block !== []
                 && array_any($block, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $node))
-                && ! array_any($enclosures, fn (Node $around): bool => $this->encloses($around, $owner))
                 && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
+                && ! array_any($enclosures, fn (Node $around): bool => $this->encloses($around, $owner))
+                && $this->alwaysExits($block)
             ) {
                 $innermost = $block;
             }

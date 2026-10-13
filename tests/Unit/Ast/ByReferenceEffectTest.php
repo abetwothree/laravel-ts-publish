@@ -60,6 +60,10 @@ it('leaves a list a key-keeping sort reorders as it was where the response re-in
     'a list' => ['string[]', [], 'string[]'],
     'a list member' => ['{ x: string[]; c: { 3: string } }', ['x'], '{ x: string[]; c: { 3: string } }'],
     'an object' => ['{ b: number }', [], '{ b: number }'],
+    'a tuple, listed in sorted order' => ['[string, number]', [], '(string | number)[]'],
+    'a tuple with an optional member' => ['[string[], number?]', [], '(string[] | number)[]'],
+    'a tuple member' => ['{ x: [string, number] }', ['x'], '{ x: (string | number)[] }'],
+    'an empty tuple' => ['[]', [], '[]'],
 ]);
 
 // A walk's callback reads its element and its key: a list's key is an int, an object's or a string Record's a string.

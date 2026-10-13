@@ -119,9 +119,15 @@ enum ByReferenceEffect
         return match ($this) {
             self::KeepsAny => $arm,
             self::KeepsList => self::listElements($arm) === null ? null : $arm,
-            self::KeepsObject => TsTypeShape::isObjectLike($arm) || ($reindexed && self::keyedOutOfOrder($arm) !== null)
-                ? $arm
-                : self::keyedOutOfOrder($arm),
+            self::KeepsObject => match (true) {
+                TsTypeShape::isObjectLike($arm) => $arm,
+                $reindexed && self::listElements($arm) !== null => $arm,
+                // A re-indexed tuple lists its members in sorted order, never in the declared one.
+                $reindexed && $arm !== '[]' && TsTypeShape::isWrapped($arm, '[', ']') => TsTypeShape::listType(
+                    array_column(self::elements($arm) ?? [], 0),
+                ),
+                default => self::keyedOutOfOrder($arm),
+            },
             self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
             self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
             self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,

@@ -518,6 +518,13 @@ A named `ResourceCollection` without `$preserveKeys` runs its own filter over th
 re-indexes the numeric-keyed arrays of an element resource that preserves keys. The element's interface still shows
 them keyed. Give the collection `$preserveKeys` too, or collect through the element's own `collection()`.
 
+### A list a key-keeping sort reorders publishes as a list inside a `Collection` in an API resource
+
+`asort()`, `uasort()` and the other sorts that keep keys leave a list keyed out of order. An API resource re-indexes
+such an array back into a list, so it publishes `string[]`. Inside a `Collection`, as in `collect($tags)`,
+`collect(['x' => $tags])` or a `->map()` over it, the resource never re-indexes the array, so Laravel sends it keyed, as
+an object, while the type stays `string[]`. Use `sort()`, or `array_values()` before the collection wraps it.
+
 ### An API resource whose top-level keys are all numeric publishes an interface of quoted keys
 
 `toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.

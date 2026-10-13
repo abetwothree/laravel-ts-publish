@@ -120,6 +120,9 @@ class ByReferenceReshapedResource extends JsonResource
             $value .= '!';
         });
 
+        $collectedSorted = ['b', 'a'];
+        asort($collectedSorted);
+
         $bitwise = [1, 2];
         array_walk($bitwise, function (int &$value): void {
             $value |= 4;
@@ -159,6 +162,7 @@ class ByReferenceReshapedResource extends JsonResource
             'round_written_loop' => $roundList,
             'copied_after_sort' => $copiedAfterSort,
             'concat_numbers' => $concatNumbers,
+            'collected_sorted' => collect($collectedSorted),
             'bitwise' => $bitwise,
             'shifted' => $shifted,
             'kept_list' => $keptList,

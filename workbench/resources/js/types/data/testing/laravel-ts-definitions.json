@@ -14685,6 +14685,11 @@
                     "optional": false
                 },
                 {
+                    "name": "sorted_tuple",
+                    "type": "(string | number)[]",
+                    "optional": false
+                },
+                {
                     "name": "walked_keys",
                     "type": "{ a: string }",
                     "optional": false
