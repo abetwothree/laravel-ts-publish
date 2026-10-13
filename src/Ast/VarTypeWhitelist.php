@@ -18,6 +18,7 @@ use ReflectionClass;
  * A callable reads as `unknown`, so it is taken only as a shape's member, and counted.
  *
  * @phpstan-type Part array{end: int, classes: list<string>, bare: bool, unknowns: int}
+ * @phpstan-type NextMember callable(list<string>, int, list<string>, int): ?Part
  *
  * @internal
  */
@@ -166,7 +167,7 @@ final readonly class VarTypeWhitelist
     private function keyed(array $tokens, int $at): ?array
     {
         if (! in_array($tokens[$at] ?? null, self::KEYS, true)) {
-            // A union of non-numeric string literals reads as an object of optional keys; a numeric one is an int key.
+            // A union of string literals reads as an object of optional keys; a decimal int one is an int key.
             while ($this->isTextLiteral($tokens[$at] ?? '') && ($tokens[$at + 1] ?? null) === '|') {
                 $at += 2;
             }
@@ -215,7 +216,7 @@ final readonly class VarTypeWhitelist
      * @param  list<string>  $tokens
      * @param  Part  $member
      * @param  list<string>  $classes
-     * @param  callable(list<string>, int, list<string>, int): ?Part  $continue
+     * @param  NextMember  $continue
      * @return Part|null
      */
     private function next(array $tokens, array $member, array $classes, int $unknowns, callable $continue): ?array
@@ -301,11 +302,12 @@ final readonly class VarTypeWhitelist
     }
 
     /**
-     * Whether a token is a quoted string literal whose text is no number, which PHP would cast to an int key.
+     * Whether a token is a quoted string literal whose text is no decimal int, which PHP would cast to an int key.
      */
     private function isTextLiteral(string $token): bool
     {
-        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1 && ! is_numeric($quoted[2]);
+        return preg_match('/^([\'"])(.*)\1$/s', $token, $quoted) === 1
+            && preg_match('/^(?:0|-?[1-9]\d*)$/', $quoted[2]) !== 1;
     }
 
     /**

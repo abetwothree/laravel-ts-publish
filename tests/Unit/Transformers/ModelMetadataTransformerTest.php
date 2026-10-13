@@ -522,9 +522,9 @@ test('spells a list member by the object literal key its type declares', functio
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
-    expect($data->propertyTypes['tuple'])->toBe('{ 1: number[]; 0: Record<string, number> }')
-        ->and($data->properties['tuple'][0])->toBeInstanceOf(stdClass::class)
-        ->and($data->properties['tuple'][1])->toBe([]);
+    expect($data->propertyTypes['numeric_keys'])->toBe('{ 1: number[]; 0: Record<string, number> }')
+        ->and($data->properties['numeric_keys'][0])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['numeric_keys'][1])->toBe([]);
 });
 
 test('spells a tuple member by the type at its position', function () {
@@ -532,9 +532,9 @@ test('spells a tuple member by the type at its position', function () {
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
-    expect($data->propertyTypes['pair'])->toBe('[Record<string, number>, number[]]')
-        ->and($data->properties['pair'][0])->toBeInstanceOf(stdClass::class)
-        ->and($data->properties['pair'][1])->toBe([]);
+    expect($data->propertyTypes['tuple'])->toBe('[Record<string, number>, number[]]')
+        ->and($data->properties['tuple'][0])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['tuple'][1])->toBe([]);
 });
 
 test('keeps an explicit empty stdClass under a type that is not object-like', function () {

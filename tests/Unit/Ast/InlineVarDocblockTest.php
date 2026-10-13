@@ -373,6 +373,7 @@ describe('an inline @var on a local assignment', function () {
         'a positional array shape' => ['array{int, string}', '[number, string]'],
         'an object shape' => ['object{a: int, b?: string}', '{ a: number; b?: string }'],
         'string literal keys' => ["array<'a'|'b', int>", '{ a?: number; b?: number }'],
+        'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
         'quoted shape keys' => ["array{'a': int, \"b-c\": string}", '{ a: number; "b-c": string }'],
         'a space before a shape key\'s marker' => ['array{a ?: int, b: string}', '{ a?: number; b: string }'],
         'a space before a shape key\'s colon' => ['array{a : int}', '{ a: number }'],

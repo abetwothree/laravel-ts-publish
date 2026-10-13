@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
@@ -10,11 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DateTimeListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\DocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\ModelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\NullableSerializedLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\QuotedKeyDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\SerializedLabelCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
@@ -1421,6 +1425,36 @@ describe('PHPDoc shapes, tuples and callables', function () {
         'a callable inside a shape' => ['array{fn: callable(int): string}', '{ fn: unknown }'],
         'a mixed shape, whose positional member takes the next int key' => ['array{int, a: string}', '{ 0: number; a: string }'],
         'a class inside a tuple, which a shape cannot import' => ['list{User, int}', '[unknown, number]'],
+        'string literal keys PHP keeps as strings' => ["array<'01'|'02', int>", '{ "01"?: number; "02"?: number }'],
+        'a quoted literal member holding a colon' => ["list{'a:b', int}", "['a:b', number]"],
+    ]);
+
+    test('reads a parenthesized group as the union it holds', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected);
+    })->with([
+        'a group' => ['(int|string)', 'number | string'],
+        'a nullable group' => ['?(int|string)', 'number | string | null'],
+    ]);
+
+    test('reads a tuple and a quoted-key shape through a cast get() @return, a property @var and a promoted @var', function () {
+        $property = fn (string $name): ?string => resolve(PropertyDocblockTypeReader::class)
+            ->read(new ReflectionProperty(DeclaredShapeProperties::class, $name))['type'] ?? null;
+
+        expect($this->service->toTsType(TupleDocblockCast::class)['type'])->toBe('[number, string]')
+            ->and($this->service->toTsType(QuotedKeyDocblockCast::class)['type'])->toBe('{ a: number; b: string }')
+            ->and($property('pair'))->toBe('[number, string]')
+            ->and($property('keyed'))->toBe('{ a: number; b: string }')
+            ->and($property('promotedPair'))->toBe('[number, string]')
+            ->and($property('promotedKeyed'))->toBe('{ a: number; b: string }');
+    });
+
+    test('publishes a DTO whose toArray() declares a list shape as the tuple, not its public properties', function (string $dto) {
+        expect($this->service->toTsType($dto)['type'])->toBe('[number, string]');
+    })->with([
+        'explicit keys 0 and 1' => [ArrayableExplicitKeyTupleValueObject::class],
+        'positional members' => [ArrayablePositionalTupleValueObject::class],
+        'a list shape' => [ArrayableListTupleValueObject::class],
     ]);
 
     test('reads an array shape keyed exactly 0 to n-1 in order as a tuple, and any other int keys as an object', function (string $phpType, string $expected) {
@@ -2319,6 +2353,54 @@ class ArrayableWithNestedPrimitiveValueObject implements Arrayable
     public function toArray(): array
     {
         return [];
+    }
+}
+
+/**
+ * A value object whose toArray() declares explicit keys 0 and 1, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayableExplicitKeyTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return array{0: int, 1: string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
+    }
+}
+
+/**
+ * A value object whose toArray() declares positional members, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayablePositionalTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return array{int, string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
+    }
+}
+
+/**
+ * A value object whose toArray() declares a list shape, beside a public property json_encode() never sends.
+ *
+ * @implements Arrayable<int, int|string>
+ */
+class ArrayableListTupleValueObject implements Arrayable
+{
+    public string $name = 'x';
+
+    /** @return list{int, string} */
+    public function toArray(): array
+    {
+        return [1, 'a'];
     }
 }
 

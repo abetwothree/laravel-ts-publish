@@ -362,10 +362,7 @@ test('reads a list shape @param as the tuple it declares', function () {
         ->toBe('[number, string]');
 });
 
-test('captures a callable @param whole, up to the by-reference name after its return type', function () {
-    $tag = new ReflectionMethod(PropertyDocblockTypeReader::class, 'captureTag')
-        ->invoke(resolve(PropertyDocblockTypeReader::class), "/**\n * @param callable(int): string &\$cb\n */", '/(?<![\w-])@param\s+/');
-
-    expect($tag[0] ?? null)->toBe('callable(int): string')
-        ->and(trim($tag[1] ?? ''))->toBe('&$cb');
+test('captures a callable tag whole, up to the by-reference name after its return type', function () {
+    expect(resolve(PropertyDocblockTypeReader::class)->extractVarType('/** @var callable(int): string &$cb */'))
+        ->toBe('callable(int): string');
 });

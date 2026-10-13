@@ -697,9 +697,15 @@ class LaravelTsPublish
         $this->shapeExpansionStack[$key] = true;
 
         try {
-            $shape = $this->parseDocblockReturnArrayShape(new ReflectionMethod($fqcn, $method));
+            $reflection = new ReflectionMethod($fqcn, $method);
+            $tuple = $this->docblockReturnTupleType($reflection);
+            $shape = $tuple === null ? $this->parseDocblockReturnArrayShape($reflection) : [];
         } finally {
             unset($this->shapeExpansionStack[$key]);
+        }
+
+        if ($tuple !== null) {
+            return $tuple;
         }
 
         if ($shape === []) {
@@ -1530,6 +1536,11 @@ class LaravelTsPublish
     public function resolveDocblockTypePart(string $part, array $useMap, string $namespace): array
     {
         $part = trim($part);
+
+        if ($this->isParenthesizedGroup($part)) {
+            return $this->resolveDocblockPartToInfo(substr($part, 1, -1), $useMap, $namespace);
+        }
+
         $generic = $this->resolveGenericContainerType($part, $useMap, $namespace);
 
         if ($generic !== null) {
@@ -1638,7 +1649,7 @@ class LaravelTsPublish
     {
         $valueType = trim($valueType);
 
-        if (TsTypeShape::isWrapped($valueType, '(', ')') && ! str_starts_with($valueType, '($')) {
+        if ($this->isParenthesizedGroup($valueType)) {
             return $this->resolveDocblockContainerValue(substr($valueType, 1, -1), $useMap, $namespace);
         }
 
@@ -1887,7 +1898,7 @@ class LaravelTsPublish
 
         $returnType = $this->extractReturnTypeFromDocblock($docComment);
 
-        if ($returnType === null || ! str_starts_with($returnType, 'array{')) {
+        if ($returnType === null || ! $this->isPhpDocShape($returnType)) {
             return [];
         }
 
@@ -1896,6 +1907,29 @@ class LaravelTsPublish
         $namespace = $declaringClass->getNamespaceName();
 
         return $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace);
+    }
+
+    /**
+     * The tuple a method's `@return` list shape publishes, or null when its `@return` is no list shape.
+     *
+     * A list shape has no keys for parseDocblockReturnArrayShape() to map, and json_encode() writes it as an array.
+     */
+    protected function docblockReturnTupleType(ReflectionMethod $method): ?string
+    {
+        $returnType = $this->extractReturnTypeFromDocblock((string) $method->getDocComment());
+        $shape = $returnType === null ? null : $this->arrayShapeEntries($returnType);
+
+        if ($returnType === null || $shape === null || ! $this->isTupleShape($shape)) {
+            return null;
+        }
+
+        $declaringClass = $this->methodDeclaringFileClass($method);
+
+        return $this->resolveArrayShapeString(
+            $returnType,
+            $this->parseFileUseStatements($declaringClass),
+            $declaringClass->getNamespaceName(),
+        );
     }
 
     /**
@@ -1958,8 +1992,10 @@ class LaravelTsPublish
             }
 
             if (preg_match('/^('.$key.')\s*(\?)?\s*:(?!:)\s*(.+)$/s', $entry, $m) !== 1) {
-                // A `key: type` whose key is no PHPDoc key is left out, as before, not read as a positional value.
-                $keyed = preg_match('/^[^(){}<>:]*[^\s(){}<>:]\s*\??\s*:(?!:)/', $entry) === 1;
+                // A `key: type` whose key is no PHPDoc key is left out: read as a value, it would shift every later
+                // position. A `:` inside a quoted literal marks no key.
+                $unquoted = (string) preg_replace('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', "''", $entry);
+                $keyed = preg_match('/^[^(){}<>:]*[^\s(){}<>:]\s*\??\s*:(?!:)/', $unquoted) === 1;
 
                 if ($entry !== '' && $kind !== 'object' && ! $keyed) {
                     $entries[] = ['key' => (string) $nextIndex++, 'implicit' => true, 'optional' => false, 'type' => $entry];
@@ -2063,6 +2099,10 @@ class LaravelTsPublish
             return implode(' | ', $tsParts);
         }
 
+        if ($this->isParenthesizedGroup($phpType)) {
+            return $this->resolvePhpDocTypeToTs(substr($phpType, 1, -1), $useMap, $namespace);
+        }
+
         $generic = $this->resolveGenericContainerType($phpType, $useMap, $namespace);
 
         if ($generic !== null) {
@@ -2155,11 +2195,20 @@ class LaravelTsPublish
     /**
      * Whether a resolved name still holds one of these brackets, a form the docblock reader does not know.
      *
-     * A conditional return type kept as its first token, `($value`, is exempt: its partial match is today's reading.
+     * A conditional return type kept as its first token, `($value`, is exempt: its partial match types the string
+     * conditionals Laravel declares, which `unknown` would lose.
      */
     protected function isUnreadForm(string $resolved, string $brackets): bool
     {
         return strpbrk($resolved, $brackets) !== false && ! str_starts_with($resolved, '($');
+    }
+
+    /**
+     * Whether a PHPDoc type is one group in parentheses, such as `(int|string)`, other than a conditional's `($…)`.
+     */
+    protected function isParenthesizedGroup(string $phpType): bool
+    {
+        return TsTypeShape::isWrapped($phpType, '(', ')') && ! str_starts_with($phpType, '($');
     }
 
     /**
@@ -2237,8 +2286,8 @@ class LaravelTsPublish
         foreach ($this->splitPhpDocUnionType($keyType) as $part) {
             $key = $this->phpDocStringLiteral($part);
 
-            // A numeric string key is an int key in PHP, which an API resource can re-index into a list.
-            if ($key === null || is_numeric($key)) {
+            // PHP casts a decimal int string key to an int, so the array may be a list.
+            if ($key === null || preg_match('/^(?:0|-?[1-9]\d*)$/', $key) === 1) {
                 return null;
             }
 

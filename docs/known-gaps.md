@@ -269,6 +269,8 @@ with an import-aware `#[TsCasts]`, or give the method a native return type that 
 ### An open shape publishes only its named keys
 
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
+An open positional shape, `array{int, ...}`, publishes `unknown[]` too, though it may carry string keys and encode as an
+object.
 
 ### An index signature its body types can fail to compile beside a key it cannot take in
 

@@ -121,6 +121,6 @@ test('renders a list whose type declares numeric object keys, and one whose type
     config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
 
     expect((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
-        ->toContain('    tuple: [{}, []],')
-        ->toContain('    pair: [{}, []],');
+        ->toContain('    numeric_keys: [{}, []],')
+        ->toContain('    tuple: [{}, []],');
 });
