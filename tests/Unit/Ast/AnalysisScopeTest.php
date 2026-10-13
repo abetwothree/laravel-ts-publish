@@ -192,6 +192,40 @@ it('copies only the body\'s own bindings of a variable passed past its end, and 
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
 });
 
+// The tables a body write can end are the ones a variable passed past its end stops passing on: a new table must join
+// both lists or neither.
+it('ends a name\'s binding in exactly the tables a variable passed past its end no longer passes on', function () {
+    $every = analysisScopeWithEveryTableBound();
+
+    foreach (array_keys(array_diff_key(AnalysisScope::NO_NAME_BINDINGS, ['claimedClosures' => true, 'bindingEnds' => true])) as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $every->{$table}['item'];
+        $captured = [...$one->nameBindings(), 'bindingEnds' => ['item' => 0]];
+        $within = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $past = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+        $within->copyBindings(new Variable('item', ['startFilePos' => 0]), 'param', $captured);
+        $past->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
+
+        expect($one->bindsName('item'))->toBe(isset($within->{$table}['param']) && ! isset($past->{$table}['param']), $table);
+    }
+});
+
+it('captures every public array table but the re-entrancy guards as a name binding', function () {
+    $tables = array_map(
+        fn (ReflectionProperty $property): string => $property->getName(),
+        array_filter(
+            new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+            fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
+        ),
+    );
+    $guards = ['resolvingLocalVars', 'visitedSpreadMethods'];
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    expect(array_values(array_diff($tables, $guards)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
+        ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
+});
+
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $scope->localVarBindings['item'] = new Variable('outer');

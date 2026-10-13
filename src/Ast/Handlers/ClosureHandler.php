@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -36,7 +35,6 @@ use PhpParser\Node\NullableType;
  */
 final class ClosureHandler implements ExpressionHandler
 {
-    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
@@ -60,15 +58,7 @@ final class ClosureHandler implements ExpressionHandler
                 $scope->releaseUnclaimedParameters($expr);
 
                 if ($expr instanceof ClosureExpr) {
-                    // A body-local shadows the outer one of the same name however often it is written, so
-                    // suppress every written name before the binding pass decides what to rebind.
-                    foreach ($this->collectWrittenVariableNames($expr->stmts, $scope) as $name) {
-                        unset($scope->localVarBindings[$name], $scope->varDocBindings[$name]);
-                    }
-
-                    $this->collectLocalVarBindings($expr->stmts, $scope);
-                    $this->endBindingsAtWrites($expr->stmts, $scope);
-                    $this->collectInstanceofGuards($expr->stmts, $scope);
+                    $this->seedBody($expr->stmts, $scope);
                 }
 
                 $bodyResult = count($closureReturns) === 1

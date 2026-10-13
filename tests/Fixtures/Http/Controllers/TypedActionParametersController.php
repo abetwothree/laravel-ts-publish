@@ -12,13 +12,14 @@ use Workbench\App\Models\Post;
 /** Inertia actions whose typed parameters are read by the props they render. */
 class TypedActionParametersController
 {
-    /** Reads a scalar, an enum and a nullable model, each by its declared type. */
+    /** Reads a scalar, an enum and a nullable model, each by its declared type, the model also bare. */
     public function show(int $id, Status $status, ?Post $post = null): Response
     {
         return Inertia::render('Typed/Show', [
             'id' => $id,
             'status' => $status,
             'title' => $post?->title,
+            'post' => $post,
         ]);
     }
 

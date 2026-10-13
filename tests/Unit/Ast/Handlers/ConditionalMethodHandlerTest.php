@@ -40,6 +40,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\ArtistResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
@@ -1032,6 +1033,28 @@ it('binds transform()\'s callback to a nullable model read without its null arm'
     expect(conditionalMethodHandlerResolveOnPost('$this->resource->author->profile')['type'])->toBe('Profile | null')
         ->and(conditionalMethodHandlerResolveOnPost('$this->transform($this->resource->author->profile, fn ($p) => $p)')['type'])
         ->toBe('Profile');
+});
+
+// transform() calls back for a model no row backs yet, whose key Laravel sends as null.
+it('binds transform()\'s callback to a model no row backs yet with its unsaved mark', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a new model\'s key' => ['$this->transform(new \\Workbench\\App\\Models\\Post, fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s key' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s attribute' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->title)', 'string'],
+    'a copy, bare' => ['$this->transform($this->resource->replicate(), fn ($p) => $p)', 'Post'],
+]);
+
+// A MissingValue drops the key, and `??` never sees it as null, so the field's absent null cannot make it required.
+it('keeps a when() key optional across ?? when its value is a form-request field that may be absent', function () {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->requestVarNames['request'] = UpdatePostRequest::class;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+
+    expect($engine->resolve($parse('$request->validated("title") ?? "none"'))['optional'])->toBeFalse()
+        ->and($engine->resolve($parse('$this->when($this->title !== null, $request->validated("title")) ?? "none"')))
+        ->toBe(['type' => 'string', 'optional' => true]);
 });
 
 // A parameter holding its default or a list must not reach a receiver chain through a value the call does not pass.

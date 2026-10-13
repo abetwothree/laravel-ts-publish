@@ -79,9 +79,9 @@ element array. Placed later, the two additions would be unreachable for those sh
 pins the structure and the three orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
-`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's route-bound
-models, `Request` parameters and locals; every other typed parameter binds through `ParameterBinder::bindDeclared()`, as a
-helper's are. The seeded scope is why `compact()`, a route-bound `$post` and
+`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and
+its parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
+every other typed parameter. The seeded scope is why `compact()`, a route-bound `$post` and
 `$request->integer()` type with no Inertia-specific handler code.
 
 ### The honest ordering inventory
@@ -137,9 +137,9 @@ docblocks say what each binding table holds. These four facts span other classes
   `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
   alike, then restores both. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not
   describe the model a nested resolution ran under.
-- **`requestVarNames` skips a resource's `Request` parameter**: `ResourceAstAnalyzer::resolveRequestVarNames()` seeds it
-  for any subject but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move
-  committed resource output.
+- **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
+  but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
+  output.
 - **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback, and a getter that
   `AstEngine::analyzeModelClosure()` reads without imports. See [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
@@ -220,24 +220,25 @@ green with either mechanism alone, so it pins neither.
 #### A called method's parameters
 
 A method body read apart from its call, such as a spread helper, the body fallback, `SubjectHelperReturnResolver`'s
-helper or any analyzer that builds its own scope, binds its parameters with [`ParameterBinder`]'s `bindDeclared()`, by
+helper or any analyzer that builds its own scope, binds its parameters with [`ParameterBinder`]'s `bindCall()`, by
 the type they declare: the native type, else a whitelisted `@phpstan-param`, `@psalm-param` or `@param` where the native
 type is vague. One concrete, non-null model goes in `varModelBindings`; any other parameter puts its classes, when it
-names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` and a name already bound
-stay as they are.
+names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` goes in `requestVarNames`,
+except in an API resource, and a name already bound stays as it is. `CollectsLocalVarBindings::seedBody()` then seeds
+the body's own bindings, ends and guards from one write scan, in every body reader, a closure's included.
 
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
 says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
 outlive a write naming no class such as `$n = (string) $n`, so its local answers. The binding reads only the
-declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds
-each parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`)
-to what its argument binds, through `CallSite::passedTo()` and `bindPassed()`, read before the caller's tables are set
-aside. A value read keys its memo on what the call binds ([The run memo replays what it
+declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds each
+parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`) to what
+its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterSubjectMethod()`
+sets the caller's tables aside. A value read keys its memo on what the call binds ([The run memo replays what it
 recorded](#the-run-memo-replays-what-it-recorded)). A model no row backs yet binds as a `new` of its class, so its key
-keeps `| null`. An argument holding narrower classes than a declared abstract class, interface or union, such as a post
-passed to `Model $m`, replaces the declared binding the same way. A value read binds nothing for a closure or
-first-class callable argument, whose value hangs on whether the method calls it, unless the caller calls every
-callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`).
+keeps `| null`, as a `transform()` callback's does. An argument holding narrower classes than a declared abstract class,
+interface or union, such as a post passed to `Model $m`, replaces the declared binding the same way. A value read binds
+nothing for a closure or first-class callable argument, whose value hangs on whether the method calls it, unless the
+caller calls every callable it reads, as Inertia does (`ExpressionEngine::invokesCallables()`).
 
 ### Narrowing
 
@@ -510,7 +511,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `BroadcastEventTransformer` | `analyzeMethod($event, 'broadcastWith')`, else `analyzePublicProperties()`, and `ReturnLiteralReader` for `broadcastAs()` | `hasMethod()` counts an inherited or trait `broadcastWith()`, as Laravel does |
 | `InertiaPageAnalyzer` | The controller profile over `bindingsFor()`'s scope, and `analyzeMethod()` only for props delegated whole to a collaborator | Page props are expressions in an action, not a method's return |
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
-| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | `analyzeMethod()` seeds no bindings. See [Model metadata][metadata-consumer]. |
+| `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
 | `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
 

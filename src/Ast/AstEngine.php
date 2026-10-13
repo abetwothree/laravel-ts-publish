@@ -5,17 +5,14 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionProperty;
 
 /**
@@ -29,7 +26,6 @@ use ReflectionProperty;
  */
 final class AstEngine
 {
-    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
 
     /**
@@ -105,9 +101,9 @@ final class AstEngine
     }
 
     /**
-     * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
-     * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
-     * `Request $request` is a fact the resource path never had; every other typed parameter binds as a helper's does.
+     * Build the starting scope for a located method: its subject, its body's file, its parameters, bound as a helper's
+     * are, and its body's own bindings. A route-bound `Post $post` binds as its model, a `?Post $post` as that model or
+     * null, and an injected `Request $request` as a request.
      *
      * @internal
      */
@@ -115,38 +111,16 @@ final class AstEngine
     {
         $scope = new AnalysisScope($context->reflection);
         $methodName = $context->method->name->toString();
-
-        if ($context->reflection->hasMethod($methodName)) {
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($context->reflection->getMethod($methodName));
-
-            foreach ($context->reflection->getMethod($methodName)->getParameters() as $parameter) {
-                $type = $parameter->getType();
-
-                if (! $type instanceof ReflectionNamedType || $type->isBuiltin()) {
-                    continue;
-                }
-
-                $class = $type->getName();
-
-                if (is_a($class, Model::class, true)) {
-                    /** @var class-string<Model> $class */
-                    $scope->varModelBindings[$parameter->getName()] = $class;
-                } elseif (is_a($class, Request::class, true)) {
-                    /** @var class-string<Request> $class */
-                    $scope->requestVarNames[$parameter->getName()] = $class;
-                }
-            }
-        }
-
         $stmts = $context->method->stmts ?? [];
 
         if ($context->reflection->hasMethod($methodName)) {
-            resolve(ParameterBinder::class)->bindDeclared($context->reflection->getMethod($methodName), $stmts, $scope);
+            $method = $context->reflection->getMethod($methodName);
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, [], $scope);
         }
 
-        $this->collectLocalVarBindings($stmts, $scope);
-        $this->endBindingsAtWrites($stmts, $scope);
-        $this->collectInstanceofGuards($stmts, $scope);
+        $this->seedBody($stmts, $scope);
 
         return $scope;
     }

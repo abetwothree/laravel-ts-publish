@@ -191,22 +191,26 @@ it('leaves knownMethodRule its turn on a Request receiver reflection cannot type
 
 // The same constraint through the whole dispatcher rather than the handler alone. It is worth the
 // duplication: the assertion above is otherwise the only test that fails when the rule stops declining.
+// analyze() seeds the method's parameters, so each analyzer below has read its body before the call is resolved.
 it('leaves knownMethodRule its turn through the dispatcher too', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(StarterKitMiddleware::class), null, 'share');
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('can')))->toBe(['type' => 'boolean', 'optional' => false]);
 });
 
 it('keeps the Request rules off a resource, whose toArray() also takes a Request', function () {
     // A resource's committed output was inferred without these rules; seeding them there would move
-    // it, so ResourceAstAnalyzer deliberately leaves requestVarNames empty for a JsonResource.
+    // it, so ParameterBinder deliberately leaves requestVarNames empty for a JsonResource.
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('url')))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
 it('seeds requestVarNames for a non-resource subject from the analyzed method signature', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(StarterKitMiddleware::class), null, 'share');
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('url')))->toBe(['type' => 'string', 'optional' => false]);
 });

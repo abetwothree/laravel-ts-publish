@@ -27,8 +27,8 @@ use PhpParser\Node\Stmt\While_;
 
 /**
  * The guard pass: an early-exit `instanceof` guard narrows a variable, and an `if` condition proves reads non-null in
- * the blocks it runs and past the branches that exit. Hosts must also use CollectsLocalVarBindings: its write
- * collection is what decides a binding or a proof is safe, and both passes read the same statement list.
+ * the blocks it runs and past the branches that exit. CollectsLocalVarBindings composes it: its write collection is
+ * what decides a binding or a proof is safe, and both passes read the same statement list.
  *
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
@@ -47,10 +47,11 @@ trait CollectsInstanceofGuards
      * still reads the variable unnarrowed. A variable written after the guard tests it is not bound at all.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
      */
-    protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope): void
+    protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($stmts as $stmt) {
             if (! $stmt instanceof If_ || $stmt->elseifs !== [] || $stmt->else !== null || ! $this->alwaysExits($stmt->stmts)) {

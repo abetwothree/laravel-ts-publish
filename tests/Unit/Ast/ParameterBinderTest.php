@@ -12,11 +12,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
@@ -237,7 +239,7 @@ test('binds each parameter into the table its declared type belongs in, and leav
     $scope = new AnalysisScope($reflection, Post::class);
 
     foreach (['nullableModel', 'union', 'valueObject', 'request', 'scalar'] as $method) {
-        resolve(ParameterBinder::class)->bindDeclared($reflection->getMethod($method), parameterBinderBody($method), $scope);
+        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), parameterBinderBody($method), [], $scope);
     }
 
     expect($scope->varModelBindings)->toBe([])
@@ -247,10 +249,30 @@ test('binds each parameter into the table its declared type belongs in, and leav
         ->and($scope->requestVarNames)->toBe([]);
 });
 
+// An API resource's output was inferred without the request rules, so only another subject binds a request there.
+test('binds a Request parameter as a request, unless the subject is an API resource', function () {
+    $event = new AnalysisScope(new ReflectionClass(RequestRoleHelperEvent::class));
+    $resource = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(RequestRoleHelperEvent::class, 'roleOf'), [], [], $event);
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(HelperParameterKindsResource::class, 'request'), parameterBinderBody('request'), [], $resource);
+
+    expect($event->requestVarNames)->toBe(['request' => Request::class])
+        ->and($event->varDeclaredBindings)->toBe([])
+        ->and($resource->requestVarNames)->toBe([])
+        ->and($resource->varDeclaredBindings)->toBe([]);
+});
+
+// The parameter holds the value, so whether the caller's key may be absent, and whether `??` fills it, stays there.
+test('passes a value without the caller\'s optional or its absent-field marker', function () {
+    expect(resolve(ParameterBinder::class)->passedBinding(['type' => 'string', 'optional' => true, 'absentReadsNull' => true], null))
+        ->toBe(['model' => null, 'classes' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false]);
+});
+
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostHelperParamsResource::class), Post::class);
 
-    resolve(ParameterBinder::class)->bindDeclared(new ReflectionMethod(PostHelperParamsResource::class, 'card'), [], $scope);
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(PostHelperParamsResource::class, 'card'), [], [], $scope);
 
     expect($scope->varModelBindings)->toBe(['post' => Post::class])
         ->and($scope->varValueBindings)->toBe([]);
@@ -264,10 +286,10 @@ test('binds the classes of a parameter the body writes but not its value, and a 
     $seeded->varModelBindings['post'] = User::class;
 
     foreach (['written', 'filled', 'formatted', 'joined'] as $method) {
-        resolve(ParameterBinder::class)->bindDeclared($reflection->getMethod($method), parameterBinderBody($method), $written);
+        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), parameterBinderBody($method), [], $written);
     }
 
-    resolve(ParameterBinder::class)->bindDeclared($reflection->getMethod('written'), parameterBinderBody('written'), $seeded);
+    resolve(ParameterBinder::class)->bindCall($reflection->getMethod('written'), parameterBinderBody('written'), [], $seeded);
 
     expect($written->varModelBindings)->toBe(['post' => Post::class])
         ->and($written->varDeclaredBindings)->toBe(['p' => [Post::class]])

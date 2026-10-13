@@ -118,11 +118,11 @@ it('keeps a ternary prop required over plain arms and optional over a lazy one',
 });
 
 // A field absent from the request reads null, which `??` and a short `?:` replace; a direct read, a full ternary and a
-// closure keep the field's optional.
-it('drops a form-request field\'s optional across ?? and ?:, and keeps it across a ternary or closure', function () {
+// closure keep the field's optional, and so does an optional prop, which `??` never sees as null.
+it('drops a form-request field\'s optional across ?? and ?:, and keeps it across a ternary, a closure or an optional prop', function () {
     $data = pageData(ControllerWithValidatedProps::class.'@index');
 
-    expect($data['pageType'])->toBe('Inertia.SharedData & { a: string, b: number, c?: string, d?: string, e: { search: string }, f: string, h: string, i?: string }');
+    expect($data['pageType'])->toBe('Inertia.SharedData & { a: string, b: number, c?: string, d?: string, e: { search: string }, f: string, h: string, i?: string, j?: string }');
 });
 
 it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {
@@ -181,9 +181,10 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->toBe('Inertia.SharedData & { post: unknown }');
 });
 
+// Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm.
 it('types the props an action reads from its scalar, enum, union and nullable model parameters', function () {
     expect(pageData(TypedActionParametersController::class.'@show')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null }')
+        ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null, post: Post | null }')
         ->and(pageData(TypedActionParametersController::class.'@filter')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { term: string | null, key: string | number }');
 });

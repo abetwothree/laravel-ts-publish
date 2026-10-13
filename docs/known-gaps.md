@@ -476,7 +476,10 @@ as `strlen(...)` is read by where it sits. Props an Inertia controller delegates
 helper method the action calls, are read as that method's own values, so a first-class callable there publishes
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
 to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
-read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead.
+read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead. A closure held in a
+local and passed to a helper read as a value publishes what it returns, as in `$f = fn () => 1; $this->hold($f)`
+where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with
+`#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 
@@ -575,7 +578,7 @@ it a `@var` docblock.
 
 `whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
 `$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
-`/** @var Comment $a */`, and the read follows it. A parameter passed a value does the same: after
+`/** @var Comment $a */`, and the read follows it. A closure parameter passed a value does the same: after
 `$t = json_decode($t)`, `$t` keeps the type it was passed.
 
 ### An abstract model's key type misses a subclass the run does not publish
@@ -627,4 +630,6 @@ into it ([AGENTS.md § Git](../AGENTS.md#git)). [Performance gate](./testing/per
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 
 The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent call
-such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null.
+such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A helper
+parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes `new Post`,
+so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes `number | null`.

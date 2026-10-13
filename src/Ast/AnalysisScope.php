@@ -69,6 +69,12 @@ use ReflectionClass;
  *      claimedClosures: array<int, true>,
  *      bindingEnds: array<string, int>
  * }
+ * @phpstan-type CallerState array{
+ *      bindings: NameBindingsSnapshot,
+ *      resolvingLocalVars: array<string, true>,
+ *      declaringFileClass: ReflectionClass<object>,
+ *      closureRelationModelClass: class-string<Model>|null
+ * }
  *
  * @internal
  */
@@ -171,7 +177,7 @@ final class AnalysisScope
     /**
      * Names bound to a model class, so `$var`, `$var->prop`, `$var->method()` resolve against it: a to-one whenLoaded,
      * map or transform() closure param, scoped to its closure's body, and, method-wide, a foreach variable over a
-     * many-relation or a `Model`-typed parameter AstEngine::bindingsFor() or ParameterBinder seeds.
+     * many-relation or a concrete, non-null model parameter ParameterBinder seeds.
      *
      * @var VarModelBindingsMap
      */
@@ -374,6 +380,48 @@ final class AnalysisScope
         $this->requestVarNames = $snapshot['requestVarNames'];
         $this->claimedClosures = $snapshot['claimedClosures'];
         $this->bindingEnds = $snapshot['bindingEnds'];
+    }
+
+    /**
+     * Set the caller's state aside to read the subject's own method $method, until leaveSubjectMethod(): no caller name
+     * reaches its body, which reads `$this` as the subject from its own file, and only $proofs of `$this` reads hold.
+     *
+     * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
+     * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
+     * @return CallerState
+     */
+    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs): array
+    {
+        $caller = [
+            'bindings' => $this->nameBindings(),
+            'resolvingLocalVars' => $this->resolvingLocalVars,
+            'declaringFileClass' => $this->declaringFileClass,
+            'closureRelationModelClass' => $this->closureRelationModelClass,
+        ];
+
+        $this->visitedSpreadMethods[$method] = true;
+        $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->nonNullReads = $proofs;
+        $this->resolvingLocalVars = [];
+        // A relation closure's model answers an unbound `$variable->prop`, but the method's body reads the subject.
+        $this->closureRelationModelClass = null;
+        $this->declaringFileClass = $declaringFileClass;
+
+        return $caller;
+    }
+
+    /**
+     * Restore the caller's state enterSubjectMethod() set aside for a read of $method.
+     *
+     * @param  CallerState  $caller
+     */
+    public function leaveSubjectMethod(string $method, array $caller): void
+    {
+        $this->restoreNameBindings($caller['bindings']);
+        $this->resolvingLocalVars = $caller['resolvingLocalVars'];
+        $this->declaringFileClass = $caller['declaringFileClass'];
+        $this->closureRelationModelClass = $caller['closureRelationModelClass'];
+        unset($this->visitedSpreadMethods[$method]);
     }
 
     /**

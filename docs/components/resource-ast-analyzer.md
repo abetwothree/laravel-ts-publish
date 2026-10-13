@@ -835,9 +835,10 @@ in every subject: an enum branch returns before `resourceWrapType()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
-ternary of those, and one wraps, so no other helper's body is read. The body is its own scope: the caller's name tables
-and relation model are set aside, and its typed parameters bound. A union that types no wrap declines. An untyped helper that can end without a
-value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
+ternary of those, and one wraps, so no other helper's body is read. The body is seeded as a spread's is: the caller's
+name tables and relation model are set aside, but for its proofs of `$this` reads, its parameters bind by what they
+declare and what the call passes, and its guards narrow. A union that types no wrap declines. An untyped helper that can
+end without a value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
 
 ## Related
 

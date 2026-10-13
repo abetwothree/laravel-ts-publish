@@ -30,6 +30,7 @@ class ControllerWithValidatedProps
 
                 return 'none';
             },
+            'j' => Inertia::optional(fn () => $request->validated('title')) ?? 'none',
         ]);
     }
 }

@@ -185,6 +185,20 @@ final class ValueResult
     }
 
     /**
+     * The result as a key a placeholder such as a MissingValue can drop: optional, and out of `??`'s reach, since the
+     * operator never meets the placeholder as null, so an absent request field's null no longer makes it required.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function missable(array $result): array
+    {
+        unset($result['absentReadsNull']);
+
+        return [...$result, 'optional' => true];
+    }
+
+    /**
      * The result as `??` or a short `?:` receives its checked operand: a field absent from the request reads `null`,
      * which the operator replaces, so only a placeholder that drops the key (a MissingValue) keeps it optional.
      *

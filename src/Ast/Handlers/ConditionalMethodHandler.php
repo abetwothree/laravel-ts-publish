@@ -16,6 +16,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -159,7 +162,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $defaultArg = $args->named('default');
 
         if ($defaultArg === null || ! $this->hasExplicitDefaultArg($args)) {
-            return [...$value, 'optional' => true];
+            return ValueResult::missable($value);
         }
 
         $defaultExpr = $defaultArg->value;
@@ -560,7 +563,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return $this->applyConditionalDefault($result, $args, $scope, $engine);
         }
 
-        return [...$result, 'optional' => true]; // @codeCoverageIgnore
+        return ValueResult::missable($result); // @codeCoverageIgnore
     }
 
     /**
@@ -585,10 +588,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
             // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
             $value = $valueArg->value;
             $resolvedValue = $engine->resolve($value);
+            $model = $this->filledModel($value, $resolvedValue, $scope);
             $callback = FirstClassCallableHandler::passingOneValue($callbackArg->value);
 
             $scope->claimParameters($callback);
-            $this->bindPassedValue($callback, $value, $resolvedValue, $previousNameBindings, $scope, $engine);
+            $this->bindPassedValue($callback, $value, $resolvedValue, $previousNameBindings, $scope, $engine, model: $model);
             $scope->bindUnpassedParameters($callback, 1, $engine);
             // transform() calls back only for a filled value, so the read it passes is not null in the callback.
             $this->proveNonNull([$value], $scope);
@@ -887,10 +891,11 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Bind a callback's first parameter to the value its call passes: a `$this->prop` read, every binding the passed
-     * variable held before the claim, or the value's own resolved type.
+     * variable held before the claim, the one model a filled value holds, or the value's own resolved type.
      *
      * @param  ValueExpressionResult|null  $resolvedValue
      * @param  NameBindingsSnapshot  $outer
+     * @param  ReceiverType|null  $model  from filledModel(); null for a default, which is passed the blank value
      */
     private function bindPassedValue(
         Expr $callback,
@@ -900,6 +905,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
         bool $keepNull = false,
+        ?ReceiverType $model = null,
     ): void {
         if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
             return;
@@ -943,25 +949,54 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return;
         }
 
-        if ($resolvedValue === null || $resolvedValue['type'] === 'unknown') {
+        if ($resolvedValue === null) {
             return;
         }
 
-        // The callback runs only for a filled value, so a nullable model read binds as the model itself; a blank
-        // value's default keeps the null arm.
+        // A model binds as a helper's argument does, so a new one keeps its unsaved mark.
+        if ($model !== null) {
+            $binder = resolve(ParameterBinder::class);
+            $filled = [...$resolvedValue, 'type' => ValueResult::stripNullArm($resolvedValue['type'])];
+            $binding = $binder->passedBinding($filled, $model);
+
+            if ($binding !== null) {
+                $binder->bindPassed($callback->getStmts(), [$name => $binding], $scope);
+            }
+
+            return;
+        }
+
+        if ($resolvedValue['type'] !== 'unknown') {
+            $scope->varValueBindings[$name] = $resolvedValue;
+        }
+    }
+
+    /**
+     * The one model a value holds once transform() finds it filled, so neither a `?->` nor its null arm reaches the
+     * callback: the class the receiver resolver finds, with a `new` one's unsaved mark, else the model the value's type
+     * names; null for any other value, and for a variable or a `$this->prop` read, which bind by what they are.
+     *
+     * @param  ValueExpressionResult  $resolvedValue
+     */
+    private function filledModel(Expr $value, array $resolvedValue, AnalysisScope $scope): ?ReceiverType
+    {
+        if ($value instanceof Variable || $this->isThisPropertyFetch($value)) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($value, $scope);
+
+        if ($receiver !== null && count($receiver->classes) === 1 && $receiver->models() === $receiver->classes) {
+            return $receiver->withShortCircuit(false);
+        }
+
         $model = $resolvedValue['modelFqcn'] ?? null;
 
-        if (! $keepNull
-            && $model !== null
+        return $model !== null
             && is_a($model, Model::class, true)
             && ValueResult::stripNullArm($resolvedValue['type']) === class_basename($model)
-        ) {
-            $scope->varModelBindings[$name] = $model;
-
-            return;
-        }
-
-        $scope->varValueBindings[$name] = $resolvedValue;
+                ? ReceiverType::of($model)
+                : null;
     }
 
     /**

@@ -75,33 +75,21 @@ final class SubjectHelperReturnResolver
             return null;
         }
 
-        $bindings = $scope->nameBindings();
-        $resolvingLocalVars = $scope->resolvingLocalVars;
-        $declaringFileClass = $scope->declaringFileClass;
-        $relationModel = $scope->closureRelationModelClass;
         // Read in the caller's names, before they are set aside.
         $passed = new CallSite($call, $scope, $engine)->passedTo($method, valueRead: true);
+        $caller = $scope->enterSubjectMethod(
+            $name,
+            LaravelTsPublish::methodDeclaringFileClass($method),
+            $this->proofsAcrossCall($scope, $call),
+        );
 
         try {
-            $scope->visitedSpreadMethods[$name] = true;
-            $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
-            $scope->resolvingLocalVars = [];
-            // A relation closure's model answers an unbound `$variable->prop`, but the helper's body reads the subject.
-            $scope->closureRelationModelClass = null;
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-            $binder = resolve(ParameterBinder::class);
-            $binder->bindDeclared($method, $stmts, $scope);
-            $binder->bindPassed($stmts, $passed, $scope);
-            $this->collectLocalVarBindings($stmts, $scope);
-            $this->endBindingsAtWrites($stmts, $scope);
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+            $this->seedBody($stmts, $scope);
 
             $result = ValueResult::analyzeClosureUnion($returns, $engine, $scope);
         } finally {
-            $scope->restoreNameBindings($bindings);
-            $scope->resolvingLocalVars = $resolvingLocalVars;
-            $scope->declaringFileClass = $declaringFileClass;
-            $scope->closureRelationModelClass = $relationModel;
-            unset($scope->visitedSpreadMethods[$name]);
+            $scope->leaveSubjectMethod($name, $caller);
         }
 
         // Without an enum channel no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.

@@ -8,8 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt;
@@ -25,8 +27,8 @@ use ReflectionUnionType;
  * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows, by what
  * that argument binds, which a value read's memos key on (CallSite::signature()).
  *
- * A body write that replaces a parameter ends its class binding there: the caller runs endBindingsAtWrites() once the
- * body's locals are seeded. A written parameter binds no value, since a value binding outlives a write naming no class,
+ * A body write that replaces a parameter ends its class binding there: the caller seeds the body (seedBody()) once
+ * its parameters are bound. A written parameter binds no value, since a value binding outlives a write naming no class,
  * such as `$n = (string) $n`, where the body's own local answers.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -46,57 +48,18 @@ final class ParameterBinder
     use CollectsLocalVarBindings;
 
     /**
-     * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
-     * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
-     *
-     * A Request parameter is left to the request rules, and a name the scope already binds is left as it is.
+     * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes. The
+     * body's writes are scanned once, and only if a parameter's value binding needs them.
      *
      * @param  array<Stmt>  $stmts  the method's body
+     * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
-    public function bindDeclared(ReflectionMethod $method, array $stmts, AnalysisScope $scope): void
+    public function bindCall(ReflectionMethod $method, array $stmts, array $passed, AnalysisScope $scope): void
     {
-        $parameters = $method->getParameters();
+        $written = $this->writtenNames($stmts, $scope);
 
-        if ($parameters === []) {
-            return;
-        }
-
-        $context = LaravelTsPublish::methodDeclaringFileClass($method);
-        $docComment = (string) $method->getDocComment();
-        $written = null;
-
-        foreach ($parameters as $parameter) {
-            $name = $parameter->getName();
-
-            if ($scope->bindsName($name)) {
-                continue;
-            }
-
-            $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
-
-            if ($classes !== null && array_any($classes, fn (string $class): bool => is_a($class, Request::class, true))) {
-                continue;
-            }
-
-            $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
-
-            if ($model !== null && ! ($parameter->getType()?->allowsNull() ?? true)) {
-                $scope->varModelBindings[$name] = $model;
-
-                continue;
-            }
-
-            if ($classes !== null) {
-                $scope->varDeclaredBindings[$name] = $classes;
-            }
-
-            $written ??= $this->collectWrittenVariableNames($stmts, $scope);
-            $value = in_array($name, $written, true) ? null : $this->declaredValue($parameter, $docComment, $context);
-
-            if ($value !== null) {
-                $scope->varValueBindings[$name] = $value;
-            }
-        }
+        $this->bindDeclared($method, $scope, $written);
+        $this->bindPassedNames($passed, $scope, $written);
     }
 
     /**
@@ -104,38 +67,15 @@ final class ParameterBinder
      * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
      *
      * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark. An
-     * argument narrowing a declared abstract class, interface or union replaces the declared binding.
+     * argument narrowing a declared abstract class, interface or union replaces the declared binding. A closure's
+     * parameters bind here too, having no method for bindCall().
      *
-     * @param  array<Stmt>  $stmts  the method's body
+     * @param  array<Stmt>  $stmts  the method's or the closure's body
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
     public function bindPassed(array $stmts, array $passed, AnalysisScope $scope): void
     {
-        $written = $passed === [] ? [] : $this->collectWrittenVariableNames($stmts, $scope);
-
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
-            if ($refines && isset($scope->varDeclaredBindings[$name])) {
-                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
-            } elseif ($scope->bindsName($name)) {
-                continue;
-            }
-
-            if ($model !== null) {
-                $scope->varModelBindings[$name] = $model;
-
-                continue;
-            }
-
-            if ($classes !== null && $unsaved) {
-                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
-            } elseif ($classes !== null) {
-                $scope->varDeclaredBindings[$name] = $classes;
-            }
-
-            if ($value !== null && ! in_array($name, $written, true)) {
-                $scope->varValueBindings[$name] = $value;
-            }
-        }
+        $this->bindPassedNames($passed, $scope, $this->writtenNames($stmts, $scope));
     }
 
     /**
@@ -161,6 +101,8 @@ final class ParameterBinder
             return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
         }
 
+        // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
+        unset($value['absentReadsNull']);
         $value = $value['type'] === 'unknown' ? null : [...$value, 'optional' => false];
 
         return $classes === null && ($value === null || $refines)
@@ -226,6 +168,131 @@ final class ParameterBinder
                 (string) $method->getDocComment(),
                 LaravelTsPublish::methodDeclaringFileClass($method),
             ) === null;
+    }
+
+    /**
+     * Bind each parameter by its declaration: one concrete, non-null model in varModelBindings, any other class-only
+     * type in varDeclaredBindings, and its value, from the native type, else a `@param` where that is too vague.
+     *
+     * A Request parameter binds as a request, except in an API resource, whose output was inferred without the request
+     * rules; a name the scope already binds is left as it is.
+     *
+     * @param  Closure(): list<string>  $written  the names the body writes
+     */
+    private function bindDeclared(ReflectionMethod $method, AnalysisScope $scope, Closure $written): void
+    {
+        $parameters = $method->getParameters();
+
+        if ($parameters === []) {
+            return;
+        }
+
+        $context = LaravelTsPublish::methodDeclaringFileClass($method);
+        $docComment = (string) $method->getDocComment();
+        $bindsRequests = ! is_a($scope->subjectReflection->getName(), JsonResource::class, true);
+
+        foreach ($parameters as $parameter) {
+            $name = $parameter->getName();
+
+            if ($scope->bindsName($name)) {
+                continue;
+            }
+
+            $request = $this->requestClass($parameter);
+
+            if ($request !== null) {
+                if ($bindsRequests) {
+                    $scope->requestVarNames[$name] = $request;
+                }
+
+                continue;
+            }
+
+            $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+
+            if ($classes !== null && array_any($classes, fn (string $class): bool => is_a($class, Request::class, true))) {
+                continue;
+            }
+
+            $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+
+            if ($model !== null && ! ($parameter->getType()?->allowsNull() ?? true)) {
+                $scope->varModelBindings[$name] = $model;
+
+                continue;
+            }
+
+            if ($classes !== null) {
+                $scope->varDeclaredBindings[$name] = $classes;
+            }
+
+            $value = in_array($name, $written(), true) ? null : $this->declaredValue($parameter, $docComment, $context);
+
+            if ($value !== null) {
+                $scope->varValueBindings[$name] = $value;
+            }
+        }
+    }
+
+    /**
+     * Apply each argument's binding to the parameter it is passed.
+     *
+     * @param  array<string, PassedBinding>  $passed
+     * @param  Closure(): list<string>  $written  the names the body writes
+     */
+    private function bindPassedNames(array $passed, AnalysisScope $scope, Closure $written): void
+    {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+            if ($refines && isset($scope->varDeclaredBindings[$name])) {
+                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            } elseif ($scope->bindsName($name)) {
+                continue;
+            }
+
+            if ($model !== null) {
+                $scope->varModelBindings[$name] = $model;
+
+                continue;
+            }
+
+            if ($classes !== null && $unsaved) {
+                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
+            } elseif ($classes !== null) {
+                $scope->varDeclaredBindings[$name] = $classes;
+            }
+
+            if ($value !== null && ! in_array($name, $written(), true)) {
+                $scope->varValueBindings[$name] = $value;
+            }
+        }
+    }
+
+    /**
+     * The names a body writes, scanned on the first call and kept for the next.
+     *
+     * @param  array<Stmt>  $stmts
+     * @return Closure(): list<string>
+     */
+    private function writtenNames(array $stmts, AnalysisScope $scope): Closure
+    {
+        $names = null;
+
+        return function () use (&$names, $stmts, $scope): array {
+            return $names ??= $this->collectWrittenVariableNames($stmts, $scope);
+        };
+    }
+
+    /**
+     * The request class a parameter's named type declares, nullable or not, else null.
+     *
+     * @return class-string<Request>|null
+     */
+    private function requestClass(ReflectionParameter $parameter): ?string
+    {
+        $type = $parameter->getType();
+        $class = $type instanceof ReflectionNamedType ? $type->getName() : null;
+
+        return $class !== null && is_a($class, Request::class, true) ? $class : null;
     }
 
     /**

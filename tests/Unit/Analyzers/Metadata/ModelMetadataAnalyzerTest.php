@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
@@ -12,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMet
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ClassNamedKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProvideDecoyProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DeclaredLocalMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
@@ -45,6 +49,17 @@ test('binds the Model parameter so its Laravel-typed method calls infer', functi
         'routeKeyName' => 'inferred',
         'morphClass' => 'inferred',
     ])->and($analysis->requiredKeys)->toBe([]);
+});
+
+// The analyzer reads the scope bindingsFor() seeded as it is, as analyzeBody() hands it over, so no span is doubled.
+test('seeds a provider\'s body once, so an inline @var records one span', function () {
+    $context = resolve(MethodLocator::class)->locate(DeclaredLocalMetadataProvider::class, 'provide');
+    $scope = resolve(AstEngine::class)->bindingsFor($context);
+
+    new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
+
+    expect($scope->varDocBindings['table'] ?? [])->toHaveCount(1)
+        ->and(analyzeMetadataTypesFor(DeclaredLocalMetadataProvider::class, ['table'])->types)->toBe(['table' => 'string']);
 });
 
 test('keeps only inferred keys the concrete payload returned', function () {

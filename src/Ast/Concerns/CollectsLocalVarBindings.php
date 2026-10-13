@@ -42,8 +42,8 @@ use PhpParser\NodeFinder;
 use ReflectionClass;
 
 /**
- * The single `$var = expr;` binding pass. Shared because both the resource analyzer's own
- * method walk and AstEngine::bindingsFor() must read a body's variables the same way.
+ * The one sequence that seeds a method's or a closure's body, seedBody(), and the write scan its passes share. Every
+ * reader of a body seeds it here, so each reads the body's variables the same way.
  *
  * @phpstan-type VariableWrites = list<array{string, Node, Expr}>
  *
@@ -51,16 +51,41 @@ use ReflectionClass;
  */
 trait CollectsLocalVarBindings
 {
+    use CollectsInstanceofGuards;
+
+    /**
+     * Seed a body once its parameters are bound: its own locals, the end of each binding it came in with at the write
+     * that replaces it, then its guards, all from one scan of its writes.
+     *
+     * A local shadows an outer binding of its name however often the body writes it; a method body starts with none.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function seedBody(array $stmts, AnalysisScope $scope): void
+    {
+        $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+
+        foreach ($writes as [$name]) {
+            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name]);
+        }
+
+        $this->collectLocalVarBindings($stmts, $scope, $writes);
+        // After the locals: keepsBinding() reads the `@var` spans they record.
+        $this->endBindingsAtWrites($stmts, $scope, $writes);
+        $this->collectInstanceofGuards($stmts, $scope, $writes);
+    }
+
     /**
      * Record top-level `$var = expr;` statements, and the type an inline `@var` on one declares. The expression binding
      * skips a variable written more than once: this flat list can't tell which write is live at a given return branch,
      * so binding one risks a wrong-but-plausible type instead of unknown.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
      */
-    protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope): void
+    protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
         $writeCounts = array_count_values(array_column($writes, 0));
 
         foreach ($stmts as $stmt) {
@@ -91,8 +116,9 @@ trait CollectsLocalVarBindings
      * nested in a statement ends it where that statement starts, since a loop can run the write before a read.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
      */
-    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope): void
+    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
         if (! $scope->bindsAnyName()) {
             return;
@@ -100,8 +126,9 @@ trait CollectsLocalVarBindings
 
         // An arrow function captures by value, so no write inside one reaches the body's own variable.
         $arrows = new NodeFinder()->findInstanceOf($stmts, ArrowFunction::class);
+        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
-        foreach ($this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, $node, $target]) {
+        foreach ($writes as [$name, $node, $target]) {
             // A write past an end already recorded cannot move it earlier.
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
