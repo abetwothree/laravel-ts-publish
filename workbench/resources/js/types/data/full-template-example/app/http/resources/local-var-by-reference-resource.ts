@@ -42,4 +42,8 @@ export interface LocalVarByReferenceResource
     walked_keys: { a: string };
     walked_import: string[];
     pre_written_loop: string[];
+    concat_walked: string[];
+    plus_walked: number[];
+    copied_before_sort: { k: number };
+    list_copied_after_sort: string[];
 }

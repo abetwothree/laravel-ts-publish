@@ -299,19 +299,21 @@ no more.
 
 ### By-reference calls
 
-`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes,
-as a [`ByReferenceEffect`]: `ksort()` keeps any value, unless flags it cannot read or a string comparison can reorder
-int keys; `sort()`, `array_pop()` and `array_shift()` a list; `asort()` and `uksort()` an object, and a list keyed out
-of order as `Record<number, T>`, which an API resource re-indexes back to `T[]`; a count out-parameter a number;
+`ByReferenceArguments::effect()` names what a known built-in leaves in the variable its by-reference parameter takes, as
+a [`ByReferenceEffect`]: `ksort()` keeps any value, unless flags it cannot read or a string comparison can reorder int
+keys; `sort()`, `array_pop()` and `array_shift()` a list; `asort()` and `uksort()` an object, and a list keyed out of
+order as `Record<number, T>`, which an API resource re-indexes back to `T[]`; a count out-parameter a number;
 `array_push()` and `array_splice()` a list of the values they add; `array_walk()` or a by-reference `foreach` each
 element its writes stay within, and `array_walk_recursive()` each leaf. A walk's callback values are read in the
-callback's own scope, its parameters bound to the element and its key. A `foreach` element written before the loop
-counts only when a loop around both can run it again. A call on a literal key of a local, such as
-`sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a computed key, replaces
-the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write and records its form in
-`AnalysisScope::$byReferenceForms`; `VariableHandler` reads the value the forms leave, or drops a read whose value
-lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a local by
-its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
+callback's own scope, its parameters bound to the element and its key, and `.=` or an arithmetic operator as the
+operation it performs. A `foreach` element written before the loop counts only when a loop around both can run it again.
+A call on a literal key of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. Every
+other callee, or a computed key, replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping
+call as a write and records its form in `AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed
+as a binding end or gap is: a copy taken before the call reads the value as it was. `VariableHandler` reads the value
+the forms leave, or drops a read whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an
+object's. A reader that takes a local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`,
+which leaves such a local out.
 
 ### What deliberately stays unbound
 

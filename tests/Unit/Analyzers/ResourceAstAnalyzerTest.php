@@ -7445,6 +7445,10 @@ it('keeps a local across a by-reference built-in that leaves its value in a form
     'array_walk() writing each key' => ['walked_keys', '{ a: string }'],
     'array_walk() reading an import' => ['walked_import', 'string[]'],
     'a by-reference foreach whose element is written only before it' => ['pre_written_loop', 'string[]'],
+    'array_walk() appending to each string' => ['concat_walked', 'string[]'],
+    'array_walk() adding to each number' => ['plus_walked', 'number[]'],
+    'a copy taken before sort() reshapes the original' => ['copied_before_sort', '{ k: number }'],
+    'a copy taken after sort() of a list' => ['list_copied_after_sort', 'string[]'],
 ]);
 
 it('sends the type a local a by-reference built-in keeps publishes', function () {
@@ -7492,6 +7496,10 @@ it('sends the type a local a by-reference built-in keeps publishes', function ()
         'walked_keys' => ['a' => 'a'],
         'walked_import' => ['!', '!'],
         'pre_written_loop' => ['a', 'b'],
+        'concat_walked' => ['a!', 'b!'],
+        'plus_walked' => [2, 3],
+        'copied_before_sort' => ['k' => 1],
+        'list_copied_after_sort' => ['a', 'b'],
     ]));
 });
 
@@ -7519,6 +7527,8 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'words_by_local' => 'unknown',
         'post_written_loop' => 'unknown',
         'round_written_loop' => 'unknown',
+        'copied_after_sort' => 'unknown',
+        'concat_numbers' => 'unknown',
         'kept_list' => 'string[]',
         'key' => 'string',
         'tmp' => 'string',

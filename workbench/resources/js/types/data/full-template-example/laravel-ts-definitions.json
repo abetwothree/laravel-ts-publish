@@ -14693,6 +14693,26 @@
                     "name": "pre_written_loop",
                     "type": "string[]",
                     "optional": false
+                },
+                {
+                    "name": "concat_walked",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "plus_walked",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "copied_before_sort",
+                    "type": "{ k: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_copied_after_sort",
+                    "type": "string[]",
+                    "optional": false
                 }
             ]
         },

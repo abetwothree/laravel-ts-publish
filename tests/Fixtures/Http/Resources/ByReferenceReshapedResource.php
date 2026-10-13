@@ -111,6 +111,15 @@ class ByReferenceReshapedResource extends JsonResource
             }
         }
 
+        $sortedOriginal = ['k' => 1];
+        sort($sortedOriginal);
+        $copiedAfterSort = $sortedOriginal;
+
+        $concatNumbers = [1, 2];
+        array_walk($concatNumbers, function (int|string &$value): void {
+            $value .= '!';
+        });
+
         $keptList = ['b', 'a'];
         sort($keptList);
 
@@ -138,6 +147,8 @@ class ByReferenceReshapedResource extends JsonResource
             'words_by_local' => $words,
             'post_written_loop' => $postWrittenList,
             'round_written_loop' => $roundList,
+            'copied_after_sort' => $copiedAfterSort,
+            'concat_numbers' => $concatNumbers,
             'kept_list' => $keptList,
             'key' => $key,
             'tmp' => $tmp,

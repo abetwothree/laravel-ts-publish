@@ -128,6 +128,24 @@ class LocalVarByReferenceResource extends JsonResource
             $value = $suffix;
         });
 
+        $concatWalked = ['a', 'b'];
+        array_walk($concatWalked, function (string &$value): void {
+            $value .= '!';
+        });
+
+        $plusWalked = [1, 2];
+        array_walk($plusWalked, function (int &$value): void {
+            $value += 1;
+        });
+
+        $original = ['k' => 1];
+        $copiedBeforeSort = $original;
+        sort($original);
+
+        $listOriginal = ['b', 'a'];
+        sort($listOriginal);
+        $listCopiedAfterSort = $listOriginal;
+
         $preWritten = 1;
         $preWrittenList = ['a', 'b'];
 
@@ -181,6 +199,10 @@ class LocalVarByReferenceResource extends JsonResource
             'walked_keys' => $walkedKeys,
             'walked_import' => $walkedImport,
             'pre_written_loop' => $preWrittenList,
+            'concat_walked' => $concatWalked,
+            'plus_walked' => $plusWalked,
+            'copied_before_sort' => $copiedBeforeSort,
+            'list_copied_after_sort' => $listCopiedAfterSort,
         ];
     }
 }

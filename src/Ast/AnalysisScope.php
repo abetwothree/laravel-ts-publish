@@ -57,7 +57,9 @@ use ReflectionClass;
  *      effect: ByReferenceEffect,
  *      values: list<Expr>,
  *      path: list<string>,
- *      callback: ArrowFunction|Closure|null
+ *      callback: ArrowFunction|Closure|null,
+ *      after: int,
+ *      before: int|null
  * }
  * @phpstan-type BindingGap array{int, int, Expr|null}
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
@@ -233,7 +235,7 @@ final class AnalysisScope
     /**
      * The by-reference calls that keep a variable's value, or the member a key path names, only in some forms, by the
      * name each writes: `sort()` keeps a list, `asort()` an object. Written by CollectsLocalVarBindings, which binds
-     * the variable across them; a read of it holds its binding only while each form holds.
+     * the variable across them; a read past a call, and before the end of a block it returns from, takes its form.
      *
      * @var ByReferenceFormsMap
      */

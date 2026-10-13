@@ -23,6 +23,7 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignRef;
+use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -386,9 +387,16 @@ trait CollectsLocalVarBindings
 
             if ($form === null || $form['effect'] === ByReferenceEffect::Replaces) {
                 $replacing[] = $write;
-            } else {
-                $kept[] = [$write[0], $form];
+
+                continue;
             }
+
+            // A read before the call, such as a copy's, sees the value it held; a call in a block that returns
+            // leaves the reads past that block alone, as a binding end or gap does.
+            $block = $this->exitingBlock($stmts, $write[1]);
+            $form['after'] = $this->endWithin($block ?? $stmts, $write[1]) ?? PHP_INT_MIN;
+            $form['before'] = $block === null ? null : $block[array_key_last($block)]->getEndFilePos();
+            $kept[] = [$write[0], $form];
         }
 
         return [$replacing, $kept];
@@ -534,7 +542,8 @@ trait CollectsLocalVarBindings
 
     /**
      * The values writes to an element's variable put in the element, or null when one is a write the scan cannot type:
-     * anything but an assignment, `??=`, `++` or `--` of the variable itself. An increment stands for its own value.
+     * anything but an assignment, an arithmetic or `.=` operator, `??=`, `++` or `--` of the variable itself. An
+     * increment stands for its own value, and an operator for the operation it performs.
      *
      * @param  VariableWrites  $writes
      * @return list<Expr>|null
@@ -547,6 +556,7 @@ trait CollectsLocalVarBindings
             $value = match (true) {
                 ! $target instanceof Variable => null,
                 $node instanceof Assign, $node instanceof CoalesceAssign => $node->expr,
+                $node instanceof AssignOp => $this->compoundValue($node),
                 $node instanceof PreInc, $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node,
                 default => null,
             };
@@ -562,8 +572,27 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * A by-reference form of an effect, with the values the call adds or writes, the key path it takes, and the walk's
-     * callback whose scope reads those values.
+     * The operation a compound assignment performs, `$v .= 'x'` as `$v . 'x'`, or null for a bitwise or shift operator.
+     */
+    private function compoundValue(AssignOp $assign): ?Expr
+    {
+        $attributes = $assign->getAttributes();
+
+        return match (true) {
+            $assign instanceof AssignOp\Concat => new BinaryOp\Concat($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Plus => new BinaryOp\Plus($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Minus => new BinaryOp\Minus($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Mul => new BinaryOp\Mul($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Div => new BinaryOp\Div($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Mod => new BinaryOp\Mod($assign->var, $assign->expr, $attributes),
+            $assign instanceof AssignOp\Pow => new BinaryOp\Pow($assign->var, $assign->expr, $attributes),
+            default => null,
+        };
+    }
+
+    /**
+     * A by-reference form of an effect, with the values the call adds or writes, the key path it takes, the walk's
+     * callback whose scope reads those values, and the span of reads it holds for, every read until it is placed.
      *
      * @param  list<Expr>  $values
      * @param  list<string>  $path
@@ -575,14 +604,21 @@ trait CollectsLocalVarBindings
         array $path = [],
         ArrowFunction|ClosureExpr|null $callback = null,
     ): array {
-        return ['effect' => $effect, 'values' => $values, 'path' => $path, 'callback' => $callback];
+        return [
+            'effect' => $effect,
+            'values' => $values,
+            'path' => $path,
+            'callback' => $callback,
+            'after' => PHP_INT_MIN,
+            'before' => null,
+        ];
     }
 
     /**
      * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always returns or
      * throws, or null when none does; a block inside a nested function exits that function, not the body.
      *
-     * @param  array<Node\Stmt>  $stmts
+     * @param  array<Node>  $stmts
      * @return non-empty-list<Node\Stmt>|null
      */
     private function exitingBlock(array $stmts, Node $node): ?array
@@ -613,7 +649,7 @@ trait CollectsLocalVarBindings
      * Where a write ends a binding among a block's statements: past its own statement when that statement is the
      * assignment itself, else where the statement holding it starts. Null when no statement holds it.
      *
-     * @param  array<Node\Stmt>  $block
+     * @param  array<Node>  $block
      */
     private function endWithin(array $block, Node $node): ?int
     {

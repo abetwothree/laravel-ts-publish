@@ -152,7 +152,7 @@ final class VariableHandler implements ExpressionHandler
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
-        return $value === null ? null : $this->keptByReference($expr->name, $value, $scope, $engine);
+        return $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
     }
 
     /**
@@ -271,15 +271,26 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A variable's bound value past the by-reference calls that keep it only in some forms, or null, as for a variable
-     * written twice, when it lacks one of them. A cyclic read, such as `array_push($a, $a)`, keeps nothing.
+     * A variable's bound value past the by-reference calls before the read that keep it only in some forms, or null, as
+     * for a variable written twice, when it lacks one of them. A cyclic read, such as `array_push($a, $a)`, keeps
+     * nothing, and a read the source does not place, such as one the engine builds, takes every call's form.
      *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult|null
      */
-    private function keptByReference(string $name, array $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
-        $forms = $scope->byReferenceForms[$name] ?? [];
+    private function keptByReference(
+        Variable $read,
+        string $name,
+        array $value,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
+        $position = $read->getStartFilePos();
+        $forms = array_filter(
+            $scope->byReferenceForms[$name] ?? [],
+            fn (array $form): bool => $position < 0
+                || ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])),
+        );
 
         if ($forms === []) {
             return $value;
