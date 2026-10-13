@@ -18,7 +18,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StaleDocblockDateCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\StringableLabelListCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\TupleDocblockCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\UntypedSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DeclaredShapeProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ImportedAliasProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\OwnAliasShapeData;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CarbonImmutableCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DateTimeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GenericChildrenDecoyConsumer;
@@ -1617,6 +1620,58 @@ describe('resolveDocblockTypePartOrAlias() with a nullable alias', function () {
         $context = new ReflectionClass(DocblockGenericsFixture::class);
 
         expect($this->service->resolveDocblockTypePartOrAlias('?int', [], '', $context)['type'])->toBe('number | null');
+    });
+});
+
+describe('@phpstan-type aliases inside containers and shapes', function () {
+    test('resolves an alias inside a container, a shape, a tuple, a group and another alias', function (string $part, string $expected) {
+        $context = new ReflectionClass(TypeAliasShapeModel::class);
+
+        expect($this->service->resolveDocblockTypePartOrAlias($part, [], $context->getNamespaceName(), $context)['type'])
+            ->toBe($expected);
+    })->with([
+        'a list' => ['list<Row>', '{ a: number }[]'],
+        'the [] shorthand' => ['Row[]', '{ a: number }[]'],
+        'a string-keyed array' => ['array<string, Row>', 'Record<string, { a: number }>'],
+        'a shape member' => ['array{row: Row}', '{ row: { a: number } }'],
+        'a nullable shape member' => ['array{row: ?Row}', '{ row: { a: number } | null }'],
+        'a tuple member' => ['list{Row, int}', '[{ a: number }, number]'],
+        'a group' => ['(Row)', '{ a: number }'],
+        'an alias whose definition names another' => ['Rows', '{ a: number }[]'],
+        'a self-referential alias' => ['Tree', 'unknown[]'],
+        'two aliases naming each other' => ['Left', 'unknown[][]'],
+    ]);
+
+    test('resolves an alias inside a method @return container', function () {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(TypeAliasShapeModel::class, 'rows'))['type'])
+            ->toBe('{ a: number }[]');
+    });
+
+    test('keeps each class once where an alias union stands beside one of its own classes', function () {
+        expect($this->service->docblockReturnTypes(new ReflectionMethod(TypeAliasShapeModel::class, 'party'))['type'])
+            ->toBe('User | Team | null');
+    });
+
+    test('resolves an imported alias on a property @var and on a promoted @var, whole or inside a list', function () {
+        $property = fn (string $name): ?string => resolve(PropertyDocblockTypeReader::class)
+            ->read(new ReflectionProperty(ImportedAliasProperties::class, $name))['type'] ?? null;
+
+        expect($property('plain'))->toBe('{ a: number }')
+            ->and($property('promoted'))->toBe('{ a: number }')
+            ->and($property('promotedList'))->toBe('{ a: number }[]');
+    });
+
+    test('resolves a class named inside an alias context against that class\'s own aliases', function () {
+        $context = new ReflectionClass(TypeAliasShapeModel::class);
+
+        $info = $this->service->resolveDocblockTypePartOrAlias(
+            'OwnAliasShapeData',
+            ['OwnAliasShapeData' => OwnAliasShapeData::class],
+            $context->getNamespaceName(),
+            $context,
+        );
+
+        expect($info['type'])->toBe('{ row: { b: string } }');
     });
 });
 

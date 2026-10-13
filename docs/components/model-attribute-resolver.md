@@ -197,8 +197,9 @@ the class that wrote the shape. A definition spanning several docblock lines is 
 brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias give `unknown`.
 
 The alias resolves against its defining class's imports and namespace, not the referencing class's.
-`resolveDocblockTypePartOrAlias()` expands a hit through the plain pipeline, never alias-aware again, so two local
-aliases naming each other cannot recurse outside the `$seen` guard. A nullable `?Alias` resolves the bare name and then
+An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
+property's `@var`, against the class whose docblock is read; one already being expanded, as in
+`@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
 appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
 `filters?:`.
 

@@ -114,6 +114,21 @@ class LaravelTsPublish
     protected array $shapeExpansionStack = [];
 
     /**
+     * The classes whose `@phpstan-type` aliases a bare docblock name resolves against, innermost last: each docblock
+     * read pushes the class whose file wrote it, so a class it names never reads the namer's aliases.
+     *
+     * @var list<ReflectionClass<object>>
+     */
+    protected array $aliasContextStack = [];
+
+    /**
+     * "{FQCN}::{alias}" keys currently being expanded by docblockAliasType(), as a recursion guard.
+     *
+     * @var array<string, true>
+     */
+    protected array $aliasExpansionStack = [];
+
+    /**
      * Per-class cache of resolved phpstan/psalm type aliases: FQCN => alias name => resolved
      * definition, or null when the class carries no such alias (cached to skip re-parsing its docblock).
      *
@@ -1462,10 +1477,8 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve one union member of a docblock type, trying a @phpstan-type/@phpstan-import-type alias first.
-     *
-     * A hit resolves via the *plain* pipeline, deliberately not alias-aware again, to avoid two purely-local
-     * aliases naming each other recursing unguarded — the cycle guard only covers the @phpstan-import-type chain.
+     * Resolve one union member of a docblock type written in a class's file, each bare name in it, whole or inside a
+     * container or shape, trying the class's @phpstan-type/@phpstan-import-type aliases first.
      *
      * @param  array<string, string>  $useMap
      * @param  ReflectionClass<object>  $contextClass
@@ -1473,32 +1486,71 @@ class LaravelTsPublish
      */
     public function resolveDocblockTypePartOrAlias(string $part, array $useMap, string $namespace, ReflectionClass $contextClass): array
     {
-        $trimmed = trim($part);
-
-        // A nullable alias (`?FeatureValue`) would otherwise be looked up verbatim and miss.
-        if (str_starts_with($trimmed, '?')) {
-            $inner = $this->resolveDocblockTypePartOrAlias(substr($trimmed, 1), $useMap, $namespace, $contextClass);
-
-            return [...$inner, 'type' => $this->withNullArm($inner['type'])];
-        }
-
-        $alias = $this->resolvePhpstanTypeAlias($trimmed, $contextClass);
-
-        if ($alias === null) {
-            return $this->resolveDocblockTypePart($trimmed, $useMap, $namespace);
-        }
-
-        return $this->resolveDocblockPartToInfo(
-            $alias['definition'],
-            $this->parseFileUseStatements($alias['class']),
-            $alias['class']->getNamespaceName(),
+        return $this->withAliasContext(
+            $contextClass,
+            fn (): array => $this->resolveDocblockTypePart($part, $useMap, $namespace),
         );
     }
 
     /**
-     * Resolve an alias's raw definition string (a union, generic container, array shape, or plain
-     * name) through the ordinary docblock pipeline — not alias-aware itself — against the use-map
-     * and namespace of the class that actually wrote the definition.
+     * Run a docblock read whose bare names resolve against a class's @phpstan-type/@phpstan-import-type aliases.
+     *
+     * @template T
+     *
+     * @param  ReflectionClass<object>  $context
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    protected function withAliasContext(ReflectionClass $context, Closure $read): mixed
+    {
+        $this->aliasContextStack[] = $context;
+
+        try {
+            return $read();
+        } finally {
+            array_pop($this->aliasContextStack);
+        }
+    }
+
+    /**
+     * The type a bare docblock name spells as an alias of the innermost alias context, or null when it is no alias.
+     *
+     * The definition resolves against the imports and aliases of the class that wrote it. An alias already being
+     * expanded reads `unknown`, so one naming itself, such as `A = list<A>`, ends.
+     *
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function docblockAliasType(string $name): ?array
+    {
+        $context = end($this->aliasContextStack);
+        $alias = $context === false ? null : $this->resolvePhpstanTypeAlias($name, $context);
+
+        if ($context === false || $alias === null) {
+            return null;
+        }
+
+        $key = $context->getName().'::'.$name;
+
+        if (isset($this->aliasExpansionStack[$key])) {
+            return $this->emptyTypeScriptInfo();
+        }
+
+        $this->aliasExpansionStack[$key] = true;
+
+        try {
+            return $this->withAliasContext($alias['class'], fn (): array => $this->resolveDocblockPartToInfo(
+                $alias['definition'],
+                $this->parseFileUseStatements($alias['class']),
+                $alias['class']->getNamespaceName(),
+            ));
+        } finally {
+            unset($this->aliasExpansionStack[$key]);
+        }
+    }
+
+    /**
+     * Resolve a docblock union, such as an alias's definition or a parenthesized group, member by member against a
+     * use-map and namespace.
      *
      * @param  array<string, string>  $useMap
      * @return TypeScriptTypeInfo
@@ -1525,7 +1577,8 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve one member of a PHPDoc type union: generic containers first, then `?T`, then shapes, then plain names.
+     * Resolve one member of a PHPDoc type union: generic containers first, then `?T`, then shapes, then an alias, then
+     * plain names.
      *
      * A part still holding '<', '{' or '(' is a form this reader does not know, such as a callable: it degrades to
      * 'unknown' rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
@@ -1559,6 +1612,12 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
             }
+        }
+
+        $alias = $this->docblockAliasType($part);
+
+        if ($alias !== null) {
+            return $alias;
         }
 
         $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
@@ -1700,6 +1759,12 @@ class LaravelTsPublish
             if ($shapeType !== null) {
                 return [...$this->emptyTypeScriptInfo(), 'type' => $shapeType];
             }
+        }
+
+        $alias = $this->docblockAliasType($valueType);
+
+        if ($alias !== null) {
+            return $alias;
         }
 
         $resolved = $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
@@ -1906,7 +1971,10 @@ class LaravelTsPublish
         $useMap = $this->parseFileUseStatements($declaringClass);
         $namespace = $declaringClass->getNamespaceName();
 
-        return $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace);
+        return $this->withAliasContext(
+            $declaringClass,
+            fn (): array => $this->parseArrayShapeToTsTypes($returnType, $useMap, $namespace),
+        );
     }
 
     /**
@@ -1925,11 +1993,11 @@ class LaravelTsPublish
 
         $declaringClass = $this->methodDeclaringFileClass($method);
 
-        return $this->resolveArrayShapeString(
+        return $this->withAliasContext($declaringClass, fn (): ?string => $this->resolveArrayShapeString(
             $returnType,
             $this->parseFileUseStatements($declaringClass),
             $declaringClass->getNamespaceName(),
-        );
+        ));
     }
 
     /**
@@ -2123,6 +2191,12 @@ class LaravelTsPublish
 
         if ($literal !== null) {
             return $literal;
+        }
+
+        $alias = $this->docblockAliasType($phpType);
+
+        if ($alias !== null) {
+            return $alias['type'];
         }
 
         $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);

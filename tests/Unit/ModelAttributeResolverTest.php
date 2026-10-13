@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
@@ -771,6 +772,14 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
     'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
+
+test('a @property tag naming a @phpstan-type alias whole, inside a list or inside a shape types its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(TypeAliasShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'the alias whole' => ['owner_snapshot', '{ a: number } | null'],
+    'the alias inside a list' => ['tags', '{ a: number }[] | null'],
+    'the alias inside a shape' => ['meta_info', '{ row: { a: number } } | null'],
 ]);
 
 test('an AsArrayObject cast resolves to the array-or-record union', function () {

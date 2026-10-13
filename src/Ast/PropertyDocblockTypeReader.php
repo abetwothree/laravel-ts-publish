@@ -218,7 +218,7 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * Resolve a PHPDoc type string against a class's use-map and namespace.
+     * Resolve a PHPDoc type string against a class's use-map, namespace and type aliases.
      *
      * @param  ReflectionClass<object>  $context
      * @return TypeScriptTypeInfo
@@ -230,7 +230,7 @@ final class PropertyDocblockTypeReader
 
         $infos = [];
 
-        // Union fan-out duplicates LaravelTsPublish::resolveDocblockPartToInfo(), which is protected.
+        // Union fan-out duplicates LaravelTsPublish::resolveDocblockTypeStringAgainst(), which is protected.
         foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $part) {
             $part = trim($part);
 
@@ -238,7 +238,7 @@ final class PropertyDocblockTypeReader
                 continue;
             }
 
-            $infos[] = LaravelTsPublish::resolveDocblockTypePart($part, $useMap, $namespace);
+            $infos[] = LaravelTsPublish::resolveDocblockTypePartOrAlias($part, $useMap, $namespace, $context);
         }
 
         if ($infos === []) {
