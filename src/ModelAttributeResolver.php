@@ -120,22 +120,8 @@ class ModelAttributeResolver
     private bool $buildsWithoutTables = false;
 
     /**
-     * Forget every cached model read, so the next run inspects the models and their tables afresh.
-     */
-    public function reset(): void
-    {
-        $this->contexts = [];
-        $this->relationContexts = [];
-        $this->contextFailures = [];
-        $this->morphTargetMap = [];
-        $this->dbColumnNamesCache = [];
-        $this->attributeClassCache = [];
-        $this->attributeClassPaths = [];
-    }
-
-    /**
-     * Whether a `NULL` column reaches the published type as `null`: a database-typed column or a primitive cast,
-     * never an accessor or a class cast.
+     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive or an enum cast.
+     * An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null.
      */
     public static function sendsNullAsIs(?string $cast): bool
     {
@@ -150,6 +136,28 @@ class ModelAttributeResolver
         $class = Str::before($cast, ':');
 
         return enum_exists($class) || ! (class_exists($class) || interface_exists($class));
+    }
+
+    /**
+     * Whether a type already holds the column's `null`: a top-level arm if the cast passes null as is, else any.
+     */
+    public static function typeHoldsNull(string $type, ?string $cast): bool
+    {
+        return self::sendsNullAsIs($cast) ? ValueResult::hasNullArm($type) : str_contains($type, 'null');
+    }
+
+    /**
+     * Forget every cached model read, so the next run inspects the models and their tables afresh.
+     */
+    public function reset(): void
+    {
+        $this->contexts = [];
+        $this->relationContexts = [];
+        $this->contextFailures = [];
+        $this->morphTargetMap = [];
+        $this->dbColumnNamesCache = [];
+        $this->attributeClassCache = [];
+        $this->attributeClassPaths = [];
     }
 
     /**
@@ -183,7 +191,7 @@ class ModelAttributeResolver
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
 
-                    return $this->appendNullable($accessorInfo, $attr['nullable']);
+                    return $this->appendNullable($accessorInfo, $attr['nullable'], 'accessor');
                 }
             } catch (Throwable) { // @codeCoverageIgnore
                 // Fall through to cast/DB type
@@ -195,7 +203,7 @@ class ModelAttributeResolver
 
             $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-            return $this->appendNullable($tsInfo, $attr['nullable'], self::sendsNullAsIs($cast));
+            return $this->appendNullable($tsInfo, $attr['nullable'], $cast);
         }
 
         if ($attr['type'] === null || $attr['type'] === '') {
@@ -210,7 +218,7 @@ class ModelAttributeResolver
 
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-        return $this->appendNullable($tsInfo, $attr['nullable'], true);
+        return $this->appendNullable($tsInfo, $attr['nullable'], null);
     }
 
     /**
@@ -1786,11 +1794,9 @@ class ModelAttributeResolver
      * @param  TypeScriptTypeInfo  $tsInfo
      * @return TypeScriptTypeInfo
      */
-    protected function appendNullable(array $tsInfo, ?bool $nullable, bool $sendsNullAsIs = false): array
+    protected function appendNullable(array $tsInfo, ?bool $nullable, ?string $cast): array
     {
-        $hasNull = $sendsNullAsIs ? ValueResult::hasNullArm($tsInfo['type']) : str_contains($tsInfo['type'], 'null');
-
-        if ($nullable && ! $hasNull) {
+        if ($nullable && ! self::typeHoldsNull($tsInfo['type'], $cast)) {
             $tsInfo['type'] .= ' | null';
         }
 

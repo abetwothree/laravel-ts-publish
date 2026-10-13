@@ -49,13 +49,17 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store;
@@ -773,6 +777,23 @@ test('a @property tag spelling a tuple, an object shape, a quoted key or a neste
     'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
     'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
     'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
+
+test('a cast sends a NULL column as null only when it is a database type, a primitive or an enum', function (?string $cast, bool $expected) {
+    expect(ModelAttributeResolver::sendsNullAsIs($cast))->toBe($expected);
+})->with([
+    'no cast' => [null, true],
+    'an empty cast' => ['', true],
+    'array' => ['array', true],
+    'collection' => ['collection', true],
+    'a dated cast' => ['date:Y-m-d', true],
+    'a decimal cast' => ['decimal:2', true],
+    'an enum' => [Status::class, true],
+    'an attribute accessor' => ['attribute', false],
+    'a plain accessor' => ['accessor', false],
+    'AsCollection' => [AsCollection::class, false],
+    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false],
+    'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
 ]);
 
 test('a nullable column keeps its own null beside a nested null on a primitive cast, never on a class cast', function (string $column, string $type) {
