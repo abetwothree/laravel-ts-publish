@@ -48,6 +48,7 @@ use ReflectionClass;
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
  * @phpstan-type EnumFqcnInfo = array{fqcn: string, nullable: bool, isCollection: bool, alsoBare: bool}
+ * @phpstan-type EnumListFlags = array{isCollection: bool, alsoBare: bool}
  * @phpstan-type ResolvedImports = array{
  *    typeImports: TypesImportMap,
  *    valueImports: ValuesImportMap,
@@ -747,7 +748,7 @@ class ModelTransformer extends CoreTransformer
     /**
      * Whether a sole enum's type is a list of it, and whether the bare enum stands beside that list.
      *
-     * @return array{isCollection: bool, alsoBare: bool}
+     * @return EnumListFlags
      */
     protected function enumListFlags(string $type): array
     {

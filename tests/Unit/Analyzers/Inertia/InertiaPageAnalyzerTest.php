@@ -185,10 +185,17 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->toBe('Inertia.SharedData & { title: unknown }');
 });
 
-// Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm.
+// Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract
+// `Model` names no class a published file exports, so its bare read publishes unknown, importing nothing.
 it('types the props an action reads from its scalar, enum, union and nullable model parameters', function () {
-    expect(pageData(TypedActionParametersController::class.'@show')['pageType'] ?? null)
+    $show = pageData(TypedActionParametersController::class.'@show');
+    $abstract = pageData(TypedActionParametersController::class.'@abstractModel');
+
+    expect($show['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null, post: Post | null }')
+        ->and($show['classFqcns'] ?? null)->toBe([Status::class, Post::class])
+        ->and($abstract['pageType'] ?? null)->toBe('Inertia.SharedData & { model: unknown }')
+        ->and($abstract['classFqcns'] ?? null)->toBe([])
         ->and(pageData(TypedActionParametersController::class.'@filter')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { term: string | null, key: string | number }');
 });

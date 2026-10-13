@@ -228,7 +228,7 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->anyProp->subProp` — a property fetch on one of `$this`'s properties.
+     * Analyze `$this->resource->subProp` where `$this->resource` holds a wrapped enum.
      *
      * PHP enum universals: `->name` is always string, `->value` follows the enum's backing type.
      *
@@ -269,7 +269,7 @@ final class PropertyChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$this->anyProp->subProp` where `$this->anyProp` is a wrapped model resource
+     * Analyze `$this->resource->subProp` where `$this->resource` is a wrapped model resource
      * (i.e. has a `@var ModelType|null` docblock on `$resource`).
      *
      * @return ValueExpressionResult

@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadDeclinesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
@@ -5595,7 +5596,8 @@ describe('helper and receiver method inference', function () {
         expect($this->props['to_immutable']['type'])->toBe('string');
     });
 
-    // Resources leave `$request` unbound (resolveRequestVarNames()), so `$request->user()` names no receiver model.
+    // An API resource leaves `$request` out of requestVarNames (ParameterBinder::bindCall()), so `$request->user()`
+    // names no receiver model.
     test('getKey() on an unbound request user stays unknown', function () {
         expect($this->props['user_key']['type'])->toBe('unknown');
     });
@@ -7479,3 +7481,18 @@ it('a top-level only() spread on another receiver holding one model flattens, an
         'nested' => "Omit<Pick<User, 'id'>, 'x'> & { x: number }",
     ]);
 });
+
+it('a top-level only() spread flattens nothing on a receiver that holds no one concrete model', function (string $method, string $model) {
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze(ReceiverOnlySpreadDeclinesResource::class, $method, $model)->properties as $property) {
+        $keys[$property['name']] = $property['type'];
+    }
+
+    expect($keys)->toBe(['x' => 'number']);
+})->with([
+    'a nullsafe call' => ['nullsafe', Post::class],
+    'a morphTo relation' => ['morphed', Image::class],
+    'a to-many relation' => ['toMany', Post::class],
+    'an abstract model' => ['abstractModel', Post::class],
+]);

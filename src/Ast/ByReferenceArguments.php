@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
@@ -132,9 +133,12 @@ final class ByReferenceArguments
             }
 
             if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
-                && $call->name instanceof Identifier
+                && $call->name instanceof Identifier && $subject !== null
             ) {
-                return $subject?->getMethod($call->name->toString());
+                // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
+                DependencyRecorder::recordClass($subject->getName());
+
+                return $subject->getMethod($call->name->toString());
             }
 
             if ($call instanceof StaticCall && $call->class instanceof Name && $call->name instanceof Identifier) {
@@ -196,6 +200,13 @@ final class ByReferenceArguments
             default => $name->toString(),
         };
 
-        return $class !== null && class_exists($class) ? new ReflectionClass($class) : null;
+        if ($class === null || ! class_exists($class)) {
+            return null;
+        }
+
+        // Which parameters take a reference is the class's declaration, so a change to it must rebuild this.
+        DependencyRecorder::recordClass($class);
+
+        return new ReflectionClass($class);
     }
 }

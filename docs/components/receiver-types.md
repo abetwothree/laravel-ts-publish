@@ -167,12 +167,13 @@ Earlier claimants of these node classes decline a call they cannot type, as
 [The honest ordering inventory][inventory] records the declines that settle each pair.
 
 `RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`; on a date-cast column;
-or on a model-less subject's own typed property. Through `$this->resource` it reads the wrapped class, else the model, by
-`SubjectMethodTypeResolver::resolveForwarded()`, as the bare `$this->m()`, `$this::m()` and `$this->resource::m()`
+or on a model-less subject's own typed property. Through `$this->resource` it reads the wrapped class, else the model,
+by `SubjectMethodTypeResolver::resolveForwarded()`, as the bare `$this->m()`, `$this::m()` and `$this->resource::m()`
 do: only a public method, with the receiver rules' answer for a model method they type (`typesModelMethod()`), such as
 `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads
-`forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver rules. Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's
-closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
+`forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver rules. Every other
+`$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so `$this->checks->toArray()`
+reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
@@ -261,8 +262,8 @@ then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the l
 `ServiceReturnResource.tiers` publishes `string[]`.
 
 The inline type is a plain string with no FQCN channel, so a body whose shape names an enum or a model could never
-import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore publishes each member whose type names a token as
-`unknown`, and its siblings keep their types.
+import that token. `TsTypeString::shapeValueHasUnimportableToken()` therefore publishes each member whose type names a
+token as `unknown`, and its siblings keep their types.
 
 Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
 `carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
@@ -368,14 +369,17 @@ it('declines auth()->id() and Auth::id() where code decides the auth model\'s ke
         ->toBe('unknown');
 });
 
-it('declines auth()->id() and Auth::id() for an auth model identified by another column, where it published the key', function () {
-    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+it('declines auth()->id() and Auth::id() for an auth model identified by anything but its key, where it published the key', function (string $model) {
+    config()->set('auth.providers.users.model', $model);
 
     expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
         ->toBeNull()
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
         ->toBe('unknown');
-});
+})->with([
+    'another identifier column' => [EmailIdentifierUser::class],
+    'a computed identifier' => [ComputedIdentifierUser::class],
+]);
 
 it('records the auth model it declines for another identifier column, so editing it rebuilds the result', function () {
     config()->set('auth.providers.users.model', EmailIdentifierUser::class);

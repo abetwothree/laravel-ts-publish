@@ -229,6 +229,38 @@ it('captures every public array table but the re-entrancy guards as a name bindi
         ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
 });
 
+// leaveSubjectMethod() restores by hand each field enterSubjectMethod() set aside, so this round trip guards it.
+it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $scope->resolvingLocalVars = ['item' => true];
+    $scope->closureRelationModelClass = User::class;
+    $declaring = $scope->declaringFileClass;
+    $before = $scope->nameBindings();
+    $proofs = ['this' => [['read' => new Variable('this'), 'after' => null, 'before' => null]]];
+
+    $caller = $scope->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs);
+
+    expect($scope->nameBindings())->toBe([...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs])
+        ->and($scope->resolvingLocalVars)->toBe([])
+        ->and($scope->closureRelationModelClass)->toBeNull()
+        ->and($scope->declaringFileClass->getName())->toBe(Post::class)
+        ->and($scope->visitedSpreadMethods)->toBe(['helper' => true]);
+
+    $scope->localVarBindings['inner'] = new Variable('body');
+    $scope->bindingEnds['inner'] = 3;
+    $scope->resolvingLocalVars['inner'] = true;
+    $scope->closureRelationModelClass = Post::class;
+    $scope->declaringFileClass = new ReflectionClass(User::class);
+
+    $scope->leaveSubjectMethod('helper', $caller);
+
+    expect($scope->nameBindings())->toBe($before)
+        ->and($scope->resolvingLocalVars)->toBe(['item' => true])
+        ->and($scope->closureRelationModelClass)->toBe(User::class)
+        ->and($scope->declaringFileClass)->toBe($declaring)
+        ->and($scope->visitedSpreadMethods)->toBe([]);
+});
+
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $scope->localVarBindings['item'] = new Variable('outer');

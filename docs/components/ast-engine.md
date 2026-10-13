@@ -79,10 +79,10 @@ element array. Placed later, the two additions would be unreachable for those sh
 pins the structure and the three orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
-`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and
-its parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
-every other typed parameter. The seeded scope is why `compact()`, a route-bound `$post` and
-`$request->integer()` type with no Inertia-specific handler code.
+`InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
+parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
+every other typed parameter. The seeded scope is why `compact()`, a route-bound `$post` and `$request->integer()` type
+with no Inertia-specific handler code.
 
 ### The honest ordering inventory
 
@@ -359,11 +359,12 @@ A type read from reflection records the class it reads with `DependencyRecorder:
 interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
 member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
 `ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
-`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`, and
-`ModelAttributeResolver`'s contexts and caster reads, and `ModelAttributeResolver::subclassKeyTsType()`, which records every
-published model. A cache in front of such a read records before its lookup, or
-replays what it recorded, as `resolveAttributeClass()` does. Recording never deduplicates, because a memo frame keeps
-the paths recorded after its mark.
+`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`,
+`ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
+published model, and `ByReferenceArguments` for the class whose method it reads by-reference parameters from. A cache in
+front of such a read records before its lookup, or replays what it recorded, as `resolveAttributeClass()` and
+`LaravelTsPublish::resolvePhpstanTypeAlias()`, which reads each class an alias import names, do. Recording never
+deduplicates, because a memo frame keeps the paths recorded after its mark.
 
 `MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
 is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A

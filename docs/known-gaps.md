@@ -261,10 +261,10 @@ so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
 
 Neither the method-body fallback nor a docblock array shape can carry an import. The body fallback
 (`MethodReturnTypeResolver::bodyType()`) publishes a value that names a class as `unknown` and keeps the rest of the
-shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock shape
-degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member, `list{User, int}` →
-`[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole. Cast the property
-with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
+shape, as [Receiver types](./components/receiver-types.md#the-body-fallback-carries-no-fqcn-channel) details. A docblock
+shape degrades one leaf: `@return array{owner: User}` publishes `{ owner: unknown }`, or a tuple member,
+`list{User, int}` → `[unknown, number]`, while `Record<string, User>` has nothing to recurse into and degrades whole.
+Cast the property with an import-aware `#[TsCasts]`, or give the method a native return type that names the class.
 
 ### An open shape publishes only its named keys
 
@@ -289,8 +289,9 @@ union out; type the key, or rename it out of the pattern. The rules are under
 `$model->toArray()` in value position publishes `Record<string, unknown>`, as `except($keys)` does, and a relation's
 `$this->comments->toArray()` a list of it, because the relations a model serializes are whatever is loaded at runtime.
 A model with no attributes encodes `[]`, which TypeScript does not assign to that `Record`. An override of `toArray()`,
-or an abstract model's, publishes `unknown` on a receiver, even when it declares a shape; `$this->resource->toArray()`
-publishes what the override declares. The spread form is typed:
+or an abstract model's, publishes `unknown` on a receiver, even when it declares a shape. `$this->resource->toArray()`,
+and a model-less subject's `$this->prop->toArray()`, publish what the override declares, and an abstract model's
+`$this->resource->toArray()` publishes `unknown[]`. The spread form is typed:
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
@@ -589,6 +590,14 @@ holds, adds nothing when it keys differently. So does a key a constructor sets t
 `uniqueIds()` override publishes `unknown` even when its list leaves the key out. A concrete receiver class never
 looks at its subclasses.
 
+### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
+
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent
+call such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A
+helper parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes
+`new Post`, so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes
+`number | null`.
+
 ## Deliberate non-goals
 
 These are absent on purpose. Raise one before you "fix" it:
@@ -626,10 +635,3 @@ read the pins as the divergences found so far, not all there are.
 `origin/main`, and never checks a speedup. Until a speedup reaches `main`, later branches still measure against the
 slower base, so they can give it back without failing. Updating `main` is the owner's step, since agents never merge
 into it ([AGENTS.md § Git](../AGENTS.md#git)). [Performance gate](./testing/performance-gate.md) describes the job.
-
-### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
-
-The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent call
-such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A helper
-parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes `new Post`,
-so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes `number | null`.

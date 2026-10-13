@@ -137,6 +137,14 @@ class LaravelTsPublish
     protected array $phpstanTypeAliasCache = [];
 
     /**
+     * The files each cached alias answer read, FQCN => alias name => paths, replayed on a reuse; null when the answer
+     * was cached while nothing recorded.
+     *
+     * @var array<string, array<string, list<string>|null>>
+     */
+    protected array $phpstanTypeAliasPaths = [];
+
+    /**
      * Per-file cache of resolved `use`-statement short-name → FQCN maps, keyed by file path.
      *
      * @var array<string, array<string, class-string>>
@@ -908,10 +916,19 @@ class LaravelTsPublish
 
         $seen[$seenKey] = true;
 
-        if (array_key_exists($name, $this->phpstanTypeAliasCache[$key] ?? [])) {
+        // A reuse replays the class files the answer read, so a later class's cache entry still names them.
+        if (array_key_exists($name, $this->phpstanTypeAliasCache[$key] ?? [])
+            && (($this->phpstanTypeAliasPaths[$key][$name] ?? null) !== null || ! DependencyRecorder::isRecording())) {
+            foreach ($this->phpstanTypeAliasPaths[$key][$name] ?? [] as $path) {
+                DependencyRecorder::record($path);
+            }
+
             return $this->phpstanTypeAliasCache[$key][$name];
         }
 
+        $mark = DependencyRecorder::mark();
+        // The class defines the alias or imports it, and each class an import names is read the same way below.
+        DependencyRecorder::record((string) $context->getFileName());
         $doc = $context->getDocComment();
         $resolved = null;
 
@@ -953,6 +970,8 @@ class LaravelTsPublish
                 }
             }
         }
+
+        $this->phpstanTypeAliasPaths[$key][$name] = DependencyRecorder::isRecording() ? DependencyRecorder::since($mark) : null;
 
         return $this->phpstanTypeAliasCache[$key][$name] = $resolved;
     }
@@ -2707,8 +2726,9 @@ class LaravelTsPublish
     }
 
     /**
-     * The classes and enums a decorated arm spells as a whole member of its top-level union, such as `User` in
-     * `User | null`, where no other class or enum of the arm shares that name.
+     * The classes and enums any arm but a plain class union or a bare enum spells as a whole member of its top-level
+     * union, such as `User` in `User | null` or `Status` in `Status[] | Status`, where no other class or enum of the
+     * arm shares that name.
      *
      * @param  TypeScriptTypeInfo  $info
      * @return list<class-string>

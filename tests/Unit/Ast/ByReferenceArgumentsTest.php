@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use PhpParser\Node\Expr\CallLike;
@@ -101,4 +102,21 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'a by-value argument of a known built-in' => ['str_replace($x, "b", "c", $n);', ByReferenceEffect::Replaces],
     'a function nobody declares' => ['missing_function($x);', ByReferenceEffect::Replaces],
     'a method' => ['$this->fill($x);', ByReferenceEffect::Replaces],
+]);
+
+it('records the class whose declaration says which parameters take a reference', function (string $statement, string $class) {
+    DependencyRecorder::start();
+
+    try {
+        byReferenceArgumentsOf($statement, new ReflectionClass(ByReferenceDefaultsSubject::class));
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toContain((string) new ReflectionClass($class)->getFileName());
+})->with([
+    'a named class constructor' => ['new '.ByReferenceDefaultsParent::class.'($a);', ByReferenceDefaultsParent::class],
+    'a method of $this' => ['$this->fill($a);', ByReferenceDefaultsSubject::class],
+    'a self:: method' => ['self::stash($a);', ByReferenceDefaultsSubject::class],
 ]);

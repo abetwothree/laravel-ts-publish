@@ -293,7 +293,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $this->scope->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
         $this->scope->forwardsUndeclaredMembersTo = $this->proxyTarget();
 
-        // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings.
+        // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings,
+        // but no foreach variable over a relation, which bindForeachLoopVariables() binds only for a scope it owns.
         if ($this->ownsScope) {
             $subject = $this->scope->subjectReflection;
             $method = $subject->hasMethod($this->methodName) ? $subject->getMethod($this->methodName) : null;

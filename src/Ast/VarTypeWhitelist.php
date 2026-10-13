@@ -30,8 +30,8 @@ final readonly class VarTypeWhitelist
 
     private const COLLECTIONS = [Collection::class, EloquentCollection::class];
 
-    /** A shape member's key: a name or a quoted string, then an optional `?`, then `:`. */
-    private const KEY = '(?:[a-z_]\w*|\'[^\'\\\\]*\'|"[^"\\\\]*")\s*\??\s*:(?!:)';
+    /** A shape member's key: an int, a dashed or plain name, or a quoted string, then an optional `?`, then `:`. */
+    private const KEY = '(?:-?\d+|[a-z_][\w-]*|\'[^\'\\\\]*\'|"[^"\\\\]*")\s*\??\s*:(?!:)';
 
     /**
      * @param  array<string, class-string>  $useMap

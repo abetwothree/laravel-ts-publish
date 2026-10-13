@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers;
 
+use Illuminate\Database\Eloquent\Model;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workbench\App\Enums\Status;
@@ -20,6 +21,14 @@ class TypedActionParametersController
             'status' => $status,
             'title' => $post?->title,
             'post' => $post,
+        ]);
+    }
+
+    /** Reads an abstract model parameter bare, which names no class a published file exports. */
+    public function abstractModel(Model $model): Response
+    {
+        return Inertia::render('Typed/AbstractModel', [
+            'model' => $model,
         ]);
     }
 

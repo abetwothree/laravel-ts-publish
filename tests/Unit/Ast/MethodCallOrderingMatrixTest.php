@@ -68,7 +68,6 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         new MethodCall(new PropertyFetch($this_, 'post'), 'except', [new Arg($arr(['body']))]),
         // The same filters through the $this->resource proxy, on the resource's own model and on a relation.
-        new MethodCall(new PropertyFetch($this_, 'resource'), 'getKey'),
         new MethodCall(new PropertyFetch($this_, 'resource'), 'only', [new Arg($arr(['id', 'content']))]),
         new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         // Runtime key lists and a many-relation filtered by primary key, which only filter-aware handlers may answer.
@@ -102,6 +101,8 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
         // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
         new MethodCall($this_, 'getKey'),
+        // The same key read through the $this->resource proxy.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'getKey'),
         // The proxy spelling RelationCollectionChainHandler keeps, a call on a relation it hands on, and a plain chain.
         new MethodCall(new PropertyFetch($this_, 'resource'), 'getMorphClass'),
         new MethodCall(new PropertyFetch($this_, 'post'), 'commentsCount'),

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services;
 
-/** A service whose helpers declare no type for what they are passed. */
+/** A service whose helpers declare no type for what they are passed, beside a public and a protected heading. */
 final class PostSummaryFormatter
 {
     /**
@@ -27,5 +27,17 @@ final class PostSummaryFormatter
     public function row($post): array
     {
         return ['row_title' => $post->title];
+    }
+
+    /** The heading a caller outside the class can read. */
+    public function title(): string
+    {
+        return $this->heading();
+    }
+
+    /** The heading only the class itself can read. */
+    protected function heading(): string
+    {
+        return 'Summary';
     }
 }

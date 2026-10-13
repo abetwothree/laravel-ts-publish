@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInitializeKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyNameOverrideModel;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideMo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractNullKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractStringKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTableKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTraitTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUlidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
@@ -25,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
@@ -1313,9 +1316,13 @@ describe('keyTsType()', function () {
         'a null $primaryKey' => [AbstractNullKeyModel::class, 'null'],
     ]);
 
-    test('reads an abstract model\'s #[Table] key type, which Laravel applies to every subclass', function () {
-        expect(resolve(ModelAttributeResolver::class)->keyTsType(AbstractTableKeyModel::class))->toBe('string');
-    })->skip(! class_exists('Illuminate\Database\Eloquent\Attributes\Table'), 'Table attribute requires Laravel 13+');
+    test('reads an abstract model\'s #[Table] key type, which Laravel applies to every subclass', function (string $model) {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBe('string');
+    })->with([
+        'on the model' => [AbstractTableKeyModel::class],
+        'on a trait it uses' => [AbstractTraitTableKeyModel::class],
+        'on its parent' => [AbstractInheritedTableKeyModel::class],
+    ])->skip(! class_exists('Illuminate\Database\Eloquent\Attributes\Table'), 'Table attribute requires Laravel 13+');
 
     test('declines Model itself, and an abstract model whose key code decides', function (string $model) {
         expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBeNull();
@@ -1353,7 +1360,7 @@ describe('keyTsType()', function () {
         expect(resolve(ModelAttributeResolver::class)->keyTsType(UnconstructableModel::class))->toBe('number');
     });
 
-    test('unions an abstract model\'s key type with each published concrete subclass\'s', function (?array $published, string $type) {
+    test('unions an abstract model\'s key type with each published concrete subclass\'s', function (?array $published, ?string $type) {
         if ($published !== null) {
             PublishedModelRegistry::register([...$published, Post::class]);
         }
@@ -1363,6 +1370,7 @@ describe('keyTsType()', function () {
         'no published set to read' => [null, 'number'],
         'every subclass agrees' => [[IntKeyedModel::class], 'number'],
         'a subclass keys by UUID' => [[IntKeyedModel::class, UuidKeyedModel::class], 'number | string'],
+        'a subclass overrides getKey()' => [[IntKeyedModel::class, KeyOverrideKeyedModel::class], null],
     ]);
 
     test('records every published model while reading an abstract model\'s subclasses, as any may become one', function () {

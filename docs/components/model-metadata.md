@@ -52,8 +52,8 @@ key and would fail on a key no source typed.
 
 ### Body inference is an engine consumer
 
-`ModelMetadataAnalyzer::analyzeBody()` does not call `AstEngine::analyzeMethod()`, which seeds no bindings. It locates
-and binds `provide()` itself:
+`ModelMetadataAnalyzer::analyzeBody()` calls `AstEngine::analyzeMethod()` only when it cannot locate `provide()`.
+Otherwise it locates and binds `provide()` itself:
 
 - **Declaring class**: it locates `provide()` on the class that declares it, so `self::`, `parent::` and
   `$this->method()` resolve against the file the body lives in. No test distinguishes this from the configured class.

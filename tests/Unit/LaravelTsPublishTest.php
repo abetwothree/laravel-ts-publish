@@ -1582,6 +1582,24 @@ describe('phpstan type aliases', function () {
             ->and($alias['class']->getName())->toBe(PhpstanTypeAliasChainZ::class);
     });
 
+    test('records each class an alias import reads, and replays them when the answer is reused', function () {
+        $read = function (): array {
+            DependencyRecorder::start();
+
+            try {
+                $this->service->resolvePhpstanTypeAlias('Row', new ReflectionClass(ImportedAliasProperties::class));
+
+                return DependencyRecorder::paths();
+            } finally {
+                DependencyRecorder::stop();
+            }
+        };
+        $source = (string) new ReflectionClass(TypeAliasShapeModel::class)->getFileName();
+
+        expect($read())->toContain($source)
+            ->and($read())->toContain($source);
+    });
+
     test('a cyclical @phpstan-import-type chain terminates instead of recursing forever', function () {
         $alias = $this->service->resolvePhpstanTypeAlias(
             'LoopAlias', new ReflectionClass(PhpstanTypeAliasCycleA::class),

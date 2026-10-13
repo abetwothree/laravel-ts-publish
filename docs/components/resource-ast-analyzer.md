@@ -380,7 +380,8 @@ Inside a `whenLoaded()` closure `$this` is still the resource.
 [`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
 `RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
 `AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
-keeps the relation walk. `ClosureResourceRootResource` pins both spellings.
+keeps the relation walk. `ClosureResourceRootResource` pins a property chain and a method call on `$this->resource`
+inside such a closure.
 
 ## Collection pipelines
 

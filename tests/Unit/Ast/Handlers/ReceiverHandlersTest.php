@@ -1257,6 +1257,9 @@ describe('a call on $this->prop types from the class the property holds, never f
         ['$this->checks->toArray()', '{ message: string; route?: string }[]'],
         ['$this->post->commentsCount()', 'number'],
         ['$this->post->toArray()', 'Record<string, unknown>'],
+        ['$this->formatter->title()', 'string'],
+        // PHP calls no protected method from outside the class, so the read declines.
+        ['$this->formatter->heading()', 'unknown'],
     ]);
 
     test('a resource types a property it holds from that class, nullable or not, and never from its own model', function (string $php, string $type) {
