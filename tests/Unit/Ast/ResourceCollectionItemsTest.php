@@ -28,6 +28,7 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         expect(collectionItemsType($subject, $php))->toBe($expected);
     })->with([
         'the value' => [PageItemCollection::class, '$this->resource', PAGE_ITEMS],
+        'a helper returning the value, read as a value' => [PageItemCollection::class, '$this->rows()', PAGE_ITEMS],
         'toArray()' => [PageItemCollection::class, '$this->resource->toArray()', PAGE_ITEMS],
         'jsonSerialize()' => [PageItemCollection::class, '$this->resource->jsonSerialize()', PAGE_ITEMS],
         'count()' => [PageItemCollection::class, '$this->resource->count()', 'number'],
@@ -81,6 +82,7 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         expect(resolve(ResourceGenerator::class, ['findable' => PageItemCollection::class])->content)
             ->toContain("import type { CursorPaginator, LengthAwarePaginator, SimplePaginator } from '@tolki/types';")
             ->toContain('    page: '.PAGE_ITEMS.';')
+            ->toContain('    rows: '.PAGE_ITEMS.';')
             ->toContain('    first: PageItemResource | null;');
     });
 

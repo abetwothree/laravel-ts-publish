@@ -3914,7 +3914,7 @@ declare global {
         export interface MediaTypeInstanceOfResource {
             name?: string;
             value?: string;
-            meta?: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
          * Resource using a positive instanceof guard (not negated).
@@ -3930,7 +3930,7 @@ declare global {
         export interface MediaTypeResource {
             name: string;
             value: string;
-            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
             name: unknown;
@@ -4449,6 +4449,19 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /**
+         * Helpers whose declarations are vague or missing, each typed from what its own returns hold: a scalar, a list
+         * literal, list pipelines, an attribute read and returned variables.
+         */
+        export interface PostHelperBodyResource {
+            shout_untyped: string;
+            stages: string[];
+            history: string[];
+            ids: number[];
+            untyped_title: string;
+            closure_first: { title: string; active: number };
+            mixed_meta: { a: number } | { a: number; b: string };
+        }
         /**
          * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
          * nested call, a static helper and a trait's.
@@ -5259,7 +5272,7 @@ declare global {
             status_or_priority: app.enums.StatusType | app.enums.PriorityType;
             void_return: unknown;
             never_return: unknown;
-            mixed_return: unknown;
+            mixed_return: null;
             order_or_status: app.models.Order | app.enums.StatusType;
             money_value: unknown;
             page_meta_ternary: PageMetaType | null;

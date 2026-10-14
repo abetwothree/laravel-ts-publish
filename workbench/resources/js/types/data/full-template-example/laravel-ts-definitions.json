@@ -14871,7 +14871,7 @@
                 },
                 {
                     "name": "meta",
-                    "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
+                    "type": "{ extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string }",
                     "optional": true
                 }
             ]
@@ -14916,7 +14916,7 @@
                 },
                 {
                     "name": "meta",
-                    "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
+                    "type": "{ extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string }",
                     "optional": false
                 }
             ]
@@ -16533,6 +16533,46 @@
         "Workbench\\App\\Http\\Resources\\PostFlatCollection": {
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
+        },
+        "Workbench\\App\\Http\\Resources\\PostHelperBodyResource": {
+            "name": "PostHelperBodyResource",
+            "properties": [
+                {
+                    "name": "shout_untyped",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "history",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "untyped_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "closure_first",
+                    "type": "{ title: string; active: number }",
+                    "optional": false
+                },
+                {
+                    "name": "mixed_meta",
+                    "type": "{ a: number } | { a: number; b: string }",
+                    "optional": false
+                }
+            ]
         },
         "Workbench\\App\\Http\\Resources\\PostHelperParamsResource": {
             "name": "PostHelperParamsResource",
@@ -19291,7 +19331,7 @@
                 },
                 {
                     "name": "mixed_return",
-                    "type": "unknown",
+                    "type": "null",
                     "optional": false
                 },
                 {

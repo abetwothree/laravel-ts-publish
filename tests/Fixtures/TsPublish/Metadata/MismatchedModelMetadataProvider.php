@@ -24,10 +24,10 @@ final class MismatchedModelMetadataProvider implements ModelMetadataProvider
     }
 
     /**
-     * Return the table name through a signature the engine cannot type.
+     * Return the table name through a signature and a body the engine cannot type.
      */
     private function untypedTable(Model $model) // @phpstan-ignore missingType.return
     {
-        return $model->getTable();
+        return json_decode((string) json_encode($model->getTable()));
     }
 }

@@ -12,7 +12,7 @@ These are the classes a change to the engine usually touches:
 
 | Class | Owns |
 | --- | --- |
-| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
+| [`AstEngine`] | The public `analyze()`, and the `@internal` `analyzeMethod()`, `analyzeMethodValue()`, `analyzePublicProperties()`, `bindingsFor()` and `analyzeModelClosure()` |
 | [`ResourceAstAnalyzer`] | The `ExpressionEngine`: walks a method's return branches and resolves each value through the dispatcher |
 | [`ReadsReturnedVariables`] | The walk over an array built in a variable, for any analyzer that implements its abstract hooks |
 | [`ExpressionDispatcher`] | Tries each handler that claims an expression's node class, in registration order |
@@ -148,8 +148,9 @@ docblocks say what each binding table holds. These six facts span other classes:
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
-- **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback, and a getter that
-  `AstEngine::analyzeModelClosure()` reads without imports. See [Receiver types § The body fallback][body-fallback].
+- **`carriesImports` is false for the two readers that keep no FQCN channel**: the body fallback's literal shape, and a
+  getter that `AstEngine::analyzeModelClosure()` reads without imports. See
+  [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
   `ReceiverClassResolver` reads it after `varModelBindings` and below the narrowing tables. In `varClassBindings` it
   would outrank an early-exit guard, as `GuardWritePostResource` pins.
@@ -227,13 +228,14 @@ green with either mechanism alone, so it pins neither.
 
 #### A called method's parameters
 
-A method body read apart from its call, such as a spread helper, the body fallback, `SubjectHelperReturnResolver`'s
-helper or any analyzer that builds its own scope, binds its parameters with [`ParameterBinder`]'s `bindCall()`, by
-the type they declare: the native type, else a whitelisted `@phpstan-param`, `@psalm-param` or `@param` where the native
-type is vague. One concrete, non-null model goes in `varModelBindings`; any other parameter puts its classes, when it
-names only classes, in `varDeclaredBindings` and its value in `varValueBindings`. A `Request` goes in `requestVarNames`,
-except in an API resource, and a name already bound stays as it is. `CollectsLocalVarBindings::seedBody()` then seeds
-the body's own bindings, ends and guards from one write scan, in every body reader, a closure's included.
+A method body read apart from its call, such as a spread helper, the body fallback, a method read as a value,
+`SubjectHelperReturnResolver`'s helper or any analyzer that builds its own scope, binds its parameters with
+[`ParameterBinder`]'s `bindCall()`, by the type they declare: the native type, else a whitelisted `@phpstan-param`,
+`@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; any
+other parameter puts its classes, when it names only classes, in `varDeclaredBindings` and its value in
+`varValueBindings`. A `Request` goes in `requestVarNames`, except in an API resource, and a name already bound stays as
+it is. `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one write scan,
+in every body reader, a closure's included.
 
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
 says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
@@ -394,8 +396,8 @@ declared in the same file is a hit. Both memoize misses. `locateDeclared()` sear
 the class itself uses, composed of those two memoized lookups.
 
 The body fallback records its dependencies the same way, because `MethodReturnTypeResolver` re-enters `analyzeMethod()`,
-which reads the helper's file through `MethodLocator`. So a resource typed from a helper's body is invalidated when that
-helper changes.
+which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()` locates the method through
+`MethodLocator::locate()`. So a resource typed from a helper's body is invalidated when that helper changes.
 
 ### The run memo replays what it recorded
 
@@ -549,7 +551,7 @@ Each consumer enters the engine at the point that fits its subject:
 | `InertiaSharedDataAnalyzer` | `analyzeMethod($middleware, 'share')` and `AnalysisImports::build()` | It rewrites channels before importing |
 | `ModelMetadataAnalyzer` | `bindingsFor()` on the declaring class's `provide()`, then `ResourceAstAnalyzer` on the non-resource profile | It locates `provide()` itself, and the analyzer reads the scope `bindingsFor()` seeded as it is. See [Model metadata][metadata-consumer]. |
 | `AccessorBodyAnalyzer` | `analyzeModelClosure()` on `forModelClosures()` | The model is the subject, so a trait's accessor reads `$this` as the model using it |
-| `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false` | It is the body fallback. See [Receiver types][body-fallback]. |
+| `MethodReturnTypeResolver` | `analyzeMethod()` with `carriesImports: false`, then `analyzeMethodValue()` | It is the body fallback: the literal shape, then the value read, which carries imports. See [Receiver types][body-fallback]. |
 
 Every consumer that reaches `ResourceAstAnalyzer::analyze()` without a context locates through
 `MethodLocator::locateDeclared()`, as both Inertia analyzers do for an action.

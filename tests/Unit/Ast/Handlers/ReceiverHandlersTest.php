@@ -1463,7 +1463,8 @@ describe('the resource proxy', function () {
         ['$this->resource', 'MediaTypeType | null'],
         ['$this->resource->name', 'string'],
         ['$this->resource->value', 'string'],
-        ['$this->resource->extensions()', 'unknown[]'],
+        // MediaType::extensions() declares only array, so its match of string lists types it.
+        ['$this->resource->extensions()', 'string[]'],
     ]);
 });
 

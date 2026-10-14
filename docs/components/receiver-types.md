@@ -16,7 +16,7 @@ These classes carry receiver inference:
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
-| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-no-fqcn-channel) |
+| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-no-fqcn-channel): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
 | [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`] | What an `instanceof` condition proves, and the binding its proven arm resolves under |
 
 ## Receiver resolution
@@ -249,7 +249,8 @@ step can decline:
    the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so `Model::fresh()` on a
    `User` is `User | null`.
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
-   signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel).
+   signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel), then
+   [the value its returns hold](#a-method-read-as-a-value-carries-import-channels).
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object. A concrete model keeps the `Record<string, unknown>` of a method it inherits from `Model`, such as
    `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.
@@ -311,6 +312,25 @@ An accessor still costs the method its whole shape when its type names a class a
 - Through an `@property` tag.
 - Through a getter that returns a class-typed value without a filter, such as `fn () => $this->author`.
 
+### A method read as a value carries import channels
+
+When the literal shape declines, `MethodReturnTypeResolver` reads the method's own returns as values, through
+`AstEngine::analyzeMethodValue()`. So `MediaType::extensions(): array`, a `match` of string lists, publishes `string[]`,
+and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
+
+- **A fresh scope over the method's class**, never the caller's: a model is its own backing, a resource has the model
+  `ModelClassResolver` gives it, and the parameters bind by their declarations and what the call passes. A trait helper
+  therefore reads each using resource's model.
+- **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
+  return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
+- **Declines** a body that yields, and a returned closure, arrow function or first-class callable, which Laravel sends
+  as the `Closure` object, `{}`.
+- **Skips a dependency's method**: built in, under `vendor/`, or in this package's own `src/`.
+- **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
+- **Unlike the shape, it carries import channels**, so a helper that returns an enum or a model imports it.
+
+It shares the `method-body:` cycle guard with the shape, so a recursion through either reader stops at its first repeat.
+
 ## Property access on a receiver
 
 `ReceiverPropertyFetchHandler` claims `PropertyFetch` and `NullsafePropertyFetch`, and does for a property read what
@@ -357,6 +377,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/ReceiverType.php
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
+[gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type
 [gap-to-array]: ../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately
 [inventory]: ast-engine.md#the-honest-ordering-inventory

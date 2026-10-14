@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeEdgeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelCategoryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TitleLabelPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassNamingMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyFixture;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConstantKeyResource;
@@ -12,7 +18,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
+use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\ServiceReturnResource;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Release;
 use Workbench\App\Services\PostStatsService;
@@ -46,8 +54,8 @@ test('a numeric constant key is kept when the analyzed subject is a resource', f
 });
 
 // The body's shape stands in for the declaration's array arm only: every other arm it names stays, and a return the
-// shape does not describe hands the answer back to the declaration.
-test('a body fallback keeps the declaration\'s other arms, or declines for a return the shape does not describe', function (string $method, ?string $expected) {
+// shape does not describe leaves the method to the value read, which types each return as what it holds.
+test('a body fallback keeps the declaration\'s other arms, or reads each return as a value where the shape cannot', function (string $method, string $expected) {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(PostMetaService::class, $method)['type'] ?? null)
         ->toBe($expected);
 })->with([
@@ -55,14 +63,68 @@ test('a body fallback keeps the declaration\'s other arms, or declines for a ret
     'a nullable array never returning null' => ['declaredNullableMeta', '{ id: number } | null'],
     'an array or false' => ['metaOrFalse', '{ id: number } | false'],
     'an array or a string' => ['metaOrLabel', '{ id: number } | string'],
-    'no declaration, with a string return' => ['untypedMeta', null],
-    'no declaration, with a bare return' => ['bareReturnMeta', null],
-    'a mixed declaration, with a false return' => ['mixedMeta', null],
-    'an iterable, with an iterator return' => ['iterableMeta', 'unknown[]'],
-    'an array, with a return of another call' => ['delegatingMeta', 'unknown[]'],
-    'an array, with literals inside a try' => ['guardedMeta', 'unknown[]'],
-    'a generator' => ['generatedMeta', 'unknown[]'],
+    'no declaration, with a string return' => ['untypedMeta', 'string | { id: number }'],
+    'no declaration, with a bare return' => ['bareReturnMeta', '{ id: number } | null'],
+    'a mixed declaration, with a false return' => ['mixedMeta', 'boolean | { id: number }'],
+    'an array, with a return of another call' => ['delegatingMeta', 'number[] | { id: number }'],
+    'an array, with literals inside a try' => ['guardedMeta', '{ id: number } | { code: string }'],
 ]);
+
+test('an application method whose declaration is vague publishes what its returns hold', function (string $class, string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve($class, $method)['type'] ?? null)->toBe($expected);
+})->with([
+    'a mixed declaration over a number its model namesake formats' => [NamesakeInvoiceResource::class, 'total', 'number'],
+    'a mixed declaration over a string or a number' => [NamesakeInvoiceResource::class, 'branchy', 'string | number'],
+    'a vague array delegating to the model\'s shape' => [NamesakeInvoiceResource::class, 'summary', '{ a: number }'],
+    'a short ternary' => [NamesakeEdgeResource::class, 'conditional', 'string'],
+    'an untyped body that can end without a value' => [NamesakeEdgeResource::class, 'fallsOff', 'string | null'],
+    'a sum over another untyped helper' => [NamesakeEdgeResource::class, 'outer', 'number'],
+    'a callable string' => [NamesakeEdgeResource::class, 'callableString', 'string'],
+]);
+
+// A declined read leaves the declaration's own answer, or none at all, for the next step to take.
+test('the value read declines a returned closure, a generator, a vendor method and a return nothing types', function (string $class, string $method, ?string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve($class, $method)['type'] ?? null)->toBe($expected);
+})->with([
+    'a returned closure' => [NamesakeEdgeResource::class, 'formatter', null],
+    'a returned arrow function' => [NamesakeEdgeResource::class, 'arrow', null],
+    'a generator' => [PostMetaService::class, 'generatedMeta', 'unknown[]'],
+    'an iterable, with an iterator return nothing types' => [PostMetaService::class, 'iterableMeta', 'unknown[]'],
+    'a vendor method, whose conditional @return needs a rule of its own' => [Str::class, 'upper', null],
+    'a method of this package, which an application installs under vendor/' => [CastHandler::class, 'nodeClasses', 'unknown[]'],
+    'a return nothing types' => [NamesakeInvoiceResource::class, 'opaque', null],
+]);
+
+// Unlike the literal shape, a value read keeps the class its returns name, so the caller imports it.
+test('a helper read as a value carries the import channels its returns name', function () {
+    $call = new AstParser()->parseSource('<?php $this->wrapped();')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeEdgeResource::class), Post::class)->resolve($call))
+        ->toBe(['type' => 'Post', 'optional' => false, 'embeddedModelFqcns' => [Post::class]]);
+});
+
+// Laravel sends a returned Closure object as `{}`, never what calling it returns.
+test('a helper that returns a closure publishes unknown', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeEdgeResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props['closure']['type'])->toBe('unknown')
+        ->and($props['arrow']['type'])->toBe('unknown');
+});
+
+test('a mutual recursion with no declaration terminates, each read declining', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(RecursiveVagueFixture::class, 'a'))->toBeNull()
+        ->and(resolve(MethodReturnTypeResolver::class)->resolve(RecursiveVagueFixture::class, 'b'))->toBeNull();
+});
+
+// The read runs over the using resource and its model, so one trait helper never answers for another resource.
+test('a trait helper is read over each using resource\'s model', function () {
+    $label = fn (string $resource, string $model): string => collect(new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties)
+        ->keyBy('name')['label']['type'];
+
+    // A category has no title, so its read declines instead of borrowing the post's.
+    expect($label(TitleLabelPostResource::class, Post::class))->toBe('string')
+        ->and($label(TitleLabelCategoryResource::class, Category::class))->toBe('unknown');
+});
 
 test('a precise declaration is kept, and an absent method declines', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(PostStatsService::class, 'summary'))

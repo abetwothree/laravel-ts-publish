@@ -36,6 +36,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastNoImpor
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperBodyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
@@ -55,6 +57,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
@@ -3300,7 +3303,7 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
         expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
-            ->toContain('extensions: unknown[]')
+            ->toContain('extensions: string[]')
             ->toContain('maxSizeMb: number')
             ->toContain('icon: string');
     });
@@ -3324,8 +3327,8 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
 
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
-        // extensions() returns array on MediaType enum → unknown[]
-        expect($meta['type'])->toContain('extensions: unknown[]');
+        // MediaType::extensions() declares only array, so its match of string lists types it.
+        expect($meta['type'])->toContain('extensions: string[]');
     });
 });
 
@@ -3390,7 +3393,7 @@ describe('ResourceAstAnalyzer with MediaTypeInstanceOfResource (instanceof guard
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
         expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
-            ->toContain('extensions: unknown[]')
+            ->toContain('extensions: string[]')
             ->toContain('maxSizeMb: number')
             ->toContain('icon: string');
     });
@@ -5460,10 +5463,13 @@ describe('static call inference', function () {
             ->and($this->props['status_or_priority']['type'])->toContain('PriorityType');
     });
 
-    test('static call declared void/never/mixed degrades to unknown', function () {
-        foreach (['void_return', 'never_return', 'mixed_return'] as $name) {
+    test('static call declared void/never degrades to unknown, and one declared mixed publishes what it returns', function () {
+        foreach (['void_return', 'never_return'] as $name) {
             expect($this->props[$name]['type'])->toBe('unknown', "property {$name}");
         }
+
+        // UrlService::mixedReturn() returns null, which Laravel sends.
+        expect($this->props['mixed_return']['type'])->toBe('null');
     });
 
     test('static call declared to return an enum-plus-model union resolves via both channels', function () {
@@ -7568,4 +7574,40 @@ it('a top-level only() spread flattens nothing on a receiver that holds no one c
     'a morphTo relation' => ['morphed', Image::class],
     'a to-many relation' => ['toMany', Post::class],
     'an abstract model' => ['abstractModel', Post::class],
+]);
+
+// Each own method's declaration is too vague to publish, so its returns type it, and never its model's namesake.
+test('a resource method whose own declaration is vague publishes what its returns hold', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeInvoiceResource::class), NamesakeInvoice::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$key]['type'])->toBe($type);
+})->with([
+    'a number the model\'s namesake formats as a string' => ['total', 'number'],
+    'a delegation to the model\'s string namesake' => ['reference', 'string'],
+    'the same method called statically' => ['static_total', 'number'],
+    'the model\'s own namesake' => ['model_total', 'string'],
+    'a vague array delegating to the model\'s shape' => ['summary', '{ a: number }'],
+    'a string or a number' => ['branchy', 'string | number'],
+]);
+
+// The last three need rules of their own: a conditional return type, a finder in this profile, keys() in a pipeline.
+test('a helper read as a value publishes what its returns hold, and three whenHas() callbacks stay unread', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
+})->with([
+    'an untyped helper inside whenHas()' => ['helper_untyped', '?string'],
+    'a first-class callable inside whenHas()' => ['fcc_method', '?string'],
+    'an untyped helper' => ['shout_untyped', 'string'],
+    'an untyped parameter, read as the string its call passes' => ['echoed_title', 'string'],
+    'the same parameter, read as the number another call passes' => ['echoed_count', 'number'],
+    'a list literal behind a vague array' => ['stages', 'string[]'],
+    'a map() pipeline behind a vague array' => ['history', 'string[]'],
+    'a pluck() behind a vague array' => ['ids', 'number[]'],
+    'an untyped attribute read' => ['untyped_title', 'string'],
+    'a variable returned after a closure\'s own return' => ['closure_first', '{ title: string; active: number }'],
+    'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
+    'Str::upper()' => ['str_static', '?unknown'],
+    'a finder' => ['find', '?unknown'],
+    'keys()' => ['keys', '?unknown'],
 ]);

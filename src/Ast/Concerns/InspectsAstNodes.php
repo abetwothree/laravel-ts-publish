@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -21,7 +22,11 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Expr\Yield_;
+use PhpParser\Node\Expr\YieldFrom;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
@@ -30,14 +35,20 @@ use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
 
 /**
@@ -471,6 +482,38 @@ trait InspectsAstNodes
     }
 
     /**
+     * Whether a function-like body can end without a value, returning a `null` that none of its returns shows.
+     */
+    protected function canEndWithoutValue(FunctionLike $function): bool
+    {
+        // A declared return type throws where the body would end without a value.
+        if ($function->getReturnType() !== null) {
+            return false;
+        }
+
+        // A trailing comment parses as a statement of its own.
+        $stmts = $function->getStmts() ?? [];
+        $statements = array_filter($stmts, fn (Stmt $stmt): bool => ! $stmt instanceof Nop);
+        $last = end($statements);
+
+        if (! $last instanceof Return_ && ! ($last instanceof ExpressionStmt && $last->expr instanceof Throw_)) {
+            return true;
+        }
+
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Return_ && $node->expr === null);
+    }
+
+    /**
+     * Whether a body yields, so calling it returns a `Generator`, never the value it returns.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    protected function yields(array $stmts): bool
+    {
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Yield_ || $node instanceof YieldFrom);
+    }
+
+    /**
      * The items one operand of `+` gives the union literal.
      *
      * @param  array<string, Expr>  $localVarBindings
@@ -523,5 +566,38 @@ trait InspectsAstNodes
         }
 
         return $stored;
+    }
+
+    /**
+     * Whether a node of the body's own matches; a nested closure, function or class answers for itself.
+     *
+     * @param  array<Stmt>  $stmts
+     * @param  Closure(Node): bool  $matches
+     */
+    private function bodyHas(array $stmts, Closure $matches): bool
+    {
+        $visitor = new class($matches) extends NodeVisitorAbstract
+        {
+            public bool $found = false;
+
+            /** @param  Closure(Node): bool  $matches */
+            public function __construct(private readonly Closure $matches) {}
+
+            /** Stop at the first match, leaving a nested function-like or class unread. */
+            public function enterNode(Node $node): ?int
+            {
+                if ($node instanceof FunctionLike || $node instanceof ClassLike) {
+                    return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+                }
+
+                $this->found = ($this->matches)($node);
+
+                return $this->found ? NodeVisitor::STOP_TRAVERSAL : null;
+            }
+        };
+
+        new NodeTraverser($visitor)->traverse($stmts);
+
+        return $visitor->found;
     }
 }

@@ -53,14 +53,14 @@ test('a helper read as a value reads an untyped parameter as what its call passe
 });
 
 // A written parameter keeps its class binding up to the write, then its local answers: Laravel sends the author's name.
-test('each call publishes its own argument, a written parameter its local, and an argument nothing types or a scalar body stay unread', function () {
+test('each call publishes its own argument, a written parameter its local, and an argument nothing types stays unread', function () {
     expect(passedArgumentTypes(PassedArgumentEdgesResource::class))->toBe([
         'post_label' => '{ title: string; name: unknown }',
         'author_label' => '{ title: unknown; name: string }',
         'unknown_label' => '{ title: unknown; name: unknown }',
         'nested' => '{ deeper: unknown[] }',
         'written' => '{ author_name: string }',
-        'shout' => '?unknown',
+        'shout' => '?string',
         'fallback' => '{ value: unknown }',
         'fallback_null' => '{ value: string }',
     ]);

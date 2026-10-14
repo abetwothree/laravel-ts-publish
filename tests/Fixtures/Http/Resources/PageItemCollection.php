@@ -41,6 +41,13 @@ class PageItemCollection extends ResourceCollection
             'mapped' => $this->resource->map(fn ($item) => $item->id),
             'only' => $this->resource->only(['id']),
             'except' => $this->resource->except(['id']),
+            'rows' => $this->rows(),
         ];
+    }
+
+    /** What `$this->resource` holds, returned by a helper with no declaration. */
+    private function rows()
+    {
+        return $this->resource;
     }
 }
