@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Variable;
 
@@ -22,8 +21,8 @@ trait NarrowsInstanceofSubjects
 {
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varClassBindings,
-     * its varGuardBindings past the write that ended its parameter binding, or `$this->resource`'s model when that is
-     * one), then restore the scope. Null for any other subject, or for an arm that writes it.
+     * its varGuardBindings past the write that ended its parameter binding, or the model the `$this->resource` proxy
+     * holds when that is one), then restore the scope. Null for any other subject, or for an arm that writes it.
      *
      * @template TResult
      *
@@ -36,7 +35,7 @@ trait NarrowsInstanceofSubjects
         $variable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
 
         // `$this->resource` is written through the `this` variable.
-        if (($variable === null && ! $this->isResourceFetch($subject))
+        if (($variable === null && ! $this->isProxyFetch($subject, $scope))
             || in_array($variable ?? 'this', $this->collectWrittenVariableNames([$arm], $scope), true)
         ) {
             return null;
@@ -78,9 +77,7 @@ trait NarrowsInstanceofSubjects
 
             // Derived from the subject, never from the previous value: a ternary-only guard leaves
             // instanceOfWrappedClass unseeded, so a proxying subject may not have been forwarding before.
-            if ($scope->subjectReflection->isSubclassOf(JsonResource::class)) {
-                $scope->forwardsUndeclaredMembersTo = $model;
-            }
+            $scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor($scope->subjectReflection, $model);
 
             return $resolve();
         } finally {

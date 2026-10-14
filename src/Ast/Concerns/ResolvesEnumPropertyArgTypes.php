@@ -112,7 +112,7 @@ trait ResolvesEnumPropertyArgTypes
             // is the underlying model instance.
             if (
                 $argExpr instanceof PropertyFetch
-                && $this->isResourceFetch($argExpr->var)
+                && $this->isProxyFetch($argExpr->var, $scope)
                 && $argExpr->name instanceof Identifier
             ) {
                 $propName = $argExpr->name->toString();

@@ -29,7 +29,7 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` | The subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo` |
+| `$this->resource` on an API resource only | The subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`. Read whole, it publishes the backing model's interface, or the redeclaration when no model backs it |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |

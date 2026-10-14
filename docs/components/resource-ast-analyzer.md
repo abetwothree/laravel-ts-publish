@@ -149,8 +149,8 @@ models by primary key. [AST engine § The honest ordering inventory](ast-engine.
 those handlers. It also records the controller scope, which has no model, where one of them still reflects a filter.
 
 A model's own method or accessor body is analyzed with the model as its subject. There `$this->resource` is the
-model's own member, because only a resource sets `AnalysisScope::$forwardsUndeclaredMembersTo`. How filters answer in
-that body, and in a body that carries no imports, is in
+model's own member, because only an API resource has the proxy (`AnalysisScope::hasResourceProxy()`). How filters
+answer in that body, and in a body that carries no imports, is in
 [receiver types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
 
 The relation arm publishes by member kind, adds `| null` through `?->`, and declines (`null`, so a later handler
@@ -380,15 +380,16 @@ Inside a `whenLoaded()` closure `$this` is still the resource.
 [`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
 `RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
 `AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
-keeps the relation walk. `ClosureResourceRootResource` pins a property chain and a method call on `$this->resource`
-inside such a closure.
+reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call
+on `$this->resource` inside such a closure.
 
 ## Collection pipelines
 
 Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
-`$this->{manyRelation}`. [`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one
-rooted at `collect($arg)`, and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
+`$this->{manyRelation}` or `$this->resource->{manyRelation}`.
+[`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
+and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
 since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by

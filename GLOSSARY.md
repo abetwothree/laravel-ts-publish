@@ -102,6 +102,10 @@ _Avoid_: signature key, pattern key
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
+**Resource proxy**:
+An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
+_Avoid_: wrapper, resource property
+
 **Inference**:
 Working out a property's type from PHP code when no override or docblock states it.
 

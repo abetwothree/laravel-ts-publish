@@ -83,18 +83,6 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` in a resource.
-     *
-     * `$this->resource` itself is the model, not a member named `resource`; its filters belong to the receiver rules.
-     * Only a subject that forwards to its model has that proxy: in a model's own body it is the model's own member.
-     */
-    private function isModelMemberFetch(PropertyFetch $fetch, AnalysisScope $scope): bool
-    {
-        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch))
-            || ($this->isResourceFetch($fetch->var) && $scope->forwardsUndeclaredMembersTo !== null);
-    }
-
-    /**
      * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`, declining when nothing types it.
      *
      * A many-relation publishes its own read, since `Eloquent\Collection::only()` keeps whole models by primary key.

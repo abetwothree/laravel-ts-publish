@@ -90,8 +90,8 @@ final class MethodChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // `$this->resource` is the resource's own model, unless the model declares a relation by that name.
-        if ($chain[0]['name'] === 'resource' && $resolver->resolveRelation($currentModel, 'resource')['type'] === 'unknown') {
+        // The proxy is the API resource's own model, even one with a `resource` relation; elsewhere it is a member.
+        if ($chain[0]['name'] === 'resource' && $scope->hasResourceProxy()) {
             array_shift($chain);
         }
 

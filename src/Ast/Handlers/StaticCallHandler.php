@@ -27,7 +27,6 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -133,11 +132,8 @@ final class StaticCallHandler implements ExpressionHandler
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
         if ($expr instanceof StaticCall
-            && $expr->class instanceof PropertyFetch
-            && $expr->class->var instanceof Variable
-            && $expr->class->var->name === 'this'
-            && $expr->class->name instanceof Identifier
-            && $expr->class->name->toString() === 'resource'
+            && $expr->class instanceof Expr
+            && $this->isProxyFetch($expr->class, $scope)
             && $expr->name instanceof Identifier
         ) {
             return $this->analyzeStaticMethodOnResource($expr, $expr->name->toString(), $scope, $engine);

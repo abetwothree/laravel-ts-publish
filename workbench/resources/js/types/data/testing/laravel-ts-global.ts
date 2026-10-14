@@ -2970,6 +2970,7 @@ declare global {
             author_titled_inside?: string | null;
             options_inside?: Record<string, string> | null;
             profile_bio_inside?: string | null;
+            own_model: workbench.app.models.Post;
         }
         /**
          * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
@@ -4738,6 +4739,7 @@ declare global {
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comment_ids: number[];
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -4760,6 +4762,7 @@ declare global {
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comment_ids: number[];
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {

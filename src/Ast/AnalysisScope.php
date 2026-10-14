@@ -323,9 +323,29 @@ final class AnalysisScope
 
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
-        $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
-            ? $modelClass
-            : null;
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+    }
+
+    /**
+     * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
+     * proxy or names no class. The one home of the proxy target, for every scope and every narrowing of it.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @param  class-string|null  $backing  the backing model, or the class an instanceof guard names
+     * @return class-string|null
+     */
+    public static function proxyTargetFor(ReflectionClass $subject, ?string $backing): ?string
+    {
+        return $subject->isSubclassOf(JsonResource::class) ? $backing : null;
+    }
+
+    /**
+     * Whether the subject's `$this->resource` is the proxy to what it wraps: every API resource has one, model or not,
+     * and no other subject does, so in a model's own body, a controller or an event it is a member like any other.
+     */
+    public function hasResourceProxy(): bool
+    {
+        return $this->subjectReflection->isSubclassOf(JsonResource::class);
     }
 
     /**

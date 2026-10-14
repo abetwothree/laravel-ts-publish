@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
@@ -91,7 +92,7 @@ trait InspectsAstNodes
     }
 
     /**
-     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     * Whether an expression is spelled `$this->resource`, in any subject; isProxyFetch() says whether it is the proxy.
      */
     protected function isResourceFetch(Expr $expr): bool
     {
@@ -100,6 +101,24 @@ trait InspectsAstNodes
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'resource';
+    }
+
+    /**
+     * Whether an expression is `$this->resource` on a subject that has the proxy; anywhere else it is a member.
+     */
+    protected function isProxyFetch(Expr $expr, AnalysisScope $scope): bool
+    {
+        return $this->isResourceFetch($expr) && $scope->hasResourceProxy();
+    }
+
+    /**
+     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` through the proxy.
+     * The proxy itself is the model, never a member named `resource`.
+     */
+    protected function isModelMemberFetch(Expr $fetch, AnalysisScope $scope): bool
+    {
+        return $fetch instanceof PropertyFetch
+            && (($this->isThisPropertyFetch($fetch) && ! $this->isProxyFetch($fetch, $scope)) || $this->isProxyFetch($fetch->var, $scope));
     }
 
     /**

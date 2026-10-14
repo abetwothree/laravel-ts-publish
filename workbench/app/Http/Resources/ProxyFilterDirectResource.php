@@ -40,6 +40,7 @@ final class ProxyFilterDirectResource extends JsonResource
             'comments_by_ids' => $this->comments->only($request->input('ids')),
             'comments_maybe' => $this->comments?->only($request->input('ids')),
             'comments_mapped' => $this->comments->map->only(['id', 'content']),
+            'comment_ids' => $this->comments->map(fn ($comment) => $comment->id),
         ];
     }
 }

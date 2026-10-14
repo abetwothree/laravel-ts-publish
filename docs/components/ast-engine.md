@@ -131,12 +131,16 @@ pairs, and the matrix does not run this profile.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These four facts span other classes:
+docblocks say what each binding table holds. These five facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
   alike, then restores both. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not
   describe the model a nested resolution ran under.
+- **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
+  API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
+  constructor, `ResourceAstAnalyzer` and `NarrowsInstanceofSubjects`. Handlers ask through
+  `InspectsAstNodes::isProxyFetch()` and `isModelMemberFetch()`.
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
@@ -332,7 +336,8 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 ## Subject mode
 
 Subject mode types `$this->prop` from the subject's own declaration. It always applies when `AnalysisScope::$modelClass`
-is `null`, as for a broadcast event, a DTO or any plain class. On a model-backed subject, it applies to a property
+is `null`, as for a broadcast event, a DTO or any plain class. On those `$this->resource` is the subject's own property,
+since only an API resource has the proxy. On a model-backed subject, it applies to a property
 `SubjectPropertyTypeResolver::declaresOwnProperty()` claims, which answers before the model's attributes and relations.
 PHP reads a declared property before `JsonResource::__get()` forwards to the model, so a resource's own `$stats`
 publishes that object, not a same-named attribute. A result naming a model the run does not publish declines rather

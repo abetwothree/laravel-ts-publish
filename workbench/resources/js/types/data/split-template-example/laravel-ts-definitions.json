@@ -11945,6 +11945,11 @@
                     "name": "profile_bio_inside",
                     "type": "string | null",
                     "optional": true
+                },
+                {
+                    "name": "own_model",
+                    "type": "Post",
+                    "optional": false
                 }
             ]
         },
@@ -17539,6 +17544,11 @@
                     "name": "comments_mapped",
                     "type": "{ id: number; content: string }[]",
                     "optional": false
+                },
+                {
+                    "name": "comment_ids",
+                    "type": "number[]",
+                    "optional": false
                 }
             ]
         },
@@ -17623,6 +17633,11 @@
                 {
                     "name": "comments_mapped",
                     "type": "{ id: number; content: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "comment_ids",
+                    "type": "number[]",
                     "optional": false
                 }
             ]

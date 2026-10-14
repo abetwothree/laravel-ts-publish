@@ -72,7 +72,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return null;
         }
 
-        // Collection chains rooted at `$this->{manyRelation}` (e.g. `->take(5)->map(...)->values()`).
+        // Collection chains rooted at `$this->{manyRelation}` or `$this->resource->{manyRelation}` (e.g. `->take(5)`).
         if ($expr instanceof MethodCall) {
             $chainResult = $this->analyzeRelationCollectionChain($expr, $scope, $engine);
 
@@ -82,7 +82,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         // `$this->resource->m()` runs what a bare `$this->m()` forwards to, so both publish alike, a vague answer too.
-        if ($expr instanceof MethodCall && $this->isResourceFetch($expr->var) && $expr->name instanceof Identifier) {
+        if ($expr instanceof MethodCall && $this->isProxyFetch($expr->var, $scope) && $expr->name instanceof Identifier) {
             return $this->forwardedMethodReturn($expr, $expr->name->toString(), $scope, $engine);
         }
 
@@ -130,7 +130,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             'load', 'loadMissing', 'all',
         ];
 
-        // Walk down the chain collecting op names until we reach $this->prop.
+        // Walk down the chain collecting op names until we reach the model member it is rooted at.
         /** @var list<array{name: string, node: MethodCall}> $ops */
         $ops = [];
         $node = $call;
@@ -144,7 +144,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $node = $node->var;
         }
 
-        if (! $node instanceof PropertyFetch || ! $this->isThisPropertyFetch($node) || ! $node->name instanceof Identifier) {
+        if (! $node instanceof PropertyFetch || ! $this->isModelMemberFetch($node, $scope) || ! $node->name instanceof Identifier) {
             return null;
         }
 

@@ -45,7 +45,7 @@ final class SubjectMethodTypeResolver
     }
 
     /**
-     * What a call forwarded to the wrapped class, else the backing model, returns; the model answers when the
+     * What a call forwarded to the wrapped class, else the model the proxy holds, returns; the model answers when the
      * wrapped class declares the method but cannot type it. A bare `$this->m()`, `$this::m()`,
      * `$this->resource::m()` and `$this->resource->m()` all read this.
      *
@@ -56,7 +56,7 @@ final class SubjectMethodTypeResolver
     {
         $wrappedClass = $this->resolveWrappedClass($scope);
 
-        foreach ([$wrappedClass, $scope->modelClass] as $class) {
+        foreach ([$wrappedClass, $scope->forwardsUndeclaredMembersTo] as $class) {
             if ($class === null) {
                 continue;
             }

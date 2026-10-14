@@ -53,7 +53,7 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         // $this->resource->subProp — e.g. ->name / ->value on a backed enum, or a column of a wrapped model
-        if ($expr instanceof PropertyFetch && $this->isResourceFetch($expr->var)) {
+        if ($expr instanceof PropertyFetch && $this->isProxyFetch($expr->var, $scope)) {
             $info = $this->analyzeWrappedEnumResourceProperty($expr, $scope);
 
             if ($info['type'] === 'unknown') {
@@ -124,11 +124,9 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $resolver = resolve(ModelAttributeResolver::class);
 
-        // `$this->resource` is the resource's own model.
-        if ($chain[0]['name'] === 'resource'
-            && $scope->modelClass !== null
-            && $resolver->resolveRelation($scope->modelClass, 'resource')['type'] === 'unknown'
-        ) {
+        // The proxy is the API resource's own model, even one with a `resource` relation; elsewhere it is a member.
+        // With no model the root was already shifted off as the subject's own property.
+        if ($chain[0]['name'] === 'resource' && $scope->modelClass !== null && $scope->hasResourceProxy()) {
             array_shift($chain);
         }
 

@@ -392,18 +392,15 @@ test('a 3-deep nullsafe method chain on $this->resource walks the resource model
     expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
-// The documented exception: a model that really declares a `resource` relation keeps the old walk, so
-// `resource` is a relation step to traverse rather than the wrapper property to skip.
-test('a model with a real resource relation keeps the old relation walk', function () {
+// PHP reads the declared JsonResource::$resource before any __get(), so a model's own `resource` relation is reached
+// only as `$this->resource->resource`; `$this->resource->name` reads the model, which has no `name`.
+test('a model with a real resource relation is still the proxy, and its relation is one step further', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), ResourceRelationModel::class);
+    $handler = new PropertyChainHandler;
 
-    $result = (new PropertyChainHandler)->resolve(
-        new PropertyFetch(chainThisProp('resource'), 'name'),
-        $scope,
-        chainHandlersThrowingEngine(),
-    );
-
-    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+    expect($handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+        ->and($handler->resolve(new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'resource'), 'name'), $scope, chainHandlersThrowingEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
 });
 
 // The published output must stay correct end to end, whichever handler ends up answering.

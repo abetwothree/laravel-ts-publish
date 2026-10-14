@@ -107,6 +107,8 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'resource'), 'getMorphClass'),
         new MethodCall(new PropertyFetch($this_, 'post'), 'commentsCount'),
         new MethodCall(new PropertyFetch($this_, 'replies'), 'take', [new Arg(new Int_(5))]),
+        // The same relation pipeline rooted through the $this->resource proxy.
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'take', [new Arg(new Int_(5))]),
         // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a
         // collect() root, and concat() of the receiver's own relation.
         new MethodCall(new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'map', [

@@ -27,10 +27,13 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
@@ -1317,4 +1320,87 @@ describe('a forwarded model method reads the same in every spelling', function (
             expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe('unknown');
         }
     })->with(['guarded', 'hiddenOnWrapped']);
+});
+
+// Every API resource has the proxy, model or not: PHP reads the declared JsonResource::$resource before any __get().
+// No other subject has it, so in a model's own body or a controller `$this->resource` is a member like any other.
+describe('the resource proxy', function () {
+    test('a resource over a model with a resource relation reads $this->resource as that model', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationPostResource::class), ProxyRelationPost::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'ProxyRelationPost'],
+        ['$this->resource->title', 'string'],
+        ['$this->resource->headline()', 'string'],
+        ['$this->resource?->headline()', 'string | null'],
+        // Only the related User has nameTitled(); the post throws BadMethodCallException.
+        ['$this->resource?->nameTitled()', 'unknown'],
+        ['$this->resource->resource', 'User'],
+        ['$this->resource->resource->name', 'string'],
+        ['$this->resource->resource?->nameTitled()', 'string | null'],
+        ['$this->resource->only([\'id\', \'title\'])', "Pick<ProxyRelationPost, 'id' | 'title'>"],
+        ['$this->resource->resource->only([\'id\', \'name\'])', "Pick<User, 'id' | 'name'>"],
+        ['$this->resource->author?->nameTitled()', 'string | null'],
+    ]);
+
+    test('a model\'s own body reads $this->resource as a member, never the proxy', function (string $model, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass($model), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        // Post has no `resource` member, so each read throws or is always null.
+        [Post::class, '$this->resource->title', 'unknown'],
+        [Post::class, '$this->resource?->title', 'unknown'],
+        [Post::class, '$this->resource->commentsCount()', 'unknown'],
+        [Post::class, '$this->resource->author->name', 'unknown'],
+        [ProxyRelationPost::class, '$this->resource->name', 'string'],
+        [ProxyRelationPost::class, '$this->resource?->nameTitled()', 'string | null'],
+        [ProxyRelationPost::class, '$this->resource->only([\'id\', \'name\'])', "Pick<User, 'id' | 'name'>"],
+    ]);
+
+    test('a model-less subject reads $this->resource as its own property', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyRelationController::class), null, '__construct', ControllerExpressionHandlers::make());
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'Post'],
+        ['$this->resource->title', 'string'],
+        ['$this->resource?->title', 'string | null'],
+        ['$this->resource->author->name', 'string'],
+        ['$this->resource?->author?->name', 'string | null'],
+        ['$this->resource->author?->nameTitled()', 'string | null'],
+        ['$this->resource?->commentsCount()', 'number | null'],
+        ['$this->resource->only([\'id\'])', "Pick<Post, 'id'>"],
+        ['$this->post->resource->name', 'string'],
+        ['$this->post->resource?->nameTitled()', 'string | null'],
+        ['$this->post->resource->only([\'id\', \'name\'])', "Pick<User, 'id' | 'name'>"],
+    ]);
+
+    test('a filter on a member the model does not have is unknown, through the proxy or not', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with([
+        '$this->not_a_member->only([\'id\'])',
+        '$this->resource->not_a_member->only([\'id\'])',
+    ]);
+
+    test('the bare $this->resource publishes the backing model with its import', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->when($flag, $this->resource)')))
+            ->toBe(['type' => 'Post', 'optional' => true, 'modelFqcn' => Post::class]);
+    });
+
+    test('a model-less resource reads its redeclared $resource as before', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'MediaTypeType | null'],
+        ['$this->resource->name', 'string'],
+        ['$this->resource->value', 'string'],
+        ['$this->resource->extensions()', 'unknown[]'],
+    ]);
 });

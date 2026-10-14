@@ -119,6 +119,14 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $this->analyzeCollectionProperty($scope);
         }
 
+        // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
+        // unreachable: the value is the model the subject wraps, else what the subject declares `$resource` holds.
+        if ($this->isProxyFetch($expr, $scope)) {
+            $held = $this->proxiedModel($scope) ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+
+            return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
+        }
+
         // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
         if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $propName)) {
             $own = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
@@ -158,6 +166,20 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         return $result;
+    }
+
+    /**
+     * The model the proxy holds, as the model's own interface, or null when it holds no model.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function proxiedModel(AnalysisScope $scope): ?array
+    {
+        $model = $scope->forwardsUndeclaredMembersTo;
+
+        return $model !== null && is_a($model, Model::class, true)
+            ? [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model]
+            : null;
     }
 
     /**

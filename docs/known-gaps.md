@@ -254,8 +254,9 @@ Check which spelling you wrote before you assume a value is `unknown`:
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
 
-`$this->resource` narrows in either polarity, for the whole method (`ResourceAstAnalyzer::resolveInstanceOfType()`),
-so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
+On an API resource, `$this->resource` narrows in either polarity, for the whole method
+(`ResourceAstAnalyzer::resolveInstanceOfType()`), so a resource that guards on it needs no `#[TsCasts]` for what the
+guard proves.
 
 ### A shape whose values name a class loses those values, in one of two ways
 

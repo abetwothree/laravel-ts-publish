@@ -1,3 +1,5 @@
+import type { Post } from '../../models';
+
 /**
  * Reads `$this->resource` inside whenLoaded closures bound to a different relation's model, so each
  * chain must root at the resource's own model rather than at the closure's relation model.
@@ -17,4 +19,5 @@ export interface ClosureResourceRootResource
     author_titled_inside?: string | null;
     options_inside?: Record<string, string> | null;
     profile_bio_inside?: string | null;
+    own_model: Post;
 }

@@ -37,10 +37,7 @@ trait ResolvesMapProxyElementModels
             return $scope->varCollectionBindings[$receiver->name]['modelFqcn'];
         }
 
-        if ($receiver instanceof PropertyFetch
-            && ($this->isThisPropertyFetch($receiver) || ($this->isResourceFetch($receiver->var) && $scope->forwardsUndeclaredMembersTo !== null))
-            && $receiver->name instanceof Identifier
-        ) {
+        if ($receiver instanceof PropertyFetch && $this->isModelMemberFetch($receiver, $scope) && $receiver->name instanceof Identifier) {
             $relationInfo = $this->resolveModelRelationTypeInfo($receiver->name->toString(), $scope);
 
             if (str_ends_with($relationInfo['type'], '[]') && $relationInfo['modelFqcn'] !== null) {
