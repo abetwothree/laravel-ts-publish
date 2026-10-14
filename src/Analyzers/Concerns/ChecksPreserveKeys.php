@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use ReflectionClass;
 
 /**
@@ -43,8 +44,6 @@ trait ChecksPreserveKeys
      */
     protected function wrapCollectionElementType(string $elementType, ReflectionClass $reflection): string
     {
-        return self::collectionPreservesKeys($reflection)
-            ? "Record<string, {$elementType}>"
-            : $elementType.'[]';
+        return ValueResult::collectionListType($elementType, self::collectionPreservesKeys($reflection));
     }
 }

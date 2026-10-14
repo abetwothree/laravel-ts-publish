@@ -153,6 +153,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
             $this->scope->reindexesNumericKeys = self::reindexes($this->resourceReflection);
+            $this->scope->collectedResource = $this->isResourceCollection($this->scope)
+                ? $this->resolveSingularResourceClass($this->scope)
+                : null;
         }
 
         $this->ownsScope = $scope === null;

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesClassNames;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
@@ -37,6 +38,11 @@ final class ModelClassResolver
      */
     public function resolve(ReflectionClass $resource): ?string
     {
+        // A collection wraps the items it collects, never one model, whatever its docblock or attribute names.
+        if ($resource->isSubclassOf(ResourceCollection::class)) {
+            return null;
+        }
+
         $tsResourceAttrs = $resource->getAttributes(TsResource::class);
 
         if ($tsResourceAttrs) {

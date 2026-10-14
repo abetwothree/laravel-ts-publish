@@ -9,9 +9,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -34,6 +37,13 @@ final class ReceiverMethodReturnResolver
 
     /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
+
+    /** What a resource collection's items answer, whichever class holds them: the held value, an item, the list. */
+    private const array ITEMS_VALUE = ['toArray', 'jsonSerialize'];
+
+    private const array ITEMS_ELEMENT = ['first', 'last'];
+
+    private const array ITEMS_LIST = ['items', 'getCollection'];
 
     /**
      * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
@@ -64,7 +74,7 @@ final class ReceiverMethodReturnResolver
      *                            a direct caller passes it: StaticCallHandler answers every named-class call first
      * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call node, for a rule that reads its arguments
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
-     * @return ValueExpressionResult|null null when any receiver class cannot type the method
+     * @return ValueExpressionResult|null null when any receiver class cannot type the method, or none can run it
      */
     public function resolve(
         ReceiverType $receiver,
@@ -83,6 +93,12 @@ final class ReceiverMethodReturnResolver
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
+
+            // Where a collection's items cannot run the method the call throws, so no response carries that arm.
+            if ($receiver->collectedItems && ! $this->itemsHolderRuns($class, $methodName)) {
+                continue;
+            }
+
             $result = $this->ruleFor($receiver, $class, $methodName, $scope, $call)
                 ?? $this->resolveOn($class, $methodName, $fromInside, $site);
 
@@ -92,6 +108,10 @@ final class ReceiverMethodReturnResolver
             }
 
             $results[] = $result;
+        }
+
+        if ($results === []) {
+            return null;
         }
 
         $result = count($results) === 1
@@ -130,6 +150,43 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * A resource collection's items as a value, one arm per class that may hold them, as Laravel serializes each: the
+     * collected API resource's list for Support\Collection, the `@tolki/types` paginator over it for a paginator.
+     * The element is `unknown` when the collection collects no API resource.
+     *
+     * @return ValueExpressionResult|null null for a receiver that holds no resource collection's items
+     */
+    public function heldItems(ReceiverType $receiver, AnalysisScope $scope): ?array
+    {
+        if (! $receiver->collectedItems) {
+            return null;
+        }
+
+        $element = $receiver->elementResource;
+        $name = $element === null ? 'unknown' : TsNaming::resourceTypeName($element);
+        $arms = [];
+        $paginators = [];
+
+        foreach ($receiver->classes as $class) {
+            $paginator = TolkiTypes::MAP[$class] ?? null;
+
+            if ($paginator === null) {
+                $arms[] = ValueResult::collectionListType($name, ! $scope->reindexesNumericKeys);
+
+                continue;
+            }
+
+            $arms[] = "{$paginator}<{$name}>";
+            $paginators[] = $paginator;
+        }
+
+        $result = [...ValueResult::unknown(), 'type' => implode(' | ', $arms)];
+        $result = $element === null ? $result : [...$result, 'resourceFqcn' => $element];
+
+        return $paginators === [] ? $result : [...$result, 'customImports' => ['@tolki/types' => $paginators]];
+    }
+
+    /**
      * Whether a rule types a model's toArray() or one of its loosely declared arrays, which it runs as Model's own.
      *
      * A handler that reads a declaration directly, as for `$this->resource->m()`, leaves such a call to these rules.
@@ -156,6 +213,12 @@ final class ReceiverMethodReturnResolver
         AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
     ): ?array {
+        $items = $receiver->collectedItems ? $this->itemsRule($receiver, $class, $methodName, $scope) : null;
+
+        if ($items !== null) {
+            return $items;
+        }
+
         $resolver = resolve(ModelAttributeResolver::class);
 
         // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
@@ -372,6 +435,55 @@ final class ReceiverMethodReturnResolver
         }
 
         return ValueResult::namesOnlyPublishedModels($result) ? $result : null;
+    }
+
+    /**
+     * The rules on one class holding a resource collection's items: toArray() and jsonSerialize() give the held value,
+     * first() and last() an item, and a paginator's items() and getCollection() the list.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function itemsRule(ReceiverType $receiver, string $class, string $methodName, AnalysisScope $scope): ?array
+    {
+        $element = $receiver->elementResource;
+
+        if (in_array($methodName, self::ITEMS_VALUE, true)) {
+            return $this->heldItems(new ReceiverType([$class], collectedItems: true, elementResource: $element), $scope);
+        }
+
+        if ($element === null) {
+            return null;
+        }
+
+        $name = TsNaming::resourceTypeName($element);
+
+        return match (true) {
+            in_array($methodName, self::ITEMS_ELEMENT, true) => [
+                ...ValueResult::unknown(),
+                'type' => "{$name} | null",
+                'resourceFqcn' => $element,
+            ],
+            in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => [
+                ...ValueResult::unknown(),
+                'type' => ValueResult::collectionListType($name, ! $scope->reindexesNumericKeys),
+                'resourceFqcn' => $element,
+            ],
+            default => null,
+        };
+    }
+
+    /**
+     * Whether a class holding a resource collection's items runs the method: its own, or, on a paginator, its
+     * collection's, which `__call()` forwards to.
+     *
+     * @param  class-string  $class
+     */
+    private function itemsHolderRuns(string $class, string $methodName): bool
+    {
+        return method_exists($class, $methodName)
+            || Collection::hasMacro($methodName)
+            || ($class !== Collection::class && method_exists(Collection::class, $methodName));
     }
 
     /**

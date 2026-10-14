@@ -20133,6 +20133,16 @@
                     "name": "has_admin",
                     "type": "boolean",
                     "optional": false
+                },
+                {
+                    "name": "page",
+                    "type": "UserResource[] | LengthAwarePaginator<UserResource> | SimplePaginator<UserResource> | CursorPaginator<UserResource>",
+                    "optional": false
+                },
+                {
+                    "name": "first_user",
+                    "type": "UserResource | null",
+                    "optional": false
                 }
             ]
         },

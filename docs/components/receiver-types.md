@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, and the `elementModel` or `relatedModel` a collection or relation carries |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` or `relatedModel` a collection or relation carries, and `collectedItems` with `elementResource` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
@@ -29,7 +29,7 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | The subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`. Read whole, it publishes the backing model's interface, or the redeclaration when no model backs it |
+| `$this->resource` on an API resource only | The subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. Read whole, it publishes the backing model's interface, the items as `heldItems()` spells them, or the redeclaration when no model backs it |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
@@ -146,7 +146,10 @@ never emitted or imported, so it can accept the classes `morphToDocblockTargets(
 `ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`. It asks
 `ReceiverClassResolver::resolve()` for a call's receiver, or `resolveStaticReceiver()` for the class a static call is
 made on. `ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds and merges
-the answers. When any class declines, the whole call declines.
+the answers. When any class declines, the whole call declines. The one exception is a resource collection's items: a
+class that neither declares the method nor, as a paginator, forwards it to `Support\Collection` is skipped, since the
+call throws there and no response carries that arm. So `total()` publishes `number` from `LengthAwarePaginator` alone,
+and a method no class runs declines.
 
 Two receivers come from outside `resolve()`, which names nothing for a bare `$this`:
 
@@ -221,6 +224,14 @@ even when the subject is backed by the integer-keyed `Post`. The filter and rout
 they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules read the
 declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected `(string | number)[]`, only
 where code decides the key.
+
+One more rule reads no model, and runs before the six on a resource collection's items alone:
+
+- **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
+  `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
+  `Record<string, R>` when the collection preserves keys, by `ValueResult::collectionListType()`, and the `@tolki/types`
+  paginator over `R` for each paginator. `first()` and `last()` publish `R | null`, and a paginator's `items()` and
+  `getCollection()` the list. With no collected API resource, `R` is `unknown` and the item and list rules decline.
 
 ### The order for one class
 

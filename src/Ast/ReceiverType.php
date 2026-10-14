@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
@@ -19,6 +20,9 @@ final readonly class ReceiverType
      * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
      * @param  class-string<Model>|null  $relatedModel  set for a relation instance, such as `$post->comments()`
      * @param  bool  $unsaved  the model may be one no row backs yet: `new`, or a `replicate()` copy
+     * @param  bool  $collectedItems  a resource collection's `$this->resource`: its items in a Support\Collection,
+     *                                or the paginator it was given, so a method an arm cannot run throws, not answers
+     * @param  class-string<JsonResource>|null  $elementResource  set with $collectedItems: each item's API resource
      */
     public function __construct(
         public array $classes,
@@ -26,6 +30,8 @@ final readonly class ReceiverType
         public ?string $elementModel = null,
         public ?string $relatedModel = null,
         public bool $unsaved = false,
+        public bool $collectedItems = false,
+        public ?string $elementResource = null,
     ) {}
 
     /**
@@ -43,7 +49,15 @@ final readonly class ReceiverType
      */
     public function withShortCircuit(bool $shortCircuits): self
     {
-        return new self($this->classes, $shortCircuits, $this->elementModel, $this->relatedModel, $this->unsaved);
+        return new self(
+            $this->classes,
+            $shortCircuits,
+            $this->elementModel,
+            $this->relatedModel,
+            $this->unsaved,
+            $this->collectedItems,
+            $this->elementResource,
+        );
     }
 
     /**
@@ -51,7 +65,15 @@ final readonly class ReceiverType
      */
     public function asUnsaved(): self
     {
-        return new self($this->classes, $this->shortCircuits, $this->elementModel, $this->relatedModel, true);
+        return new self(
+            $this->classes,
+            $this->shortCircuits,
+            $this->elementModel,
+            $this->relatedModel,
+            true,
+            $this->collectedItems,
+            $this->elementResource,
+        );
     }
 
     /**

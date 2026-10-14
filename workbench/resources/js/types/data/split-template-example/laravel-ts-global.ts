@@ -13,6 +13,7 @@ import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
+import type { CursorPaginator, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { BroadcastableEvent } from '@/types/broadcast';
@@ -5536,6 +5537,8 @@ declare global {
         export interface UserCollection {
             data: UserResource[];
             has_admin: boolean;
+            page: UserResource[] | LengthAwarePaginator<UserResource> | SimplePaginator<UserResource> | CursorPaginator<UserResource>;
+            first_user: UserResource | null;
         }
         /**
          * Exercises return $this->except([...]) against a model with $hidden columns.

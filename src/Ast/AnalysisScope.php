@@ -11,6 +11,11 @@ use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Pagination\CursorPaginator;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -123,11 +128,19 @@ final class AnalysisScope
     /**
      * The class an undeclared `$this->member` read or call forwards to (a JsonResource proxies both to
      * `$this->resource`), or null. Derived in the constructor so every scope carries it; ResourceAstAnalyzer re-derives
-     * it, TernaryHandler narrows it, and ReceiverClassResolver reads it rather than testing for JsonResource.
+     * it, TernaryHandler narrows it, and proxyReceiver() hands it to ReceiverClassResolver.
      *
      * @var class-string|null
      */
     public ?string $forwardsUndeclaredMembersTo = null;
+
+    /**
+     * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
+     * it collects none. Set by ResourceAstAnalyzer for a scope it owns.
+     *
+     * @var class-string<JsonResource>|null
+     */
+    public ?string $collectedResource = null;
 
     /**
      * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
@@ -328,7 +341,8 @@ final class AnalysisScope
 
     /**
      * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
-     * proxy or names no class. The one home of the proxy target, for every scope and every narrowing of it.
+     * proxy or names no one class. The one home of the proxy target, for every scope and every narrowing of it; a
+     * ResourceCollection's items are proxyReceiver()'s.
      *
      * @param  ReflectionClass<object>  $subject
      * @param  class-string|null  $backing  the backing model, or the class an instanceof guard names
@@ -336,7 +350,9 @@ final class AnalysisScope
      */
     public static function proxyTargetFor(ReflectionClass $subject, ?string $backing): ?string
     {
-        return $subject->isSubclassOf(JsonResource::class) ? $backing : null;
+        return $subject->isSubclassOf(JsonResource::class) && ! $subject->isSubclassOf(ResourceCollection::class)
+            ? $backing
+            : null;
     }
 
     /**
@@ -346,6 +362,23 @@ final class AnalysisScope
     public function hasResourceProxy(): bool
     {
         return $this->subjectReflection->isSubclassOf(JsonResource::class);
+    }
+
+    /**
+     * What `$this->resource` holds as a receiver: the proxy target, or a ResourceCollection's items, which Laravel
+     * keeps in a Support\Collection or the paginator it was given, so each concrete class it builds is one arm.
+     */
+    public function proxyReceiver(): ?ReceiverType
+    {
+        if ($this->subjectReflection->isSubclassOf(ResourceCollection::class)) {
+            return new ReceiverType(
+                [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
+                collectedItems: true,
+                elementResource: $this->collectedResource,
+            );
+        }
+
+        return $this->forwardsUndeclaredMembersTo === null ? null : ReceiverType::of($this->forwardsUndeclaredMembersTo);
     }
 
     /**

@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -120,9 +121,12 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
-        // unreachable: the value is the model the subject wraps, else what the subject declares `$resource` holds.
+        // unreachable: the value is a collection's items, the model the subject wraps, else what it declares it holds.
         if ($this->isProxyFetch($expr, $scope)) {
-            $held = $this->proxiedModel($scope) ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+            $items = $this->isResourceCollection($scope) ? $scope->proxyReceiver() : null;
+            $held = $items !== null
+                ? resolve(ReceiverMethodReturnResolver::class)->heldItems($items, $scope)
+                : $this->proxiedModel($scope) ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
 
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
         }

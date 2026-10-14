@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
@@ -28,6 +29,8 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
@@ -1403,4 +1406,42 @@ describe('the resource proxy', function () {
         ['$this->resource->value', 'string'],
         ['$this->resource->extensions()', 'unknown[]'],
     ]);
+});
+
+/**
+ * An analyzer over a resource with the model the publish pipeline resolves for it, as ResourceTransformer builds it.
+ *
+ * @param  class-string  $resource
+ */
+function pipelineAnalyzer(string $resource): ResourceAstAnalyzer
+{
+    $reflection = new ReflectionClass($resource);
+
+    return new ResourceAstAnalyzer($reflection, resolve(ModelClassResolver::class)->resolve($reflection));
+}
+
+describe('a ResourceCollection holds its items, never the collected model', function () {
+    test('a collection whose @mixin model shares Support\Collection\'s method names reads its items', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyCollectedPostCollection::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->first()', 'ProxyCollectedPostResource | null'],
+        ['$this->resource->first()', 'ProxyCollectedPostResource | null'],
+        ['$this->resource', 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>'],
+        ['$this->resource->toArray()', 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>'],
+        ['$this->resource->count()', 'number'],
+        // A collection pipeline on the items, a model member Laravel throws on, or a filter Laravel sends as `[]`.
+        ['$this->values()', 'unknown'],
+        ['$this->sum(\'id\')', 'unknown'],
+        ['$this->title', 'unknown'],
+        ['$this->resource->title', 'unknown'],
+        ['$this->only([\'id\'])', 'unknown'],
+        ['$this->getKey()', 'unknown'],
+        ['$this->resource->pluck(\'title\')', 'unknown'],
+        ['$this->collection', 'ProxyCollectedPostResource[]'],
+    ]);
+
+    test('a collection that collects no resource holds unknown items', function () {
+        expect(pipelineAnalyzer(ProxyRawPostCollection::class)->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])
+            ->toBe('unknown[] | LengthAwarePaginator<unknown> | SimplePaginator<unknown> | CursorPaginator<unknown>');
+    });
 });

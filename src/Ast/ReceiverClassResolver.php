@@ -194,17 +194,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target, since
-     * `JsonResource::__call()` forwards it to `$this->resource`. The scope carries which subjects forward, so this
-     * resolver keeps to plain PHP semantics rather than one framework class's magic.
+     * The class a bare `$this->m()` runs on when the subject does not declare `m`: what `$this->resource` holds, since
+     * `JsonResource::__call()` forwards it there. The scope carries which subjects forward, so this resolver keeps to
+     * plain PHP semantics rather than one framework class's magic.
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        $target = $scope->forwardsUndeclaredMembersTo;
-
-        return $target !== null && ! $scope->subjectReflection->hasMethod($method)
-            ? ReceiverType::of($target)
-            : null;
+        return $scope->subjectReflection->hasMethod($method) ? null : $scope->proxyReceiver();
     }
 
     /**
@@ -406,7 +402,7 @@ final class ReceiverClassResolver
         $name = $fetch->name->toString();
 
         if ($fetch->var instanceof Variable && $fetch->var->name === 'this') {
-            return $this->fromThisProperty($name, $scope);
+            return $this->fromThisProperty($fetch, $name, $scope);
         }
 
         $receiver = $this->resolve($fetch->var, $scope);
@@ -424,7 +420,7 @@ final class ReceiverClassResolver
     /**
      * Resolve `$this->prop`: a subject-declared property first, because PHP reads it before any `__get()` forwarding.
      */
-    private function fromThisProperty(string $name, AnalysisScope $scope): ?ReceiverType
+    private function fromThisProperty(PropertyFetch|NullsafePropertyFetch $fetch, string $name, AnalysisScope $scope): ?ReceiverType
     {
         $subject = $scope->subjectReflection;
         $backing = $scope->modelClass ?? $scope->instanceOfWrappedClass;
@@ -441,7 +437,7 @@ final class ReceiverClassResolver
 
         // A subject that redeclares a framework name still names its own class (`/** @var MediaType|null */
         // public $resource`); `@var mixed` on JsonResource::$resource names nothing, so a plain
-        // `$this->resource` falls through to the backing model below.
+        // `$this->resource` falls through to what the proxy holds below.
         $declared = str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
             ? null
             : $this->typeOf($this->propertyClasses($property, $subject->getName()));
@@ -450,9 +446,7 @@ final class ReceiverClassResolver
             return $declared;
         }
 
-        return $name === 'resource' && $scope->forwardsUndeclaredMembersTo !== null
-            ? ReceiverType::of($scope->forwardsUndeclaredMembersTo)
-            : null;
+        return $this->isProxyFetch($fetch, $scope) ? $scope->proxyReceiver() : null;
     }
 
     /**
@@ -523,7 +517,10 @@ final class ReceiverClassResolver
 
         $forwarded = $this->forwardedThisReceiver($method, $scope);
 
-        return $forwarded === null ? null : $this->memberMethod($forwarded->classes[0], $method, false);
+        return $forwarded === null ? null : $this->merge(
+            array_map(fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false), $forwarded->classes),
+            false,
+        );
     }
 
     /**

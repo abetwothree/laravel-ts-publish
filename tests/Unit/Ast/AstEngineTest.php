@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
 use Illuminate\Http\Request;
@@ -95,6 +97,13 @@ it('resolves the backing model the way the resource pipeline does', function () 
     expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass(UserResource::class)))
         ->toBe(User::class);
 });
+
+it('a ResourceCollection with @mixin resolves no model', function (string $collection) {
+    expect(resolve(ModelClassResolver::class)->resolve(new ReflectionClass($collection)))->toBeNull();
+})->with([
+    '@mixin' => ProxyCollectedPostCollection::class,
+    '#[TsResource(model:)]' => AttributedPostCollection::class,
+]);
 
 it('builds import maps from an analysis', function () {
     $analysis = resolve(AstEngine::class)->analyzeMethod(UserResource::class);

@@ -510,11 +510,16 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 
 `resolveCollectedResourceClass()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because
 Laravel 12 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
+`ResourceAstAnalyzer` seeds `AnalysisScope::$collectedResource` from `resolveSingularResourceClass()` for a scope it
+owns, so `$this->resource`'s items name the API resource `$this->collection` does. A collection is backed by no model,
+whatever its docblock or `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
 
 `ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `wrapCollectionElementType()` is the one place that turns it into `Record<string, R>` instead of `R[]`, and every
 collection-typing site calls it. A site that skipped it would keep emitting `R[]` for a keyed collection, and only a
-fixture of that exact call shape would notice. `grep -rn 'wrapCollectionElementType(' src/` lists the sites.
+fixture of that exact call shape would notice. `grep -rn 'wrapCollectionElementType(' src/` lists the sites. It spells
+the list through `ValueResult::collectionListType()`, which `$this->resource`'s items call directly with the scope's
+`reindexesNumericKeys`.
 
 Each site reflects on the class Laravel instantiates:
 
