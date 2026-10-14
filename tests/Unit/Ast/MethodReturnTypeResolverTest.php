@@ -80,6 +80,8 @@ test('an application method whose declaration is vague publishes what its return
     'an untyped body that can end without a value' => [NamesakeEdgeResource::class, 'fallsOff', 'string | null'],
     'a sum over another untyped helper' => [NamesakeEdgeResource::class, 'outer', 'number'],
     'a callable string' => [NamesakeEdgeResource::class, 'callableString', 'string'],
+    'a local holding a string' => [NamesakeEdgeResource::class, 'titleViaLocal', 'string'],
+    'a local holding a pipeline whose callback is an argument' => [NamesakeEdgeResource::class, 'idsViaLocal', 'number[]'],
 ]);
 
 // A declined read leaves the declaration's own answer, or none at all, for the next step to take.
@@ -88,6 +90,16 @@ test('the value read declines a returned closure, a generator, a vendor method a
 })->with([
     'a returned closure' => [NamesakeEdgeResource::class, 'formatter', null],
     'a returned arrow function' => [NamesakeEdgeResource::class, 'arrow', null],
+    'a closure held in a local' => [NamesakeEdgeResource::class, 'formatterViaLocal', null],
+    'a closure copied between locals' => [NamesakeEdgeResource::class, 'copiedFormatter', null],
+    'a first-class callable held in a local' => [NamesakeEdgeResource::class, 'callableViaLocal', null],
+    'a closure as a ternary arm' => [NamesakeEdgeResource::class, 'formatterOrTitle', null],
+    'a closure as a short ternary\'s fallback' => [NamesakeEdgeResource::class, 'titleOrFormatter', null],
+    'a closure as a short ternary\'s checked value' => [NamesakeEdgeResource::class, 'checkedFormatter', null],
+    'a closure as ??\'s fallback' => [NamesakeEdgeResource::class, 'coalescedFormatter', null],
+    'a closure on the left of ??' => [NamesakeEdgeResource::class, 'coalescedLocal', null],
+    'a closure as a match arm' => [NamesakeEdgeResource::class, 'matchedFormatter', null],
+    'two locals bound to each other' => [NamesakeEdgeResource::class, 'cyclicLocals', null],
     'a generator' => [PostMetaService::class, 'generatedMeta', 'unknown[]'],
     'an iterable, with an iterator return nothing types' => [PostMetaService::class, 'iterableMeta', 'unknown[]'],
     'a vendor method, whose conditional @return needs a rule of its own' => [Str::class, 'upper', null],
@@ -103,12 +115,14 @@ test('a helper read as a value carries the import channels its returns name', fu
         ->toBe(['type' => 'Post', 'optional' => false, 'embeddedModelFqcns' => [Post::class]]);
 });
 
-// Laravel sends a returned Closure object as `{}`, never what calling it returns.
+// Laravel sends a returned Closure object as `{}`, never what calling it returns, however the return reaches it.
 test('a helper that returns a closure publishes unknown', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeEdgeResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect($props['closure']['type'])->toBe('unknown')
-        ->and($props['arrow']['type'])->toBe('unknown');
+        ->and($props['arrow']['type'])->toBe('unknown')
+        ->and($props['via_local']['type'])->toBe('unknown')
+        ->and($props['via_ternary']['type'])->toBe('unknown');
 });
 
 test('a mutual recursion with no declaration terminates, each read declining', function () {

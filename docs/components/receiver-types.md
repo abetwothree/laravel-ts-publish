@@ -323,9 +323,11 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
   therefore reads each using resource's model.
 - **Strict**: one return that types nothing declines the whole read, since dropping it would claim less than PHP can
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
-- **Declines** a body that yields, and a returned closure, arrow function or first-class callable, which Laravel sends
-  as the `Closure` object, `{}`.
-- **Skips a dependency's method**: built in, under `vendor/`, or in this package's own `src/`.
+- **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which
+  Laravel sends as the `Closure` object, `{}`: as itself, an arm of `?:`, `??` or `match`, or a local the scope binds to
+  its one top-level write, which is how the engine reads that local. A local written more than once is not followed.
+- **Skips a dependency's method**: built in, under a vendor directory Composer registered, or in this package's own
+  `src/` (`DependencyFiles`).
 - **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
 - **Unlike the shape, it carries import channels**, so a helper that returns an enum or a model imports it.
 

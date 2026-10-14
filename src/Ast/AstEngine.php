@@ -14,9 +14,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\Match_;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
+use PhpParser\Node\MatchArm;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -95,7 +100,7 @@ final class AstEngine
         $scope = $this->bindingsFor($context, $modelClass, $passed);
         $analyzer = new ResourceAstAnalyzer($scope->subjectReflection, $modelClass, $method, scope: $scope, context: $context);
 
-        return $this->returnsValue($context->method, $analyzer);
+        return $this->returnsValue($context->method, $analyzer, $scope);
     }
 
     /**
@@ -241,17 +246,20 @@ final class AstEngine
     }
 
     /**
-     * A function-like body's own returns, merged strictly; null if it yields, returns a callable or one types nothing.
+     * A function-like body's own returns, merged strictly; null if it yields, may return a callable, or one is unknown.
      *
      * @return ValueExpressionResult|null
      */
-    private function returnsValue(FunctionLike $function, ExpressionEngine $engine): ?array
+    private function returnsValue(FunctionLike $function, ExpressionEngine $engine, AnalysisScope $scope): ?array
     {
         $stmts = $function->getStmts() ?? [];
         $returns = $this->collectReturnExpressions($stmts);
 
-        // A generator returns a Generator, and a returned callable is the Closure object, never what calling it gives.
-        if ($returns === [] || $this->yields($stmts) || array_any($returns, $this->isCallableValue(...))) {
+        // A generator returns a Generator, and a callable is the Closure object, never what calling it gives.
+        if ($returns === []
+            || $this->yields($stmts)
+            || array_any($returns, fn (Expr $returned): bool => $this->mayHoldCallable($returned, $scope))
+        ) {
             return null;
         }
 
@@ -270,13 +278,37 @@ final class AstEngine
     }
 
     /**
-     * Whether an expression is a closure, an arrow function or a first-class callable, each returned as a `Closure`.
+     * Whether a value may be a closure, an arrow function or a first-class callable: as itself, an arm of `?:`, `??` or
+     * `match`, or the one write the scope binds a local to, which is how the engine reads that local.
+     *
+     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
      */
-    private function isCallableValue(Expr $expr): bool
+    private function mayHoldCallable(Expr $expr, AnalysisScope $scope, array $followed = []): bool
     {
-        return $expr instanceof ClosureExpr
-            || $expr instanceof ArrowFunction
-            || ($expr instanceof CallLike && $expr->isFirstClassCallable());
+        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
+            return true;
+        }
+
+        if ($expr instanceof CallLike) {
+            return $expr->isFirstClassCallable();
+        }
+
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $bound = $scope->localVarBindings[$expr->name] ?? null;
+
+            return $bound !== null
+                && ! isset($followed[$expr->name])
+                && $this->mayHoldCallable($bound, $scope, [...$followed, $expr->name => true]);
+        }
+
+        $arms = match (true) {
+            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
+            $expr instanceof Coalesce => [$expr->left, $expr->right],
+            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
+            default => [],
+        };
+
+        return array_any($arms, fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $followed));
     }
 
     /**

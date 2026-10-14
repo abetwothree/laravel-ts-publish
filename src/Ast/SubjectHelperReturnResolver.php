@@ -60,7 +60,7 @@ final class SubjectHelperReturnResolver
         $stmts = $declaration->stmts ?? [];
         $returns = $this->collectReturnExpressions($stmts);
 
-        // Only a wrap holds what no declared return can name; any other helper is read as a value from its own scope.
+        // Only a wrap holds what no declared return can name; MethodReturnTypeResolver types any other helper.
         if ($declaration === null
             || ! array_all($returns, $this->wrapsEnumOrIsNull(...))
             || array_all($returns, $this->isNullLiteral(...))

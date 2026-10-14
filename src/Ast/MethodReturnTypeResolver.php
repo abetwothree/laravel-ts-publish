@@ -33,9 +33,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * A method's return type: the declaration first, then, when that is too vague to publish, the shape its literal body
- * spells in place of the declaration's array arm, beside every other arm it names, else the value its returns hold.
- * Memoized per `class@method` and what the call binds; the rules are in docs/components/receiver-types.md.
+ * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
+ * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`
+ * and what the call binds; the rules are in docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -191,11 +191,12 @@ final class MethodReturnTypeResolver
      */
     private function bodyValue(string $class, string $methodName, array $passed): ?array
     {
+        $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
         $memo = resolve(AnalysisMemo::class);
 
         // bodyType()'s guard, so a recursion through either reader stops at its first repeat.
-        if ($this->isDependencyMethod($class, $methodName) || ! $memo->enter($key)) {
+        if (DependencyFiles::ofApplication()->contains($file) || ! $memo->enter($key)) {
             return null;
         }
 
@@ -204,20 +205,6 @@ final class MethodReturnTypeResolver
         } finally {
             $memo->leave($key);
         }
-    }
-
-    /**
-     * Whether a method is a dependency's: built in, under `vendor/`, or in this package's `src/`, installed there too.
-     *
-     * @param  class-string  $class
-     */
-    private function isDependencyMethod(string $class, string $methodName): bool
-    {
-        $file = new ReflectionMethod($class, $methodName)->getFileName();
-
-        return $file === false
-            || str_contains($file, DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR)
-            || str_starts_with($file, dirname(__DIR__).DIRECTORY_SEPARATOR);
     }
 
     /**
