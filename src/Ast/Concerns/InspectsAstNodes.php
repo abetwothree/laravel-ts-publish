@@ -14,14 +14,18 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Plus;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Expr\Yield_;
@@ -29,6 +33,7 @@ use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
@@ -501,6 +506,47 @@ trait InspectsAstNodes
         }
 
         return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Return_ && $node->expr === null);
+    }
+
+    /**
+     * Whether a value may be a closure, an arrow function or, where counted, a first-class callable: as itself, an arm
+     * of `?:`, `??` or `match`, or the one write the scope binds a local to, which is how the engine reads that local.
+     *
+     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
+     */
+    protected function mayHoldCallable(
+        Expr $expr,
+        AnalysisScope $scope,
+        bool $firstClassCallables = true,
+        array $followed = [],
+    ): bool {
+        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
+            return true;
+        }
+
+        if ($expr instanceof CallLike) {
+            return $firstClassCallables && $expr->isFirstClassCallable();
+        }
+
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $bound = $scope->localVarBindings[$expr->name] ?? null;
+
+            return $bound !== null
+                && ! isset($followed[$expr->name])
+                && $this->mayHoldCallable($bound, $scope, $firstClassCallables, [...$followed, $expr->name => true]);
+        }
+
+        $arms = match (true) {
+            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
+            $expr instanceof Coalesce => [$expr->left, $expr->right],
+            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
+            default => [],
+        };
+
+        return array_any(
+            $arms,
+            fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $firstClassCallables, $followed),
+        );
     }
 
     /**

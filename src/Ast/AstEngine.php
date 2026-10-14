@@ -14,14 +14,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\BinaryOp\Coalesce;
-use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Expr\Match_;
-use PhpParser\Node\Expr\Ternary;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
-use PhpParser\Node\MatchArm;
 use ReflectionClass;
 use ReflectionProperty;
 
@@ -275,40 +269,6 @@ final class AstEngine
         return $this->canEndWithoutValue($function)
             ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
             : $result;
-    }
-
-    /**
-     * Whether a value may be a closure, an arrow function or a first-class callable: as itself, an arm of `?:`, `??` or
-     * `match`, or the one write the scope binds a local to, which is how the engine reads that local.
-     *
-     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
-     */
-    private function mayHoldCallable(Expr $expr, AnalysisScope $scope, array $followed = []): bool
-    {
-        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
-            return true;
-        }
-
-        if ($expr instanceof CallLike) {
-            return $expr->isFirstClassCallable();
-        }
-
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            $bound = $scope->localVarBindings[$expr->name] ?? null;
-
-            return $bound !== null
-                && ! isset($followed[$expr->name])
-                && $this->mayHoldCallable($bound, $scope, [...$followed, $expr->name => true]);
-        }
-
-        $arms = match (true) {
-            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
-            $expr instanceof Coalesce => [$expr->left, $expr->right],
-            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
-            default => [],
-        };
-
-        return array_any($arms, fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $followed));
     }
 
     /**

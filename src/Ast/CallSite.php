@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\Closure;
 use ReflectionMethod;
 use ReflectionParameter;
 
@@ -22,6 +21,8 @@ use ReflectionParameter;
  */
 final readonly class CallSite
 {
+    use InspectsAstNodes;
+
     /**
      * Read a call in the scope and engine it is written in.
      */
@@ -112,15 +113,12 @@ final readonly class CallSite
     }
 
     /**
-     * Whether an argument is a closure, or on a value read a first-class callable, whose value hangs on whether the
-     * method calls it: Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so it
-     * sends the latter. A spread reads a held first-class callable as the Closure it creates, which is `{}`.
+     * Whether an argument may hold a closure, or on a value read a first-class callable, whose value hangs on whether
+     * the method calls it: Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so
+     * it sends the latter. A spread reads a held first-class callable as the Closure it creates, which is `{}`.
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->engine->invokesCallables()
-            && ($argument instanceof Closure
-                || $argument instanceof ArrowFunction
-                || ($valueRead && $argument instanceof CallLike && $argument->isFirstClassCallable()));
+        return ! $this->engine->invokesCallables() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
     }
 }

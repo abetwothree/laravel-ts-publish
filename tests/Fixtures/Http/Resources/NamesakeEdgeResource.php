@@ -10,8 +10,8 @@ use Workbench\App\Models\Post;
 
 /**
  * Edges of a helper read as a value: a returned closure, arrow function or first-class callable, which Laravel sends as
- * `{}`, directly or through a local, a copy, `?:`, `??` or `match`; a short ternary, a body that can end without a
- * value, a nested helper, a callable string, the wrapped model, and locals that hold no callable.
+ * `{}`, directly, through a local, a copy, `?:`, `??` or `match`, or passed in; a short ternary, a body that can end
+ * without a value, a nested helper, a callable string, the wrapped model, and locals that hold no callable.
  *
  * @mixin Post
  */
@@ -24,6 +24,9 @@ final class NamesakeEdgeResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $format = fn () => 1;
+        $title = $this->title;
+
         return [
             'closure' => $this->formatter(),
             'arrow' => $this->arrow(),
@@ -34,6 +37,10 @@ final class NamesakeEdgeResource extends JsonResource
             'wrapped' => $this->wrapped(),
             'via_local' => $this->formatterViaLocal(),
             'via_ternary' => $this->formatterOrTitle(),
+            'passed_local' => $this->pass($format),
+            'passed_ternary' => $this->pass($this->title ? fn () => 1 : 'x'),
+            'via_helper' => $this->holder(),
+            'passed_title' => $this->pass($title),
         ];
     }
 
@@ -155,6 +162,20 @@ final class NamesakeEdgeResource extends JsonResource
         $shout = strtoupper(...);
 
         return $shout;
+    }
+
+    /** Whatever the call passes, with no declaration. */
+    public function pass($value)
+    {
+        return $value;
+    }
+
+    /** A closure object held in a local, passed through another helper. */
+    public function holder()
+    {
+        $format = fn () => 2;
+
+        return $this->pass($format);
     }
 
     /** Two locals bound to each other, a cycle the read must end. */

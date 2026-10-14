@@ -107,6 +107,18 @@ test('the value read declines a returned closure, a generator, a vendor method a
     'a return nothing types' => [NamesakeInvoiceResource::class, 'opaque', null],
 ]);
 
+// A parameter is not bound to an argument that may hold a callable, so a helper returning it publishes nothing for it.
+test('a helper passed a callable through a local, a ternary or another helper publishes unknown', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeEdgeResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$key]['type'])->toBe($type);
+})->with([
+    'a closure passed through a local' => ['passed_local', 'unknown'],
+    'a closure passed as a ternary arm' => ['passed_ternary', 'unknown'],
+    'a closure passed from another helper\'s local' => ['via_helper', 'unknown'],
+    'a string passed through a local' => ['passed_title', 'string'],
+]);
+
 // Unlike the literal shape, a value read keeps the class its returns name, so the caller imports it.
 test('a helper read as a value carries the import channels its returns name', function () {
     $call = new AstParser()->parseSource('<?php $this->wrapped();')[0]->expr;

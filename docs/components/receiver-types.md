@@ -325,7 +325,8 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
   return. A union elsewhere drops such an arm ([known gaps][gap-union-arm]).
 - **Declines** a body that yields, and a return that may hold a closure, arrow function or first-class callable, which
   Laravel sends as the `Closure` object, `{}`: as itself, an arm of `?:`, `??` or `match`, or a local the scope binds to
-  its one top-level write, which is how the engine reads that local. A local written more than once is not followed.
+  its one top-level write, which is how the engine reads that local. A local written more than once is not followed,
+  and a parameter is never bound to a callable its call passes ([AST engine § A called method's parameters][params]).
 - **Skips a dependency's method**: built in, under a vendor directory Composer registered, or in this package's own
   `src/` (`DependencyFiles`).
 - **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
@@ -380,6 +381,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverType`]: ../../src/Ast/ReceiverType.php
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
+[params]: ast-engine.md#a-called-methods-parameters
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type
 [gap-to-array]: ../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately
 [inventory]: ast-engine.md#the-honest-ordering-inventory
