@@ -10,6 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -36,6 +40,7 @@ use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\UnitEnumResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
@@ -402,6 +407,45 @@ test('a model with a real resource relation is still the proxy, and its relation
         ->and($handler->resolve(new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'resource'), 'name'), $scope, chainHandlersThrowingEngine()))
         ->toBe(['type' => 'string', 'optional' => false]);
 });
+
+// Each step is read as Model::__get() reads it, an attribute before a relation. A step holding a collection, a column,
+// an accessor's other model or the proxy itself leaves the call to ReceiverMethodCallHandler.
+test('a nullsafe method chain walks only steps that hold one model', function (string $subject, string $model, Closure $expr, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass($subject), $model);
+
+    expect((new MethodChainHandler)->resolve($expr(), $scope, chainHandlersThrowingEngine()))->toBe($expected);
+})->with([
+    'a to-many middle step' => [
+        ClosureResourceRootResource::class,
+        Post::class,
+        fn (): Expr => new NullsafeMethodCall(new NullsafePropertyFetch(chainThisProp('comments'), 'user'), 'nameTitled'),
+        null,
+    ],
+    'a column shadowing the relation' => [ProxyDepotResource::class, Depot::class, fn (): Expr => new NullsafeMethodCall(chainThisProp('supervisor'), 'nameTitled'), null],
+    'an accessor shadowing the relation' => [ClosureResourceRootResource::class, ProxyShadowPost::class, fn (): Expr => new NullsafeMethodCall(chainThisProp('author'), 'nameTitled'), null],
+    'the proxy itself' => [ProxyRelationPostResource::class, ProxyRelationPost::class, fn (): Expr => new NullsafeMethodCall(chainThisProp('resource'), 'nameTitled'), null],
+    'a to-one relation' => [
+        ClosureResourceRootResource::class,
+        Post::class,
+        fn (): Expr => new NullsafeMethodCall(chainThisProp('author'), 'nameTitled'),
+        ['type' => 'string | null', 'optional' => false],
+    ],
+]);
+
+test('a property chain walks only steps that hold one model', function (string $subject, string $model, Closure $expr, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass($subject), $model);
+
+    expect((new PropertyChainHandler)->resolve($expr(), $scope, chainHandlersThrowingEngine()))->toBe($expected);
+})->with([
+    'a column shadowing the relation' => [ProxyDepotResource::class, Depot::class, fn (): Expr => new NullsafePropertyFetch(chainThisProp('supervisor'), 'name'), null],
+    'an accessor shadowing the relation' => [ClosureResourceRootResource::class, ProxyShadowPost::class, fn (): Expr => new NullsafePropertyFetch(chainThisProp('author'), 'email'), null],
+    'a camelCase accessor typed as one model' => [
+        ClosureResourceRootResource::class,
+        Post::class,
+        fn (): Expr => new NullsafePropertyFetch(chainThisProp('latestComment'), 'content'),
+        ['type' => 'string | null', 'optional' => false],
+    ],
+]);
 
 // The published output must stay correct end to end, whichever handler ends up answering.
 test('the whenLoaded closure fixture publishes the resource model types', function () {

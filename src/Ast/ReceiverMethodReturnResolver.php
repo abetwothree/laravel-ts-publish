@@ -254,6 +254,17 @@ final class ReceiverMethodReturnResolver
             return [...ValueResult::unknown(), 'type' => self::MODEL_ARRAY_RETURNS[$methodName]];
         }
 
+        // A relation's collection is keyed 0..n-1, so all() is the list of its models.
+        if ($methodName === 'all' && $receiver->elementModel !== null) {
+            $models = [
+                ...ValueResult::unknown(),
+                'type' => ValueResult::arrayWrapType(class_basename($receiver->elementModel)),
+                'modelFqcn' => $receiver->elementModel,
+            ];
+
+            return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
+        }
+
         // A relation's collection is keyed 0..n-1, so it lists what each model's own toArray() writes.
         if ($methodName === 'toArray' && $receiver->elementModel !== null) {
             $element = $this->runsModelMethod($receiver->elementModel, $methodName) ? 'Record<string, unknown>' : 'unknown';

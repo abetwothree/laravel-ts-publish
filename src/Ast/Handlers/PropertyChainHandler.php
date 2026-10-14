@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -138,8 +139,10 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $count = count($chain);
 
+        $receivers = resolve(ReceiverClassResolver::class);
+
         for ($i = 0; $i < $count - 1; $i++) {
-            $currentModel = $this->stepModel($currentModel, $chain[$i]['name'], $scope);
+            $currentModel = $receivers->singleModelHeldBy($currentModel, $chain[$i]['name']);
 
             if ($currentModel === null) {
                 return ValueResult::unknown();
@@ -180,35 +183,6 @@ final class PropertyChainHandler implements ExpressionHandler
             : $tsInfo['type'];
 
         return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
-    }
-
-    /**
-     * The one model a chain step holds: a to-one relation's model, or an accessor typed as a single model.
-     *
-     * A to-many relation holds a collection, which has none of the model's properties, so it declines.
-     *
-     * @param  class-string<Model>  $model
-     * @return class-string<Model>|null
-     */
-    private function stepModel(string $model, string $name, AnalysisScope $scope): ?string
-    {
-        $resolver = resolve(ModelAttributeResolver::class);
-        $relation = $resolver->resolveRelation($model, $name);
-
-        if ($relation['type'] !== 'unknown') {
-            return $relation['modelFqcn'] !== null && ! str_contains($relation['type'], '[]')
-                ? $relation['modelFqcn']
-                : null;
-        }
-
-        $attribute = $resolver->resolveAttribute($model, $name, $scope->carriesImports);
-        $held = $attribute['classFqcns'];
-
-        return count($held) === 1
-            && is_a($held[0], Model::class, true)
-            && preg_match('/^\w+( \| null)?$/', $attribute['type']) === 1
-            ? $held[0]
-            : null;
     }
 
     /**

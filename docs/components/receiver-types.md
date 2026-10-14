@@ -31,7 +31,7 @@ reflection answers, a decline included.
 | --- | --- |
 | `$this->resource` on an API resource only | The subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. Read whole, it publishes the backing model's interface, the items as `heldItems()` spells them, or the redeclaration when no model backs it |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
-| `$this->prop` on a model-backed subject, and `$this->resource->prop` | `ModelAttributeResolver::resolveAttributeClass()`, else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model |
+| `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, the backing class's public method. |
@@ -180,12 +180,12 @@ reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks six convention rules on each class before
+`ReceiverMethodReturnResolver` checks seven convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all six loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
+Laravel declares all seven loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
 `(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other
-`Model` arrays to the list `unknown[]`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the
-receiver it names:
+`Model` arrays to the list `unknown[]`, `Collection::all()` declares `array<TKey, TValue>`, and `resolveRouteBinding()`
+declares `Model|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -199,6 +199,8 @@ receiver it names:
   types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,
   wrapped first when it is a union: `(number | string)[]`.
+- **`all()`**: on an `Eloquent\Collection` with `elementModel` set, the element model as a list, such as `Comment[]`,
+  since a relation's collection is keyed `0..n-1`.
 - **`toArray()`**: on a concrete model that inherits `Model::toArray()`, `Record<string, unknown>`, since its keys hang
   on the relations loaded at runtime. On an `Eloquent\Collection` with `elementModel` set, `Record<string, unknown>[]`,
   or `unknown[]` when the element model overrides `toArray()`.
@@ -219,12 +221,12 @@ has a return reflection types, such as `: string`, keeps that return wherever th
 asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model agrees.
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
-even when the subject is backed by the integer-keyed `Post`. The filter and route binding rules name a model token, so
-they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules read the
-declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected `(string | number)[]`, only
-where code decides the key.
+even when the subject is backed by the integer-keyed `Post`. The filter, route binding and `all()` rules name a model
+token, so they apply the published-model check of step 6 themselves. When no model instance can be built, the key rules
+read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
+`(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the six on a resource collection's items alone:
+One more rule reads no model, and runs before the seven on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or

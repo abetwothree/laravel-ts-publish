@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
@@ -211,6 +212,19 @@ final class ReceiverClassResolver
         $subject = $scope->subjectReflection;
 
         return $subject->isSubclassOf(Model::class) ? ReceiverType::of($subject->getName()) : null;
+    }
+
+    /**
+     * The one published model Model::__get() gives for a name; null for a collection, a scalar or several models.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Model>|null
+     */
+    public function singleModelHeldBy(string $model, string $name): ?string
+    {
+        $held = $this->modelMember($model, $name)->classes ?? [];
+
+        return count($held) === 1 && is_a($held[0], Model::class, true) && $this->isNameable($held[0]) ? $held[0] : null;
     }
 
     /**
@@ -692,15 +706,60 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a model attribute or relation property holds.
+     * What a model member read holds: an attribute the model lists, else its relation, the order Model::__get() reads.
      *
      * @param  class-string<Model>  $model
      */
     private function modelMember(string $model, string $name): ?ReceiverType
     {
-        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $name);
+        $attribute = $this->listedAttributeName($model, $name);
 
-        return $attributeClass === null ? $this->relationMember($model, $name) : ReceiverType::of($attributeClass);
+        if ($attribute === null) {
+            return $this->relationMember($model, $name);
+        }
+
+        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $attribute)
+            ?? $this->attributeTypeModel($model, $attribute);
+
+        // The attribute hides a relation of the same name, so one holding no class names none.
+        return $attributeClass === null ? null : ReceiverType::of($attributeClass);
+    }
+
+    /**
+     * The one model an attribute's type names where no declaration does, as an untyped getter's body return can.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Model>|null
+     */
+    private function attributeTypeModel(string $model, string $attribute): ?string
+    {
+        $type = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $attribute);
+        $held = $type['classFqcns'];
+
+        // A list of the model, or a union of it with another type, holds no single model.
+        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+( \| null)?$/', $type['type']) === 1
+            ? $held[0]
+            : null;
+    }
+
+    /**
+     * The name the model lists the attribute Model::__get() reads under, or null when it lists none.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function listedAttributeName(string $model, string $name): ?string
+    {
+        $attributes = resolve(ModelAttributeResolver::class)->getAttributes($model);
+
+        if ($attributes?->firstWhere('name', $name) !== null) {
+            return $name;
+        }
+
+        // Eloquent camel-cases a key only to find an accessor method, never to read a column.
+        $snake = Str::snake($name);
+        $accessor = $attributes?->firstWhere('name', $snake);
+
+        return in_array($accessor['cast'] ?? null, ['attribute', 'accessor'], true) ? $snake : null;
     }
 
     /**

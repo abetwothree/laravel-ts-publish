@@ -34,10 +34,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastablePostResource;
@@ -749,6 +751,17 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
+    // An unsaved Product's key is null at runtime, the getKey() limit, so this pins the merge rather than the nullness.
+    test('a union receiver merges what each model arm types', function (string $php, string $type) {
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
+
+        expect(new ReceiverPropertyFetchHandler()->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine())['type'] ?? null)
+            ->toBe($type);
+    })->with([
+        ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number'],
+        ['($this->status ? new '.Product::class.' : $this->author)?->id', 'string | number | null'],
+    ]);
+
     // PHP sends an outside read of a non-public or static property to __get(), never to the declaration.
     test('only a public instance property types a read from outside the class', function () {
         $handler = new ReceiverPropertyFetchHandler;
@@ -850,6 +863,23 @@ describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert agains
         expect($chain)->toBe(['type' => 'string | null', 'optional' => false])
             ->and($receiver)->toBe($chain);
     });
+
+    // A camelCase key reaches the accessor the model lists under its snake_case name; an untyped getter's model comes
+    // from its body.
+    test('both walk an accessor step to the one model it holds', function (string $resource, string $model, string $php, string $type) {
+        $expr = receiverHandlerExpr($php);
+        $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass($resource), $model);
+
+        $chain = new PropertyChainHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
+        $receiver = new ReceiverPropertyFetchHandler()->resolve($expr, $scope(), chainHandlersThrowingEngine());
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->resolve($expr)['type'])->toBe($type)
+            ->and($chain)->toBe(['type' => $type, 'optional' => false])
+            ->and($receiver)->toBe($chain);
+    })->with([
+        'a camelCase accessor' => [ModelWrappedPropResource::class, Post::class, '$this->latestComment->is_flagged', 'boolean'],
+        'an untyped getter' => [AccessorNamedKeysResource::class, AuthoredPost::class, '$this->lead?->email', 'string | null'],
+    ]);
 });
 
 describe('a read on $this->prop types from the class the property holds', function () {
@@ -1239,7 +1269,7 @@ describe('a call on $this->prop types from the class the property holds, never f
         ['$this->resource::getAppends()', 'string[]'],
         ['$this->resource::all()', 'unknown[]'],
         ['$this->resource::getCasts()', 'Record<string, string>'],
-        ['$this->comments?->all()', 'unknown[] | null'],
+        ['$this->comments?->all()', 'Comment[] | null'],
     ]);
 
     test('inside a relation closure, $this still names the resource, whatever the related model declares', function (string $php, string $type) {

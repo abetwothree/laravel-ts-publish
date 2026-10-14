@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -24,9 +25,9 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Identifier;
 
 /**
- * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the terminal relation model.
- * The `?->` operator always makes the result nullable. A chain not ending on a relation, a method it cannot type, an
- * `only()`/`except()` filter, or a model method the receiver rules type declines.
+ * Nullsafe method-call chains rooted at `$this` — `$this->user?->fullName()` — resolved on the model the last step
+ * holds. The `?->` operator always makes the result nullable. A chain any step of which holds no single model, a
+ * method it cannot type, an `only()`/`except()` filter, or a model method the receiver rules type declines.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -61,8 +62,8 @@ final class MethodChainHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze a nullsafe method-call chain rooted at `$this`, traversing relations to the terminal
-     * model and resolving the method's return type on it. The `?->` operator makes the result nullable.
+     * Analyze a nullsafe method-call chain rooted at `$this`, walking each step to the one model it
+     * holds and resolving the method's return type on the last. The `?->` operator makes the result nullable.
      *
      * @return ValueExpressionResult
      */
@@ -88,8 +89,6 @@ final class MethodChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        $resolver = resolve(ModelAttributeResolver::class);
-
         // The proxy is the API resource's own model, even one with a `resource` relation; elsewhere it is a member.
         if ($chain[0]['name'] === 'resource' && $scope->hasResourceProxy()) {
             array_shift($chain);
@@ -99,37 +98,23 @@ final class MethodChainHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        $count = count($chain);
+        $receivers = resolve(ReceiverClassResolver::class);
 
-        for ($i = 0; $i < $count - 1; $i++) {
-            $relationInfo = $resolver->resolveRelation($currentModel, $chain[$i]['name']);
+        // A step holding a collection, a scalar or several models belongs to the receiver-type handler.
+        foreach ($chain as $step) {
+            $currentModel = $receivers->singleModelHeldBy($currentModel, $step['name']);
 
-            if ($relationInfo['type'] === 'unknown' || $relationInfo['modelFqcn'] === null) {
+            if ($currentModel === null) {
                 return ValueResult::unknown();
             }
-
-            /** @var class-string<Model> $relatedModel */
-            $relatedModel = $relationInfo['modelFqcn'];
-            $currentModel = $relatedModel;
         }
 
-        $relationInfo = $resolver->resolveRelation($currentModel, $chain[$count - 1]['name']);
-
-        // Only a resolved relation moves the receiver; anything else belongs to the receiver-type handler.
-        if ($relationInfo['modelFqcn'] === null) {
+        // The receiver rules type a model's own toArray() and loose arrays.
+        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)) {
             return ValueResult::unknown();
         }
 
-        $currentModel = $relationInfo['modelFqcn'];
-
-        // The receiver rules type a model's own toArray() and loose arrays, and a relation collection's toArray().
-        if (resolve(ReceiverMethodReturnResolver::class)->typesModelMethod($currentModel, $methodName)
-            && ($methodName === 'toArray' || ! str_ends_with($relationInfo['type'], '[]'))
-        ) {
-            return ValueResult::unknown();
-        }
-
-        $tsInfo = $resolver->resolveMethodReturnType($currentModel, $methodName);
+        $tsInfo = resolve(ModelAttributeResolver::class)->resolveMethodReturnType($currentModel, $methodName);
 
         if ($tsInfo['type'] === '' || TsTypeString::isUnknownOnly($tsInfo['type'])) {
             // The convention rules KnownMethodRuleHandler applies to a non-nullsafe call.
