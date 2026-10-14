@@ -73,6 +73,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideMo
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Fluent;
 use PhpParser\Node\Expr;
@@ -1443,5 +1444,44 @@ describe('a ResourceCollection holds its items, never the collected model', func
     test('a collection that collects no resource holds unknown items', function () {
         expect(pipelineAnalyzer(ProxyRawPostCollection::class)->resolve(receiverHandlerExpr('$this->resource->toArray()'))['type'])
             ->toBe('unknown[] | LengthAwarePaginator<unknown> | SimplePaginator<unknown> | CursorPaginator<unknown>');
+    });
+});
+
+// A resource can wrap null, which ends the whole `?->` chain as null, so the published type carries one `| null` and
+// a resource wrapping a model reads the pipeline's own answer.
+describe('a pipeline on a relation read through $this->resource?->', function () {
+    /** Runs the PHP expression as a resource body would, around the model the resource wraps. */
+    $runAsResource = function (string $php, ?Post $wrapped): mixed {
+        $resource = new class($wrapped) extends JsonResource {};
+
+        return Closure::bind(eval('return fn () => '.$php.';'), $resource, $resource)();
+    };
+
+    test('types as the pipeline with null added once, and the runtime sends that', function (string $php, string $type, array $sent) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+        $post = new Post;
+        $post->setRelation('comments', new EloquentCollection([(new Comment)->forceFill(['id' => 1])]));
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and(json_decode((string) json_encode($runAsResource($php, $post)), true))->toBe($sent)
+            ->and($runAsResource($php, null))->toBeNull();
+    })->with([
+        'map' => ['$this->resource?->comments->map(fn ($c) => $c->id)', 'number[] | null', [1]],
+        'take' => ['$this->resource?->comments->take(1)', 'Comment[] | null', [['id' => 1]]],
+    ]);
+
+    test('keeps the bare answer where the read is not nullsafe', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->comments->map(fn ($c) => $c->id)', 'number[]'],
+        ['$this->resource->comments->take(1)', 'Comment[]'],
+    ]);
+
+    test('adds no second null to a terminal that already carries one', function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource?->comments->first()'))['type'])->toBe('Comment | null');
     });
 });

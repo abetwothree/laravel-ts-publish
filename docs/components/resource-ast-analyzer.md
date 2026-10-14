@@ -388,7 +388,7 @@ on `$this->resource` inside such a closure.
 
 Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
-`$this->{manyRelation}` or `$this->resource->{manyRelation}`.
+`$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
 [`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
 and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
 since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still

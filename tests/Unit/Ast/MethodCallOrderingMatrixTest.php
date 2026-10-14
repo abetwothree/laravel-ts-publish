@@ -110,7 +110,8 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'replies'), 'take', [new Arg(new Int_(5))]),
         // The same relation pipeline rooted through the $this->resource proxy.
         new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'take', [new Arg(new Int_(5))]),
-        // The nullsafe proxy spellings of a relation filter.
+        // The nullsafe proxy spellings of a relation filter and pipeline.
+        new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'take', [new Arg(new Int_(5))]),
         new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1))]))]),
         new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a

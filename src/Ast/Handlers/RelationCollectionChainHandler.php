@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -32,6 +33,7 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -77,7 +79,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $chainResult = $this->analyzeRelationCollectionChain($expr, $scope, $engine);
 
             if ($chainResult !== null) {
-                return $chainResult;
+                return $this->rootsAtNullsafeProxy($expr, $scope) ? $this->withNull($chainResult) : $chainResult;
             }
         }
 
@@ -144,7 +146,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $node = $node->var;
         }
 
-        if (! $node instanceof PropertyFetch || ! $this->isModelMemberFetch($node, $scope) || ! $node->name instanceof Identifier) {
+        // `$this->resource?->relation`: the `?->` ends the chain as null where the resource wraps none.
+        $rootsAtMember = $node instanceof PropertyFetch
+            ? $this->isModelMemberFetch($node, $scope)
+            : $node instanceof NullsafePropertyFetch && $this->isProxyFetch($node->var, $scope);
+
+        if (! ($node instanceof PropertyFetch || $node instanceof NullsafePropertyFetch) || ! $rootsAtMember || ! $node->name instanceof Identifier) {
             return null;
         }
 
@@ -314,6 +321,35 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             'type' => $sequentialKeys ? $mapped : $this->keyedObjectArm($mapped),
             'optional' => false,
         ];
+    }
+
+    /**
+     * Whether a call chain is rooted at `$this->resource?->relation`, the one `?->` this handler lets short-circuit.
+     */
+    private function rootsAtNullsafeProxy(MethodCall $call, AnalysisScope $scope): bool
+    {
+        $node = $call;
+
+        while ($node instanceof MethodCall) {
+            $node = $node->var;
+        }
+
+        return $node instanceof NullsafePropertyFetch && $this->isProxyFetch($node->var, $scope);
+    }
+
+    /**
+     * Adds `| null` to a result once.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    private function withNull(array $result): array
+    {
+        if (! in_array('null', TsTypeString::splitTopLevelUnion($result['type']), true)) {
+            $result['type'] .= ' | null';
+        }
+
+        return $result;
     }
 
     /**
