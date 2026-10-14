@@ -89,6 +89,7 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -666,10 +667,15 @@ describe('ReceiverMethodCallHandler', function () {
 });
 
 describe('a nullsafe method on a chain reads each step as one model, through the engine', function () {
-    test('a to-one relation step answers, and a step holding no single model leaves the call unknown', function (string $subject, string $model, string $php, string $type) {
+    test('a nullsafe method types from the one model each step holds, and a step holding none leaves it unknown', function (string $subject, string $model, string $php, string $type) {
         expect(new ResourceAstAnalyzer(new ReflectionClass($subject), $model)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
         'a to-one relation' => [ClosureResourceRootResource::class, Post::class, '$this->author?->nameTitled()', 'string | null'],
+        'an unresolved morphTo' => [ImageResource::class, Image::class, '$this->imageable?->getTable()', 'string | null'],
+        'an attribute, not a relation' => [ReceiverMethodResource::class, Post::class, '$this->priority?->label()', 'string | null'],
+        'a dynamic-key except() on a to-one relation' => [CommentResource::class, Comment::class, '$this->post?->except($fields)', 'Record<string, unknown> | null'],
+        'a nested dynamic-key only() on a relation' => [CommentResource::class, Comment::class, '$this->resource->post?->only($ids)', 'Record<string, unknown> | null'],
+        'a to-many only()' => [CommentResource::class, Comment::class, '$this->replies?->only($ids)', 'Comment[] | null'],
         'a to-many middle step' => [ClosureResourceRootResource::class, Post::class, '$this->comments?->user?->nameTitled()', 'unknown'],
         'a column shadowing the relation' => [ProxyDepotResource::class, Depot::class, '$this->supervisor?->nameTitled()', 'unknown'],
         'an accessor shadowing the relation' => [ClosureResourceRootResource::class, ProxyShadowPost::class, '$this->author?->nameTitled()', 'unknown'],
