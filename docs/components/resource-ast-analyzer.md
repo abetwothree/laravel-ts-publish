@@ -377,8 +377,8 @@ on a key no cast covers.
 ## `$this->resource` inside a relation closure is the resource's own model
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
-[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) and
-[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
+[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
+chain at `$modelClass`, and
 `RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
 `AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
 reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call

@@ -255,9 +255,8 @@ step can decline:
    `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.
 6. Every model the result names must have a published file, by `ValueResult::namesOnlyPublishedModels()`. A model under
    `Illuminate\`, or an abstract one, declines, so `User::resolveChildRouteBinding()`'s `Model | null` does too.
-   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the two
-   direct reflections, in `MethodChainHandler` and `ResolvesRelatedModelTypes`, apply it themselves, so here it still
-   guards step 3.
+   `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the direct
+   reflection in `ResolvesRelatedModelTypes` applies it itself, so here it still guards step 3.
 
 ### The body fallback carries no FQCN channel
 

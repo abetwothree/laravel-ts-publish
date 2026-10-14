@@ -35,8 +35,8 @@ These are the classes a change to the engine usually touches:
 node class, and when none answers, the caller degrades to `unknown`. A handler that answers `unknown` pre-empts every
 handler after it, so a handler declines a shape it cannot type unless that `unknown` is deliberate. The answer of
 `RelationFilterHandler`'s map-proxy arm is one such case, as
-[ResourceAstAnalyzer § Attribute filters][attribute-filters] records. `MethodChainHandler` and `PropertyChainHandler`
-test for a decline with `TsTypeString::isUnknownOnly()`, which ignores `null` arms.
+[ResourceAstAnalyzer § Attribute filters][attribute-filters] records. `PropertyChainHandler`
+tests for a decline with `TsTypeString::isUnknownOnly()`, which ignores `null` arms.
 
 ## Handler ordering
 
@@ -93,7 +93,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | Node class | Claimants, in registration order | Pinned, winner first | Why the other pairs are inert |
 | --- | --- | --- | --- |
 | `MethodCall` | `FirstClassCallableHandler`, `KnownFunctionCallHandler`, `ConditionalMethodHandler`, `ToResourceHandler`, `StaticCallHandler`, `RelationFilterHandler`, `RelationCollectionChainHandler`, `CollectionPipelineHandler`, `VariableHandler`, `ReceiverMethodCallHandler`, `KnownMethodRuleHandler` | `FirstClassCallableHandler` before `ConditionalMethodHandler` and before `ToResourceHandler`: the loser calls `getArgs()`, which asserts `!isFirstClassCallable()` and fatals. `FirstClassCallableHandler` before `KnownFunctionCallHandler`: otherwise `auth()->user(...)` gets the guard's model, a confident type for a `Closure`. | The matrix proves each pair on its corpus. See the notes below. |
-| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `MethodChainHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `MethodChainHandler` declines every `only()`/`except()`, a model method the receiver rules type, such as a concrete model's own `toArray()`, every answer that is only `unknown`, and every chain any step of which holds no single model, where it would reflect on the wrong receiver. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
+| `NullsafeMethodCall` | `ToResourceHandler`, `RelationFilterHandler`, `ReceiverMethodCallHandler` | None | `ToResourceHandler` claims only `?->toResource()`, which the others left `unknown`. `ReceiverMethodCallHandler` answers every other method chain, and leaves `unknown` any chain a step of which holds no single model. `RelationFilterHandler` and `ReceiverMethodCallHandler` agree on a filter. No matrix runs this class. |
 | `PropertyFetch` | `ThisPropertyHandler`, `PropertyChainHandler`, `VariableHandler`, `ReceiverPropertyFetchHandler` | `ThisPropertyHandler` before `PropertyChainHandler`: only `ThisPropertyHandler` threads a multi-model accessor's FQCNs out as `embeddedModelFqcns`, so the swap loses an arm's import | `VariableHandler` never reads a `$this` receiver, which the first two require. `ReceiverPropertyFetchHandler` declines every `$this->prop` leaf, and swapping it ahead of `PropertyChainHandler` or `VariableHandler` leaves the committed types unchanged. |
 | `NullsafePropertyFetch` | `PropertyChainHandler`, `ReceiverPropertyFetchHandler` | None | `PropertyChainHandler` declines a chain that is only `unknown`, and the two agree on a chain both type |
 | `StaticCall` | `FirstClassCallableHandler`, `InertiaWrapperHandler`, `StaticCallHandler`, `ReceiverMethodCallHandler` | `FirstClassCallableHandler` first: `StaticCallHandler` types `self::collection(...)` as the collection, though the value is a `Closure`. `InertiaWrapperHandler` before `StaticCallHandler`: `StaticCallHandler` never declines a call on a named class, so it would reflect the wrapper and floor the prop at `unknown` | `StaticCallHandler` declines only a class expression it cannot name, such as `$record::className()`, the one shape `ReceiverMethodCallHandler` reaches. The `Inertia` facade declares no wrapper method, so `ReceiverMethodCallHandler` declines `Inertia::always(...)`. |
@@ -102,7 +102,7 @@ Every other pair is inert: the two handlers never answer the same expression, or
 
 These `MethodCall` pairs are the ones most likely to break under an edit:
 
-- **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler`, `MethodChainHandler` and
+- **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler` and
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
   on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
   declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with

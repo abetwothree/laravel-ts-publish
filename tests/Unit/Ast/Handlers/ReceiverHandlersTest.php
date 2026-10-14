@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
@@ -39,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
@@ -89,7 +89,6 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
-use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -666,19 +665,22 @@ describe('ReceiverMethodCallHandler', function () {
     });
 });
 
-describe('MethodChainHandler no longer reflects on the wrong receiver', function () {
-    test('declines a nullsafe call whose last step is an unresolved morphTo', function () {
-        $scope = new AnalysisScope(new ReflectionClass(ImageResource::class), Image::class);
-        $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'imageable'), 'getTable');
+describe('a nullsafe method on a chain reads each step as one model, through the engine', function () {
+    test('a to-one relation step answers, and a step holding no single model leaves the call unknown', function (string $subject, string $model, string $php, string $type) {
+        expect(new ResourceAstAnalyzer(new ReflectionClass($subject), $model)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        'a to-one relation' => [ClosureResourceRootResource::class, Post::class, '$this->author?->nameTitled()', 'string | null'],
+        'a to-many middle step' => [ClosureResourceRootResource::class, Post::class, '$this->comments?->user?->nameTitled()', 'unknown'],
+        'a column shadowing the relation' => [ProxyDepotResource::class, Depot::class, '$this->supervisor?->nameTitled()', 'unknown'],
+        'an accessor shadowing the relation' => [ClosureResourceRootResource::class, ProxyShadowPost::class, '$this->author?->nameTitled()', 'unknown'],
+    ]);
 
-        expect(new MethodChainHandler()->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
-    });
+    test('inside a whenLoaded closure the chain still roots at the resource model', function () {
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ClosureResourceRootResource::class), Post::class)->analyze()->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
 
-    test('declines a nullsafe call whose last step is an attribute, not a relation', function () {
-        $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
-        $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'priority'), 'label');
-
-        expect(new MethodChainHandler()->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+        expect($props['author_titled_inside'])->toBe('string | null')
+            ->and($props['profile_bio_inside'])->toBe('string | null');
     });
 
     // RosterSlot has both methods too, so answering from the resource's own model would type the Model-bound pair.

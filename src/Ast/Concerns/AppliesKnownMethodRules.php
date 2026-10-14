@@ -13,7 +13,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 
 /**
- * Late-stage method-name rules fixed by Laravel convention, shared by MethodChainHandler and by KnownMethodRuleHandler,
+ * Late-stage method-name rules fixed by Laravel convention, used by KnownMethodRuleHandler,
  * the dispatch floor. Requires the host to also use Ast\Concerns\InspectsAstNodes, InspectsResourceSubject and
  * ResolvesModelRelationTypes.
  *

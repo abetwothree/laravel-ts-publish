@@ -21,7 +21,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -138,7 +137,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 28 handlers in registration order — the single source every profile above filters.
+     * Construct all 27 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -163,7 +162,6 @@ final class ResourceExpressionHandlers
             new ThisPropertyHandler,
             new RelationFilterHandler,
             new InlineArrayHandler,
-            new MethodChainHandler,
             new PropertyChainHandler,
             new RelationCollectionChainHandler,
             new CollectionPipelineHandler,
