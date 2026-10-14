@@ -45,6 +45,8 @@ final class ReceiverMethodReturnResolver
 
     private const array ITEMS_LIST = ['items', 'getCollection'];
 
+    private const array ITEMS_SUBSET = ['only', 'except'];
+
     /**
      * What Model's own methods declared a bare `array` hold: a list of names, or a map keyed by name. all() lists every
      * row of the class, each serialized as the loaded relations decide.
@@ -439,7 +441,8 @@ final class ReceiverMethodReturnResolver
 
     /**
      * The rules on one class holding a resource collection's items: toArray() and jsonSerialize() give the held value,
-     * first() and last() an item, and a paginator's items() and getCollection() the list.
+     * only() and except() the items they keep, first() and last() an item, and a paginator's items() and
+     * getCollection() the list.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
@@ -452,11 +455,19 @@ final class ReceiverMethodReturnResolver
             return $this->heldItems(new ReceiverType([$class], collectedItems: true, elementResource: $element), $scope);
         }
 
+        $name = $element === null ? 'unknown' : TsNaming::resourceTypeName($element);
+
+        // Collection::only() and except() keep the keys they filter by, so the items they keep may come back keyed.
+        if (in_array($methodName, self::ITEMS_SUBSET, true)) {
+            $kept = ValueResult::collectionListType($name, false).' | '.ValueResult::collectionListType($name, true);
+            $result = [...ValueResult::unknown(), 'type' => $kept];
+
+            return $element === null ? $result : [...$result, 'resourceFqcn' => $element];
+        }
+
         if ($element === null) {
             return null;
         }
-
-        $name = TsNaming::resourceTypeName($element);
 
         return match (true) {
             in_array($methodName, self::ITEMS_ELEMENT, true) => [

@@ -46,7 +46,8 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'getCollection()' => [PageItemCollection::class, '$this->resource->getCollection()', 'PageItemResource[]'],
         'map() stays unread' => [PageItemCollection::class, '$this->resource->map(fn ($item) => $item->id)', 'unknown'],
         'a read on an item stays unread' => [PageItemCollection::class, '$this->resource->first()?->title', 'unknown'],
-        'only() stays unread, Laravel sends []' => [PageItemCollection::class, "\$this->resource->only(['id'])", 'unknown'],
+        'only() keeps the items under the keys it names' => [PageItemCollection::class, "\$this->resource->only(['id'])", 'PageItemResource[] | Record<string, PageItemResource>'],
+        'except() keeps the items under the other keys' => [PageItemCollection::class, "\$this->resource->except(['id'])", 'PageItemResource[] | Record<string, PageItemResource>'],
         '$this->collection is unchanged' => [PageItemCollection::class, '$this->collection', 'PageItemResource[]'],
         'preserved keys: the value' => [PageKeyedCollection::class, '$this->resource', PAGE_ITEMS_KEYED],
         'preserved keys: items()' => [PageKeyedCollection::class, '$this->resource->items()', 'Record<string, PageItemResource>'],
@@ -54,6 +55,7 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'nothing collected: toArray()' => [PageRawCollection::class, '$this->resource->toArray()', PAGE_ITEMS_RAW],
         'nothing collected: first()' => [PageRawCollection::class, '$this->resource->first()', 'unknown'],
         'nothing collected: total()' => [PageRawCollection::class, '$this->resource->total()', 'number'],
+        'nothing collected: only()' => [PageRawCollection::class, "\$this->resource->only(['id'])", 'unknown[] | Record<string, unknown>'],
     ]);
 
     test('imports the @tolki/types paginators the value names', function () {

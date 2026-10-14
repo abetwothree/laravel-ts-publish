@@ -40,6 +40,7 @@ class PageItemCollection extends ResourceCollection
             'inner' => $this->resource->getCollection(),
             'mapped' => $this->resource->map(fn ($item) => $item->id),
             'only' => $this->resource->only(['id']),
+            'except' => $this->resource->except(['id']),
         ];
     }
 }

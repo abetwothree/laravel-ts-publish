@@ -412,12 +412,12 @@ redeclare `$wrap` sends a bare list, while its published interface still has the
 is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
 extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
 
-### In a resource collection, `map()`, `pluck()`, `values()` and `only()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
+### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
 
 Inside a collection, `$this->resource` holds the items in a `Support\Collection` or the paginator the collection was
-given. The package types its value, `first()`, `last()`, `count()` and the paginator's own methods, not a collection
-pipeline on it, and not a member of the API resource `first()` returns, such as `$this->resource->first()?->title`.
-`only(['id'])` filters the list by its keys, so Laravel sends `[]`. Type such a key with `#[TsCasts]`.
+given. The package types its value, `first()`, `last()`, `count()`, `only()`, `except()` and the paginator's own
+methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
+`$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 

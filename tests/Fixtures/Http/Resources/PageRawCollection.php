@@ -24,6 +24,7 @@ class PageRawCollection extends ResourceCollection
             'page_array' => $this->resource->toArray(),
             'first' => $this->resource->first(),
             'total' => $this->resource->total(),
+            'only' => $this->resource->only(['id']),
         ];
     }
 }

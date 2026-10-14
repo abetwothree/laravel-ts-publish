@@ -1429,12 +1429,12 @@ describe('a ResourceCollection holds its items, never the collected model', func
         ['$this->resource', 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>'],
         ['$this->resource->toArray()', 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>'],
         ['$this->resource->count()', 'number'],
-        // A collection pipeline on the items, a model member Laravel throws on, or a filter Laravel sends as `[]`.
+        ['$this->only([\'id\'])', 'ProxyCollectedPostResource[] | Record<string, ProxyCollectedPostResource>'],
+        // A collection pipeline on the items, or a model member Laravel throws on.
         ['$this->values()', 'unknown'],
         ['$this->sum(\'id\')', 'unknown'],
         ['$this->title', 'unknown'],
         ['$this->resource->title', 'unknown'],
-        ['$this->only([\'id\'])', 'unknown'],
         ['$this->getKey()', 'unknown'],
         ['$this->resource->pluck(\'title\')', 'unknown'],
         ['$this->collection', 'ProxyCollectedPostResource[]'],
