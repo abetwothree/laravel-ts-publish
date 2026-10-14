@@ -104,6 +104,16 @@ trait InspectsAstNodes
     }
 
     /**
+     * The class a name spells from inside the subject: the subject for `self` and `static`, in any case, else the name.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    protected function subjectClassName(Name $name, ReflectionClass $subject): string
+    {
+        return in_array($name->toLowerString(), ['self', 'static'], true) ? $subject->getName() : $name->toString();
+    }
+
+    /**
      * Whether an expression is `$this->resource` on a subject that has the proxy; anywhere else it is a member.
      */
     protected function isProxyFetch(Expr $expr, AnalysisScope $scope): bool
@@ -162,11 +172,9 @@ trait InspectsAstNodes
         }
 
         $parent = $subject->getParentClass();
-        $class = match ($key->class->toLowerString()) {
-            'self', 'static' => $subject->getName(),
-            'parent' => $parent === false ? null : $parent->getName(),
-            default => $key->class->toString(),
-        };
+        $class = $key->class->toLowerString() === 'parent'
+            ? ($parent === false ? null : $parent->getName())
+            : $this->subjectClassName($key->class, $subject);
         $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
         $value = $constant !== null && defined($constant) ? constant($constant) : null;
 

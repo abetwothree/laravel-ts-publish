@@ -177,9 +177,9 @@ final class StaticCallHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        // Resolve `self`/`static` so those calls are treated identically to ClassName::*() calls.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
+        // `self`/`static` read as the subject, so those calls are treated identically to ClassName::*() calls.
+        if ($call->class instanceof Name) {
+            $className = $this->subjectClassName($call->class, $scope->subjectReflection);
         }
 
         // EnumResource::make($this->prop)
