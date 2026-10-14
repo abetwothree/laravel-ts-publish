@@ -6,13 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
@@ -318,19 +317,32 @@ it('adds null once to a filter on a relation read through $this->resource?->', f
 })->with([
     'hasMany' => [PostResource::class, Post::class, '$this->resource?->comments->only([1])', 'Comment[] | null'],
     'hasMany, ?-> again' => [PostResource::class, Post::class, '$this->resource?->comments?->only([1])', 'Comment[] | null'],
-    'belongsTo' => [CommentResource::class, Comment::class, '$this->resource?->post->only([\'id\'])', "Pick<Post, 'id'> | null"],
+    'belongsTo, a column subset' => [PostResource::class, Post::class, '$this->resource?->author->only([\'id\'])', "Pick<User, 'id'> | null"],
+    'belongsTo, the proxy\'s own post' => [CommentResource::class, Comment::class, '$this->resource?->post->only([\'id\'])', "Pick<Post, 'id'> | null"],
     'belongsTo, runtime keys' => [CommentResource::class, Comment::class, '$this->resource?->post->except($keys)', 'Record<string, unknown> | null'],
     'multi-model accessor' => [WarehouseResource::class, Warehouse::class, '$this->resource?->last_user_activity_by->only($keys)', 'Record<string, unknown> | null'],
 ]);
 
-it('never reads a resource collection\'s $this->resource?-> as a model relation', function () {
-    $reflection = new ReflectionClass(ProxyCollectedPostCollection::class);
-    $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
-    $scope = new AnalysisScope($reflection, $modelClass);
-    $engine = new ResourceAstAnalyzer($reflection, $modelClass);
+// Only the proxy's `?->` can end the chain as null: on any other receiver the name is not the scope model's relation.
+it('declines a nullsafe read whose receiver is not the resource proxy', function (string $php) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
 
-    expect((new RelationFilterHandler)->resolve(relationFilterExpr('$this->resource?->comments->only([1])'), $scope, $engine))->toBeNull();
-});
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBeNull();
+})->with([
+    'a member of $this' => ['$this->author?->comments->only([1])'],
+    'a local variable' => ['$comment?->comments->only([1])'],
+]);
+
+it('declines a nullsafe pipeline whose receiver is not the resource proxy', function (string $php) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+    expect((new RelationCollectionChainHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBeNull();
+})->with([
+    'a member of $this' => ['$this->author?->comments->take(1)'],
+    'a local variable' => ['$comment?->comments->take(1)'],
+]);
 
 it('declines a many-relation filter whose relation read is unknown', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
