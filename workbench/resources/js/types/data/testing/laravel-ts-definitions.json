@@ -17546,6 +17546,11 @@
                     "optional": false
                 },
                 {
+                    "name": "comments_nullsafe",
+                    "type": "Comment[] | null",
+                    "optional": false
+                },
+                {
                     "name": "comment_ids",
                     "type": "number[]",
                     "optional": false
@@ -17633,6 +17638,11 @@
                 {
                     "name": "comments_mapped",
                     "type": "{ id: number; content: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_nullsafe",
+                    "type": "Comment[] | null",
                     "optional": false
                 },
                 {

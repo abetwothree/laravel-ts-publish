@@ -198,7 +198,8 @@ runtime key list, on the resource's own model, a single-model relation and a man
   `$this->resource` itself, since PHP reads the declared `JsonResource::$resource` before any `__get()`, even on a
   model with a `resource` relation.
 - **Value on a relation**: `RelationFilterHandler`, which matches `$this->resource->relation` wherever it matches
-  `$this->relation`.
+  `$this->relation`. A `?->` on the proxy, as in `$this->resource?->comments->only([1])`, adds `| null` once, since
+  the resource can wrap nothing.
 
 `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` write the same filters both ways, and
 `ResourceAstAnalyzerTest` asserts they publish identical properties and imports. Two shapes stay outside the pair.

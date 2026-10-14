@@ -4740,6 +4740,7 @@ declare global {
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: workbench.app.models.Comment[] | null;
             comment_ids: number[];
         }
         /**
@@ -4763,6 +4764,7 @@ declare global {
             comments_by_ids: workbench.app.models.Comment[];
             comments_maybe: workbench.app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: workbench.app.models.Comment[] | null;
             comment_ids: number[];
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */

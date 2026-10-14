@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CollectionMemberModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilterOverrideModel;
@@ -305,6 +307,30 @@ it('publishes a many-relation filter as the relation read, under both spellings 
     'belongsToMany with a pivot' => [TeamResource::class, Team::class, '$this->members->only($ids)', '$this->members', 'User[]', 'User[]'],
     'belongsToMany ?-> through $this->resource' => [TeamResource::class, Team::class, '$this->resource->members?->only([1])', '$this->resource->members', 'User[]', 'User[] | null'],
 ]);
+
+// A resource can wrap null, which ends a chain through `$this->resource?->` as null, so every filter on a relation read
+// that way gains one `| null`, whether or not a later `?->` repeats it.
+it('adds null once to a filter on a relation read through $this->resource?->', function (string $resource, string $model, string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass($resource), $model);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($resource), $model);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine)['type'] ?? null)->toBe($type);
+})->with([
+    'hasMany' => [PostResource::class, Post::class, '$this->resource?->comments->only([1])', 'Comment[] | null'],
+    'hasMany, ?-> again' => [PostResource::class, Post::class, '$this->resource?->comments?->only([1])', 'Comment[] | null'],
+    'belongsTo' => [CommentResource::class, Comment::class, '$this->resource?->post->only([\'id\'])', "Pick<Post, 'id'> | null"],
+    'belongsTo, runtime keys' => [CommentResource::class, Comment::class, '$this->resource?->post->except($keys)', 'Record<string, unknown> | null'],
+    'multi-model accessor' => [WarehouseResource::class, Warehouse::class, '$this->resource?->last_user_activity_by->only($keys)', 'Record<string, unknown> | null'],
+]);
+
+it('never reads a resource collection\'s $this->resource?-> as a model relation', function () {
+    $reflection = new ReflectionClass(ProxyCollectedPostCollection::class);
+    $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
+    $scope = new AnalysisScope($reflection, $modelClass);
+    $engine = new ResourceAstAnalyzer($reflection, $modelClass);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr('$this->resource?->comments->only([1])'), $scope, $engine))->toBeNull();
+});
 
 it('declines a many-relation filter whose relation read is unknown', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);

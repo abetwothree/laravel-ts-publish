@@ -37,6 +37,7 @@ final class ProxyFilterWrappedResource extends JsonResource
             'comments_by_ids' => $this->resource->comments->only($request->input('ids')),
             'comments_maybe' => $this->resource->comments?->only($request->input('ids')),
             'comments_mapped' => $this->resource->comments->map->only(['id', 'content']),
+            'comments_nullsafe' => $this->resource?->comments->only([1, 2]),
             'comment_ids' => $this->resource->comments->map(fn ($comment) => $comment->id),
         ];
     }

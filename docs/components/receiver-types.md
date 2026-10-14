@@ -214,9 +214,8 @@ receiver it names:
   literal key is a published column, else the inline shape. A runtime key list, or a literal list that types no member,
   gives `Record<string, unknown>`.
 
-A union, an `Eloquent\Collection` and a static call get no filter rule, so `$this->resource?->comments->only([1])`,
-which `RelationFilterHandler` does not match, publishes `unknown`. A model whose `only()` or `except()` override has a
-return reflection types, such as `: string`, keeps that return wherever the call is written. `RelationFilterHandler`
+A union, an `Eloquent\Collection` and a static call get no filter rule. A model whose `only()` or `except()` override
+has a return reflection types, such as `: string`, keeps that return wherever the call is written. `RelationFilterHandler`
 asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model agrees.
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
