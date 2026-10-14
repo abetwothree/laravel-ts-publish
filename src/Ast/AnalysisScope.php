@@ -127,8 +127,8 @@ final class AnalysisScope
 
     /**
      * The class an undeclared `$this->member` read or call forwards to (a JsonResource proxies both to
-     * `$this->resource`), or null. Derived in the constructor so every scope carries it; ResourceAstAnalyzer re-derives
-     * it, TernaryHandler narrows it, and proxyReceiver() hands it to ReceiverClassResolver.
+     * `$this->resource`), or null; null on a resource collection, see proxyReceiver(). Derived by the constructor and
+     * rebase(), so every scope carries it; ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
      *
      * @var class-string|null
      */
@@ -136,7 +136,7 @@ final class AnalysisScope
 
     /**
      * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
-     * it collects none. Set by ResourceAstAnalyzer for a scope it owns.
+     * it collects none. Set by ResourceAstAnalyzer for any scope, its own or one a caller supplies.
      *
      * @var class-string<JsonResource>|null
      */
@@ -152,7 +152,7 @@ final class AnalysisScope
     /**
      * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
-     * ResourceAstAnalyzer for a scope it owns.
+     * ResourceAstAnalyzer for any scope, its own or one a caller supplies.
      */
     public bool $reindexesNumericKeys = false;
 
@@ -353,6 +353,20 @@ final class AnalysisScope
         return $subject->isSubclassOf(JsonResource::class) && ! $subject->isSubclassOf(ResourceCollection::class)
             ? $backing
             : null;
+    }
+
+    /**
+     * Move the scope to another subject and backing model, re-deriving the proxy target from them: the one way a
+     * builder rebases a scope after construction. ResourceAstAnalyzer then seeds the subject's collection facts.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @param  class-string<Model>|null  $modelClass
+     */
+    public function rebase(ReflectionClass $subject, ?string $modelClass): void
+    {
+        $this->subjectReflection = $subject;
+        $this->modelClass = $modelClass;
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subject, $modelClass);
     }
 
     /**

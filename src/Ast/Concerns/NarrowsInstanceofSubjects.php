@@ -73,14 +73,11 @@ trait NarrowsInstanceofSubjects
         $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
 
         try {
-            $scope->modelClass = $model;
-
-            // Derived from the subject, never from the previous value: a ternary-only guard leaves
-            // instanceOfWrappedClass unseeded, so a proxying subject may not have been forwarding before.
-            $scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor($scope->subjectReflection, $model);
+            $scope->rebase($scope->subjectReflection, $model);
 
             return $resolve();
         } finally {
+            // Restored, never re-derived: an instanceof guard in toArray() may have backed the proxy the model did not.
             $scope->modelClass = $previousModelClass;
             $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }

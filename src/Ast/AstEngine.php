@@ -143,8 +143,7 @@ final class AstEngine
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
-        $scope->subjectReflection = self::genericReflection($modelClass);
-        $scope->modelClass = $modelClass;
+        $scope->rebase(self::genericReflection($modelClass), $modelClass);
         $scope->carriesImports = $carriesImports;
 
         $analyzer = new ResourceAstAnalyzer(

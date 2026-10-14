@@ -130,7 +130,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  ReflectionClass<T>  $resourceReflection  templated because ReflectionClass is invariant
      * @param  class-string<Model>|null  $modelClass
      * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile
-     * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
+     * @param  AnalysisScope|null  $scope  a scope AstEngine::bindingsFor() seeded; it gains only the collection facts
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
@@ -152,11 +152,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
-            $this->scope->reindexesNumericKeys = self::reindexes($this->resourceReflection);
-            $this->scope->collectedResource = $this->isResourceCollection($this->scope)
-                ? $this->resolveSingularResourceClass($this->scope)
-                : null;
         }
+
+        // The subject alone decides these, so a supplied scope reads `$this->resource`'s items as an owned one does.
+        $this->scope->reindexesNumericKeys = self::reindexes($this->scope->subjectReflection);
+        $this->scope->collectedResource = $this->isResourceCollection($this->scope)
+            ? $this->resolveSingularResourceClass($this->scope)
+            : null;
 
         $this->ownsScope = $scope === null;
 
@@ -294,7 +296,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // A guard on `$this->resource` narrows only the proxy; in any other subject it tests a member like any other.
         $this->scope->instanceOfWrappedClass = $this->scope->hasResourceProxy() ? $this->resolveInstanceOfType($toArrayMethod, $finder) : null;
 
-        // Re-derived once an instanceof guard has supplied a backing the constructor had none for.
+        // Re-derived once an instanceof guard has supplied a backing the constructor had none for. Not rebase(): the
+        // guard's class, model or not, backs only the proxy, while modelClass stays the resolved backing model.
         $this->scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor(
             $this->scope->subjectReflection,
             $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass,

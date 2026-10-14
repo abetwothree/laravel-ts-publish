@@ -511,9 +511,10 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 
 `resolveCollectedResourceClass()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because
 Laravel 12 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
-`ResourceAstAnalyzer` seeds `AnalysisScope::$collectedResource` from `resolveSingularResourceClass()` for a scope it
-owns, so `$this->resource`'s items name the API resource `$this->collection` does. A collection is backed by no model,
-whatever its docblock or `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
+`ResourceAstAnalyzer` seeds `AnalysisScope::$collectedResource` from `resolveSingularResourceClass()` for any scope, its
+own or one a caller supplies, so `$this->resource`'s items name the API resource `$this->collection` does. A collection
+is backed by no model, whatever its docblock or `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns
+`null` for it.
 
 `ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `wrapCollectionElementType()` is the one place that turns it into `Record<string, R>` instead of `R[]`, and every

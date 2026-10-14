@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
@@ -60,6 +61,18 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'nothing collected: first()' => [PageRawCollection::class, '$this->resource->first()', 'unknown'],
         'nothing collected: total()' => [PageRawCollection::class, '$this->resource->total()', 'number'],
         'nothing collected: only()' => [PageRawCollection::class, "\$this->resource->only(['id'])", 'unknown[] | Record<string, unknown>'],
+    ]);
+
+    test('publishes the same items through a scope its caller supplies', function (string $subject, string $expected) {
+        $expr = new AstParser()->parseSource('<?php $this->resource;')[0]->expr;
+        $scope = new AnalysisScope(new ReflectionClass($subject));
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass($subject), scope: $scope)->resolve($expr)['type'])
+            ->toBe($expected);
+    })->with([
+        'collected items' => [PageItemCollection::class, PAGE_ITEMS],
+        'preserved keys' => [PageKeyedCollection::class, PAGE_ITEMS_KEYED],
+        'nothing collected' => [PageRawCollection::class, PAGE_ITEMS_RAW],
     ]);
 
     test('imports the @tolki/types paginators the value names', function () {

@@ -131,7 +131,7 @@ pairs, and the matrix does not run this profile.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These five facts span other classes:
+docblocks say what each binding table holds. These six facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
@@ -139,8 +139,12 @@ docblocks say what each binding table holds. These five facts span other classes
   describe the model a nested resolution ran under.
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
-  constructor, `ResourceAstAnalyzer` and `NarrowsInstanceofSubjects`. Handlers ask through
+  constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
   `InspectsAstNodes::isProxyFetch()` and `isModelMemberFetch()`.
+- **`rebase()` moves a scope to another subject**: a builder calls it rather than writing `subjectReflection` or
+  `modelClass`, so the proxy target follows, as `AstEngine::analyzeModelClosure()` and the narrowing do.
+  `ResourceAstAnalyzer` seeds the subject's collection facts, `reindexesNumericKeys` and `collectedResource`, on any
+  scope, so a supplied scope reads a collection's items as an owned one does.
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.

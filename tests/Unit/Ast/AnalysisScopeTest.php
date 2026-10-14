@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
@@ -57,6 +58,30 @@ it('derives no forwarding target without both a proxying subject and a backing m
 
     expect($nonResource->forwardsUndeclaredMembersTo)->toBeNull()
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
+});
+
+it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file', function () {
+    $model = new ReflectionClass(Post::class);
+    $resource = new ReflectionClass(PostResource::class);
+    $scope = new AnalysisScope($model, Post::class);
+
+    $scope->rebase($resource, Post::class);
+
+    expect($scope->subjectReflection)->toBe($resource)
+        ->and($scope->modelClass)->toBe(Post::class)
+        ->and($scope->forwardsUndeclaredMembersTo)->toBe(Post::class)
+        ->and($scope->declaringFileClass)->toBe($model);
+});
+
+it('rebases a resource scope onto a resource collection, which forwards nothing: its items are the proxy', function () {
+    $collection = new ReflectionClass(PageItemCollection::class);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    $scope->rebase($collection, Post::class);
+
+    expect($scope->subjectReflection)->toBe($collection)
+        ->and($scope->modelClass)->toBe(Post::class)
+        ->and($scope->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
 /** A scope with `item`, `key` and `kept` bound in every name-keyed binding table. */
