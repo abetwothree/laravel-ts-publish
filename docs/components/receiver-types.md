@@ -231,8 +231,9 @@ One more rule reads no model, and runs before the six on a resource collection's
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
   `Record<string, R>` when the collection preserves keys, by `ValueResult::collectionListType()`, and the `@tolki/types`
   paginator over `R` for each paginator. `only()` and `except()` publish `R[] | Record<string, R>`, since the items
-  they keep come back under their own keys. `first()` and `last()` publish `R | null`, and a paginator's `items()` and
-  `getCollection()` the list. With no collected API resource, `R` is `unknown` and the item and list rules decline.
+  they keep come back under their own keys. `first()` and `last()` publish `R | null`, unless the call passes a
+  `$default`, which Laravel sends when no item matches. A paginator's `items()` and `getCollection()` publish the list.
+  With no collected API resource, `R` is `unknown` and the item and list rules decline.
 
 ### The order for one class
 

@@ -215,7 +215,7 @@ final class ReceiverMethodReturnResolver
         AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
     ): ?array {
-        $items = $receiver->collectedItems ? $this->itemsRule($receiver, $class, $methodName, $scope) : null;
+        $items = $receiver->collectedItems ? $this->itemsRule($receiver, $class, $methodName, $scope, $call) : null;
 
         if ($items !== null) {
             return $items;
@@ -445,10 +445,16 @@ final class ReceiverMethodReturnResolver
      * getCollection() the list.
      *
      * @param  class-string  $class
+     * @param  MethodCall|NullsafeMethodCall|StaticCall|null  $call  the call, whose `$default` an item rule declines
      * @return ValueExpressionResult|null
      */
-    private function itemsRule(ReceiverType $receiver, string $class, string $methodName, AnalysisScope $scope): ?array
-    {
+    private function itemsRule(
+        ReceiverType $receiver,
+        string $class,
+        string $methodName,
+        AnalysisScope $scope,
+        MethodCall|NullsafeMethodCall|StaticCall|null $call,
+    ): ?array {
         $element = $receiver->elementResource;
 
         if (in_array($methodName, self::ITEMS_VALUE, true)) {
@@ -470,7 +476,7 @@ final class ReceiverMethodReturnResolver
         }
 
         return match (true) {
-            in_array($methodName, self::ITEMS_ELEMENT, true) => [
+            in_array($methodName, self::ITEMS_ELEMENT, true) => $this->mayReturnDefault($call, $methodName) ? null : [
                 ...ValueResult::unknown(),
                 'type' => "{$name} | null",
                 'resourceFqcn' => $element,
@@ -482,6 +488,21 @@ final class ReceiverMethodReturnResolver
             ],
             default => null,
         };
+    }
+
+    /**
+     * Whether a first() or last() call may return its `$default`, which Laravel sends when no item matches; a call
+     * whose arguments cannot be read counts.
+     */
+    private function mayReturnDefault(MethodCall|NullsafeMethodCall|StaticCall|null $call, string $methodName): bool
+    {
+        if ($call === null) {
+            return true;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $methodName));
+
+        return $arguments->hasUnpack() || $arguments->named('default') !== null;
     }
 
     /**
