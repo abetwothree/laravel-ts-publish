@@ -714,31 +714,30 @@ final class ReceiverClassResolver
     {
         $attribute = $this->listedAttributeName($model, $name);
 
+        // A name only an `@property` tag types holds what a dynamic or a set relation puts there.
         if ($attribute === null) {
-            return $this->relationMember($model, $name);
+            return $this->relationMember($model, $name) ?? $this->typedModel($model, $name);
         }
 
-        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $attribute)
-            ?? $this->attributeTypeModel($model, $attribute);
+        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $attribute);
 
         // The attribute hides a relation of the same name, so one holding no class names none.
-        return $attributeClass === null ? null : ReceiverType::of($attributeClass);
+        return $attributeClass === null ? $this->typedModel($model, $attribute) : ReceiverType::of($attributeClass);
     }
 
     /**
-     * The one model an attribute's type names where no declaration does, as an untyped getter's body return can.
+     * The one model a member's type names where no declaration does, as an untyped getter or an `@property` tag can.
      *
      * @param  class-string<Model>  $model
-     * @return class-string<Model>|null
      */
-    private function attributeTypeModel(string $model, string $attribute): ?string
+    private function typedModel(string $model, string $name): ?ReceiverType
     {
-        $type = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $attribute);
+        $type = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $name);
         $held = $type['classFqcns'];
 
         // A list of the model, or a union of it with another type, holds no single model.
         return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+( \| null)?$/', $type['type']) === 1
-            ? $held[0]
+            ? ReceiverType::of($held[0])
             : null;
     }
 

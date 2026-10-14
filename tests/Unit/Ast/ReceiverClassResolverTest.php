@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -36,6 +37,7 @@ use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\RosterSlot;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
@@ -490,7 +492,7 @@ describe('ReceiverClassResolver::returnClasses()', function () {
 
 // Model::__get() reads an attribute, a camelCase accessor included, before a relation of the same name.
 describe('ReceiverClassResolver::singleModelHeldBy()', function () {
-    test('names the one model a member read holds, and nothing for a collection, morphTo or scalar', function (string $model, string $name, ?string $held) {
+    test('names the one model a member read holds, and nothing for a collection, a scalar or several models', function (string $model, string $name, ?string $held) {
         expect(resolve(ReceiverClassResolver::class)->singleModelHeldBy($model, $name))->toBe($held);
     })->with([
         'a to-one relation' => [Post::class, 'author', User::class],
@@ -499,7 +501,10 @@ describe('ReceiverClassResolver::singleModelHeldBy()', function () {
         'an untyped getter whose body returns one model' => [AuthoredPost::class, 'lead', CrmUser::class],
         'a column shadowing a relation' => [Depot::class, 'supervisor', null],
         'an old-style accessor shadowing a relation' => [ProxyShadowPost::class, 'author', Category::class],
-        'a morphTo' => [Image::class, 'imageable', null],
+        'a name only an @property tag types' => [SingleModelStepPost::class, 'ghost', User::class],
+        'a morphTo of one model' => [SingleModelStepPost::class, 'subject', User::class],
+        'a morphTo of several models' => [RosterSlot::class, 'assignee', null],
+        'a morphTo bounded only by Model' => [Image::class, 'imageable', null],
         'no member' => [Post::class, 'not_a_member', null],
     ]);
 });

@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
@@ -38,6 +39,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
@@ -84,6 +86,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
@@ -101,6 +104,7 @@ use Workbench\App\Http\Resources\TeamSubscriberLocalResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Attachment;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
@@ -864,9 +868,9 @@ describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert agains
             ->and($receiver)->toBe($chain);
     });
 
-    // A camelCase key reaches the accessor the model lists under its snake_case name; an untyped getter's model comes
-    // from its body.
-    test('both walk an accessor step to the one model it holds', function (string $resource, string $model, string $php, string $type) {
+    // A camelCase key reaches the accessor the model lists under its snake_case name. An untyped getter's model comes
+    // from its body, and a name only an `@property` tag types from the tag, since a dynamic or set relation fills it.
+    test('both walk a step to the one model it holds', function (string $resource, string $model, string $php, string $type) {
         $expr = receiverHandlerExpr($php);
         $scope = fn (): AnalysisScope => new AnalysisScope(new ReflectionClass($resource), $model);
 
@@ -879,6 +883,8 @@ describe('PropertyChainHandler and ReceiverPropertyFetchHandler are inert agains
     })->with([
         'a camelCase accessor' => [ModelWrappedPropResource::class, Post::class, '$this->latestComment->is_flagged', 'boolean'],
         'an untyped getter' => [AccessorNamedKeysResource::class, AuthoredPost::class, '$this->lead?->email', 'string | null'],
+        'a name only an @property tag types, nullsafe' => [ClosureResourceRootResource::class, SingleModelStepPost::class, '$this->ghost?->name', 'string | null'],
+        'a name only an @property tag types' => [ClosureResourceRootResource::class, SingleModelStepPost::class, '$this->ghost->name', 'string'],
     ]);
 });
 
@@ -909,6 +915,20 @@ describe('a read on $this->prop types from the class the property holds', functi
         'a to-many nullsafe' => ['$this->comments?->id', 'unknown'],
         'a to-many inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags->slug)', 'unknown'],
         'a to-many nullsafe inside whenLoaded' => ['$this->whenLoaded("author", fn () => $this->tags?->slug)', 'unknown'],
+    ]);
+
+    // Model::__get() reads the `supervisor` column, a string, before the same-named relation, so each read throws.
+    test('a column shadowing a relation names no class, in dispatch and in each receiver handler', function (string $php, string $handler) {
+        $expr = receiverHandlerExpr($php);
+        $scope = new AnalysisScope(new ReflectionClass(ProxyDepotResource::class), Depot::class);
+
+        expect(new ResourceAstAnalyzer(new ReflectionClass(ProxyDepotResource::class), Depot::class)->resolve($expr)['type'])->toBe('unknown')
+            ->and(new $handler()->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
+    })->with([
+        ['$this->supervisor?->name', ReceiverPropertyFetchHandler::class],
+        ['$this->supervisor->name', ReceiverPropertyFetchHandler::class],
+        ['$this->supervisor?->nameTitled()', ReceiverMethodCallHandler::class],
+        ['$this->supervisor->nameTitled()', ReceiverMethodCallHandler::class],
     ]);
 
     test('a model-less resource reading a property it does not declare is unknown', function () {
