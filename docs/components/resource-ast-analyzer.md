@@ -53,13 +53,11 @@ every profile, the order handlers run in decides which one answers; see
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentCall()`. An ancestor's analysis wins only when it has properties or a flat type. An empty one falls
   through to `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
-- **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads what
-  that body returns for the runtime class** (`frameworkMethodAnalysis()`): the `$with` default no method writes, the
-  runtime class's `toArray()`, or its own `resolve()`; declined where `resolveResourceData()`, `toAttributes()` or
-  `$attributes` replaces the `toArray()` call. Over the collected list it is the flat list in a whole `return`, else
-  `[key: number]: R`. `$this->` decides by the runtime class's declaration; a body only the runtime class declares is
-  still read as the subject's (#79). A read that re-enters a method on `$methodsOnStack` is `null`, as Laravel never
-  returns from it, and a `parent::` value read stays `unknown`. `nestedAnalyzer()` builds every nested analyzer.
+- **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads that
+  body for the runtime class** (`frameworkMethodAnalysis()`), unless `resolveResourceData()`, `toAttributes()` or
+  `$attributes` replaces `toArray()`. A whole `return` of the collected list is flat, else `[key: number]: R`. A body
+  only the runtime class declares is still read as the subject's, which takes only the runtime class's
+  [collection facts](#a-stacked-body-less-collection-collects-what-its-own-class-names). A re-entered read is `null`.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.

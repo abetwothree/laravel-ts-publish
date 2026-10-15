@@ -75,8 +75,8 @@ final class ResourceCollectionBody
 
     /**
      * Whether `parent::$method()` in the declaring class's body hands back the collected list: `parent::toArray()`
-     * runs the parent's toArray(), and a `parent::resolve()` or `parent::jsonSerialize()` asked with the runtime class,
-     * where it reaches JsonResource's resolve(), runs that class's own, as late static binding does.
+     * runs the parent's toArray(), and `parent::resolve()` or `parent::jsonSerialize()` the runtime class's own, by
+     * late static binding. For those two the caller has found that JsonResource's resolve() runs and calls toArray().
      *
      * @template T of object
      * @template U of object
