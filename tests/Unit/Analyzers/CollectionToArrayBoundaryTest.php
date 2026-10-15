@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -33,10 +36,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeaf
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedSortedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KnobCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KnobLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Lever;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeverCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeverLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSupplierListResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RawFlatCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RawKeyedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RenamedStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceJsonSerializeCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceReturnCollection;
@@ -66,8 +73,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubValueCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubVariableCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Ratchet;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Sprocket;
+use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Http\Resources\SupplierCollection;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Supplier;
 
 /** The whole file a class publishes. */
 function publishedResourceFile(string $class): string
@@ -97,6 +109,21 @@ function publishedImportLines(string $class): array
         explode("\n", publishedResourceFile($class)),
         fn (string $line): bool => str_starts_with($line, 'import'),
     ));
+}
+
+/**
+ * What an argument-less `$rows->toResourceCollection()` publishes over a collection of the given model.
+ *
+ * @param  class-string<Model>  $model
+ */
+function guessedResourceCollectionType(string $model): string
+{
+    $subject = new ReflectionClass(StubNestingResource::class);
+    $scope = new AnalysisScope($subject, Supplier::class);
+    $scope->varCollectionBindings['rows'] = ['type' => class_basename($model).'[]', 'modelFqcn' => $model];
+    $expr = new AstParser()->parseSource('<?php $rows->toResourceCollection();')[0]->expr;
+
+    return new ResourceAstAnalyzer($subject, Supplier::class, scope: $scope)->resolve($expr)['type'];
 }
 
 $belowLaravel13 = fn (): bool => ! version_compare(app()->version(), '13', '>=');
@@ -219,6 +246,18 @@ describe('a stacked collection collects by its own class, as Laravel does', func
         expect(publishedCollectionBody(KnobCollection::class))->toBe('export interface KnobCollection');
     });
 
+    // collects() picks nothing, so Laravel sends the raw items it was given, under the wrap key as ever.
+    test('a collection whose collects() picks nothing and no ancestor names an element sends an unknown list', function (string $class, string $expected) {
+        PublishedResourceRegistry::register([StubGizmoResource::class]);
+
+        expect(publishedCollectionBody($class))->toBe($expected);
+    })->with([
+        'over an unpublished ancestor pick naming no model' => [KnobLeafCollection::class, "export interface KnobLeafCollection\n    data: unknown[];"],
+        'over an ancestor pick that is no API resource' => [LeverLeafCollection::class, "export interface LeverLeafCollection\n    data: unknown[];"],
+        'keeping its keys' => [RawKeyedCollection::class, "export interface RawKeyedCollection\n    data: Record<string, unknown>;"],
+        'with no wrap key' => [RawFlatCollection::class, 'export type RawFlatCollection = unknown[];'],
+    ]);
+
     // Laravel sets `$this->resource` to the items `$this->collection` lists, or the paginator holding them.
     test('a leaf naming no resource reads $this->resource in its parent\'s body as the raw models, in every holder', function (string $class, string $element) {
         expect(publishedCollectionBody($class))->toBe(implode("\n", [
@@ -263,8 +302,24 @@ test('a resource key holding a collection sends its own toArray() keys unless th
         '    resource_new: StubGadgetResource[];',
         '    body_new: InheritedBodyParentCollection;',
         '    body_make: InheritedBodyParentCollection;',
+        '    body_collection: InheritedBodyParentCollection[];',
     ]));
 });
+
+// Laravel builds a guessed collection; `#[UseResource]` runs `::collection()`, a list of the class it names.
+test('an argument-less toResourceCollection() publishes the collection Laravel guesses', function (string $model, string $type) {
+    expect(guessedResourceCollectionType($model))->toBe($type);
+})->with([
+    'its own body, naming no resource' => [Ratchet::class, 'RatchetCollection'],
+    'body-less, naming no resource over an ancestor pick' => [Sprocket::class, 'Supplier[]'],
+]);
+
+test('an argument-less toResourceCollection() lists the resource collection #[UseResource] names', function () {
+    expect(guessedResourceCollectionType(Cog::class))->toBe('InheritedBodyParentCollection[]');
+})->skip(
+    ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResource'),
+    'UseResource attribute requires Laravel 12.29+',
+);
 
 // The token needs the collection's own file, so outside the published set the key keeps the list it collects.
 test('an excluded nested collection with a body keeps R[] and imports nothing from it', function (array $excluded, string $type) {

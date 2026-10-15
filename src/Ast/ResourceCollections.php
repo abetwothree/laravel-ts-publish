@@ -57,6 +57,19 @@ final class ResourceCollections
     }
 
     /**
+     * Whether a runtime class's collects() picks no class, so Laravel keeps the raw items it was given, rather than
+     * mapping them into an API resource or throwing for a class that is not one.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $runtime
+     */
+    public static function keepsRawItems(ReflectionClass $runtime): bool
+    {
+        return self::pick($runtime) === null;
+    }
+
+    /**
      * A collected element as the value one item publishes: its type and the import channel it travels on; `unknown`
      * for none.
      *

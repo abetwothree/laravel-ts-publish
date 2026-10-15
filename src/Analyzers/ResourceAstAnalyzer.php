@@ -1296,17 +1296,18 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * the runtime class's: its collected element, its live wrap key and its keys.
      *
      * The wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the class
-     * preserves keys; with no key that same list is the flatTypeAlias directly.
+     * preserves keys; with no key that same list is the flatTypeAlias directly. Raw items without an element are an
+     * `unknown` list.
      */
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
         $element = $this->scope->collectedElement;
+        $runtime = $this->runtimeClass();
 
-        if ($element === null) {
+        // Laravel throws for a pick that is no API resource, and maps the items into one the run does not publish.
+        if ($element === null && ! ResourceCollections::keepsRawItems($runtime)) {
             return new ResourceAnalysis;
         }
-
-        $runtime = $this->runtimeClass();
 
         /** @var class-string<ResourceCollection> $runtimeName */
         $runtimeName = $runtime->getName();
@@ -1314,7 +1315,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $list = ResourceCollections::listValue($element, ResourceCollections::preservesKeys($runtime));
 
         if ($wrapKey === null) {
-            return new ResourceAnalysis(flatTypeAlias: $list['type'], flatTypeAliasFqcn: $element['fqcn']);
+            return new ResourceAnalysis(flatTypeAlias: $list['type'], flatTypeAliasFqcn: $element['fqcn'] ?? null);
         }
 
         $analysis = new ResourceAnalysis;

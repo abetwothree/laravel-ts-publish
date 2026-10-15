@@ -220,10 +220,9 @@ final class StaticCallHandler implements ExpressionHandler
             return $this->analyzeEnumResourceCollection($call, $className, $scope, $engine);
         }
 
-        // SomeCollection::make()/::collection() on a ResourceCollection subclass. Must precede the generic
-        // checks below: ResourceCollection extends JsonResource, so isResourceClass() matches it too and
-        // would yield the unsuffixed collection name instead of 'OrderItemResource[]'.
-        if (is_a($className, ResourceCollection::class, true) && in_array($methodName, ['make', 'collection'], true)) {
+        // SomeCollection::make() builds the collection a key nests, so it must precede the generic make() arm below;
+        // SomeCollection::collection() is JsonResource::collection(), a list of collections that arm spells.
+        if (is_a($className, ResourceCollection::class, true) && $methodName === 'make') {
             $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
 
             if ($nested !== null) {

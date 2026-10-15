@@ -109,17 +109,17 @@ unimported class, which `tsc` rejects with TS2304.
 
 Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`. Laravel's
 `collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
-own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before its walk reaches
-`MidCollection`. Its wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the
-slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
-off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()`
-finds nothing, Laravel sends raw models, so the element is the published model backing the nearest ancestor's pick,
-else that pick while the run publishes it; an ancestor pick that is no API resource names nothing
-(`ResourceCollections::collectedElement()`). The class's own pick that is no API resource, or one the run does not
-publish, is declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the
-runtime class's facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its
-`$this->collection` and `$this->resource` read `LeafCollection`'s element. The `Handover*Collection`,
-`F38*Collection` and `StubSprocket*Collection` fixtures pin it.
+own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before its walk reaches `MidCollection`. Its
+wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the slot of the nearest class
+that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]` off its own class only, as
+Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()` finds nothing, Laravel sends
+raw models, so the element is the published model backing the nearest ancestor's pick, else that pick while the run
+publishes it (`ResourceCollections::collectedElement()`). With neither, as for an ancestor pick that is no API resource,
+the raw items list as `unknown`. The class's own pick that is no API resource, or one the run does not publish, is
+declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the runtime class's
+facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its `$this->collection` and
+`$this->resource` read `LeafCollection`'s element. The `Handover*Collection`, `F38*Collection` and
+`StubSprocket*Collection` fixtures pin it.
 
 ### An inherited shape needs an inherited model
 
@@ -538,19 +538,23 @@ since Laravel sets one to the other. A collection is backed by no model, whateve
 `preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
 collection keeps its keys, else `R[]`. `ResourceCollections::listValue()` is that list as a value, the element on its
-import channel and `unknown[]` without one; `$this->collection`, a value-position `parent::toArray()` over the collected
-list, `$this->resource`'s items (`heldItems()`, with the scope's `reindexesNumericKeys`), a nested collection and the
-delegated response read it. `only()`/`except()` on the items spell it once with `false` and once with `true`, since
-those keep the keys they filter by.
+import channel; `$this->collection`, a value-position `parent::toArray()` over the collected list, `$this->resource`'s
+items (`heldItems()`, with the scope's `reindexesNumericKeys`), a nested collection and the delegated response read it.
+`only()`/`except()` on the items spell it once with `false` and once with `true`, since those keep the keys they
+filter by. Without an element, the first three are `unknown[]`. The delegated response is `{ <wrap>: unknown[] }` while
+`ResourceCollections::keepsRawItems()` holds, since `collects()` then picks nothing and Laravel sends the raw items, and
+is empty where Laravel throws or maps the items into an unpublished resource. A nested collection is `null`, so its
+caller keeps its own fallback.
 A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
 call shape would notice.
 `grep -rnE 'collectionListType\(|ResourceCollections::(listType|listValue)\(' src/` lists the sites.
 
 `listType()` spells the list alone for a site that names its API resource and reflects on the class Laravel keys it by:
-`SomeResource::collection()`, `toResourceCollection(SomeResource::class)`, an argument-less `toResourceCollection()`
-that finds no collection class, from the `#[UseResource]` arm or the bare naming fallback, and the Inertia props below.
+`SomeResource::collection()` (a `ResourceCollection` subclass's included, an anonymous list of that class),
+`toResourceCollection(SomeResource::class)`, an argument-less `toResourceCollection()` that finds no collection class,
+from the `#[UseResource]` arm or the bare naming fallback, and the Inertia props below.
 
-A `ResourceCollection` subclass nested by `new`, `make()`, `::collection()` or a guessed `toResourceCollection()` is
+A `ResourceCollection` subclass nested by `new`, `make()` or a guessed `toResourceCollection()` is
 `ResourceCollectionBody::nestedValue()`. While the run publishes it and its `toArray()` does not send the collected
 list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
 its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.

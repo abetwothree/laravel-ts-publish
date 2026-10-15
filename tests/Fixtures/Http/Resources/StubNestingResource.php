@@ -9,7 +9,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Supplier;
 
 /**
- * Nests collections in keys: ones whose toArray() sends the collected list, and one with a body of its own.
+ * Nests collections in keys: ones whose toArray() sends the collected list, and one with a body of its own, built
+ * or listed by `::collection()`.
  *
  * @mixin Supplier
  */
@@ -24,6 +25,7 @@ class StubNestingResource extends JsonResource
             'resource_new' => new ResourceReturnCollection([]),
             'body_new' => new InheritedBodyParentCollection([]),
             'body_make' => InheritedBodyParentCollection::make([]),
+            'body_collection' => InheritedBodyParentCollection::collection([]),
         ];
     }
 }
