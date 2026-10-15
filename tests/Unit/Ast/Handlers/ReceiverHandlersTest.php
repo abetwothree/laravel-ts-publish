@@ -36,9 +36,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPage
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedMediaResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedPageCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrImageResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
@@ -95,6 +97,7 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
+use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
@@ -1581,6 +1584,37 @@ describe('what $this->resource holds, through every path', function () {
         [Post::class, '$this->resource->maxSizeMb()', 'number'],
         [Post::class, '$this->resource::mimePrefixes()', 'prefixes'],
         [Post::class, '$this->commentsCount()', 'unknown'],
+    ]);
+
+    // The pipeline backs `@var Post|Image` with its first model. Read whole it publishes that model; every other read
+    // holds each class the redeclaration names, and an instanceof proof holds the class it proves.
+    test('a redeclaration naming several classes holds each of them, and a proof holds the one it proves', function (string $resource, string $php, string $type) use ($prefixes) {
+        expect(pipelineAnalyzer($resource)->resolve(receiverHandlerExpr($php))['type'])->toBe($type === 'prefixes' ? $prefixes : $type);
+    })->with([
+        [ProxyPostOrImageResource::class, '$this->resource', 'Post'],
+        [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource : null', 'Image | null'],
+        [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->fresh() : null', 'Image | null'],
+        [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource->fresh() : null', 'Image | null'],
+        [ProxyPostOrImageResource::class, '$this->resource->fresh()', 'Post | Image | null'],
+        [ProxyPostOrImageResource::class, '$this->resource->replicate()', 'Post | Image'],
+        [ProxyPostOrImageResource::class, '$this->fresh()', 'Post | Image | null'],
+        [ProxyPostOrImageResource::class, '$this->commentsCount()', 'number'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource : null', 'Image | null'],
+        [ProxyMediaOrPostResource::class, '$this->resource', 'Post'],
+        [ProxyMediaOrPostResource::class, '$this->maxSizeMb()', 'number'],
+        [ProxyMediaOrPostResource::class, '$this->resource->maxSizeMb()', 'number'],
+        [ProxyMediaOrPostResource::class, '$this->resource::mimePrefixes()', 'prefixes'],
+        [ProxyMediaOrPostResource::class, '$this->resource instanceof '.MediaType::class.' ? $this->resource->maxSizeMb() : null', 'number | null'],
+    ]);
+
+    test('a redeclaration whose one class arm is the backing model holds it beside a builtin arm', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyPostOrStringResource::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'Post'],
+        ['$this->resource->getKey()', 'number'],
+        ['$this->resource->fresh()', 'Post | null'],
+        ['$this->resource->author->getKey()', 'number'],
+        ['$this->getKey()', 'number'],
     ]);
 
     // After the negated early return PHP holds the media type for the rest of toArray().

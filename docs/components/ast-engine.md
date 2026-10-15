@@ -134,9 +134,9 @@ pairs, and the matrix does not run this profile.
 docblocks say what each binding table holds. These six facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
-  `forwardsUndeclaredMembersTo`, while a ternary's proven arm resolves, for `TernaryHandler` and `ReceiverClassResolver`
-  alike, then restores both. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not
-  describe the model a nested resolution ran under.
+  `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm resolves, for `TernaryHandler` and
+  `ReceiverClassResolver` alike, then restores all three. The narrowing happens below `AstEngine`'s `analysis:` memo
+  key, so the key does not describe the model a nested resolution ran under.
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
@@ -262,8 +262,8 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
   condition is `! $x instanceof C` or an `||` chain holding one. It binds `$x` to `C` in `varGuardBindings` with the
   offset where the `if` ends. An earlier `return` and the guard's own body therefore read `$x` unnarrowed.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
-  binds a variable in `varClassBindings`, or sets `modelClass` for `$this->resource` when one model is left. An arm that
-  writes its subject is not narrowed.
+  binds a variable in `varClassBindings`, or records `provenProxy` for `$this->resource`, setting `modelClass` too when
+  one model is left. An arm that writes its subject is not narrowed.
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
 `GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee

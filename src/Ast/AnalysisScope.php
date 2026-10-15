@@ -135,6 +135,14 @@ final class AnalysisScope
     public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
+     * The classes an `instanceof` proof holds `$this->resource` to inside the arm it proves, or null. Set and restored
+     * by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before the redeclaration and the backing class.
+     *
+     * @var non-empty-list<class-string>|null
+     */
+    public ?array $provenProxy = null;
+
+    /**
      * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
      * it collects none. Set by ResourceAstAnalyzer for any scope, its own or one a caller supplies.
      *

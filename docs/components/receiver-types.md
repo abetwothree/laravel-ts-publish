@@ -29,7 +29,7 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`, for its value and its members: the subject's own redeclaration when it names a class, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. A redeclaration that admits the backing class, as `@var Model` admits a `Post` or an `instanceof` proof narrows it, holds that class; one with an arm that names no class names nothing. A collection's redeclaration keeps the items, naming only the class they arrive in. Read whole, it publishes the backing model's interface, the items as `heldItems()` spells them, or the redeclaration when it names any other class |
+| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the arm it proves (`AnalysisScope::$provenProxy`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole, by `proxyModel()`, it publishes the proven model, the backing model when the subject does not redeclare `$resource` or one class it names admits it, the items as `heldItems()` spells them, or else the redeclaration |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
@@ -113,6 +113,9 @@ A test never widens a class the arm already names. When no class survives, the a
 resolved to, and when it resolves to nothing, it holds the tested classes. When the proven arm instead reads a member
 through the tested subject, as in `$this->resource instanceof SubscribedTeam ? $this->resource->subscriber : null`,
 `provenArm()` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, the binding `TernaryHandler` uses.
+On `$this->resource` the classes narrowed are the proof already in force, else every class `$resource` is redeclared
+as, the bound the backing model was picked within, so `@var Model` over a `Post` narrows to `Image` under
+`instanceof Image`.
 
 These stay un-narrowed:
 
@@ -120,7 +123,7 @@ These stay un-narrowed:
   a `$this->x` arm.
 - `&&`, a negation inside an `||` chain, or an `||` operand that is not an `instanceof` test on the arm.
 - The arm the test does not prove, so `$x instanceof C ? null : $x` does not remove `C`.
-- A member read through a `$this->prop` subject, or through `$this->resource` tested for more than one class.
+- A member read through a `$this->prop` subject.
 - `?:` and `??`, which prove nothing.
 
 The rule narrows receivers only. `TernaryHandler` narrows reads made inside the proven arm, so `$x->prop` there narrows,
@@ -155,12 +158,13 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
 
 - **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, `forwardedThisReceiver()`
   names the classes `ReceiverClassResolver::proxyCallTargets()` finds, since `JsonResource::__call()` forwards the call
-  to what `$this->resource` holds. It tries the classes `$resource` is redeclared as, then the `instanceof` guard's
-  class, then the backing class, and takes every class of the first group that declares `m`, since an arm that lacks
-  it throws. A non-model the redeclaration names ends the search, so the model never answers for it, and a
-  redeclaration that admits the backing class adds nothing. A collection's items go to the receiver rules. On a `Post`
-  resource, `$this->getKey()` is `number` and `$this->fresh()` is `Post | null`. A method the resource declares,
-  including every `JsonResource` helper such as `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
+  to what `$this->resource` holds. Inside a proven arm it tries only the classes the proof holds. Otherwise it tries the
+  classes `$resource` is redeclared as, then the `instanceof` guard's class, then the backing class, and takes every
+  class of the first group that declares `m`, since an arm that lacks it throws. A non-model the redeclaration names
+  ends the search, so the model never answers for it, and a redeclaration every class of which admits the backing class
+  adds nothing. A collection's items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and
+  `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper such as
+  `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
 - **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.

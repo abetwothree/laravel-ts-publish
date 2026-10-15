@@ -220,9 +220,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What `$this->resource` holds as a receiver and a value: the classes the subject redeclares it as, or the backing
-     * class AnalysisScope::proxyReceiver() names when the redeclaration admits it, as `@var Model` admits a post; null
-     * where the subject has no resource proxy, or the redeclaration has an arm that names no class.
+     * What `$this->resource` holds as a receiver: the classes an `instanceof` proof holds it to, else those the subject
+     * redeclares it as, or the backing class AnalysisScope::proxyReceiver() names when every one of them admits it, as
+     * `@var Model` admits a post; null without a resource proxy, or when a redeclared arm names no class.
      */
     public function proxyHeld(AnalysisScope $scope): ?ReceiverType
     {
@@ -232,25 +232,47 @@ final class ReceiverClassResolver
 
         $proxy = $scope->proxyReceiver();
         $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $classes = $scope->provenProxy ?? ($declared !== null && $declared['named'] ? $declared['classes'] : null);
 
-        if ($declared === null) {
-            return $proxy;
+        // A collection's constructor always swaps in its items, so a proof or a redeclaration names only their holder.
+        if ($proxy !== null && $proxy->collectedItems) {
+            return $classes === null
+                ? $proxy
+                : new ReceiverType($classes, collectedItems: true, elementResource: $proxy->elementResource);
         }
 
-        // A collection's constructor always swaps in its items, so its redeclaration names only their holder.
-        if ($proxy !== null && $proxy->collectedItems) {
-            return $declared['named']
-                ? new ReceiverType($declared['classes'], collectedItems: true, elementResource: $proxy->elementResource)
-                : $proxy;
+        $backingNarrowsAll = $declared === null
+            || $this->admittedByEvery($declared['classes'], $scope->forwardsUndeclaredMembersTo);
+
+        return match (true) {
+            $scope->provenProxy === null && $backingNarrowsAll => $proxy,
+            $classes === null => null,
+            default => new ReceiverType($classes),
+        };
+    }
+
+    /**
+     * The model `$this->resource` publishes as when read whole: the one an `instanceof` proof holds it to, else the
+     * backing model when the subject does not redeclare `$resource` or one class it names admits it; null otherwise.
+     *
+     * @return class-string<Model>|null
+     */
+    public function proxyModel(AnalysisScope $scope): ?string
+    {
+        if (! $scope->hasResourceProxy()) {
+            return null;
         }
 
         $backing = $scope->forwardsUndeclaredMembersTo;
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
 
-        return match (true) {
-            ! $declared['named'] => null,
-            $this->admits($declared['classes'], $backing) => $proxy,
-            default => new ReceiverType($declared['classes']),
+        $model = match (true) {
+            $scope->provenProxy !== null => count($scope->provenProxy) === 1 ? $scope->provenProxy[0] : null,
+            $declared === null || $this->admitting($declared['classes'], $backing) !== [] => $backing,
+            default => null,
         };
+
+        return $model !== null && is_a($model, Model::class, true) ? $model : null;
     }
 
     /**
@@ -305,7 +327,7 @@ final class ReceiverClassResolver
      */
     public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): array
     {
-        return $this->narrowed($this->resolve($subject, $scope), $tested)->classes;
+        return $this->narrowed($this->narrowable($subject, $scope), $tested)->classes;
     }
 
     /**
@@ -678,7 +700,7 @@ final class ReceiverClassResolver
     private function provenArm(Expr $arm, Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
     {
         if ($this->isSameReadPath($subject, $arm)) {
-            return $this->narrowed($this->resolve($arm, $scope), $tested);
+            return $this->narrowed($this->narrowable($arm, $scope), $tested);
         }
 
         $narrowed = $this->readsThrough($arm, $subject)
@@ -1011,19 +1033,45 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether a backing class is one of the declared classes, or a subtype of one.
+     * The declared classes a backing class is, or is a subtype of.
      *
      * @param  list<class-string>  $declared
+     * @return list<class-string>
      */
-    private function admits(array $declared, ?string $backing): bool
+    private function admitting(array $declared, ?string $backing): array
     {
-        return $backing !== null && array_any($declared, fn (string $class): bool => is_a($backing, $class, true));
+        return $backing === null
+            ? []
+            : array_values(array_filter($declared, fn (string $class): bool => is_a($backing, $class, true)));
     }
 
     /**
-     * The groups of classes a call forwarded to `$this->resource` may run on, in the order they answer: the classes the
-     * subject redeclares it as, then the `instanceof` guard's class, then the backing class. A non-model the
-     * redeclaration names is final, so the model never answers for it; empty for a resource collection's items.
+     * Whether a backing class is, or is a subtype of, every declared class, so it narrows them all.
+     *
+     * @param  list<class-string>  $declared
+     */
+    private function admittedByEvery(array $declared, ?string $backing): bool
+    {
+        return $this->admitting($declared, $backing) === $declared;
+    }
+
+    /**
+     * What an `instanceof` test on an expression narrows: on `$this->resource`, the proof already in force or the
+     * classes it is redeclared as, the bound the backing class was picked within; else the classes it holds.
+     */
+    private function narrowable(Expr $subject, AnalysisScope $scope): ?ReceiverType
+    {
+        $bound = $this->isProxyFetch($subject, $scope)
+            ? $scope->provenProxy ?? $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? null
+            : null;
+
+        return $bound === null ? $this->resolve($subject, $scope) : new ReceiverType($bound);
+    }
+
+    /**
+     * The groups of classes a call forwarded to `$this->resource` may run on, in the order they answer: those an
+     * `instanceof` proof holds it to, alone; else the classes the subject redeclares it as, the guard's class, then the
+     * backing class. A non-model the redeclaration names is final, so the model never answers for it.
      *
      * @return list<non-empty-list<class-string>>
      */
@@ -1035,6 +1083,10 @@ final class ReceiverClassResolver
             return [];
         }
 
+        if ($scope->provenProxy !== null) {
+            return [$scope->provenProxy];
+        }
+
         $backing = $scope->forwardsUndeclaredMembersTo;
         $fallback = array_map(
             fn (string $class): array => [$class],
@@ -1042,7 +1094,7 @@ final class ReceiverClassResolver
         );
         $declared = $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? [];
 
-        if ($declared === [] || $this->admits($declared, $backing)) {
+        if ($declared === [] || $this->admittedByEvery($declared, $backing)) {
             return $fallback;
         }
 

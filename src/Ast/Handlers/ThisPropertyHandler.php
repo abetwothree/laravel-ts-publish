@@ -17,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -125,9 +124,10 @@ final class ThisPropertyHandler implements ExpressionHandler
         // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
         // unreachable: the value is what the proxy holds, its items, the backing model or a redeclared class.
         if ($this->isProxyFetch($expr, $scope)) {
-            $proxy = resolve(ReceiverClassResolver::class)->proxyHeld($scope);
+            $receivers = resolve(ReceiverClassResolver::class);
+            $proxy = $receivers->proxyHeld($scope);
             $held = ($proxy === null ? null : resolve(ReceiverMethodReturnResolver::class)->heldItems($proxy, $scope))
-                ?? $this->proxiedModel($proxy, $scope)
+                ?? $this->proxiedModel($receivers->proxyModel($scope))
                 ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
 
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
@@ -175,18 +175,15 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * The backing model as the model's own interface when the proxy holds it; null when it holds anything else, which
+     * The model the proxy is read as whole, as the model's own interface; null when it is read as no model, which
      * publishes as the subject declares it.
      *
+     * @param  class-string<Model>|null  $model
      * @return ValueExpressionResult|null
      */
-    private function proxiedModel(?ReceiverType $proxy, AnalysisScope $scope): ?array
+    private function proxiedModel(?string $model): ?array
     {
-        $model = $scope->forwardsUndeclaredMembersTo;
-
-        return $model !== null && $proxy?->classes === [$model] && is_a($model, Model::class, true)
-            ? [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model]
-            : null;
+        return $model === null ? null : [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model];
     }
 
     /**

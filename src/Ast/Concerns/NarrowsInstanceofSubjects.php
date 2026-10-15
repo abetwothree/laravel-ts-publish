@@ -21,8 +21,8 @@ trait NarrowsInstanceofSubjects
 {
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varClassBindings,
-     * its varGuardBindings past the write that ended its parameter binding, or the model the `$this->resource` proxy
-     * holds when that is one), then restore the scope. Null for any other subject, or for an arm that writes it.
+     * its varGuardBindings past the write that ended its parameter binding, or what the `$this->resource` proxy holds),
+     * then restore the scope. Null for any other subject, or for an arm that writes it.
      *
      * @template TResult
      *
@@ -63,21 +63,22 @@ trait NarrowsInstanceofSubjects
             }
         }
 
-        $model = $classes[0];
-
-        if (count($classes) !== 1 || ! is_a($model, Model::class, true)) {
-            return null;
-        }
-
+        $previousProvenProxy = $scope->provenProxy;
         $previousModelClass = $scope->modelClass;
         $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
 
         try {
-            $scope->rebase($scope->subjectReflection, $model);
+            $scope->provenProxy = $classes;
+
+            // One proven model also answers the subject's model reads, such as an undeclared `$this->prop`.
+            if (count($classes) === 1 && is_a($classes[0], Model::class, true)) {
+                $scope->rebase($scope->subjectReflection, $classes[0]);
+            }
 
             return $resolve();
         } finally {
             // Restored, never re-derived: an instanceof guard in toArray() may have backed the proxy the model did not.
+            $scope->provenProxy = $previousProvenProxy;
             $scope->modelClass = $previousModelClass;
             $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }
