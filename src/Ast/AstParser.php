@@ -9,6 +9,7 @@ use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\Parser;
 use PhpParser\ParserFactory;
 
 /**
@@ -24,6 +25,17 @@ class AstParser
     /** @var array<string, array<Node>> */
     protected array $fileAsts = [];
 
+    /** Built once and reused: a run parses hundreds of files, and a fresh parser for each one adds up. */
+    protected Parser $parser;
+
+    /**
+     * Build the one parser every parse reuses.
+     */
+    public function __construct()
+    {
+        $this->parser = (new ParserFactory)->createForNewestSupportedVersion();
+    }
+
     /**
      * Parse a file into a name-resolved AST, caching per path and recording the cache dependency.
      *
@@ -34,7 +46,13 @@ class AstParser
         DependencyRecorder::record($path);
 
         if (isset($this->fileAsts[$path])) {
-            return $this->fileAsts[$path];
+            $stmts = $this->fileAsts[$path];
+
+            // Re-inserted last so eviction drops the least recently read file: a model or framework file read across
+            // many classes would otherwise be re-parsed whenever enough newer files pushed it out.
+            unset($this->fileAsts[$path]);
+
+            return $this->fileAsts[$path] = $stmts;
         }
 
         if (count($this->fileAsts) >= self::MAX_CACHED_FILES) {
@@ -51,10 +69,8 @@ class AstParser
      */
     public function parseSource(string $source): array
     {
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-
         try {
-            $stmts = $parser->parse($source);
+            $stmts = $this->parser->parse($source);
         } catch (Error) {
             return [];
         }

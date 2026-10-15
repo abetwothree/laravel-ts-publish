@@ -42,3 +42,40 @@ it('returns an empty array for unparseable source', function () {
 it('returns an empty array for syntactically invalid source', function () {
     expect(new AstParser()->parseSource('<?php class {'))->toBe([]);
 });
+
+it('parses valid source again after a syntax error on the same instance', function () {
+    $parser = new AstParser;
+
+    expect($parser->parseSource('<?php class {'))->toBe([])
+        ->and($parser->parseSource('<?php namespace A; class B {}')[0])->toBeInstanceOf(Namespace_::class);
+});
+
+it('evicts the least recently read file once the cache is full', function () {
+    $cap = new ReflectionClassConstant(AstParser::class, 'MAX_CACHED_FILES')->getValue();
+    $dir = sys_get_temp_dir().'/ast-parser-lru-'.uniqid();
+    mkdir($dir);
+    $paths = array_map(function (int $i) use ($dir): string {
+        file_put_contents($path = "{$dir}/file{$i}.php", "<?php \$value = {$i};");
+
+        return $path;
+    }, range(0, $cap));
+
+    try {
+        $parser = new AstParser;
+        $first = $parser->parseFile($paths[0]);
+        $second = $parser->parseFile($paths[1]);
+
+        foreach (array_slice($paths, 2, $cap - 2) as $path) {
+            $parser->parseFile($path);
+        }
+
+        $parser->parseFile($paths[0]);
+        $parser->parseFile($paths[$cap]);
+
+        expect($parser->parseFile($paths[0]))->toBe($first)
+            ->and($parser->parseFile($paths[1]))->not->toBe($second);
+    } finally {
+        array_map(unlink(...), $paths);
+        rmdir($dir);
+    }
+});
