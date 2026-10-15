@@ -8,10 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
-use ReflectionClass;
-use ReflectionMethod;
 
 /**
  * The `user()`/`id()` result shared by the two auth entry points, `auth()->…` and `Auth::…`.
@@ -44,26 +41,8 @@ trait ResolvesAuthHelperCalls
 
         DependencyRecorder::recordClass($model);
 
-        $keyType = $this->identifiesByKey($model) ? resolve(ModelAttributeResolver::class)->keyTsType($model) : null;
+        $identifier = resolve(ModelAttributeResolver::class)->authIdentifierTsType($model);
 
-        return $keyType === null ? null : ['type' => ValueResult::withNullArm($keyType), 'optional' => false];
-    }
-
-    /**
-     * Whether Auth::id() sends the model's key, which it does not once the model names another identifier column.
-     *
-     * @param  class-string<Model>  $model
-     */
-    private function identifiesByKey(string $model): bool
-    {
-        $framework = trait_exists(Authenticatable::class) ? new ReflectionClass(Authenticatable::class)->getFileName() : false;
-
-        foreach (['getAuthIdentifier', 'getAuthIdentifierName'] as $method) {
-            if (method_exists($model, $method) && new ReflectionMethod($model, $method)->getFileName() !== $framework) {
-                return false;
-            }
-        }
-
-        return true;
+        return $identifier === null ? null : ['type' => ValueResult::withNullArm($identifier), 'optional' => false];
     }
 }

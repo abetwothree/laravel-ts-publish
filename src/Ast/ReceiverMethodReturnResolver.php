@@ -225,11 +225,14 @@ final class ReceiverMethodReturnResolver
 
         // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
         if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
-            $keyType = $resolver->keyTsType($class);
+            return $this->columnResult($receiver, $resolver->keyTsType($class));
+        }
 
-            return $keyType === null
-                ? null
-                : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? ValueResult::withNullArm($keyType) : $keyType];
+        // getAuthIdentifier() reads the column getAuthIdentifierName() names; an override of it is read as declared.
+        if ($methodName === 'getAuthIdentifier'
+            && is_subclass_of($class, Model::class)
+            && method_exists($class, $methodName)) {
+            return $this->columnResult($receiver, $resolver->authIdentifierTsType($class));
         }
 
         // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
@@ -281,6 +284,18 @@ final class ReceiverMethodReturnResolver
         }
 
         return $this->typesAsModelFilter($class, $methodName) ? $this->attributeFilterRule($receiver, $methodName, $scope, $call) : null;
+    }
+
+    /**
+     * A column's type as a result, adding `| null` where no row backs the receiver yet; null when there is no type.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function columnResult(ReceiverType $receiver, ?string $type): ?array
+    {
+        return $type === null
+            ? null
+            : [...ValueResult::unknown(), 'type' => $receiver->unsaved ? ValueResult::withNullArm($type) : $type];
     }
 
     /**

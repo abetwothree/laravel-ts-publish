@@ -620,8 +620,8 @@ it a `@var` docblock.
 `getKey()`, `modelKeys()` and `Auth::id()` on an abstract model publish the key type the class declares, joined with
 each concrete subclass the run publishes. A subclass the run leaves out, which the collector skips or a package
 holds, adds nothing when it keys differently. So does a key a constructor sets through another method. A
-`uniqueIds()` override publishes `unknown` even when its list leaves the key out. A concrete receiver class never
-looks at its subclasses.
+`uniqueIds()` override whose list is not a literal publishes `unknown`. A concrete receiver class never looks at its
+subclasses.
 
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 

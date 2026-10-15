@@ -347,10 +347,14 @@ fixtures may still `use`-import them, are in [Version-guarded Laravel classes](.
 
 `keyTsType()` reads a model's key type from its instance, built without its table when that cannot be read. With no
 instance at all, `declaredKeyTsType()` reads `$primaryKey`, `$keyType`, Laravel 13's `#[Table]` and
-`HasUuids`/`HasUlids` from the class, and declines where code decides the key. For an abstract model,
-`subclassKeyTsType()` unions in each published concrete subclass's type and records every published model, since any of
-them could become a subclass. `tableKeyDeclaration()` is the one place `#[Table]` is read through reflection, because no
-constructor runs there.
+`HasUuids`/`HasUlids` from the class, with the list a `uniqueIds()` override returns as a literal, and declines where
+code decides the key. For an abstract model, `subclassKeyTsType()` unions in each published concrete subclass's type and
+records every published model, since any of them could become a subclass. `tableKeyDeclaration()` is the one place
+`#[Table]` is read through reflection, because no constructor runs there.
+
+`authIdentifierTsType()` types what `Authenticatable::getAuthIdentifier()` returns, for `Auth::id()` and the
+[receiver rule](receiver-types.md#receiver-rules): the key type, or the type of the column a literal
+`getAuthIdentifierName()` return names, when that type needs no import.
 
 ## A missing table is reported, not guessed
 

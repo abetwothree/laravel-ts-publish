@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Carbon\CarbonImmutable;
 use Closure;
 use Exception;
+use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Contracts\Support\Arrayable;
@@ -1065,6 +1067,39 @@ class ModelAttributeResolver
     }
 
     /**
+     * The TypeScript type of what Authenticatable::getAuthIdentifier() returns: the key's, or that of the column a
+     * literal getAuthIdentifierName() override names; null where code computes the identifier or its column.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function authIdentifierTsType(string $modelFqcn): ?string
+    {
+        $runsFramework = fn (string $method): bool => trait_exists(Authenticatable::class)
+            && self::runsFrameworkMethod(new ReflectionMethod($modelFqcn, $method), Authenticatable::class);
+
+        if (method_exists($modelFqcn, 'getAuthIdentifier') && ! $runsFramework('getAuthIdentifier')) {
+            return null;
+        }
+
+        if (! method_exists($modelFqcn, 'getAuthIdentifierName') || $runsFramework('getAuthIdentifierName')) {
+            return $this->keyTsType($modelFqcn);
+        }
+
+        $column = resolve(ReturnLiteralReader::class)->stringLiteral($modelFqcn, 'getAuthIdentifierName');
+
+        if ($column === null) {
+            return null;
+        }
+
+        $type = $this->resolveAttribute($modelFqcn, $column)['type'];
+
+        // Its callers carry no import, so a column typed by an enum or a class declines.
+        return array_diff(TsTypeString::splitTopLevelUnion($type), ['string', 'number', 'boolean', 'null']) === []
+            ? $type
+            : null;
+    }
+
+    /**
      * The driver of the connection a model queries through, such as `mysql`, read from its config once the run has the
      * model's context, which a cold call builds by inspecting its schema; null when the model cannot be instantiated or
      * its connection is not configured.
@@ -1665,9 +1700,9 @@ class ModelAttributeResolver
     }
 
     /**
-     * The key type a model class declares, read without instantiating it: the `$primaryKey` and `$keyType` defaults,
-     * Laravel 13's `#[Table]`, and `HasUuids`/`HasUlids`. Null for `Model` itself, and wherever code decides the key:
-     * an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`, or a constructor or initializer naming the key.
+     * The key type a model class declares, read without building it: `$primaryKey`, `$keyType`, Laravel 13's
+     * `#[Table]`, `HasUuids`/`HasUlids` and a literal `uniqueIds()` list. Null for `Model` itself and where code sets
+     * the key: a `getKeyType()` or `getKeyName()` override, a non-literal `uniqueIds()`, a constructor or initializer.
      *
      * @param  class-string  $modelFqcn
      */
@@ -1683,7 +1718,6 @@ class ModelAttributeResolver
 
         if (! self::runsFrameworkMethod($reflection->getMethod('getKeyName'), Model::class)
             || ! ($uniqueIds || self::runsFrameworkMethod($getKeyType, Model::class))
-            || ($uniqueIds && ! self::runsFrameworkMethod($reflection->getMethod('uniqueIds'), HasUniqueStringIds::class))
             || $this->setsKeyInCode($reflection)) {
             return null;
         }
@@ -1694,8 +1728,20 @@ class ModelAttributeResolver
         $keyName = $defaults['primaryKey'] === 'id' ? $table['key'] ?? 'id' : $defaults['primaryKey'];
         $keyType = $defaults['keyType'] === 'int' ? $table['keyType'] ?? 'int' : $defaults['keyType'];
 
-        // HasUniqueStringIds::getKeyType() answers `string` for a key its own uniqueIds() lists, which is always.
-        return self::keyTsTypeOf($keyName, $uniqueIds ? 'string' : $keyType);
+        if (! $uniqueIds) {
+            return self::keyTsTypeOf($keyName, $keyType);
+        }
+
+        // HasUniqueStringIds::getKeyType() answers `string` for a key uniqueIds() lists, which its own always does.
+        $listed = self::runsFrameworkMethod($reflection->getMethod('uniqueIds'), HasUniqueStringIds::class)
+            ? [$keyName]
+            : resolve(ReturnLiteralReader::class)->strings($modelFqcn, 'uniqueIds');
+
+        if ($listed === null) {
+            return null;
+        }
+
+        return self::keyTsTypeOf($keyName, in_array($keyName, $listed, true) ? 'string' : $keyType);
     }
 
     /**

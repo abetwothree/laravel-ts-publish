@@ -200,25 +200,31 @@ Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relati
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks seven convention rules on each class before
+`ReceiverMethodReturnResolver` checks eight convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all seven loosely. `Model::getKey()` returns `mixed`, `Collection::modelKeys()` reflects to
-`(string | number)[]`, `Model::only()` to `Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other
-`Model` arrays to the list `unknown[]`, `Collection::all()` declares `array<TKey, TValue>`, and `resolveRouteBinding()`
-declares `Model|null`. Each rule answers only on the receiver it names:
+Laravel declares all eight loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
+`Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to `Record<string, unknown>`,
+`Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`, `Collection::all()` declares
+`array<TKey, TValue>`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it
+names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
   gets no rule. A model with no instance, abstract or one that cannot be built, gets the key type its class declares
   (`ModelAttributeResolver::declaredKeyTsType()`), and an abstract one adds each published concrete subclass's, so
-  `number | string`. Where code decides the key, through an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`,
-  or a constructor or initializer naming it, the rule declines. A model whose `$primaryKey` is `null` publishes `null`.
+  `number | string`. Where code decides the key, through an overridden `getKeyType()`, `getKeyName()` or a
+  `uniqueIds()` that returns no literal list, or a constructor or initializer naming it, the rule declines. A model
+  whose `$primaryKey` is `null` publishes `null`.
   `ReceiverType::$unsaved`, set by `new` and by `replicate()`, `replicateQuietly()` and `newInstance()` (through a
   local, a ternary or a `??` too), and by a query's, relation's or factory's `make()`, `makeOne()`,
   `newModelInstance()`, `firstOrNew()` and the rest of `UNSAVED_QUERY_MODELS`, adds `| null`: `number | null`. A fluent
   call that returns the model itself, such as `fill()`, keeps the mark.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
+- **`getAuthIdentifier()`**: on a model that runs `Authenticatable`'s own, the type from
+  `ModelAttributeResolver::authIdentifierTsType()`: the key type, or the type of the column a literal
+  `getAuthIdentifierName()` return names. An unsaved receiver adds `| null`. An override of `getAuthIdentifier()` is
+  read as declared.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,
   wrapped first when it is a union: `(number | string)[]`.
 - **`all()`**: on an `Eloquent\Collection` with `elementModel` set, the element model as a list, such as `Comment[]`,
@@ -248,7 +254,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the seven on a resource collection's items alone:
+One more rule reads no model, and runs before the eight on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or

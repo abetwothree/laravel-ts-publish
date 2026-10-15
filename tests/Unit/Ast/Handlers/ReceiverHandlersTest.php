@@ -47,7 +47,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
@@ -1205,6 +1208,16 @@ describe('getKey()', function () {
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
     })->with(['$this->resource->getKey()', '$this->resource?->getKey()', '$this->getKey()']);
 
+    test('reads an abstract model\'s literal uniqueIds() list for its key type in every spelling', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractUniqueIdsKeyModel::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getKey()', 'number'],
+        ['$this->resource?->getKey()', 'number | null'],
+        ['$this->getKey()', 'number'],
+    ]);
+
     test('unions an abstract model\'s key type with a published subclass that keys differently', function (string $php, string $type) {
         PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), AbstractKeyedModel::class);
@@ -1320,6 +1333,19 @@ describe('getKey()', function () {
             ->and($abstract->resolve(receiverHandlerExpr('$this->resource->replicate()->getKey()'))['type'])->toBe('number | string | null')
             ->and($abstract->resolve(receiverHandlerExpr('$this->replicate()->getKey()'))['type'])->toBe('number | string | null');
     });
+
+    test('getAuthIdentifier() types the column the model identifies by, with null where no row backs it yet', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), EmailIdentifierUser::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource->getAuthIdentifier()', 'string'],
+        ['$this->getAuthIdentifier()', 'string'],
+        ['(new \\'.EmailIdentifierUser::class.')->getAuthIdentifier()', 'string | null'],
+        ['(new \\'.User::class.')->getAuthIdentifier()', 'number | null'],
+        ['(new \\'.ComputedIdentifierUser::class.')->getAuthIdentifier()', 'string'],
+        ['(new \\'.Post::class.')->getAuthIdentifier()', 'unknown'],
+    ]);
 
     test('the dispatch floor no longer answers getKey()', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), CallPathAbstractModel::class);

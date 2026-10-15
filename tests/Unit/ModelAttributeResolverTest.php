@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInitializeKeyModel;
@@ -22,9 +23,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTraitTableKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUlidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueKeyListedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
@@ -42,6 +48,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildMod
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
@@ -1314,6 +1321,8 @@ describe('keyTsType()', function () {
         'HasUuids' => [AbstractUuidKeyModel::class, 'string'],
         'HasUlids' => [AbstractUlidKeyModel::class, 'string'],
         'a null $primaryKey' => [AbstractNullKeyModel::class, 'null'],
+        'a uniqueIds() list leaving the key out' => [AbstractUniqueIdsKeyModel::class, 'number'],
+        'a uniqueIds() list naming the key' => [AbstractUniqueKeyListedModel::class, 'string'],
     ]);
 
     test('reads an abstract model\'s #[Table] key type, which Laravel applies to every subclass', function (string $model) {
@@ -1324,13 +1333,18 @@ describe('keyTsType()', function () {
         'on its parent' => [AbstractInheritedTableKeyModel::class],
     ])->skip(! class_exists('Illuminate\Database\Eloquent\Attributes\Table'), 'Table attribute requires Laravel 13+');
 
+    // HasUniqueStringIds::getKeyType() runs the override on an instance, so a concrete model's key was always read.
+    test('reads a concrete model\'s uniqueIds() override through its instance', function () {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(UniqueIdsKeyPost::class))->toBe('number');
+    });
+
     test('declines Model itself, and an abstract model whose key code decides', function (string $model) {
         expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBeNull();
     })->with([
         'Model' => [Model::class],
         'getKeyType() override' => [AbstractKeyTypeOverrideModel::class],
         'getKeyName() override' => [AbstractKeyNameOverrideModel::class],
-        'uniqueIds() override' => [AbstractUniqueIdsKeyModel::class],
+        'a uniqueIds() override with no literal list' => [AbstractComputedUniqueIdsModel::class],
         'a constructor naming the key' => [AbstractConstructorKeyModel::class],
     ]);
 
@@ -1383,4 +1397,22 @@ describe('keyTsType()', function () {
         expect($paths)->toContain((string) new ReflectionClass(UuidKeyedModel::class)->getFileName())
             ->toContain((string) new ReflectionClass(Post::class)->getFileName());
     });
+});
+
+describe('authIdentifierTsType()', function () {
+    test('reads the type of the column Authenticatable::getAuthIdentifier() returns', function (string $model, string $type) {
+        expect(resolve(ModelAttributeResolver::class)->authIdentifierTsType($model))->toBe($type);
+    })->with([
+        'the key, by default' => [User::class, 'number'],
+        'a literal getAuthIdentifierName() column' => [EmailIdentifierUser::class, 'string'],
+    ]);
+
+    // The auth result carries no import, so a column whose type names an enum or a class cannot be spelled there.
+    test('declines where code computes the identifier or its column, or the column\'s type needs an import', function (string $model) {
+        expect(resolve(ModelAttributeResolver::class)->authIdentifierTsType($model))->toBeNull();
+    })->with([
+        'a computed identifier' => [ComputedIdentifierUser::class],
+        'a configured identifier column' => [ConfiguredIdentifierUser::class],
+        'an enum-cast identifier column' => [EnumIdentifierUser::class],
+    ]);
 });
