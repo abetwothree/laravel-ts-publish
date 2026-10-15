@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -84,6 +85,16 @@ final class NewResourceHandler implements ExpressionHandler
         // new SomeCollection($this->items) — resolve the collected element type. Must precede the
         // generic isResourceClass() branch below, for the same reason as in analyzeStaticCall().
         if (is_a($className, ResourceCollection::class, true)) {
+            // A collection whose toArray() is not the collected list sends that body's keys.
+            if (resolve(ResourceCollectionBody::class)->sendsOwnShape($className)) {
+                return [
+                    ...$result,
+                    'type' => TsNaming::resourceTypeName($className),
+                    'optional' => $this->hasConditionalNewArgument($expr, $className),
+                    'resourceFqcn' => $className,
+                ];
+            }
+
             $collected = ResourceCollections::collectedResource($className);
 
             if ($collected !== null) {

@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -154,12 +155,40 @@ final class StaticCallHandler implements ExpressionHandler
             }
         }
 
+        // A value read of `parent::toArray()` over a parent that sends the collected list is that list.
+        if ($expr instanceof StaticCall && $this->readsParentCollectedList($expr, $scope)) {
+            $element = $scope->collectedResource;
+
+            return [
+                ...ValueResult::unknown(),
+                'type' => ValueResult::collectionListType(
+                    $element === null ? 'unknown' : TsNaming::resourceTypeName($element),
+                    ! $scope->reindexesNumericKeys,
+                ),
+                ...($element === null ? [] : ['resourceFqcn' => $element]),
+            ];
+        }
+
         // EnumResource::make($this->prop) or SomeResource::make/collection(); a `$expr::m()` it cannot name declines.
         if ($expr instanceof StaticCall) {
             return $this->resolveStaticCallClassName($expr) === null ? null : $this->analyzeStaticCall($expr, $scope, $engine);
         }
 
         return null;
+    }
+
+    /**
+     * Whether a call is `parent::toArray()` in a resource collection whose parent's toArray() sends the collected list.
+     */
+    private function readsParentCollectedList(StaticCall $call, AnalysisScope $scope): bool
+    {
+        if (! $this->isParentCallTo($call, 'toArray') || ! $this->isResourceCollection($scope)) {
+            return false;
+        }
+
+        $parent = $scope->subjectReflection->getParentClass();
+
+        return $parent !== false && resolve(ResourceCollectionBody::class)->sendsCollectedList($parent);
     }
 
     /**
@@ -204,6 +233,16 @@ final class StaticCallHandler implements ExpressionHandler
         // checks below: ResourceCollection extends JsonResource, so isResourceClass() matches it too and
         // would yield the unsuffixed collection name instead of 'OrderItemResource[]'.
         if (is_a($className, ResourceCollection::class, true) && in_array($methodName, ['make', 'collection'], true)) {
+            // make() builds the collection, so one whose toArray() is not the collected list sends its own keys.
+            if ($methodName === 'make' && resolve(ResourceCollectionBody::class)->sendsOwnShape($className)) {
+                return [
+                    ...$result,
+                    'type' => TsNaming::resourceTypeName($className),
+                    'optional' => $this->hasConditionalArgument($call, $className),
+                    'resourceFqcn' => $className,
+                ];
+            }
+
             $collected = ResourceCollections::collectedResource($className);
 
             if ($collected !== null) {

@@ -75,7 +75,7 @@ which works on both versions. The `FooCollection` to `FooResource` convention al
 Laravel reads the API resource a collection collects from its `collects()` method at runtime. The package reads the
 `#[Collects]` attribute, the `$collects` property's declared default and the naming convention, so a collection whose
 own `collects()` returns `PostResource::class`, or whose constructor assigns `$this->collects`, publishes an empty
-interface, though Laravel sends `{ data: PostResource[] }`. Declare `public $collects = PostResource::class;` instead.
+interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare `public $collects = PostResource::class;` instead.
 
 ### A non-promoted property a constructor always assigns still renders optional
 
@@ -421,15 +421,6 @@ API resource by attribute or by name, the stacked class still publishes an empty
 stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the
 published type and the response agree.
 
-### A collection that keeps the `make:resource` stub `toArray()` publishes an empty interface, or its parent's API resource
-
-`make:resource` writes `return parent::toArray($request);` into a new collection. A collection that keeps it and extends
-`ResourceCollection` publishes an empty interface, though Laravel sends `{ data: R[] }` of the API resource it collects.
-Stacked on another collection it publishes that parent's collected type, not the API resource its own `$collects` names,
-because `ResourceAstAnalyzer::analyzeParentToArray()` analyzes the parent as its own subject. Delete the stub
-`toArray()`: it only repeats the inherited one, and the collection then resolves from its own class, as a body-less one
-does.
-
 ### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible, and a single API resource page prop publishes bare
 
 The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
@@ -463,12 +454,14 @@ the one `paginate()` sends; `SomeResource::collection()` over one publishes `Jso
 `current_page`, `from` or `to`, so a read of one compiles and gets `undefined`. Type the prop with `#[TsCasts]`, or use
 `paginate()`.
 
-### A resource collection whose `toArray()` returns `$this->resource` publishes an empty interface
+### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
 A collection whose `toArray()` returns `$this->resource`, `$this->resource->toArray()` or
-`$this->resource->jsonSerialize()` publishes an empty interface, though Laravel sends the collected items. The package
-reads a collection's response from the keys its `toArray()` returns. Return an array with named keys, such as
-`['data' => $this->collection]`, or type the response with `#[TsCasts]`.
+`$this->resource->jsonSerialize()` publishes `{ data: R[] }`, as a body-less one does. Given a paginator,
+`$this->resource` is the paginator, so Laravel sends its own array, `current_page`, `data`, `first_page_url` and the
+rest, beside `meta` and a `links` merged with the paginator's numbered links. A page prop over it still publishes
+`& ResourcePagination`, or `JsonResourcePaginator<R>` under `$wrap = null`. Return `$this->collection`, which Laravel
+sends as `{ data, links, meta }`, or named keys such as `['data' => $this->collection]`.
 
 ### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
 
@@ -587,8 +580,8 @@ A resource collection publishes `R[]`, or `Record<string, R>` when it preserves 
 never sees. Given items keyed by `keyBy()`, a collection that does not preserve keys sends an object while publishing
 `R[]`. Given a list, one that preserves keys sends an array while publishing `Record<string, R>`. In a custom
 `toArray()`, `$this->collection` and `$this->resource` keep their input's keys whatever the class preserves, so items a
-`filter()` left sparse are sent as an object too. Give `#[PreserveKeys]` to a collection that receives keyed items, call
-`values()` on filtered items before passing them in, or type the key with `#[TsCasts]`.
+`filter()` left sparse are sent as an object too. Give `#[PreserveKeys]` (or `$preserveKeys`) to a collection that
+receives keyed items, call `values()` on filtered items before passing them in, or type the key with `#[TsCasts]`.
 
 ### A collection that does not preserve keys lists the arrays of an element that does
 

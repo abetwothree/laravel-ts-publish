@@ -140,6 +140,10 @@ describe('collects() resolves in Laravel\'s order', function () {
     ]);
 
     it('lets a #[Collects] naming a non-resource decide over the $collects beside it', function () {
-        expect(collectionAnalysis(DialAttributeCollection::class)->properties)->toBeEmpty();
+        expect(collectionAnalysis(DialAttributeCollection::class)->properties)->toBeEmpty()
+            ->and(AnalysisWarnings::all())->toContain([
+                'subject' => DialAttributeCollection::class,
+                'message' => 'The collected class '.Dial::class.' is not an API resource, so Laravel throws a LogicException; collect an API resource.',
+            ]);
     })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 });

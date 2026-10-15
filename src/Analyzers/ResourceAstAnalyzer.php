@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
@@ -188,11 +189,31 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether the subject is a ResourceCollection whose toArray() is Laravel's own, declared by no class in between.
+     * Whether this analysis reads a collection's toArray(), and a class's toArray() sends the collected list.
+     *
+     * @param  ReflectionClass<object>  $class  the subject, or its parent for a `parent::toArray()` call
      */
-    private function runsFrameworkCollectionToArray(): bool
+    private function sendsCollectedList(ReflectionClass $class): bool
     {
-        return $this->methodName === 'toArray' && ResourceCollections::runsFrameworkToArray($this->scope->subjectReflection);
+        return $this->readsCollectionToArray()
+            && resolve(ResourceCollectionBody::class)->sendsCollectedList($class);
+    }
+
+    /**
+     * Whether this analysis reads a collection's toArray() and the body returns its collected list whole.
+     */
+    private function returnsCollectedList(Expr $returned): bool
+    {
+        return $this->readsCollectionToArray()
+            && resolve(ResourceCollectionBody::class)->returnsCollectedList($returned, $this->scope->subjectReflection);
+    }
+
+    /**
+     * Whether the analyzed method is a resource collection's toArray(), the one whose collected list Laravel wraps.
+     */
+    private function readsCollectionToArray(): bool
+    {
+        return $this->methodName === 'toArray' && $this->isResourceCollection($this->scope);
     }
 
     /**
@@ -237,15 +258,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $context = $this->context ?? $this->locateSubjectMethod();
         $toArrayMethod = $context?->method;
 
+        // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
+        // static::class, so the response is the subject's own body-less one.
+        if ($this->sendsCollectedList($this->scope->subjectReflection)) {
+            $response = $this->collectedListResponse();
+
+            return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
+        }
+
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
-            $ownCollection = $this->runsFrameworkCollectionToArray() ? $this->buildCollectionDelegatedAnalysis() : null;
-
-            // Laravel's collects() reads #[Collects], $collects and the naming convention off static::class, so the
-            // class collects what it names itself; a parent's answer stands only where the class names nothing.
-            if ($ownCollection !== null && ($ownCollection->properties !== [] || $ownCollection->flatTypeAlias !== null)) {
-                return $ownCollection;
-            }
-
             $inherited = $this->analyzeParentToArray();
 
             // An empty result means no ancestor declared the method either, so keep delegating.
@@ -260,7 +281,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             }
 
             if ($this->isResourceCollection($this->scope)) {
-                return $ownCollection ?? $this->buildCollectionDelegatedAnalysis();
+                return $this->buildCollectionDelegatedAnalysis();
             }
 
             $delegated = $this->buildModelSerializedAnalysis();
@@ -297,20 +318,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
 
         if ($branchAnalysis !== null) {
-            if ($this->scope->subjectReflection->hasMethod($this->methodName)) {
-                $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
-
-                resolve(ReturnShapeRefiner::class)->refine($branchAnalysis, $ownMethod, keepsUnresolvedNames: false);
-
-                // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
-                if (! $this->isInertiaShare($ownMethod)) {
-                    $this->applyTsCastsFromMethod($ownMethod, $branchAnalysis);
-                }
-
-                resolve(IndexSignatureReconciler::class)->reconcile($branchAnalysis);
-            }
-
-            return $branchAnalysis;
+            return $this->ownMethodShaped($branchAnalysis);
         }
 
         // Fallback: the method's own first return for non-array returns (parent::toArray, $this->only, etc.); a
@@ -321,17 +329,40 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        if ($returned instanceof Variable && is_string($returned->name)) {
-            return $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name);
-        }
-
-        $analysis = $this->analyzeArrayExpression($returned);
+        $analysis = match (true) {
+            $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
+            $this->returnsCollectedList($returned) => $this->collectedListResponse(),
+            default => $this->analyzeArrayExpression($returned),
+        };
 
         if ($analysis === null) {
             $this->lenientReads++;
         }
 
-        return $analysis ?? new ResourceAnalysis;
+        return $this->ownMethodShaped($analysis ?? new ResourceAnalysis);
+    }
+
+    /**
+     * Lay the analyzed method's own `@return` shape and `#[TsCasts]` over what its body returns.
+     */
+    private function ownMethodShaped(ResourceAnalysis $analysis): ResourceAnalysis
+    {
+        if (! $this->scope->subjectReflection->hasMethod($this->methodName)) {
+            return $analysis;
+        }
+
+        $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
+
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
+
+        // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+        if (! $this->isInertiaShare($ownMethod)) {
+            $this->applyTsCastsFromMethod($ownMethod, $analysis);
+        }
+
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
     }
 
     /**
@@ -1008,7 +1039,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Resolve and analyze the parent class's declaration of $this->methodName.
+     * Resolve and analyze what the parent class's declaration of $this->methodName hands a `parent::` call.
      */
     protected function analyzeParentToArray(): ?ResourceAnalysis
     {
@@ -1022,6 +1053,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $this->methodName === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
         }
 
+        // Read before a parent analyzer is built, which would answer the collected list's response instead.
+        if ($this->sendsCollectedList($parentClass)) {
+            return $this->collectedListAnalysis();
+        }
+
+        return $this->parentAnalysis($parentClass);
+    }
+
+    /**
+     * The parent's own analysis of $this->methodName, as an analyzer of that class reads it.
+     *
+     * @param  ReflectionClass<object>  $parentClass
+     */
+    private function parentAnalysis(ReflectionClass $parentClass): ResourceAnalysis
+    {
         $parentAnalyzer = new self(
             $parentClass,
             $this->scope->modelClass,
@@ -1033,6 +1079,23 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $analysis = $parentAnalyzer->analyze();
         $this->lenientReads += $parentAnalyzer->lenientReads;
+
+        return $analysis;
+    }
+
+    /**
+     * The collected list as the value a spread, a variable, `+` or `array_merge()` builds on: its items under numeric
+     * keys, which nothing re-indexes before the keys written beside them.
+     */
+    private function collectedListAnalysis(): ResourceAnalysis
+    {
+        $analysis = new ResourceAnalysis;
+        $element = $this->scope->collectedResource;
+
+        $analysis->addProperty('[key: number]', [
+            ...ValueResult::unknown(),
+            ...($element === null ? [] : ['type' => TsNaming::resourceTypeName($element), 'resourceFqcn' => $element]),
+        ]);
 
         return $analysis;
     }
@@ -1220,7 +1283,26 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Build a ResourceAnalysis for a ResourceCollection subclass that has no toArray() method.
+     * The response of a collection whose toArray() sends the collected list: its own body-less collection's, or, for
+     * one that names no API resource, its parent's answer.
+     */
+    private function collectedListResponse(): ResourceAnalysis
+    {
+        $response = $this->buildCollectionDelegatedAnalysis();
+
+        if ($response->properties !== [] || $response->flatTypeAlias !== null) {
+            return $response;
+        }
+
+        // Laravel then collects raw models, which no published type describes yet, so the parent's type stands.
+        $parentClass = $this->scope->subjectReflection->getParentClass();
+        $inherited = $parentClass === false ? null : $this->parentAnalysis($parentClass);
+
+        return $inherited !== null && $inherited->properties !== [] ? $inherited : $response;
+    }
+
+    /**
+     * Build a ResourceAnalysis for a ResourceCollection subclass whose toArray() sends its collected list.
      *
      * The live wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the
      * collection preserves keys; with no key that same list is the flatTypeAlias directly.
@@ -1237,16 +1319,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $subject = $this->scope->subjectReflection->getName();
         $wrapKey = ResourceWrapping::key($subject);
 
-        $elementType = ResourceCollections::listType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
+        $listType = ResourceCollections::listType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
 
         if ($wrapKey === null) {
-            return new ResourceAnalysis(flatTypeAlias: $elementType, flatTypeAliasFqcn: $singular);
+            return new ResourceAnalysis(flatTypeAlias: $listType, flatTypeAliasFqcn: $singular);
         }
 
         return new ResourceAnalysis(
             properties: [[
                 'name' => $wrapKey,
-                'type' => $elementType,
+                'type' => $listType,
                 'optional' => false,
                 'description' => '',
             ]],

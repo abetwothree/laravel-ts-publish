@@ -20,6 +20,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
 | [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
 | [`ResourceCollections`](../../src/Ast/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
+| [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
@@ -41,13 +42,19 @@ every profile, the order handlers run in decides which one answers; see
 
 `analyze()` builds the analysis in a fixed order, and each step carries a rule:
 
+- **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
+  bare list anywhere else**: `ResourceCollectionBody::sendsCollectedList()` holds for Laravel's own `toArray()` and for
+  a body, declared or inherited, whose every `return` is `parent::toArray()` over one that does, `$this->collection` or
+  `$this->resource`, bare or through `toArray()`, `jsonSerialize()` or `all()`, one of those spread alone, or a variable
+  assigned one and written nowhere else. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own
+  method's `@return` and casts, or its parent's answer while it names no API resource itself
+  ([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
+  A spread, a variable, `+` or `array_merge()` that builds on the list reads it as `[key: number]: R`
+  (`collectedListAnalysis()`), and a value as `R[]` (`StaticCallHandler`).
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`. A collection that neither declares nor
-  inherits a custom `toArray()` resolves its own delegation first, so no parent's answer outranks what the collection
-  names itself. The `make:resource` stub is a declared `toArray()`, so its own delegation never runs first
-  ([known gap](../known-gaps.md#a-collection-that-keeps-the-makeresource-stub-toarray-publishes-an-empty-interface-or-its-parents-api-resource)).
+  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
@@ -56,7 +63,8 @@ every profile, the order handlers run in decides which one answers; see
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
   entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
   `return` is read; any other return is skipped.
-- **Any other body falls back to its own first `return`**, never a closure's: `parent::toArray()`, an `array_merge()` of
+- **Any other body falls back to its own first `return`**, never a closure's, shaped by the method's own `@return` and
+  `#[TsCasts]` as a branch is: `parent::toArray()`, a collection's collected list read as above, an `array_merge()` of
   literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
   `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
   variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys and every signature entry, a whole
@@ -103,7 +111,7 @@ unimported class, which `tsc` rejects with TS2304.
 
 Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`. Laravel's
 `collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
-own name, and `runsFrameworkCollectionToArray()` lets `LeafCollection` resolve that before its walk reaches
+own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before its walk reaches
 `MidCollection`. Its wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the
 slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
 off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. It keeps
@@ -471,9 +479,9 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 a `#[UseResource]` or `#[UseResourceCollection]` attribute, or Laravel's naming convention. Only the convention invents
 a class name. `InspectsResourceCalls::isResourceClass()` accepts any class that exists, including a `#[TsExclude]`d or
 third-party resource that gets no file, and its import would name a missing module. So every site that invents a
-candidate also checks [`PublishedResourceRegistry`](../../src/Cache/PublishedResourceRegistry.php), through
-`ResourceCollections::isPublishedResource()`, which `InspectsResourceCalls::isPublishedResourceClass()` delegates to.
-These are the sites:
+candidate also checks [`PublishedResourceRegistry`](../../src/Cache/PublishedResourceRegistry.php);
+`ResourceCollections::isPublishedResource()` is the one predicate, and
+`InspectsResourceCalls::isPublishedResourceClass()` delegates to it. These are the sites:
 
 - the candidate loop in `ToResourceHandler::resolveResourceForModel()`
 - both naming loops in `ToResourceHandler::resolveResourceCollectionForModel()`
@@ -529,17 +537,22 @@ API resource `$this->collection` does. A collection is backed by no model, whate
 collection keeps its keys, else `R[]`. `ResourceCollections::listType()` is its caller for every site that reflects
 on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
 and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
-`true`, since those keep the keys they filter by. A site that spelled the list itself would keep emitting `R[]` for a
-keyed collection, and only a fixture of that exact call shape would notice.
+`true`, since those keep the keys they filter by. So does a value-position `parent::toArray()` over the collected list.
+A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
+call shape would notice.
 `grep -rnE 'collectionListType\(|ResourceCollections::listType\(' src/` lists the sites.
 
 Each `listType()` site reflects on the class Laravel instantiates:
 
 - **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
   run `JsonResource::collection()`.
-- **The `ResourceCollection` subclass**: `make()`, `new` and a body-less collection.
+- **The `ResourceCollection` subclass**: `make()`, `new` and a collection whose `toArray()` sends the collected list.
 - **`resolveResourceCollectionForModel()`'s `collectionFqcn`**: an argument-less `toResourceCollection()`. That is the
   plain resource when no collection class was found, from the `#[UseResource]` arm or the bare naming fallback.
+
+A collection whose `toArray()` does not send the collected list is the exception. Nested by `new`, `make()` or a
+guessed `toResourceCollection()`, it publishes its own type, the body Laravel sends, while the run publishes it
+(`ResourceCollectionBody::sendsOwnShape()`). An excluded one keeps `R[]`, so no import names a missing file.
 
 Inertia page props share `preservesKeys()` through `InertiaResourcePropHandler`, so a key-preserving paginated
 collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`.

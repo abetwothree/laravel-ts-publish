@@ -225,6 +225,7 @@ use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\StaticCallResource;
+use Workbench\App\Http\Resources\SupplierCollection;
 use Workbench\App\Http\Resources\SupplierResource;
 use Workbench\App\Http\Resources\SupplierSummaryCollection;
 use Workbench\App\Http\Resources\SupplierSummaryResource;
@@ -6094,9 +6095,10 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResourceCollection() resolves the element model by convention', function () {
-        expect($this->props['staff_via_closure']['type'])->toBe('UserResource[]')
+        // UserCollection declares a toArray() of its own, whose keys Laravel sends for the guessed collection.
+        expect($this->props['staff_via_closure']['type'])->toBe('UserCollection')
             ->and($this->props['staff_via_closure']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('staff_via_closure', UserResource::class);
+            ->and($this->nested)->toHaveKey('staff_via_closure', UserCollection::class);
     });
 
     test('whenLoaded closure toResourceCollection(SomeResource::class) honours the explicit argument', function () {
@@ -6153,9 +6155,9 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // element than SupplierCollection does, so the two possible orderings are distinguishable.
         expect(class_exists(SupplierResource::class))->toBeTrue();
 
-        expect($this->props['suppliers']['type'])->toBe('SupplierSummaryResource[]')
+        expect($this->props['suppliers']['type'])->toBe('SupplierCollection')
             ->and($this->props['suppliers']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('suppliers', SupplierSummaryResource::class);
+            ->and($this->nested)->toHaveKey('suppliers', SupplierCollection::class);
     });
 
     test('toResourceCollection() degrades to unknown when #[UseResourceCollection]\'s element is undeterminable, without falling through', function () {
@@ -6197,8 +6199,8 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
 
         expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource | null')
             ->and($this->nested)->toHaveKey('unpublished_guess', AttachmentResource::class)
-            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentResource[]')
-            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentResource::class);
+            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentCollection')
+            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentCollection::class);
     });
 
     test('a convention-guessed resource outside the published set is not resolved', function () {

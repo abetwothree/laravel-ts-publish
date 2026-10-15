@@ -20,11 +20,9 @@ use ReflectionClass;
 final class ResourceCollections
 {
     /**
-     * Resolve the API resource a ResourceCollection collects, in the order Laravel's `collects()` reads: the
-     * #[Collects] attribute, the `$collects` default, then the bare `Foo` and the `FooResource` its name implies.
-     *
-     * The first class found decides, and one that is no API resource yields null, since Laravel throws rather than
-     * read on. Only a convention guess must also be published.
+     * Resolve the API resource a ResourceCollection collects, in Laravel's `collects()` order: #[Collects], the
+     * `$collects` default, then the bare `Foo` and the `FooResource` its name implies. The first class found decides;
+     * one that is no API resource yields null, as Laravel throws; only a convention guess must also be published.
      *
      * @param  class-string  $collectionFqcn
      * @return class-string<JsonResource>|null

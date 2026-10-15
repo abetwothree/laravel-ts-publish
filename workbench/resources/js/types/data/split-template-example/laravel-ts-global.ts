@@ -3959,14 +3959,14 @@ declare global {
             owner_explicit?: UserResource | null;
             owner_variant_constant?: unknown;
             owner_direct: UserResource;
-            staff_via_closure?: UserResource[];
+            staff_via_closure?: UserCollection;
             staff_explicit?: UserResource[];
             history_event?: EventLogResource | null;
             filing?: unknown;
             alert?: unknown;
             registrar?: RegistrarResource | null;
             registrars?: unknown;
-            suppliers?: SupplierSummaryResource[];
+            suppliers?: SupplierCollection;
             unpublished_guess?: unknown;
             unpublished_guess_collection?: unknown;
             staff_map_only?: ({ id: number; name: string; role: app.enums.RoleType | null; last_login_at: string | null })[];
@@ -4548,6 +4548,13 @@ declare global {
             category_table_name?: string | null;
         }
         /**
+         * Returns `$this->resource`, the items it collects. Laravel sends them as it sends a body-less
+         * collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostResourceReturnCollection {
+            data: PostResource[];
+        }
+        /**
          * Lays a cast that spells an enum's own type over each key that holds an enum resource: each key publishes its cast
          * and imports the enum types it spells, never the `AsEnum` wrap.
          */
@@ -4606,6 +4613,13 @@ declare global {
             status_from_helper: app.enums.StatusType;
             visibility_from_helper: app.enums.VisibilityType | null;
             status_from_method: app.enums.StatusType;
+        }
+        /**
+         * Keeps the `make:resource --collection` stub over `$collects`. Laravel sends the list it collects
+         * as it sends a body-less collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostStubCollection {
+            data: PostResource[];
         }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -165,6 +166,16 @@ final class ToResourceHandler implements ExpressionHandler
 
         if ($resolved === null) {
             return $result;
+        }
+
+        // Laravel builds the guessed collection, so one whose toArray() is not the collected list sends its own keys.
+        if (resolve(ResourceCollectionBody::class)->sendsOwnShape($resolved['collectionFqcn'])) {
+            return [
+                ...$result,
+                'type' => TsNaming::resourceTypeName($resolved['collectionFqcn']),
+                'optional' => false,
+                'resourceFqcn' => $resolved['collectionFqcn'],
+            ];
         }
 
         return [

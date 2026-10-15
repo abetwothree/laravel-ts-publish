@@ -14981,7 +14981,7 @@
                 },
                 {
                     "name": "staff_via_closure",
-                    "type": "UserResource[]",
+                    "type": "UserCollection",
                     "optional": true
                 },
                 {
@@ -15016,7 +15016,7 @@
                 },
                 {
                     "name": "suppliers",
-                    "type": "SupplierSummaryResource[]",
+                    "type": "SupplierCollection",
                     "optional": true
                 },
                 {
@@ -16924,6 +16924,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\PostResourceReturnCollection": {
+            "name": "PostResourceReturnCollection",
+            "properties": [
+                {
+                    "name": "data",
+                    "type": "PostResource[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostSpelledCastResource": {
             "name": "PostSpelledCastResource",
             "properties": [
@@ -17100,6 +17110,16 @@
                 {
                     "name": "status_from_method",
                     "type": "AsEnum<typeof Status>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostStubCollection": {
+            "name": "PostStubCollection",
+            "properties": [
+                {
+                    "name": "data",
+                    "type": "PostResource[]",
                     "optional": false
                 }
             ]
