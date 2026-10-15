@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\Closure;
 use ReflectionMethod;
 use ReflectionParameter;
 
 /**
  * A call read where it is written, so the method it runs can be read with what the call passes: how each argument
- * binds a parameter whose declaration binds nothing, or one declaring an abstract class, interface or union it narrows.
+ * binds a parameter whose declaration binds nothing, one declaring an abstract class, interface or union it narrows,
+ * or one declaring a concrete model it passes as one no row backs yet.
  *
  * @phpstan-import-type PassedBinding from ParameterBinder
  *
@@ -22,6 +22,8 @@ use ReflectionParameter;
  */
 final readonly class CallSite
 {
+    use InspectsAstNodes;
+
     /**
      * Read a call in the scope and engine it is written in.
      */
@@ -88,7 +90,8 @@ final readonly class CallSite
 
     /**
      * How one argument binds its parameter: whatever it holds where the declaration binds nothing, else the narrower
-     * classes it holds where the declaration names an abstract class, interface or union; null otherwise.
+     * classes it holds where the declaration names an abstract class, interface or union, or a model no row backs yet
+     * where it names that concrete model; null otherwise.
      *
      * @return PassedBinding|null
      */
@@ -97,12 +100,25 @@ final readonly class CallSite
         $binder = resolve(ParameterBinder::class);
         $takes = $binder->takesPassedValue($parameter, $method);
         $declared = $takes ? null : $binder->narrowableClasses($parameter);
+        $model = $takes || $declared !== null ? null : $binder->declaredModel($parameter);
 
-        if (! $takes && $declared === null) {
+        if (! $takes && $declared === null && $model === null) {
             return null;
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
+
+        // A declared model binds as a row that exists; only an argument no row backs yet reads differently, as a new
+        // declared model whichever of its classes it holds, since passedBinding() marks only one class unsaved.
+        if ($model !== null) {
+            if ($receiver === null || ! $receiver->unsaved || ! $receiver->within([$model])) {
+                return null;
+            }
+
+            $held = count($receiver->classes) === 1 ? $receiver : new ReceiverType([$model], unsaved: true);
+
+            return $binder->passedBinding($this->engine->resolve($argument), $held, refines: true);
+        }
 
         if ($declared !== null && ! $binder->narrows($declared, $receiver)) {
             return null;
@@ -112,15 +128,12 @@ final readonly class CallSite
     }
 
     /**
-     * Whether an argument is a closure, or on a value read a first-class callable, whose value hangs on whether the
-     * method calls it: Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so it
-     * sends the latter. A spread reads a held first-class callable as the Closure it creates, which is `{}`.
+     * Whether an argument may hold a closure, or on a value read a first-class callable, whose value hangs on whether
+     * the method calls it: Laravel sends `{}` for one held and what it returns for one called; Inertia calls each, so
+     * it sends the latter. A spread reads a held first-class callable as the Closure it creates, which is `{}`.
      */
     private function passesUncalledCallable(Expr $argument, bool $valueRead): bool
     {
-        return ! $this->engine->invokesCallables()
-            && ($argument instanceof Closure
-                || $argument instanceof ArrowFunction
-                || ($valueRead && $argument instanceof CallLike && $argument->isFirstClassCallable()));
+        return ! $this->engine->invokesCallables() && $this->mayHoldCallable($argument, $this->scope, $valueRead);
     }
 }

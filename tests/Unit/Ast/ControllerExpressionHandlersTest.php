@@ -3,15 +3,19 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -111,3 +115,21 @@ it('types a first-class-callable prop as the call it stands for', function () {
         ->and($meta['type'])->toBe('{ stamp: string }')
         ->and(AnalysisWarnings::all())->toBe([]);
 });
+
+// The model-less half of a pair the ordering matrix runs only on the resource profile: on a controller's held
+// receivers both handlers claim these calls, and answer them alike, so their order is free here too.
+it('RelationCollectionChainHandler and ReceiverMethodCallHandler agree on a call on a held receiver', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $subject = new ReflectionClass(PostReceiverController::class);
+    $engine = new ResourceAstAnalyzer($subject, null, '__construct', ControllerExpressionHandlers::make());
+
+    $chain = new RelationCollectionChainHandler()->resolve($expr, new AnalysisScope($subject), $engine);
+    $receiver = new ReceiverMethodCallHandler()->resolve($expr, new AnalysisScope($subject), $engine);
+
+    expect($chain['type'] ?? null)->toBe($type)
+        ->and($receiver)->toBe($chain);
+})->with([
+    ['$this->post->commentsCount()', 'number'],
+    ['$this->formatter->title()', 'string'],
+    ['$this->checks->toArray()', '{ message: string; route?: string }[]'],
+]);

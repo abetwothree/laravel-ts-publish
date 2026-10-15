@@ -15,11 +15,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -119,6 +121,22 @@ final class ThisPropertyHandler implements ExpressionHandler
             return $this->analyzeCollectionProperty($scope);
         }
 
+        // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
+        // unreachable: the value is its items, the class a proof holds, the backing model or the redeclaration.
+        if ($this->isProxyFetch($expr, $scope)) {
+            $receivers = resolve(ReceiverClassResolver::class);
+            $proxy = $receivers->proxyHeld($scope);
+            $items = $proxy === null ? null : resolve(ReceiverMethodReturnResolver::class)->heldItems($proxy, $scope);
+            $held = match (true) {
+                $items !== null => $items,
+                $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
+                default => $this->proxiedModel($receivers, $scope)
+                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName),
+            };
+
+            return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
+        }
+
         // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
         if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($scope->subjectReflection, $propName)) {
             $own = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
@@ -158,6 +176,42 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         return $result;
+    }
+
+    /**
+     * The model the proxy is read as whole, as the model's own interface with any null its redeclaration admits; null
+     * when it is read as no model, which publishes as the subject declares it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function proxiedModel(ReceiverClassResolver $receivers, AnalysisScope $scope): ?array
+    {
+        $model = $receivers->proxyModel($scope);
+
+        if ($model === null) {
+            return null;
+        }
+
+        $type = class_basename($model);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => $receivers->redeclaresNullableProxy($scope) ? ValueResult::withNullArm($type) : $type,
+            'modelFqcn' => $model,
+        ];
+    }
+
+    /**
+     * The classes an `instanceof` proof holds the proxy to, as their published types; null when one has none.
+     *
+     * @param  non-empty-list<class-string>  $proven
+     * @return ValueExpressionResult|null
+     */
+    private function provenValue(array $proven, AnalysisScope $scope): ?array
+    {
+        $declared = implode('|', array_map(fn (string $class): string => '\\'.$class, $proven));
+
+        return resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->subjectReflection);
     }
 
     /**

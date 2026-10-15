@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -14,8 +15,6 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ConstFetch;
-use PhpParser\Node\Expr\Yield_;
-use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
@@ -34,9 +33,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * A method's return type: the declaration first, then, when that is too vague to publish, the shape its literal body
- * spells in place of the declaration's array arm, beside every other arm it names. Memoized per `class@method` and what
- * the call binds; the rules are in docs/components/receiver-types.md § Following a method's return type.
+ * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
+ * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`
+ * and what the call binds; the rules are in docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
@@ -48,6 +47,7 @@ use ReflectionMethod;
 final class MethodReturnTypeResolver
 {
     use BuildsInlineObjectTypes;
+    use InspectsAstNodes;
 
     /**
      * Reflect a method's return type, else analyze its body once per set of bindings its calls' arguments make;
@@ -103,7 +103,7 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The reflected return type when it is precise, else the body's shape beside the declaration's other arms.
+     * The precise reflected return type, else the body's shape beside the declaration's other arms, else its value.
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
@@ -118,7 +118,9 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed) ?? $reflected;
+        return $this->bodyType($class, $methodName, $reflected, $passed)
+            ?? $this->bodyValue($class, $methodName, $passed)
+            ?? $reflected;
     }
 
     /**
@@ -178,6 +180,31 @@ final class MethodReturnTypeResolver
         return TsTypeString::shapeValueHasUnimportableToken($type)
             ? null
             : [...ValueResult::unknown(), 'type' => TsTypeString::hoistNull([$type, ...$otherArms])];
+    }
+
+    /**
+     * The value an application method's own returns hold; null for a dependency's method or one already under read.
+     *
+     * @param  class-string  $class
+     * @param  array<string, PassedBinding>  $passed
+     * @return ValueExpressionResult|null
+     */
+    private function bodyValue(string $class, string $methodName, array $passed): ?array
+    {
+        $file = new ReflectionMethod($class, $methodName)->getFileName();
+        $key = 'method-body:'.$class.'@'.$methodName;
+        $memo = resolve(AnalysisMemo::class);
+
+        // bodyType()'s guard, so a recursion through either reader stops at its first repeat.
+        if (DependencyFiles::ofApplication()->contains($file) || ! $memo->enter($key)) {
+            return null;
+        }
+
+        try {
+            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed);
+        } finally {
+            $memo->leave($key);
+        }
     }
 
     /**
@@ -251,23 +278,24 @@ final class MethodReturnTypeResolver
      */
     private function ownReturns(array $stmts): ?array
     {
+        if ($this->yields($stmts)) {
+            return null;
+        }
+
         $visitor = new /** @internal */ class extends NodeVisitorAbstract
         {
             /** @var list<array{Return_, bool}> */
             public array $returns = [];
 
-            public bool $yields = false;
-
             private int $enclosingBlocks = 0;
 
-            /** Record a return with whether a block the branch sweep skips encloses it, and note a yield. */
+            /** Record a return with whether a block the branch sweep skips encloses it. */
             public function enterNode(Node $node): ?int
             {
                 if ($node instanceof FunctionLike || $node instanceof ClassLike) {
                     return NodeVisitor::DONT_TRAVERSE_CHILDREN;
                 }
 
-                $this->yields = $this->yields || $node instanceof Yield_ || $node instanceof YieldFrom;
                 $this->enclosingBlocks += $this->hidesReturns($node) ? 1 : 0;
 
                 if ($node instanceof Return_) {
@@ -299,7 +327,7 @@ final class MethodReturnTypeResolver
         $traverser->addVisitor($visitor);
         $traverser->traverse($stmts);
 
-        return $visitor->yields ? null : $visitor->returns;
+        return $visitor->returns;
     }
 
     /**

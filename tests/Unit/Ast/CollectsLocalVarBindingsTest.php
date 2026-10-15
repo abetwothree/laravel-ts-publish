@@ -122,7 +122,8 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
 })->with([
     'a top-level write to another model, past its own statement' => ['$p = $p->profile; return $p;', [true, true, false]],
     'a write naming the same model' => ['$p = $p->fresh() ?? $p; return $p;', [true, true, true, true]],
-    'a write whose value names no class' => ['$p = $p->comments->first(); return $p;', [true, true, true]],
+    'a write whose value names no class' => ['$p = $p->comments->find(1); return $p;', [true, true, true]],
+    'a write naming the element model first() returns' => ['$p = $p->comments->first(); return $p;', [true, true, false]],
     'a write an inline @var names another class for' => ['/** @var \\Workbench\\App\\Models\\Comment $p */ $p = $p->comments->first(); return $p;', [true, true, false]],
     'a nested write, from where its statement starts' => ['if ($p->id) { $p = $p->profile; } return $p;', [false, false, false, false]],
     'a write in a block that always exits, ended only inside it' => [
@@ -173,7 +174,7 @@ it('keeps a loaded collection\'s binding across a write naming no other element 
     'a re-sort' => ['$p = $p->sortBy("id"); return $p;', [true, true, true]],
     'a filter' => ['$p = $p->where("content", "!=", ""); return $p;', [true, true, true]],
     'a re-index' => ['$p = $p->values(); return $p;', [true, true, true]],
-    'a value naming no class' => ['$p = $p->first(); return $p;', [true, true, true]],
+    'a value naming no class' => ['$p = $p->find(1); return $p;', [true, true, true]],
     'a collection of another model' => ['$p = $this->resource->tags; return $p;', [true, false]],
     'a single model' => ['$p = new \\Workbench\\App\\Models\\Comment; return $p;', [true, false]],
 ]);
@@ -188,7 +189,7 @@ it('ends a declared binding at a write holding other classes, or fewer than it d
     'a write holding every declared class' => ['$p = $p; return $p;', [true, true, true]],
     'a write holding one of them' => ['$p = new \\Workbench\\App\\Models\\User; return $p;', [true, false]],
     'a write holding another class' => ['$p = new \\Workbench\\App\\Models\\Profile; return $p;', [true, false]],
-    'a write whose value names no class' => ['$p = $p->comments->first(); return $p;', [true, true, true]],
+    'a write whose value names no class' => ['$p = $p->comments->find(1); return $p;', [true, true, true]],
 ]);
 
 // A value binding names no class, so only a value that names one ends it; the local then reads what was assigned.

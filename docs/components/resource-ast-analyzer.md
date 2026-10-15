@@ -23,7 +23,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()` |
+| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
@@ -149,8 +149,8 @@ models by primary key. [AST engine § The honest ordering inventory](ast-engine.
 those handlers. It also records the controller scope, which has no model, where one of them still reflects a filter.
 
 A model's own method or accessor body is analyzed with the model as its subject. There `$this->resource` is the
-model's own member, because only a resource sets `AnalysisScope::$forwardsUndeclaredMembersTo`. How filters answer in
-that body, and in a body that carries no imports, is in
+model's own member, because only an API resource has the proxy (`AnalysisScope::hasResourceProxy()`). How filters
+answer in that body, and in a body that carries no imports, is in
 [receiver types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
 
 The relation arm publishes by member kind, adds `| null` through `?->`, and declines (`null`, so a later handler
@@ -198,7 +198,8 @@ runtime key list, on the resource's own model, a single-model relation and a man
   `$this->resource` itself, since PHP reads the declared `JsonResource::$resource` before any `__get()`, even on a
   model with a `resource` relation.
 - **Value on a relation**: `RelationFilterHandler`, which matches `$this->resource->relation` wherever it matches
-  `$this->relation`.
+  `$this->relation`. A `?->` on the proxy, as in `$this->resource?->comments->only([1])`, adds `| null` once, since
+  the resource can wrap nothing.
 
 `ProxyFilterDirectResource` and `ProxyFilterWrappedResource` write the same filters both ways, and
 `ResourceAstAnalyzerTest` asserts they publish identical properties and imports. Two shapes stay outside the pair.
@@ -376,19 +377,20 @@ on a key no cast covers.
 ## `$this->resource` inside a relation closure is the resource's own model
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
-[`MethodChainHandler`](../../src/Ast/Handlers/MethodChainHandler.php) and
-[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) root every chain at `$modelClass`, and
+[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
+chain at `$modelClass`, and
 `RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
 `AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
-keeps the relation walk. `ClosureResourceRootResource` pins a property chain and a method call on `$this->resource`
-inside such a closure.
+reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call
+on `$this->resource` inside such a closure.
 
 ## Collection pipelines
 
 Two handlers type a chain of collection operations.
 [`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
-`$this->{manyRelation}`. [`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one
-rooted at `collect($arg)`, and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
+`$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
+[`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
+and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
 since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
 `0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
@@ -509,13 +511,21 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 
 `resolveCollectedResourceClass()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because
 Laravel 12 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
+`ResourceAstAnalyzer` seeds `AnalysisScope::$collectedResource` from `resolveSingularResourceClass()` for any scope, its
+own or one a caller supplies, so `$this->resource`'s items name the API resource `$this->collection` does. A collection
+is backed by no model, whatever its docblock or `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns
+`null` for it.
 
 `ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
-`wrapCollectionElementType()` is the one place that turns it into `Record<string, R>` instead of `R[]`, and every
-collection-typing site calls it. A site that skipped it would keep emitting `R[]` for a keyed collection, and only a
-fixture of that exact call shape would notice. `grep -rn 'wrapCollectionElementType(' src/` lists the sites.
+`ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
+collection keeps its keys, else `R[]`. `wrapCollectionElementType()` is its analyzer-side caller, for every site that
+reflects on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
+and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
+`true`, since those keep the keys they filter by. A site that spelled the list itself would keep emitting `R[]` for a
+keyed collection, and only a fixture of that exact call shape would notice.
+`grep -rnE 'collectionListType\(|wrapCollectionElementType\(' src/` lists the sites.
 
-Each site reflects on the class Laravel instantiates:
+Each `wrapCollectionElementType()` site reflects on the class Laravel instantiates:
 
 - **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
   run `JsonResource::collection()`.
@@ -836,10 +846,13 @@ in every subject: an enum branch returns before `resourceWrapType()`.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
-ternary of those, and one wraps, so no other helper's body is read. The body is seeded as a spread's is: the caller's
-name tables and relation model are set aside, but for its proofs of `$this` reads, its parameters bind by what they
-declare and what the call passes, and its guards narrow. A union that types no wrap declines. An untyped helper that can
-end without a value takes `| null`. `PostStatusSourcesResource` pins a local, a helper and a method's return.
+ternary of those, and one wraps. It seeds the body as a spread's is: the caller's name tables and relation model are set
+aside, but for its proofs of `$this` reads, its parameters bind by what they declare and what the call passes, and its
+guards narrow. A union that types no wrap declines. An untyped helper that can end without a value takes `| null`.
+`PostStatusSourcesResource` pins a local, a helper and a method's return. Any other helper types from its declaration
+or, when that is vague or missing, is
+[read as a value](receiver-types.md#a-method-read-as-a-value-carries-import-channels) in a fresh scope that carries none
+of the caller's proofs.
 
 ## Related
 

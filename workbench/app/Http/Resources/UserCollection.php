@@ -24,6 +24,8 @@ class UserCollection extends ResourceCollection
         return [
             'data' => $this->collection,
             'has_admin' => true,
+            'page' => $this->resource,
+            'first_user' => $this->resource->first(),
         ];
     }
 }

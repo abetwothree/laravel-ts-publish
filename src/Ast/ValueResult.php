@@ -107,6 +107,15 @@ final class ValueResult
     }
 
     /**
+     * A collected list of an element, as a resource collection sends it: `Record<string, R>` when the collection keeps
+     * its keys, else `R[]`. The one place that spells it, for `$this->collection` and `$this->resource`'s items alike.
+     */
+    public static function collectionListType(string $element, bool $keepsKeys): string
+    {
+        return $keepsKeys ? "Record<string, {$element}>" : $element.'[]';
+    }
+
+    /**
      * Whether a generated file exports every class a result names on its model channels, as far as this run knows.
      *
      * A token with no file behind it would be emitted without an import, so MethodAnalysis::addProperty() declines it.

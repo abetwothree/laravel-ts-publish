@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
@@ -369,7 +370,17 @@ it('declines auth()->id() and Auth::id() where code decides the auth model\'s ke
         ->toBe('unknown');
 });
 
-it('declines auth()->id() and Auth::id() for an auth model identified by anything but its key, where it published the key', function (string $model) {
+// SessionGuard::id() sends getAuthIdentifier(), which reads the column getAuthIdentifierName() names.
+it('types auth()->id() and Auth::id() as the column a literal getAuthIdentifierName() return names', function () {
+    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string | null', 'optional' => false])
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+it('declines auth()->id() and Auth::id() where code computes the identifier or its column', function (string $model) {
     config()->set('auth.providers.users.model', $model);
 
     expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
@@ -377,11 +388,11 @@ it('declines auth()->id() and Auth::id() for an auth model identified by anythin
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
         ->toBe('unknown');
 })->with([
-    'another identifier column' => [EmailIdentifierUser::class],
     'a computed identifier' => [ComputedIdentifierUser::class],
+    'a configured identifier column' => [ConfiguredIdentifierUser::class],
 ]);
 
-it('records the auth model it declines for another identifier column, so editing it rebuilds the result', function () {
+it('records the auth model whose identifier column it reads, so editing it rebuilds the result', function () {
     config()->set('auth.providers.users.model', EmailIdentifierUser::class);
     DependencyRecorder::start();
     (new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine());

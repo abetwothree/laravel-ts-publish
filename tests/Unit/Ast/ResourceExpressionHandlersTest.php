@@ -20,7 +20,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -88,7 +87,6 @@ function resourceExpressionHandlerOrder(): array
         ThisPropertyHandler::class,
         RelationFilterHandler::class,
         InlineArrayHandler::class,
-        MethodChainHandler::class,
         PropertyChainHandler::class,
         RelationCollectionChainHandler::class,
         CollectionPipelineHandler::class,
@@ -129,7 +127,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 28 handlers in the documented dispatch order', function () {
+it('returns all 27 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -153,7 +151,7 @@ it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFil
         ], true),
     ));
 
-    expect($classes)->toHaveCount(25)
+    expect($classes)->toHaveCount(24)
         ->and($classes)->toBe($expected);
 });
 
@@ -169,7 +167,7 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMe
         fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
     ));
 
-    expect($classes)->toHaveCount(26)
+    expect($classes)->toHaveCount(25)
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
@@ -182,7 +180,7 @@ it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same r
         ResourceExpressionHandlers::forNonResourceSubjects(),
     );
 
-    expect($classes)->toHaveCount(27)
+    expect($classes)->toHaveCount(26)
         ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
 });
 
@@ -225,9 +223,9 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
 });
 
-// MethodChainHandler declines every only()/except(), so the order of the two cannot decide this Pick<>, in either
+// ReceiverMethodCallHandler also claims only()/except(), so the order of the two cannot decide this Pick<>, in either
 // spelling.
-it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationFilterHandler and MethodChainHandler runs first', function (Expr $relation) {
+it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationFilterHandler and ReceiverMethodCallHandler runs first', function (Expr $relation) {
     $expr = new NullsafeMethodCall(
         $relation,
         'only',
@@ -242,7 +240,7 @@ it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationF
         new ReflectionClass(CommentResource::class),
         Comment::class,
         'toArray',
-        [new MethodChainHandler, new RelationFilterHandler],
+        [new ReceiverMethodCallHandler, new RelationFilterHandler],
     );
 
     expect($analyzer->resolve($expr))->toBe($expected)
@@ -252,9 +250,9 @@ it('answers $this->relation?->only([...]) with the Pick<> whichever of RelationF
     '$this->resource->post' => fn (): Expr => new PropertyFetch(new PropertyFetch(new Variable('this'), 'resource'), 'post'),
 ]);
 
-// MethodChainHandler claims NullsafeMethodCall ahead of ReceiverMethodCallHandler. A `static|null` return reflects
-// to `unknown | null` on the related model; flooring there would split this from `$this->author->fresh()`'s type.
-it('lets MethodChainHandler decline an unknown-only $this->relation?->fresh() for ReceiverMethodCallHandler', function () {
+// A `static|null` return reflects to `unknown | null` on the related model; flooring there would split this from
+// `$this->author->fresh()`'s type.
+it('types an unknown-only $this->relation?->fresh() as the related model, nullable', function () {
     $expr = new NullsafeMethodCall(new PropertyFetch(new Variable('this'), 'author'), 'fresh');
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 

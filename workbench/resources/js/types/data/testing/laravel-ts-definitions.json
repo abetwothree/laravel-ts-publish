@@ -11563,6 +11563,16 @@
                     "optional": false
                 },
                 {
+                    "name": "parent_siblings",
+                    "type": "CategoryResource[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "parent_siblings_nullsafe",
+                    "type": "CategoryResource[] | null",
+                    "optional": false
+                },
+                {
                     "name": "parent_in_array",
                     "type": "{ parent: CategoryResource | null }",
                     "optional": false
@@ -11945,6 +11955,11 @@
                     "name": "profile_bio_inside",
                     "type": "string | null",
                     "optional": true
+                },
+                {
+                    "name": "own_model",
+                    "type": "Post",
+                    "optional": false
                 }
             ]
         },
@@ -14866,7 +14881,7 @@
                 },
                 {
                     "name": "meta",
-                    "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
+                    "type": "{ extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string }",
                     "optional": true
                 }
             ]
@@ -14911,7 +14926,7 @@
                 },
                 {
                     "name": "meta",
-                    "type": "{ extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string }",
+                    "type": "{ extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string }",
                     "optional": false
                 }
             ]
@@ -16529,6 +16544,46 @@
             "name": "PostFlatCollection",
             "typeAlias": "PostResource[]"
         },
+        "Workbench\\App\\Http\\Resources\\PostHelperBodyResource": {
+            "name": "PostHelperBodyResource",
+            "properties": [
+                {
+                    "name": "shout_untyped",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "stages",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "history",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "untyped_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "closure_first",
+                    "type": "{ title: string; active: number }",
+                    "optional": false
+                },
+                {
+                    "name": "mixed_meta",
+                    "type": "{ a: number } | { a: number; b: string }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\PostHelperParamsResource": {
             "name": "PostHelperParamsResource",
             "properties": [
@@ -17539,6 +17594,16 @@
                     "name": "comments_mapped",
                     "type": "{ id: number; content: string }[]",
                     "optional": false
+                },
+                {
+                    "name": "comments_nullsafe",
+                    "type": "Comment[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "comment_ids",
+                    "type": "number[]",
+                    "optional": false
                 }
             ]
         },
@@ -17623,6 +17688,16 @@
                 {
                     "name": "comments_mapped",
                     "type": "{ id: number; content: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_nullsafe",
+                    "type": "Comment[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "comment_ids",
+                    "type": "number[]",
                     "optional": false
                 }
             ]
@@ -17868,6 +17943,26 @@
                 {
                     "name": "copy_key",
                     "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "made_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "made_comment_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_author_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "comment_keys",
+                    "type": "number[]",
                     "optional": false
                 },
                 {
@@ -18379,6 +18474,16 @@
                     "name": "reviewable_name",
                     "type": "string",
                     "optional": true
+                },
+                {
+                    "name": "reviewable_resource",
+                    "type": "ArtistResource | VenueResource",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable_nullsafe_resource",
+                    "type": "ArtistResource | VenueResource | null",
+                    "optional": false
                 }
             ]
         },
@@ -19266,7 +19371,7 @@
                 },
                 {
                     "name": "mixed_return",
-                    "type": "unknown",
+                    "type": "null",
                     "optional": false
                 },
                 {
@@ -20117,6 +20222,16 @@
                 {
                     "name": "has_admin",
                     "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "page",
+                    "type": "UserResource[] | LengthAwarePaginator<UserResource> | SimplePaginator<UserResource> | CursorPaginator<UserResource>",
+                    "optional": false
+                },
+                {
+                    "name": "first_user",
+                    "type": "UserResource | null",
                     "optional": false
                 }
             ]

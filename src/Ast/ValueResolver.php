@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -46,6 +47,8 @@ use UnitEnum;
  */
 final class ValueResolver
 {
+    use InspectsAstNodes;
+
     /** Total-element cap for a class constant's array before it bails to unknown; see constantArrayWithinLimits(). */
     private const int MAX_CONSTANT_ARRAY_ELEMENTS = 200;
 
@@ -525,15 +528,7 @@ final class ValueResolver
      */
     private function constantClassName(Name $class, AnalysisScope $scope): ?string
     {
-        $className = $class->toString();
-
-        // Resolve self/static/parent so a constant declared on the resource (or its parent) is
-        // readable, matching how analyzeNewResource()/analyzeStaticCall() treat those keywords.
-        if ($className === 'self' || $className === 'static') {
-            return $scope->subjectReflection->getName();
-        }
-
-        if ($className === 'parent') {
+        if ($class->toLowerString() === 'parent') {
             $parentReflection = $scope->subjectReflection->getParentClass();
 
             return $parentReflection === false
@@ -541,7 +536,7 @@ final class ValueResolver
                 : $parentReflection->getName();
         }
 
-        return $className;
+        return $this->subjectClassName($class, $scope->subjectReflection);
     }
 
     /**

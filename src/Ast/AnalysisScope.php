@@ -11,6 +11,11 @@ use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Pagination\CursorPaginator;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -121,13 +126,29 @@ final class AnalysisScope
     public ?string $instanceOfWrappedClass = null;
 
     /**
-     * The class an undeclared `$this->member` read or call forwards to (a JsonResource proxies both to
-     * `$this->resource`), or null. Derived in the constructor so every scope carries it; ResourceAstAnalyzer re-derives
-     * it, TernaryHandler narrows it, and ReceiverClassResolver reads it rather than testing for JsonResource.
+     * The backing class `$this->resource` holds, or null; null on a resource collection, see proxyReceiver().
+     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor and
+     * rebase(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
      *
      * @var class-string|null
      */
     public ?string $forwardsUndeclaredMembersTo = null;
+
+    /**
+     * The classes an `instanceof` proof holds `$this->resource` to inside the arm it proves, or null. Set and restored
+     * by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before the redeclaration and the backing class.
+     *
+     * @var non-empty-list<class-string>|null
+     */
+    public ?array $provenProxy = null;
+
+    /**
+     * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
+     * it collects none. Set by ResourceAstAnalyzer for any scope, its own or one a caller supplies.
+     *
+     * @var class-string<JsonResource>|null
+     */
+    public ?string $collectedResource = null;
 
     /**
      * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
@@ -139,7 +160,7 @@ final class AnalysisScope
     /**
      * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
-     * ResourceAstAnalyzer for a scope it owns.
+     * ResourceAstAnalyzer for any scope, its own or one a caller supplies.
      */
     public bool $reindexesNumericKeys = false;
 
@@ -323,9 +344,63 @@ final class AnalysisScope
 
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
-        $this->forwardsUndeclaredMembersTo = $modelClass !== null && $subjectReflection->isSubclassOf(JsonResource::class)
-            ? $modelClass
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+    }
+
+    /**
+     * The class a subject's `$this->resource` holds and its undeclared members forward to, or null where it has no
+     * proxy or names no one class. The one home of the proxy target, for every scope and every narrowing of it; a
+     * ResourceCollection's items are proxyReceiver()'s.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @param  class-string|null  $backing  the backing model, or the class an instanceof guard names
+     * @return class-string|null
+     */
+    public static function proxyTargetFor(ReflectionClass $subject, ?string $backing): ?string
+    {
+        return $subject->isSubclassOf(JsonResource::class) && ! $subject->isSubclassOf(ResourceCollection::class)
+            ? $backing
             : null;
+    }
+
+    /**
+     * Move the scope to another subject and backing model, re-deriving the proxy target from them: the one way a
+     * builder rebases a scope after construction. ResourceAstAnalyzer then seeds the subject's collection facts.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @param  class-string<Model>|null  $modelClass
+     */
+    public function rebase(ReflectionClass $subject, ?string $modelClass): void
+    {
+        $this->subjectReflection = $subject;
+        $this->modelClass = $modelClass;
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subject, $modelClass);
+    }
+
+    /**
+     * Whether the subject's `$this->resource` is the proxy to what it wraps: every API resource has one, model or not,
+     * and no other subject does, so in a model's own body, a controller or an event it is a member like any other.
+     */
+    public function hasResourceProxy(): bool
+    {
+        return $this->subjectReflection->isSubclassOf(JsonResource::class);
+    }
+
+    /**
+     * What `$this->resource` holds as a receiver: the proxy target, or a ResourceCollection's items, which Laravel
+     * keeps in a Support\Collection or the paginator it was given, so each concrete class it builds is one arm.
+     */
+    public function proxyReceiver(): ?ReceiverType
+    {
+        if ($this->subjectReflection->isSubclassOf(ResourceCollection::class)) {
+            return new ReceiverType(
+                [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
+                collectedItems: true,
+                elementResource: $this->collectedResource,
+            );
+        }
+
+        return $this->forwardsUndeclaredMembersTo === null ? null : ReceiverType::of($this->forwardsUndeclaredMembersTo);
     }
 
     /**

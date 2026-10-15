@@ -130,7 +130,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  ReflectionClass<T>  $resourceReflection  templated because ReflectionClass is invariant
      * @param  class-string<Model>|null  $modelClass
      * @param  list<ExpressionHandler>|null  $handlerProfile  overrides the subject's own profile
-     * @param  AnalysisScope|null  $scope  a scope already seeded by AstEngine::bindingsFor(), used as-is
+     * @param  AnalysisScope|null  $scope  a scope AstEngine::bindingsFor() seeded; it gains only the collection facts
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
@@ -152,30 +152,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($scope === null) {
             $this->scope->carriesImports = $carriesImports;
-            $this->scope->reindexesNumericKeys = self::reindexes($this->resourceReflection);
         }
+
+        // The subject alone decides these, so a supplied scope reads `$this->resource`'s items as an owned one does.
+        $this->scope->reindexesNumericKeys = self::reindexes($this->scope->subjectReflection);
+        $this->scope->collectedResource = $this->isResourceCollection($this->scope)
+            ? $this->resolveSingularResourceClass($this->scope)
+            : null;
 
         $this->ownsScope = $scope === null;
 
         if ($this->scope->modelClass !== null) {
             $this->loadModelInspectorData();
         }
-    }
-
-    /**
-     * The class an undeclared `$this->member` forwards to: a JsonResource proxies both reads and calls to
-     * its backing. AnalysisScope derives this from the subject; this re-derives it once an `instanceof`
-     * guard has supplied a backing the constructor had none for.
-     *
-     * @return class-string|null
-     */
-    private function proxyTarget(): ?string
-    {
-        $backing = $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass;
-
-        return $backing !== null && $this->scope->subjectReflection->isSubclassOf(JsonResource::class)
-            ? $backing
-            : null;
     }
 
     /**
@@ -304,8 +293,15 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $finder = new NodeFinder;
 
-        $this->scope->instanceOfWrappedClass = $this->resolveInstanceOfType($toArrayMethod, $finder);
-        $this->scope->forwardsUndeclaredMembersTo = $this->proxyTarget();
+        // A guard on `$this->resource` narrows only the proxy; in any other subject it tests a member like any other.
+        $this->scope->instanceOfWrappedClass = $this->scope->hasResourceProxy() ? $this->resolveInstanceOfType($toArrayMethod, $finder) : null;
+
+        // Re-derived once an instanceof guard has supplied a backing the constructor had none for. Not rebase(): the
+        // guard's class, model or not, backs only the proxy, while modelClass stays the resolved backing model.
+        $this->scope->forwardsUndeclaredMembersTo = AnalysisScope::proxyTargetFor(
+            $this->scope->subjectReflection,
+            $this->scope->modelClass ?? $this->scope->instanceOfWrappedClass,
+        );
 
         // A scope AstEngine::bindingsFor() seeded already holds the method's parameters and its body's own bindings,
         // but no foreach variable over a relation, which bindForeachLoopVariables() binds only for a scope it owns.
@@ -1022,7 +1018,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function mergedValueAnalysis(Expr $expr): ?ResourceAnalysis
     {
         // A collection's resource is the list of collected items, whose keys are numbers.
-        if ($this->isResourceFetch($expr)) {
+        if ($this->isProxyFetch($expr, $this->scope)) {
             return $this->isResourceCollection($this->scope) ? null : $this->buildModelSerializedAnalysis();
         }
 
@@ -1650,12 +1646,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 continue;
             }
 
-            // Verify it's checking $this->resource
-            if (! ($instanceOf->expr instanceof PropertyFetch
-                && $instanceOf->expr->var instanceof Variable
-                && $instanceOf->expr->var->name === 'this'
-                && $instanceOf->expr->name instanceof Identifier
-                && $instanceOf->expr->name->toString() === 'resource')) {
+            if (! $this->isResourceFetch($instanceOf->expr)) {
                 continue; // @codeCoverageIgnore
             }
 

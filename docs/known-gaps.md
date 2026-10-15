@@ -23,14 +23,32 @@ one of the two tests.
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
 drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's key or a model
 accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
-`null` still publishes `null`. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes
-back.
+`null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole
+call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose
+untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
+`#[TsCasts]`, and it comes back.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
 `[$this->id, json_decode('{}')]` publishes `unknown[]`, not `number[]`. A list element is in every response, so unlike a
 union arm it is never left out ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms)). Type
 the element with a return type or a `@return` docblock, or the key with `#[TsCasts]`, and the list takes its type.
+
+### A method whose declaration and body type nothing publishes `unknown`, even when a model or wrapped class declares a typed namesake
+
+`'label' => $this->label()` publishes `unknown` when the resource's own `label(): mixed` returns a value no rule types,
+though the backing model declares `label(): string`. PHP runs the resource's method, so the model's type is only right
+when the two bodies agree. The same holds for a class other than a model that an `@var` on `public $resource` names:
+the model never answers for it, and a method that class lacks publishes `unknown`, since Laravel throws. Give the
+method a return type or a `@return` docblock, and the call takes it.
+
+### A resource macro typed only by its body publishes `unknown` when its value depends on its arguments
+
+A macro's body is read without what the call passes, so `$this->format($x)` on an untyped macro closure publishes
+`unknown`. A closure declared outside a class method, such as in `bootstrap/app.php`, gets no body read, and a macro
+registered after the application boots, or by a deferred provider, is not seen at all. Give the closure a return type. A
+`@return` docblock works only on a closure declared inside a class, such as in a service provider's `boot()`, because
+its short class names resolve against that class's file.
 
 ### `config()` on an absent key with no default types as null
 
@@ -254,8 +272,9 @@ Check which spelling you wrote before you assume a value is `unknown`:
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
 
-`$this->resource` narrows in either polarity, for the whole method (`ResourceAstAnalyzer::resolveInstanceOfType()`),
-so a resource that guards on it needs no `#[TsCasts]` for what the guard proves.
+On an API resource, `$this->resource` narrows in either polarity, for the whole method
+(`ResourceAstAnalyzer::resolveInstanceOfType()`), so a resource that guards on it needs no `#[TsCasts]` for what the
+guard proves.
 
 ### A shape whose values name a class loses those values, in one of two ways
 
@@ -325,7 +344,7 @@ model, and the `| null` comes back.
 
 `$this->assignable->label()` publishes `unknown` in every spelling when the relation names no target, even if the
 resource's own model declares `label()`, since the related model could be any. Name the targets in
-`@return MorphTo<A|B, $this>`.
+`@return MorphTo<A|B, $this>`, or declare the inverse `morphMany`/`morphOne` on each target, which types it too.
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 
@@ -410,6 +429,38 @@ The package reads each collection's declared `$wrap` default, never a value the 
 redeclare `$wrap` sends a bare list, while its published interface still has the `data` key. A runtime `wrap('items')`
 is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
 extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
+
+### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
+
+Inside a collection, `$this->resource` holds the items in a `Support\Collection` or the paginator the collection was
+given. The package types its value, `first()`, `last()`, `count()`, `only()`, `except()` and the paginator's own
+methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
+`$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
+
+### A `& ResourcePagination` page prop over `simplePaginate()` or `cursorPaginate()` claims the length-aware `meta`
+
+An Inertia prop that passes a paginator to a resource collection, such as
+`new PostCollection(Post::query()->simplePaginate())`, publishes `PostCollection & ResourcePagination`, whose `meta` is
+the one `paginate()` sends; `SomeResource::collection()` over one publishes `JsonResourcePaginator<R>` with the same
+`meta`. A simple paginator's `meta` has no `last_page`, `links` or `total`, and a cursor paginator's also has no
+`current_page`, `from` or `to`, so a read of one compiles and gets `undefined`. Type the prop with `#[TsCasts]`, or use
+`paginate()`.
+
+### A resource collection whose `toArray()` returns `$this->resource` publishes an empty interface
+
+A collection whose `toArray()` returns `$this->resource`, `$this->resource->toArray()` or
+`$this->resource->jsonSerialize()` publishes an empty interface, though Laravel sends the collected items. The package
+reads a collection's response from the keys its `toArray()` returns. Return an array with named keys, such as
+`['data' => $this->collection]`, or type the response with `#[TsCasts]`.
+
+### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
+
+Over a paginator, a collection whose `toArray()` returns its wrap key, such as `data`, beside its own `meta` or `links`
+has those merged into Laravel's pagination block with `array_merge_recursive()`, so a key both name is sent as a list.
+A `total` you add to `meta` is sent as `[3, 3]`, while the package publishes `number`. Without the wrap key, Laravel
+nests the whole array under `data` and nothing merges. Name the key differently, or drop the duplicated key from
+`$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a block with other
+keys there: the package does not read `paginationInformation()`, so `& ResourcePagination` would no longer match.
 
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 
@@ -584,8 +635,8 @@ it a `@var` docblock.
 
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
-`whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
-`$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
+`whenLoaded('author', function (User $a) { $a = $a->comments->find(1); return $a->name; })` publishes `string`, though
+`$a` holds a `Comment` and Laravel sends `null`, because `find()` names no class. Annotate the assignment,
 `/** @var Comment $a */`, and the read follows it. A closure parameter passed a value does the same: after
 `$t = json_decode($t)`, `$t` keeps the type it was passed.
 
@@ -594,16 +645,12 @@ it a `@var` docblock.
 `getKey()`, `modelKeys()` and `Auth::id()` on an abstract model publish the key type the class declares, joined with
 each concrete subclass the run publishes. A subclass the run leaves out, which the collector skips or a package
 holds, adds nothing when it keys differently. So does a key a constructor sets through another method. A
-`uniqueIds()` override publishes `unknown` even when its list leaves the key out. A concrete receiver class never
-looks at its subclasses.
+`uniqueIds()` override whose list is not a literal publishes `unknown`. A concrete receiver class never looks at its
+subclasses.
 
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 
-The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent
-call such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A
-helper parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes
-`new Post`, so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes
-`number | null`.
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number.
 
 ## Deliberate non-goals
 

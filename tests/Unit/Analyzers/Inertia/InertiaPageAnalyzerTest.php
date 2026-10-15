@@ -164,7 +164,7 @@ it('falls back to bare SharedData for a render with no props', function () {
 it('types the route-bound model parameter and the injected service call', function () {
     $data = pageData(InertiaUserShapesController::class.'@bound');
 
-    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, stats: { views: number; likes: number } }');
+    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } }');
 });
 
 // `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same

@@ -35,6 +35,8 @@ class CategoryLineageResource extends JsonResource
             'parent_new_loaded' => new CategoryResource($this->whenLoaded('parent')),
             'parent_make_direct' => CategoryResource::make($this->parent),
             'parent_nullsafe_resource' => $this->parent?->toResource(),
+            'parent_siblings' => $this->parent?->children->toResourceCollection(),
+            'parent_siblings_nullsafe' => $this->parent?->children?->toResourceCollection(),
             'parent_in_array' => ['parent' => CategoryResource::make($this->parent)],
             'parent_when' => $this->when($request->boolean('lineage'), fn () => CategoryResource::make($this->parent)),
             'children_names' => $this->whenLoaded('children', fn ($children) => $children->pluck('name')),

@@ -13,6 +13,7 @@ import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
+import type { CursorPaginator, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { BroadcastableEvent } from '@/types/broadcast';
@@ -2850,6 +2851,8 @@ declare global {
             parent_new_loaded?: CategoryResource | null;
             parent_make_direct: CategoryResource | null;
             parent_nullsafe_resource: CategoryResource | null;
+            parent_siblings: CategoryResource[] | null;
+            parent_siblings_nullsafe: CategoryResource[] | null;
             parent_in_array: { parent: CategoryResource | null };
             parent_when?: CategoryResource | null;
             children_names?: string[];
@@ -2970,6 +2973,7 @@ declare global {
             author_titled_inside?: string | null;
             options_inside?: Record<string, string> | null;
             profile_bio_inside?: string | null;
+            own_model: app.models.Post;
         }
         /**
          * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
@@ -3912,7 +3916,7 @@ declare global {
         export interface MediaTypeInstanceOfResource {
             name?: string;
             value?: string;
-            meta?: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
          * Resource using a positive instanceof guard (not negated).
@@ -3928,7 +3932,7 @@ declare global {
         export interface MediaTypeResource {
             name: string;
             value: string;
-            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
             name: unknown;
@@ -4448,6 +4452,19 @@ declare global {
          */
         export type PostFlatCollection = PostResource[];
         /**
+         * Helpers whose declarations are vague or missing, each typed from what its own returns hold: a scalar, a list
+         * literal, list pipelines, an attribute read and returned variables.
+         */
+        export interface PostHelperBodyResource {
+            shout_untyped: string;
+            stages: string[];
+            history: string[];
+            ids: number[];
+            untyped_title: string;
+            closure_first: { title: string; active: number };
+            mixed_meta: { a: number } | { a: number; b: string };
+        }
+        /**
          * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
          * nested call, a static helper and a trait's.
          */
@@ -4738,6 +4755,8 @@ declare global {
             comments_by_ids: app.models.Comment[];
             comments_maybe: app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: app.models.Comment[] | null;
+            comment_ids: number[];
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -4760,6 +4779,8 @@ declare global {
             comments_by_ids: app.models.Comment[];
             comments_maybe: app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: app.models.Comment[] | null;
+            comment_ids: number[];
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
@@ -4822,6 +4843,10 @@ declare global {
             resource_key: number;
             draft_key: number | null;
             copy_key: number | null;
+            made_key: number | null;
+            made_comment_key: number | null;
+            loaded_author_key?: number;
+            comment_keys: number[];
             bare_comments_count: number;
             resource_comments_count: number;
             author_bound: app.models.User | null;
@@ -4979,12 +5004,15 @@ declare global {
         }
         /**
          * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
-         * unions their resources and a plain attribute read unions the targets' own column types.
+         * unions their resources and a plain attribute read unions the targets' own column types. The
+         * closure-less toResource() unions the same resources, and its `?->` spelling adds null.
          */
         export interface ReviewResource {
             id: number;
             reviewable?: ArtistResource | VenueResource;
             reviewable_name?: string;
+            reviewable_resource: ArtistResource | VenueResource;
+            reviewable_nullsafe_resource: ArtistResource | VenueResource | null;
         }
         /**
          * A nullsafe call on a morphTo whose methods the resource's own model also has. Only the relation's generic says
@@ -5253,7 +5281,7 @@ declare global {
             status_or_priority: app.enums.StatusType | app.enums.PriorityType;
             void_return: unknown;
             never_return: unknown;
-            mixed_return: unknown;
+            mixed_return: null;
             order_or_status: app.models.Order | app.enums.StatusType;
             money_value: unknown;
             page_meta_ternary: PageMetaType | null;
@@ -5533,6 +5561,8 @@ declare global {
         export interface UserCollection {
             data: UserResource[];
             has_admin: boolean;
+            page: UserResource[] | LengthAwarePaginator<UserResource> | SimplePaginator<UserResource> | CursorPaginator<UserResource>;
+            first_user: UserResource | null;
         }
         /**
          * Exercises return $this->except([...]) against a model with $hidden columns.

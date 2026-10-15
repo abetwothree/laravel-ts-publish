@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostSummaryFormatter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -45,6 +46,21 @@ final class PassedArgumentEdgesResource extends JsonResource
     public function unsaved(): array
     {
         return ['unsaved_row' => $this->keyed(new Post), ...$this->keyed(new Post)];
+    }
+
+    /**
+     * A helper declaring one concrete model, passed a model no row backs yet, either of two such models, and the
+     * resource's own row.
+     *
+     * @return array<string, mixed>
+     */
+    public function unsavedDeclared(Request $request): array
+    {
+        return [
+            'declared_unsaved_row' => $this->typedKeyed(new Post),
+            'declared_either_unsaved_row' => $this->typedKeyed($request->boolean('labeled') ? new LabeledPost : new Post),
+            'declared_saved_row' => $this->typedKeyed($this->resource),
+        ];
     }
 
     /**
@@ -157,6 +173,14 @@ final class PassedArgumentEdgesResource extends JsonResource
      * @return array<string, mixed>
      */
     private function keyed($post): array
+    {
+        return ['k' => $post->getKey()];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function typedKeyed(Post $post): array
     {
         return ['k' => $post->getKey()];
     }

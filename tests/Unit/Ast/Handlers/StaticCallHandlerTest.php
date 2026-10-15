@@ -938,6 +938,17 @@ it('resolves new PostResource(...) to the resource channel', function () {
     ]);
 });
 
+it('reads self and static as the subject in any case, and leaves parent out', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'])->toBe($type);
+})->with([
+    'SELF::make()' => ['SELF::make($this->author)', 'PostResource'],
+    'Static::make()' => ['Static::make($this->author)', 'PostResource'],
+    'new SELF()' => ['new SELF($this->author)', 'PostResource'],
+    'parent::make()' => ['parent::make($this->author)', 'unknown'],
+]);
+
 // Inside a resource's toArray(), filter() serializes a nested resource whose payload is null as null.
 it('adds the null arm a nullable payload gives a nested resource, only inside a resource', function (string $subject, string $type) {
     $payload = new PropertyFetch(new Variable('this'), 'post');

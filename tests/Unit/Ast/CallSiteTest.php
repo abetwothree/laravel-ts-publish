@@ -13,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaFormatte
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedArgumentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PassedArgumentEdgesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariableHeldModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledPost;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\MethodCall;
@@ -53,14 +55,14 @@ test('a helper read as a value reads an untyped parameter as what its call passe
 });
 
 // A written parameter keeps its class binding up to the write, then its local answers: Laravel sends the author's name.
-test('each call publishes its own argument, a written parameter its local, and an argument nothing types or a scalar body stay unread', function () {
+test('each call publishes its own argument, a written parameter its local, and an argument nothing types stays unread', function () {
     expect(passedArgumentTypes(PassedArgumentEdgesResource::class))->toBe([
         'post_label' => '{ title: string; name: unknown }',
         'author_label' => '{ title: unknown; name: string }',
         'unknown_label' => '{ title: unknown; name: unknown }',
         'nested' => '{ deeper: unknown[] }',
         'written' => '{ author_name: string }',
-        'shout' => '?unknown',
+        'shout' => '?string',
         'fallback' => '{ value: unknown }',
         'fallback_null' => '{ value: string }',
     ]);
@@ -71,6 +73,23 @@ test('a helper passed a model no row backs yet reads its key as possibly null', 
     expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'unsaved'))->toBe([
         'unsaved_row' => '{ k: number | null }',
         'k' => 'number | null',
+    ]);
+});
+
+// A declared model binds as a row that exists, which an argument no row backs yet replaces, whichever new model it is.
+test('a helper declaring one concrete model reads its key as possibly null only where its call passes a new one', function () {
+    expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'unsavedDeclared'))->toBe([
+        'declared_unsaved_row' => '{ k: number | null }',
+        'declared_either_unsaved_row' => '{ k: number | null }',
+        'declared_saved_row' => '{ k: number }',
+    ]);
+});
+
+// A model a declared parameter holds reaches the receiver order, so the untyped method's body types the call there too.
+test('a helper declaring one concrete model reads an untyped method on it as the resource\'s own call does', function () {
+    expect(passedArgumentTypes(VariableHeldModelResource::class, model: LabeledPost::class))->toBe([
+        'resource_label' => 'string',
+        'param_label' => 'string',
     ]);
 });
 

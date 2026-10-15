@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use PhpParser\Node;
-use PhpParser\Node\FunctionLike;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt\Return_;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor;
-use PhpParser\NodeVisitorAbstract;
 
 /**
- * Reads a method whose whole body is one string-literal return, e.g. `broadcastAs()`.
+ * Reads the literal every return of a method spells: a string, as `broadcastAs()` or `getAuthIdentifierName()` names
+ * one, or a list of strings, as a `uniqueIds()` override names its columns.
  *
  * Whole literal or nothing: a concatenation folded to its literal prefix ships a wrong Echo key.
  *
@@ -21,61 +20,81 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class ReturnLiteralReader
 {
+    use InspectsAstNodes;
+
     /**
-     * The single string literal a method returns, or null for anything else.
+     * The string literal every return of a method spells, or null for anything else.
      *
      * @param  class-string  $class
      */
     public function stringLiteral(string $class, string $method): ?string
     {
-        $context = resolve(MethodLocator::class)->locate($class, $method);
+        $literal = $this->literal($class, $method);
 
-        if ($context === null) {
-            return null;
-        }
-
-        $returns = $this->ownReturns($context->method->stmts ?? []);
-
-        if (count($returns) !== 1) {
-            return null;
-        }
-
-        $expr = $returns[0]->expr;
-
-        return $expr instanceof String_ ? $expr->value : null;
+        return is_string($literal) ? $literal : null;
     }
 
     /**
-     * The method's own return statements, excluding those belonging to a nested closure or function.
+     * The list of string literals every return of a method spells, or null for anything else.
      *
-     * @param  array<Node\Stmt>  $stmts
-     * @return list<Return_>
+     * @param  class-string  $class
+     * @return list<string>|null
      */
-    private function ownReturns(array $stmts): array
+    public function strings(string $class, string $method): ?array
     {
-        $visitor = new class extends NodeVisitorAbstract
-        {
-            /** @var list<Return_> */
-            public array $returns = [];
+        $literal = $this->literal($class, $method);
 
-            public function enterNode(Node $node): ?int
-            {
-                if ($node instanceof FunctionLike) {
-                    return NodeVisitor::DONT_TRAVERSE_CHILDREN;
-                }
+        return is_array($literal) ? $literal : null;
+    }
 
-                if ($node instanceof Return_) {
-                    $this->returns[] = $node;
-                }
+    /**
+     * The one literal every return with a value spells; null where the method yields or has no such return, a return
+     * spells anything else, or two returns differ.
+     *
+     * @param  class-string  $class
+     * @return string|list<string>|null
+     */
+    private function literal(string $class, string $method): string|array|null
+    {
+        // MethodLocator memoizes its parse, which is what records the file, so a warm read would record nothing.
+        DependencyRecorder::recordClass($class);
+        $stmts = resolve(MethodLocator::class)->locate($class, $method)?->method->stmts ?? [];
 
+        if ($this->yields($stmts)) {
+            return null;
+        }
+
+        $literals = array_map($this->literalOf(...), $this->collectReturnExpressions($stmts));
+        $first = $literals[0] ?? null;
+
+        return array_all($literals, fn (string|array|null $literal): bool => $literal === $first) ? $first : null;
+    }
+
+    /**
+     * A string literal, or a list literal of string literals with no key and no spread; null for anything else.
+     *
+     * @return string|list<string>|null
+     */
+    private function literalOf(Expr $expr): string|array|null
+    {
+        if ($expr instanceof String_) {
+            return $expr->value;
+        }
+
+        if (! $expr instanceof Array_) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach ($expr->items as $item) {
+            if ($item->key !== null || $item->unpack || ! $item->value instanceof String_) {
                 return null;
             }
-        };
 
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor($visitor);
-        $traverser->traverse($stmts);
+            $items[] = $item->value->value;
+        }
 
-        return $visitor->returns;
+        return $items;
     }
 }

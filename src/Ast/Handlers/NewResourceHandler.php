@@ -67,12 +67,7 @@ final class NewResourceHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        $className = $expr->class->toString();
-
-        // Resolve `self`/`static` so `new self(...)` is treated identically to `new ClassName(...)`.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
-        }
+        $className = $this->subjectClassName($expr->class, $scope->subjectReflection);
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {

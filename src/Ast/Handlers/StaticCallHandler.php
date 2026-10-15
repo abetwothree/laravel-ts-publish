@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -27,7 +28,6 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -133,11 +133,8 @@ final class StaticCallHandler implements ExpressionHandler
 
         // `$this->resource::staticMethod()`. Any other `$this->prop::m()` is ReceiverMethodCallHandler's.
         if ($expr instanceof StaticCall
-            && $expr->class instanceof PropertyFetch
-            && $expr->class->var instanceof Variable
-            && $expr->class->var->name === 'this'
-            && $expr->class->name instanceof Identifier
-            && $expr->class->name->toString() === 'resource'
+            && $expr->class instanceof Expr
+            && $this->isProxyFetch($expr->class, $scope)
             && $expr->name instanceof Identifier
         ) {
             return $this->analyzeStaticMethodOnResource($expr, $expr->name->toString(), $scope, $engine);
@@ -169,9 +166,10 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a static method call like EnumResource::make() or SomeResource::make/collection().
      *
-     * @return ValueExpressionResult
+     * @return ValueExpressionResult|null null where the subject's `__call()` answers the call and types nothing, so
+     *                                    ReceiverMethodCallHandler reads it as it reads `$this->m()`
      */
-    private function analyzeStaticCall(StaticCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
+    private function analyzeStaticCall(StaticCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $result = ValueResult::unknown();
         $className = $this->resolveStaticCallClassName($call);
@@ -181,9 +179,14 @@ final class StaticCallHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        // Resolve `self`/`static` so those calls are treated identically to ClassName::*() calls.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
+        // `self`/`static` read as the subject, so those calls are treated identically to ClassName::*() calls.
+        if ($call->class instanceof Name) {
+            $className = $this->subjectClassName($call->class, $scope->subjectReflection);
+        }
+
+        // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
+        if (resolve(ReceiverClassResolver::class)->sendsToSubjectCall($call, $scope)) {
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $methodName, new CallSite($call, $scope, $engine));
         }
 
         // EnumResource::make($this->prop)
@@ -407,7 +410,7 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
+     * Analyze a `$this->resource::staticMethod()` call against the classes `$this->resource` holds that declare it.
      *
      * @return ValueExpressionResult
      */

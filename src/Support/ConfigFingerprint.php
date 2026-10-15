@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\ViewName;
 use InvalidArgumentException;
+use ReflectionProperty;
 use Throwable;
 
 class ConfigFingerprint
@@ -34,9 +36,9 @@ class ConfigFingerprint
     private const string VIEW_DIRECTIVE = '/@(?:include(?:If|When|Unless|First|Isolated)?|extends(?:First)?|each|component(?:First)?)\s*(\((?:[^()]++|(?1))*\))/';
 
     /**
-     * Hash the output-affecting `ts-publish` config, each database connection's driver, and the templates the cached
-     * features render, so the cache busts when any changes: a relation aggregate publishes as its connection's driver
-     * returns it, and a cache hit never renders its template again.
+     * Hash the output-affecting `ts-publish` config, each database connection's driver, the templates the cached
+     * features render and what each API resource macro runs, so the cache busts when any changes: an aggregate
+     * publishes as its driver returns it, a hit never renders its template again, and a macro types what it answers.
      *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
@@ -53,6 +55,7 @@ class ConfigFingerprint
                 'database.default' => Config::get('database.default'),
                 'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
                 'templates' => self::templateFiles(),
+                'resource-macros' => self::resourceMacros(),
             ];
 
             self::ksortRecursive($config);
@@ -63,6 +66,33 @@ class ConfigFingerprint
             // A per-run token can never match a stored manifest header, forcing a full rebuild over stale output.
             return 'unfingerprintable-'.bin2hex(random_bytes(16));
         }
+    }
+
+    /**
+     * The macros every API resource shares, which it runs before forwarding a call to its model, each by what it runs.
+     *
+     * @return array<string, string> macro name => macroIdentity()
+     */
+    private static function resourceMacros(): array
+    {
+        /** @var array<string, mixed> $macros */
+        $macros = new ReflectionProperty(JsonResource::class, 'macros')->getValue();
+
+        return array_map(self::macroIdentity(...), $macros);
+    }
+
+    /**
+     * What a macro runs: an object's class, a function or `A::b` string, or an array's class and method joined by `::`.
+     * Every closure is `Closure`, since its declaring file is a recorded dependency and a moved line changes nothing.
+     */
+    private static function macroIdentity(mixed $macro): string
+    {
+        return match (true) {
+            is_object($macro) => $macro::class,
+            is_string($macro) => $macro,
+            is_array($macro) => implode('::', array_map(self::macroIdentity(...), $macro)),
+            default => get_debug_type($macro),
+        };
     }
 
     /**

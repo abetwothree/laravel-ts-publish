@@ -12,7 +12,7 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | --- | --- | --- | --- | --- |
 | `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/ModelClassResolver.php`, `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsResourceCalls.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php` (see below) | `13.0.0` |
+| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsResourceCalls.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php` (see below) | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Analyzers/Concerns/ChecksPreserveKeys.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
@@ -31,7 +31,8 @@ row is converted.
 The `Collects` row's test guards are not written as `class_exists()`. They spell the condition as
 `->skip(fn () => ! version_compare(app()->version(), '13', '>='))`, so grep for that form, not the FQCN, when you
 convert the row. Each covers a `PostFlatCollection` assertion, except one in `ResourceAstAnalyzerTest.php`, which
-covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so the `$collects` it inherits wins.
+covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so the `$collects` it inherits wins. The
+one in `ResourceCollectionItemsTest.php` covers `AttributedPostCollection`, which names its API resource only that way.
 `PostFlatCollection`'s collected resource is reachable only through the attribute, so on Laravel 12
 `resolveCollectedResourceClass()` returns null and the type degrades.
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute

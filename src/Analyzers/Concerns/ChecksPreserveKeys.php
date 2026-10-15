@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use ReflectionClass;
 
 /**
@@ -34,8 +35,8 @@ trait ChecksPreserveKeys
     }
 
     /**
-     * Wrap a collected element type as `Record<string, R>` when the reflected class preserves its
-     * keys, or as `R[]` otherwise — the single point every collection-typing call site shares.
+     * Wrap a collected element type as `Record<string, R>` when the reflected class preserves its keys, or as `R[]`
+     * otherwise: the analyzer-side caller of ValueResult::collectionListType(), the one spelling of a collected list.
      *
      * @template T of object
      *
@@ -43,8 +44,6 @@ trait ChecksPreserveKeys
      */
     protected function wrapCollectionElementType(string $elementType, ReflectionClass $reflection): string
     {
-        return self::collectionPreservesKeys($reflection)
-            ? "Record<string, {$elementType}>"
-            : $elementType.'[]';
+        return ValueResult::collectionListType($elementType, self::collectionPreservesKeys($reflection));
     }
 }

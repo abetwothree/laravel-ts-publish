@@ -9,6 +9,8 @@ use Workbench\App\Models\User;
 /** An auth model identified by its email column, so Auth::id() sends the email and not the key. */
 class EmailIdentifierUser extends User
 {
+    protected $table = 'users';
+
     /** Names the column the guard identifies the user by. */
     public function getAuthIdentifierName(): string
     {

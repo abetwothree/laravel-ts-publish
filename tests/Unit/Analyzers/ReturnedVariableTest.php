@@ -303,10 +303,10 @@ test('a share() that returns a variable publishes its keys', function () {
     expect($analyzer->analyze()['sharedPageProps'] ?? null)->toBe('{ appName: string, userId?: number }');
 });
 
-test('the body fallback reads a vague helper that returns a variable, and still declines a mixed one', function (string $class, string $method, string $expected) {
+test('the body fallback reads a vague helper that returns a variable, and reads a mixed one as a value', function (string $class, string $method, string $expected) {
     expect(resolve(MethodReturnTypeResolver::class)->resolve($class, $method)['type'] ?? null)->toBe($expected);
 })->with([
     'a static helper' => [ReturnedVariableLinesService::class, 'lines', '{ unit: string; tax: number }'],
     'a container instance' => [QuoteLinesService::class, 'lines', '{ unit: string; tax: number }'],
-    'a literal beside a variable' => [ReturnedVariableLinesService::class, 'mixedLines', 'unknown[]'],
+    'a literal beside a variable' => [ReturnedVariableLinesService::class, 'mixedLines', '{ unit: string } | { unit: string; tax: number }'],
 ]);

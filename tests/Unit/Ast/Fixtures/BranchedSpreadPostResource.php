@@ -42,9 +42,9 @@ final class BranchedSpreadPostResource extends JsonResource
         return ['label' => $this->opaque(), 'opaque' => $this->opaque(), 'nothing' => null];
     }
 
-    /** Deliberately untyped. */
+    /** Deliberately untyped, over a body nothing types either. */
     private function opaque()
     {
-        return config('app.name');
+        return json_decode('{}');
     }
 }

@@ -94,12 +94,6 @@ trait ReadsNullablePayloads
             return false;
         }
 
-        $className = $call->class->toString();
-
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
-        }
-
-        return $this->isResourceClass($className);
+        return $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
     }
 }

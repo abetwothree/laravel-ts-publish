@@ -24,8 +24,8 @@ use ReflectionUnionType;
 
 /**
  * Binds the parameters of a method whose body is read apart from its call, such as a subject's helper: by the types
- * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows, by what
- * that argument binds, which a value read's memos key on (CallSite::signature()).
+ * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows or passes as
+ * a model no row backs yet, by what that argument binds, which a value read's memos key on (CallSite::signature()).
  *
  * A body write that replaces a parameter ends its class binding there: the caller seeds the body (seedBody()) once
  * its parameters are bound. A written parameter binds no value, since a value binding outlives a write naming no class,
@@ -66,9 +66,9 @@ final class ParameterBinder
      * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, other classes
      * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
      *
-     * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark. An
-     * argument narrowing a declared abstract class, interface or union replaces the declared binding. A closure's
-     * parameters bind here too, having no method for bindCall().
+     * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark, in
+     * place of a declared concrete model's binding, as a narrower argument replaces a declared abstract class's,
+     * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
      * @param  array<Stmt>  $stmts  the method's or the closure's body
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -118,7 +118,8 @@ final class ParameterBinder
         return array_any(
             $method->getParameters(),
             fn (ReflectionParameter $parameter): bool => $this->takesPassedValue($parameter, $method)
-                || $this->narrowableClasses($parameter) !== null,
+                || $this->narrowableClasses($parameter) !== null
+                || $this->declaredModel($parameter) !== null,
         );
     }
 
@@ -139,6 +140,19 @@ final class ParameterBinder
         $reflection = new ReflectionClass($classes[0]);
 
         return count($classes) > 1 || $reflection->isAbstract() || $reflection->isInterface() ? $classes : null;
+    }
+
+    /**
+     * The one concrete model a parameter declares, which binds as a row that exists unless its call passes one no row
+     * backs yet; null for any other declaration.
+     *
+     * @return class-string<Model>|null
+     */
+    public function declaredModel(ReflectionParameter $parameter): ?string
+    {
+        $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
+
+        return $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
     }
 
     /**
@@ -243,8 +257,13 @@ final class ParameterBinder
     private function bindPassedNames(array $passed, AnalysisScope $scope, Closure $written): void
     {
         foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+            $declaredModel = $scope->varModelBindings[$name] ?? null;
+
             if ($refines && isset($scope->varDeclaredBindings[$name])) {
                 unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            } elseif ($unsaved && $classes !== null && $declaredModel !== null && is_a($classes[0], $declaredModel, true)) {
+                // A declared concrete model binds as a saved row, so a passed one no row backs yet replaces it.
+                unset($scope->varModelBindings[$name]);
             } elseif ($scope->bindsName($name)) {
                 continue;
             }

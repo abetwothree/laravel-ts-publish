@@ -4,39 +4,59 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Plus;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Expr\Yield_;
+use PhpParser\Node\Expr\YieldFrom;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
 
 /**
@@ -81,6 +101,28 @@ trait InspectsAstNodes
     }
 
     /**
+     * Whether a `?->` in this member chain can end the whole expression as null: PHP skips the rest of a chain, up to
+     * the first node that is not a property read, method call or offset read, once a nullsafe step meets null.
+     */
+    protected function chainShortCircuits(Expr $expr): bool
+    {
+        while ($expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
+            || $expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof ArrayDimFetch
+        ) {
+            if ($expr instanceof NullsafeMethodCall || $expr instanceof NullsafePropertyFetch) {
+                return true;
+            }
+
+            $expr = $expr->var;
+        }
+
+        return false;
+    }
+
+    /**
      * Whether an expression is a `$this->prop` property fetch, whichever property it names.
      */
     protected function isThisPropertyFetch(Expr $expr): bool
@@ -91,7 +133,7 @@ trait InspectsAstNodes
     }
 
     /**
-     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     * Whether an expression is spelled `$this->resource`, in any subject; isProxyFetch() says whether it is the proxy.
      */
     protected function isResourceFetch(Expr $expr): bool
     {
@@ -100,6 +142,34 @@ trait InspectsAstNodes
             && $expr->var->name === 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'resource';
+    }
+
+    /**
+     * The class a name spells from inside the subject: the subject for `self` and `static`, in any case, else the name.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    protected function subjectClassName(Name $name, ReflectionClass $subject): string
+    {
+        return in_array($name->toLowerString(), ['self', 'static'], true) ? $subject->getName() : $name->toString();
+    }
+
+    /**
+     * Whether an expression is `$this->resource` on a subject that has the proxy; anywhere else it is a member.
+     */
+    protected function isProxyFetch(Expr $expr, AnalysisScope $scope): bool
+    {
+        return $this->isResourceFetch($expr) && $scope->hasResourceProxy();
+    }
+
+    /**
+     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` through the proxy.
+     * The proxy itself is the model, never a member named `resource`.
+     */
+    protected function isModelMemberFetch(Expr $fetch, AnalysisScope $scope): bool
+    {
+        return $fetch instanceof PropertyFetch
+            && (($this->isThisPropertyFetch($fetch) && ! $this->isProxyFetch($fetch, $scope)) || $this->isProxyFetch($fetch->var, $scope));
     }
 
     /**
@@ -143,11 +213,9 @@ trait InspectsAstNodes
         }
 
         $parent = $subject->getParentClass();
-        $class = match ($key->class->toLowerString()) {
-            'self', 'static' => $subject->getName(),
-            'parent' => $parent === false ? null : $parent->getName(),
-            default => $key->class->toString(),
-        };
+        $class = $key->class->toLowerString() === 'parent'
+            ? ($parent === false ? null : $parent->getName())
+            : $this->subjectClassName($key->class, $subject);
         $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
         $value = $constant !== null && defined($constant) ? constant($constant) : null;
 
@@ -444,6 +512,79 @@ trait InspectsAstNodes
     }
 
     /**
+     * Whether a function-like body can end without a value, returning a `null` that none of its returns shows.
+     */
+    protected function canEndWithoutValue(FunctionLike $function): bool
+    {
+        // A declared return type throws where the body would end without a value.
+        if ($function->getReturnType() !== null) {
+            return false;
+        }
+
+        // A trailing comment parses as a statement of its own.
+        $stmts = $function->getStmts() ?? [];
+        $statements = array_filter($stmts, fn (Stmt $stmt): bool => ! $stmt instanceof Nop);
+        $last = end($statements);
+
+        if (! $last instanceof Return_ && ! ($last instanceof ExpressionStmt && $last->expr instanceof Throw_)) {
+            return true;
+        }
+
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Return_ && $node->expr === null);
+    }
+
+    /**
+     * Whether a value may be a closure, an arrow function or, where counted, a first-class callable: as itself, an arm
+     * of `?:`, `??` or `match`, or the one write the scope binds a local to, which is how the engine reads that local.
+     *
+     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
+     */
+    protected function mayHoldCallable(
+        Expr $expr,
+        AnalysisScope $scope,
+        bool $firstClassCallables = true,
+        array $followed = [],
+    ): bool {
+        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
+            return true;
+        }
+
+        if ($expr instanceof CallLike) {
+            return $firstClassCallables && $expr->isFirstClassCallable();
+        }
+
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $bound = $scope->localVarBindings[$expr->name] ?? null;
+
+            return $bound !== null
+                && ! isset($followed[$expr->name])
+                && $this->mayHoldCallable($bound, $scope, $firstClassCallables, [...$followed, $expr->name => true]);
+        }
+
+        $arms = match (true) {
+            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
+            $expr instanceof Coalesce => [$expr->left, $expr->right],
+            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
+            default => [],
+        };
+
+        return array_any(
+            $arms,
+            fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $firstClassCallables, $followed),
+        );
+    }
+
+    /**
+     * Whether a body yields, so calling it returns a `Generator`, never the value it returns.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    protected function yields(array $stmts): bool
+    {
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Yield_ || $node instanceof YieldFrom);
+    }
+
+    /**
      * The items one operand of `+` gives the union literal.
      *
      * @param  array<string, Expr>  $localVarBindings
@@ -496,5 +637,38 @@ trait InspectsAstNodes
         }
 
         return $stored;
+    }
+
+    /**
+     * Whether a node of the body's own matches; a nested closure, function or class answers for itself.
+     *
+     * @param  array<Stmt>  $stmts
+     * @param  Closure(Node): bool  $matches
+     */
+    private function bodyHas(array $stmts, Closure $matches): bool
+    {
+        $visitor = new class($matches) extends NodeVisitorAbstract
+        {
+            public bool $found = false;
+
+            /** @param  Closure(Node): bool  $matches */
+            public function __construct(private readonly Closure $matches) {}
+
+            /** Stop at the first match, leaving a nested function-like or class unread. */
+            public function enterNode(Node $node): ?int
+            {
+                if ($node instanceof FunctionLike || $node instanceof ClassLike) {
+                    return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+                }
+
+                $this->found = ($this->matches)($node);
+
+                return $this->found ? NodeVisitor::STOP_TRAVERSAL : null;
+            }
+        };
+
+        new NodeTraverser($visitor)->traverse($stmts);
+
+        return $visitor->found;
     }
 }

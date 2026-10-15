@@ -7,6 +7,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
@@ -27,11 +31,14 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
+use Workbench\App\Models\RosterSlot;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
@@ -219,6 +226,31 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::className()'), $scope))->toBeNull();
     });
 
+    test('a static call a model lacks runs on a new query of it, and a query or relation names the model it builds', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $model = new AnalysisScope(new ReflectionClass(Post::class));
+
+        expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()'), postScope()))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+            ->and($resolver->resolve(receiverExpr('static::where("title", "x")'), $model))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+            ->and($resolver->resolve(receiverExpr('static::make()'), $model))->toEqual(new ReceiverType([Post::class], unsaved: true))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->make()'), postScope()))
+            ->toEqual(new ReceiverType([Comment::class], unsaved: true))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
+            ->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+    });
+
+    test('a static-syntax call the subject lacks reads as $this->m(), as __call() runs it', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        expect($resolver->resolve(receiverExpr('static::fresh()'), postScope()))
+            ->toEqual($resolver->resolve(receiverExpr('$this->fresh()'), postScope()))
+            ->and($resolver->resolve(receiverExpr('static::fresh()'), postScope())?->classes)->toBe([Post::class])
+            ->and($resolver->resolve(receiverExpr('$this::fresh()'), postScope())?->classes)->toBe([Post::class]);
+    });
+
     test('a ternary or coalesce holds every non-null arm, and declines on any unresolved arm', function () {
         $resolver = resolve(ReceiverClassResolver::class);
 
@@ -382,6 +414,17 @@ describe('ReceiverClassResolver instanceof ternary narrowing', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->classUnion() instanceof \Workbench\App\Models\Post ? $this->classUnion() : null'), $scope)?->classes)
             ->toBe([UrlService::class, Post::class]);
     });
+
+    // Only a class other than a model that the redeclaration names keeps the model from answering a forwarded call.
+    test('a proven class lacking a forwarded method hands it on to the backing model, which a redeclared class keeps out', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $proven = postScope();
+        $proven->provenProxy = [UrlService::class];
+
+        expect($resolver->proxyCallTarget('fresh', $proven))->toBe(Post::class)
+            ->and($resolver->proxyCallTarget('commentsCount', new AnalysisScope(new ReflectionClass(ProxyMediaOrStringResource::class), Post::class)))
+            ->toBeNull();
+    });
 });
 
 describe('ReceiverClassResolver visibility, @var types and class names', function () {
@@ -482,6 +525,25 @@ describe('ReceiverClassResolver::returnClasses()', function () {
             ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
             ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
     });
+});
+
+// Model::__get() reads an attribute, a camelCase accessor included, before a relation of the same name.
+describe('ReceiverClassResolver::singleModelHeldBy()', function () {
+    test('names the one model a member read holds, and nothing for a collection, a scalar or several models', function (string $model, string $name, ?string $held) {
+        expect(resolve(ReceiverClassResolver::class)->singleModelHeldBy($model, $name))->toBe($held);
+    })->with([
+        'a to-one relation' => [Post::class, 'author', User::class],
+        'a to-many relation' => [Post::class, 'comments', null],
+        'a camelCase accessor typed as one model' => [Post::class, 'latestComment', Comment::class],
+        'an untyped getter whose body returns one model' => [AuthoredPost::class, 'lead', CrmUser::class],
+        'a column shadowing a relation' => [Depot::class, 'supervisor', null],
+        'an old-style accessor shadowing a relation' => [ProxyShadowPost::class, 'author', Category::class],
+        'a name only an @property tag types' => [SingleModelStepPost::class, 'ghost', User::class],
+        'a morphTo of one model' => [SingleModelStepPost::class, 'subject', User::class],
+        'a morphTo of several models' => [RosterSlot::class, 'assignee', null],
+        'a morphTo bounded only by Model' => [Image::class, 'imageable', null],
+        'no member' => [Post::class, 'not_a_member', null],
+    ]);
 });
 
 describe('ReceiverType', function () {

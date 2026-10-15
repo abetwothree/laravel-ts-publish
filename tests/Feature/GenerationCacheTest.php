@@ -10,11 +10,14 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -69,6 +72,8 @@ afterEach(function () {
             @rmdir($dir);
         }
     }
+
+    JsonResource::flushMacros();
 });
 
 test('manifest is written on first run', function () {
@@ -340,6 +345,68 @@ test('a model that becomes publishable between runs is named by a resource that 
         ->and($published())->toContain('archive: AuditArchive');
 });
 
+test('a resource macro registered between two runs rebuilds the resource that calls it', function () {
+    Config::set('ts-publish.resources.additional_directories', [
+        ...Config::array('ts-publish.resources.additional_directories'),
+        MacroShadowingResource::class,
+    ]);
+    Config::set('ts-publish.resources.included', [MacroShadowingResource::class]);
+
+    $published = function (): string {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->out, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getFilename() === 'macro-shadowing-resource.ts') {
+                return (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        return '';
+    };
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('label: number;');
+
+    JsonResource::macro('label', fn (): string => 'macro-label');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('label: string;');
+});
+
+test('a resource macro re-pointed at another invokable between two runs rebuilds the resource that calls it', function () {
+    Config::set('ts-publish.resources.additional_directories', [
+        ...Config::array('ts-publish.resources.additional_directories'),
+        MacroShadowingResource::class,
+    ]);
+    Config::set('ts-publish.resources.included', [MacroShadowingResource::class]);
+
+    $published = function (): string {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->out, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getFilename() === 'macro-shadowing-resource.ts') {
+                return (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        return '';
+    };
+
+    JsonResource::macro('ticket', new TicketMacro);
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('ticket: number;');
+
+    // Neither file the first run recorded changes: only what the macro runs does.
+    JsonResource::macro('ticket', new class
+    {
+        /** A string the first invokable's float never was. */
+        public function __invoke(): string
+        {
+            return 'T';
+        }
+    });
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('ticket: string;');
+});
+
 test('editing a class a resource reaches only by reflection rebuilds the resource', function () {
     // PHP cannot reload a class, so the scorer lives in a temp copy the test can edit; the fingerprint hashes content.
     $suffix = bin2hex(random_bytes(4));
@@ -378,6 +445,53 @@ test('editing a class a resource reaches only by reflection rebuilds the resourc
             ->and($builds)->toBe(1);
 
         file_put_contents($scorerFile, "\n// edited\n", FILE_APPEND);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2);
+    } finally {
+        array_map(unlink(...), glob($sources.'/*.php') ?: []);
+        @rmdir($sources);
+    }
+});
+
+test('editing the body of a helper only the value read types rebuilds the resource', function () {
+    // PHP cannot reload a class, so the helper lives in a temp copy the test can edit; its class is not the resource's.
+    $suffix = bin2hex(random_bytes(4));
+    $sources = "$this->cacheDir-src";
+
+    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\ValueReadHelper\\';
+    $resource = $namespace.'LabelResource'.$suffix;
+    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/stubs/value-read-helper/label-resource'.$suffix.'.ts';
+    Config::set('ts-publish.resources.additional_directories', [$resource]);
+    Config::set('ts-publish.resources.included', [$resource]);
+
+    // A cache hit rehydrates without the container, so each resolution here is a rebuild.
+    $builds = 0;
+    $this->app->resolving(ResourceGenerator::class, function () use (&$builds): void {
+        $builds++;
+    });
+
+    try {
+        mkdir($sources);
+
+        foreach (['Labeler', 'LabelResource'] as $name) {
+            $stub = (string) file_get_contents(__DIR__.'/../Fixtures/Stubs/ValueReadHelper/'.$name.'.php.stub');
+            file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
+            require_once $sources.'/'.$name.'.php';
+        }
+
+        $helperFile = (string) new ReflectionClass($namespace.'Labeler'.$suffix)->getFileName();
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($published))->toContain('label: string;')
+            ->and(CacheBootstrap::manifest(CacheBootstrap::repository())->deps(ResourceGenerator::class.'::'.$resource))
+            ->toContain($helperFile)
+            ->and($builds)->toBe(1);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(1);
+
+        file_put_contents($helperFile, str_replace("strtoupper('label')", "strlen('label')", (string) file_get_contents($helperFile)));
 
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
             ->and($builds)->toBe(2);

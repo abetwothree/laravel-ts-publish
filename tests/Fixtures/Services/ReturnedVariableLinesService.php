@@ -18,7 +18,7 @@ class ReturnedVariableLinesService
         return $lines;
     }
 
-    /** A literal and a variable return: once a literal has an item, the body fallback reads only literal returns. */
+    /** A literal and a variable return, which the shape cannot read whole, so a value read types it. */
     public function mixedLines(bool $flag): array
     {
         if ($flag) {

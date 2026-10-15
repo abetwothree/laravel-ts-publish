@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
@@ -42,4 +43,23 @@ function chainHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
         }
     };
+}
+
+/**
+ * Each property an API resource publishes, as `name => type`, `?` marking an optional key, with the numeric-keyed
+ * arrays re-indexed into the lists the resource sends.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function publishedResourceKeyTypes(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze($resource, 'toArray', $model)->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
 }

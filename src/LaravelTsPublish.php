@@ -1314,6 +1314,23 @@ class LaravelTsPublish
     }
 
     /**
+     * Parse a closure's `@return` docblock into type info, resolving short class names through the file of the class
+     * it was declared in; empty for a function declared outside a class.
+     *
+     * @return TypeScriptTypeInfo
+     */
+    public function functionDocblockReturnTypes(ReflectionFunction $function): array
+    {
+        $docComment = $function->getDocComment();
+        $context = $function->getClosureScopeClass();
+        $returnTypeString = $docComment === false ? null : $this->extractReturnTypeFromDocblock($docComment);
+
+        return $returnTypeString === null || $context === null
+            ? $this->emptyTypeScriptInfo()
+            : $this->resolveDocblockTypeStringAgainst($returnTypeString, $context);
+    }
+
+    /**
      * Parse `Attribute<Getter, Setter>` from a method's return docblock and resolve the getter type.
      *
      * Both the short and fully-qualified class forms are matched. A bare `Attribute` with no generic
