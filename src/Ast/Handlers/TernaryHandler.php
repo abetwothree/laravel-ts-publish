@@ -69,6 +69,16 @@ final class TernaryHandler implements ExpressionHandler
         if ($proof !== null) {
             $result = $this->resolveNarrowed($proof[0], $proof[1], $arms[$proof[2]], $scope, fn (): array => $resolveArm($proof[2]));
 
+            // `$this->resource` read whole under its own proof is the proven class; one with no published type leaves
+            // the whole expression unknown, since dropping it would publish the other arm as if the test never passed.
+            if ($result !== null
+                && $result['type'] === 'unknown'
+                && $this->isProxyFetch($arms[$proof[2]], $scope)
+                && $this->isSameReadPath($proof[0], $arms[$proof[2]])
+            ) {
+                return $result;
+            }
+
             if ($result !== null) {
                 $narrowed[$proof[2]] = $result;
             }

@@ -53,6 +53,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NamesakeStatusCard;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AccessorNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendingModelFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CallPathAbstractModel;
@@ -103,6 +104,7 @@ use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ImageResource;
+use Workbench\App\Http\Resources\MediaTypeInstanceOfResource;
 use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -1558,14 +1560,14 @@ describe('what $this->resource holds, through every path', function () {
         [Post::class, '$this->author->fresh()', 'User | null'],
     ]);
 
-    // An arm that lacks the method throws, so the call types from every class that runs it.
-    test('a redeclared union of models types a call from every class that runs it', function (string $php, string $type) {
+    // A forwarded call runs on the first class that declares it; a receiver on `$this->resource` holds every class.
+    test('a redeclared union of models forwards a call to the first class that declares it', function (string $php, string $type) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyPostOrImageResource::class));
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
     })->with([
         ['$this->resource', 'Post | Image'],
-        ['$this->fresh()', 'Post | Image | null'],
+        ['$this->fresh()', 'Post | null'],
         ['$this->resource->fresh()', 'Post | Image | null'],
         ['$this->commentsCount()', 'number'],
         ['$this->resource->commentsCount()', 'number'],
@@ -1597,7 +1599,7 @@ describe('what $this->resource holds, through every path', function () {
         [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource->fresh() : null', 'Image | null'],
         [ProxyPostOrImageResource::class, '$this->resource->fresh()', 'Post | Image | null'],
         [ProxyPostOrImageResource::class, '$this->resource->replicate()', 'Post | Image'],
-        [ProxyPostOrImageResource::class, '$this->fresh()', 'Post | Image | null'],
+        [ProxyPostOrImageResource::class, '$this->fresh()', 'Post | null'],
         [ProxyPostOrImageResource::class, '$this->commentsCount()', 'number'],
         [ProxyModelPostResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource : null', 'Image | null'],
         [ProxyMediaOrPostResource::class, '$this->resource', 'Post'],
@@ -1605,6 +1607,23 @@ describe('what $this->resource holds, through every path', function () {
         [ProxyMediaOrPostResource::class, '$this->resource->maxSizeMb()', 'number'],
         [ProxyMediaOrPostResource::class, '$this->resource::mimePrefixes()', 'prefixes'],
         [ProxyMediaOrPostResource::class, '$this->resource instanceof '.MediaType::class.' ? $this->resource->maxSizeMb() : null', 'number | null'],
+        [ProxyMediaOrPostResource::class, '$this->fresh()', 'Post | null'],
+        // A proven class that lacks the method hands the call on in base's order: the redeclared classes, the model.
+        [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->commentsCount() : null', 'number | null'],
+        [ProxyMediaOrPostResource::class, '$this->resource instanceof '.MediaType::class.' ? $this->fresh() : null', 'Post | null'],
+    ]);
+
+    // Under its own proof `$this->resource` read whole is the proven class; one that renders as nothing leaves the
+    // expression unknown rather than publishing the other arm alone.
+    test('an instanceof proof renders the proven class whole', function (string $resource, string $class, string $type) {
+        $php = '$this->resource instanceof '.$class.' ? $this->resource : null';
+
+        expect(pipelineAnalyzer($resource)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        [ProxyMediaOrPostResource::class, MediaType::class, 'MediaTypeType | null'],
+        [MediaTypeInstanceOfResource::class, MediaType::class, 'MediaTypeType | null'],
+        [MediaTypeInstanceOfResource::class, NamesakeStatusCard::class, '{ code: number } | null'],
+        [MediaTypeInstanceOfResource::class, JsonSerializable::class, 'unknown'],
     ]);
 
     test('a redeclaration whose one class arm is the backing model holds it beside a builtin arm', function (string $php, string $type) {

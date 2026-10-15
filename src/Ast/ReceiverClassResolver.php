@@ -214,9 +214,9 @@ final class ReceiverClassResolver
             return $held;
         }
 
-        $targets = $this->proxyCallTargets($method, $scope);
+        $target = $this->proxyCallTarget($method, $scope);
 
-        return $targets === [] ? null : new ReceiverType($targets);
+        return $target === null ? null : ReceiverType::of($target);
     }
 
     /**
@@ -252,8 +252,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The model `$this->resource` publishes as when read whole: the one an `instanceof` proof holds it to, else the
-     * backing model when the subject does not redeclare `$resource` or one class it names admits it; null otherwise.
+     * The backing model `$this->resource` publishes as when read whole with no `instanceof` proof in force: the backing
+     * model when the subject does not redeclare `$resource` or one class it names admits it; null otherwise.
      *
      * @return class-string<Model>|null
      */
@@ -266,33 +266,22 @@ final class ReceiverClassResolver
         $backing = $scope->forwardsUndeclaredMembersTo;
         $declared = $this->redeclaredProxyArms($scope->subjectReflection);
 
-        $model = match (true) {
-            $scope->provenProxy !== null => count($scope->provenProxy) === 1 ? $scope->provenProxy[0] : null,
-            $declared === null || $this->admitting($declared['classes'], $backing) !== [] => $backing,
-            default => null,
-        };
-
-        return $model !== null && is_a($model, Model::class, true) ? $model : null;
+        return $backing !== null
+            && is_a($backing, Model::class, true)
+            && ($declared === null || $this->admitting($declared['classes'], $backing) !== [])
+            ? $backing
+            : null;
     }
 
     /**
-     * The classes a call forwarded to `$this->resource` runs on: those that declare the method in the first group of
-     * proxyCallCandidates() where any does, since an arm that lacks it throws. Empty when none does, or for a resource
-     * collection's items, which the receiver rules type.
+     * The class a call forwarded to `$this->resource` runs on: the first of proxyCallOrder() that declares the method;
+     * null when none does, or for a resource collection's items, which the receiver rules type.
      *
-     * @return list<class-string>
+     * @return class-string|null
      */
-    public function proxyCallTargets(string $method, AnalysisScope $scope): array
+    public function proxyCallTarget(string $method, AnalysisScope $scope): ?string
     {
-        foreach ($this->proxyCallCandidates($scope) as $group) {
-            $runs = array_values(array_filter($group, fn (string $class): bool => method_exists($class, $method)));
-
-            if ($runs !== []) {
-                return $runs;
-            }
-        }
-
-        return [];
+        return array_find($this->proxyCallOrder($scope), fn (string $class): bool => method_exists($class, $method));
     }
 
     /**
@@ -1069,13 +1058,13 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The groups of classes a call forwarded to `$this->resource` may run on, in the order they answer: those an
-     * `instanceof` proof holds it to, alone; else the classes the subject redeclares it as, the guard's class, then the
-     * backing class. A non-model the redeclaration names is final, so the model never answers for it.
+     * The classes a call forwarded to `$this->resource` may run on, in the order they answer: those an `instanceof`
+     * proof holds it to, then those the subject redeclares it as, each the backing model is or extends standing for it,
+     * then the guard's class and the backing class, which a named non-model leaves out (O11).
      *
-     * @return list<non-empty-list<class-string>>
+     * @return list<class-string>
      */
-    private function proxyCallCandidates(AnalysisScope $scope): array
+    private function proxyCallOrder(AnalysisScope $scope): array
     {
         $proxy = $scope->proxyReceiver();
 
@@ -1083,24 +1072,19 @@ final class ReceiverClassResolver
             return [];
         }
 
-        if ($scope->provenProxy !== null) {
-            return [$scope->provenProxy];
-        }
-
         $backing = $scope->forwardsUndeclaredMembersTo;
-        $fallback = array_map(
-            fn (string $class): array => [$class],
-            array_values(array_unique(array_filter([$scope->instanceOfWrappedClass, $backing]))),
-        );
-        $declared = $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? [];
+        $named = [
+            ...$scope->provenProxy ?? [],
+            ...array_map(
+                fn (string $class): string => $backing !== null && is_a($backing, $class, true) ? $backing : $class,
+                $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? [],
+            ),
+        ];
+        $fallback = array_any($named, fn (string $class): bool => ! is_a($class, Model::class, true))
+            ? []
+            : [$scope->instanceOfWrappedClass, $backing];
 
-        if ($declared === [] || $this->admittedByEvery($declared, $backing)) {
-            return $fallback;
-        }
-
-        return array_any($declared, fn (string $class): bool => ! is_a($class, Model::class, true))
-            ? [$declared]
-            : [$declared, ...$fallback];
+        return array_values(array_unique(array_filter([...$named, ...$fallback])));
     }
 
     /**

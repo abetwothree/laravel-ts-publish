@@ -24,8 +24,9 @@ type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-unio
 drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's key or a model
 accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
 `null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole
-call `unknown`, or the vague type it declares. Type the arm with a return type, a `@return` docblock or `#[TsCasts]`,
-and it comes back.
+call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose
+untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
+`#[TsCasts]`, and it comes back.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 

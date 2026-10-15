@@ -483,9 +483,10 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
 left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
 union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
-`applyConditionalDefault()` records a default only beside a value arm with a type.
-`ResourceAstAnalyzer::branchUnion()` records nothing for a spread helper's branches or a merge call's sides, since it
-unions type strings and cannot name the expression it drops.
+`applyConditionalDefault()` records a default only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()`
+records nothing for a spread helper's branches or a merge call's sides, since it unions type strings and cannot name the
+expression it drops. One arm is never left out: `$this->resource` read whole under its own `instanceof` proof, as the
+proven class with no published type, leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused

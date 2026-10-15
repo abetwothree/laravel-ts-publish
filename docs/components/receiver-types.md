@@ -29,12 +29,12 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the arm it proves (`AnalysisScope::$provenProxy`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole, by `proxyModel()`, it publishes the proven model, the backing model when the subject does not redeclare `$resource` or one class it names admits it, the items as `heldItems()` spells them, or else the redeclaration |
+| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the arm it proves (`AnalysisScope::$provenProxy`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`); else the redeclaration |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
-| `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, the public method of the classes `proxyCallTargets()` names, as below, or of a collection's items. |
+| `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
@@ -157,14 +157,14 @@ and a method no class runs declines.
 Two receivers come from outside `resolve()`, which names nothing for a bare `$this`:
 
 - **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, `forwardedThisReceiver()`
-  names the classes `ReceiverClassResolver::proxyCallTargets()` finds, since `JsonResource::__call()` forwards the call
-  to what `$this->resource` holds. Inside a proven arm it tries only the classes the proof holds. Otherwise it tries the
-  classes `$resource` is redeclared as, then the `instanceof` guard's class, then the backing class, and takes every
-  class of the first group that declares `m`, since an arm that lacks it throws. A non-model the redeclaration names
-  ends the search, so the model never answers for it, and a redeclaration every class of which admits the backing class
-  adds nothing. A collection's items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and
-  `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper such as
-  `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
+  names the class `ReceiverClassResolver::proxyCallTarget()` finds, since `JsonResource::__call()` forwards the call to
+  what `$this->resource` holds. It takes the first class that declares `m`: inside a proven arm, of the classes the
+  proof holds alone; otherwise of the classes `$resource` is redeclared as in declaration order, each the backing model
+  is or extends standing for it, then the `instanceof` guard's class, then the backing class. A non-model the
+  redeclaration names leaves the guard and the backing class out, so the model never answers for it. A collection's
+  items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and `$this->fresh()` is `Post |
+  null`. A method the resource declares, including every `JsonResource` helper such as `whenLoaded()`, keeps
+  `SubjectMethodTypeResolver`'s answer.
 - **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
@@ -178,14 +178,13 @@ Earlier claimants of these node classes decline a call they cannot type, as
 [The honest ordering inventory][inventory] records the declines that settle each pair.
 
 `RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`; on a date-cast column;
-or on a model-less subject's own typed property. Through `$this->resource` it reads the union of the classes
-`proxyCallTargets()` finds, final even when one types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as
-the bare `$this->m()`, `$this::m()` and `$this->resource::m()` do: only a public method, with the receiver rules' answer
-for a model method they type (`typesModelMethod()`), such as `toArray()` or `getCasts()`, else
-`MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and leaves those methods,
-and a filter on a held model, to the receiver rules, as it leaves a resource collection's items. Every other
-`$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so `$this->checks->toArray()`
-reads `PublishChecks`, never the resource's model.
+or on a model-less subject's own typed property. Through `$this->resource` it reads the class `proxyCallTarget()` finds,
+final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as the bare `$this->m()`,
+`$this::m()` and `$this->resource::m()` do: only a public method, with the receiver rules' answer for a model method
+they type (`typesModelMethod()`), such as `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a
+subject's own property it reads `forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver
+rules, as it leaves a resource collection's items. Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s,
+inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
