@@ -31,6 +31,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
@@ -87,6 +88,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserListFilterOverrideM
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueDirtyOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VagueFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
+use Illuminate\Contracts\Auth\CanResetPassword;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -1608,7 +1611,7 @@ describe('what $this->resource holds, through every path', function () {
         [ProxyMediaOrPostResource::class, '$this->resource::mimePrefixes()', 'prefixes'],
         [ProxyMediaOrPostResource::class, '$this->resource instanceof '.MediaType::class.' ? $this->resource->maxSizeMb() : null', 'number | null'],
         [ProxyMediaOrPostResource::class, '$this->fresh()', 'Post | null'],
-        // A proven class that lacks the method hands the call on in base's order: the redeclared classes, the model.
+        // A proven class that lacks the method hands the call on: to the redeclared classes in order, then the model.
         [ProxyPostOrImageResource::class, '$this->resource instanceof '.Image::class.' ? $this->commentsCount() : null', 'number | null'],
         [ProxyMediaOrPostResource::class, '$this->resource instanceof '.MediaType::class.' ? $this->fresh() : null', 'Post | null'],
     ]);
@@ -1624,6 +1627,42 @@ describe('what $this->resource holds, through every path', function () {
         [MediaTypeInstanceOfResource::class, MediaType::class, 'MediaTypeType | null'],
         [MediaTypeInstanceOfResource::class, NamesakeStatusCard::class, '{ code: number } | null'],
         [MediaTypeInstanceOfResource::class, JsonSerializable::class, 'unknown'],
+    ]);
+
+    // Each redeclared supertype admits the backing model, so a test that model passes proves it; only a test it fails
+    // narrows the declaration itself, as `instanceof Image` does.
+    test('a test the backing model passes holds that model, never the supertype $resource is redeclared as', function (string $resource, string $php, string $type) {
+        expect(pipelineAnalyzer($resource)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        [ProxyAuthenticatableResource::class, '$this->resource instanceof '.CanResetPassword::class.' ? $this->resource : null', 'User | null'],
+        [ProxyAuthenticatableResource::class, '$this->resource instanceof '.CanResetPassword::class.' ? $this->resource->getKey() : null', 'number | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->resource : null', 'Post | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Arrayable::class.' ? $this->resource : null', 'Post | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->resource->getKey() : null', 'number | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->title : null', 'string | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->commentsCount() : null', 'number | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->fresh() : null', 'Post | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Model::class.' ? $this->author->getKey() : null', 'number | null'],
+        [ProxyModelPostResource::class, '$this->resource instanceof '.Image::class.' ? $this->resource : null', 'Image | null'],
+    ]);
+
+    test('a resource redeclaring $resource as an interface its model implements publishes that model under a test it passes', function () {
+        $props = collect(pipelineAnalyzer(ProxyAuthenticatableResource::class)->analyze()->properties)->keyBy('name');
+
+        expect($props['user']['type'])->toBe('User | null')
+            ->and($props['key']['type'])->toBe('number | null');
+    });
+
+    // Read whole, the pipeline's `@var Post|Image` publishes its backing model; a test that rules out neither class
+    // proves nothing more, so it keeps that answer rather than widen it, while a receiver still holds both.
+    test('a test that rules out no class the redeclaration names keeps the unproven read, and one that rules one out narrows', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyPostOrImageResource::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource instanceof '.Model::class.' ? $this->resource : null', 'Post | null'],
+        ['$this->resource instanceof '.Post::class.' || $this->resource instanceof '.Image::class.' ? $this->resource : null', 'Post | null'],
+        ['$this->resource instanceof '.Model::class.' ? $this->resource->fresh() : null', 'Post | Image | null'],
+        ['$this->resource instanceof '.Model::class.' ? $this->fresh() : null', 'Post | null'],
+        ['$this->resource instanceof '.Image::class.' ? $this->resource : null', 'Image | null'],
     ]);
 
     test('a redeclaration whose one class arm is the backing model holds it beside a builtin arm', function (string $php, string $type) {

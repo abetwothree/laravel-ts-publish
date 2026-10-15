@@ -316,7 +316,27 @@ final class ReceiverClassResolver
      */
     public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): array
     {
-        return $this->narrowed($this->narrowable($subject, $scope), $tested)->classes;
+        return $this->narrowed($this->narrowable($subject, $tested, $scope), $tested)->classes;
+    }
+
+    /**
+     * Whether an `instanceof` test leaves `$this->resource` holding every class its redeclaration names, the backing
+     * class standing in for each it is or extends, so the test rules none of them out.
+     *
+     * @param  non-empty-list<class-string>  $proven
+     */
+    public function excludesNoNamedClass(array $proven, AnalysisScope $scope): bool
+    {
+        if (! $scope->hasResourceProxy() || $scope->provenProxy !== null) {
+            return false;
+        }
+
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+
+        // A builtin arm such as `string` names no class, so any class test rules it out.
+        return $declared !== null
+            && $declared['named']
+            && $proven === $this->backedArms($declared['classes'], $scope->forwardsUndeclaredMembersTo);
     }
 
     /**
@@ -689,7 +709,7 @@ final class ReceiverClassResolver
     private function provenArm(Expr $arm, Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
     {
         if ($this->isSameReadPath($subject, $arm)) {
-            return $this->narrowed($this->narrowable($arm, $scope), $tested);
+            return $this->narrowed($this->narrowable($arm, $tested, $scope), $tested);
         }
 
         $narrowed = $this->readsThrough($arm, $subject)
@@ -1045,22 +1065,51 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What an `instanceof` test on an expression narrows: on `$this->resource`, the proof already in force or the
-     * classes it is redeclared as, the bound the backing class was picked within; else the classes it holds.
+     * The declared classes with the backing class standing in for each it is or extends, as `@var Model` holds a post.
+     *
+     * @param  non-empty-list<class-string>  $declared
+     * @return non-empty-list<class-string>
      */
-    private function narrowable(Expr $subject, AnalysisScope $scope): ?ReceiverType
+    private function backedArms(array $declared, ?string $backing): array
     {
-        $bound = $this->isProxyFetch($subject, $scope)
-            ? $scope->provenProxy ?? $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? null
-            : null;
+        return array_values(array_unique(array_map(
+            fn (string $class): string => $backing !== null && is_a($backing, $class, true) ? $backing : $class,
+            $declared,
+        )));
+    }
 
-        return $bound === null ? $this->resolve($subject, $scope) : new ReceiverType($bound);
+    /**
+     * What an `instanceof` test on an expression narrows: on `$this->resource`, the proof already in force, else the
+     * classes it is redeclared as with the backing class standing in, or the bare declaration once the test rules out
+     * every one of those, as `instanceof Image` does a post; else the classes it holds.
+     *
+     * @param  non-empty-list<class-string>  $tested
+     */
+    private function narrowable(Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
+    {
+        $isProxy = $this->isProxyFetch($subject, $scope);
+
+        if ($isProxy && $scope->provenProxy !== null) {
+            return new ReceiverType($scope->provenProxy);
+        }
+
+        $declared = $isProxy ? $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? null : null;
+
+        if ($declared === null) {
+            return $this->resolve($subject, $scope);
+        }
+
+        $backed = $this->backedArms($declared, $scope->forwardsUndeclaredMembersTo);
+
+        return new ReceiverType(
+            array_any($backed, fn (string $class): bool => $this->narrowedClass($class, $tested) !== []) ? $backed : $declared,
+        );
     }
 
     /**
      * The classes a call forwarded to `$this->resource` may run on, in the order they answer: those an `instanceof`
      * proof holds it to, then those the subject redeclares it as, each the backing model is or extends standing for it,
-     * then the guard's class and the backing class, which a named non-model leaves out (O11).
+     * then the guard's class and the backing class, unless the redeclaration names a class other than a model.
      *
      * @return list<class-string>
      */
@@ -1073,18 +1122,13 @@ final class ReceiverClassResolver
         }
 
         $backing = $scope->forwardsUndeclaredMembersTo;
-        $named = [
-            ...$scope->provenProxy ?? [],
-            ...array_map(
-                fn (string $class): string => $backing !== null && is_a($backing, $class, true) ? $backing : $class,
-                $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? [],
-            ),
-        ];
-        $fallback = array_any($named, fn (string $class): bool => ! is_a($class, Model::class, true))
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $backed = $declared === null ? [] : $this->backedArms($declared['classes'], $backing);
+        $fallback = array_any($backed, fn (string $class): bool => ! is_a($class, Model::class, true))
             ? []
             : [$scope->instanceOfWrappedClass, $backing];
 
-        return array_values(array_unique(array_filter([...$named, ...$fallback])));
+        return array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
     }
 
     /**

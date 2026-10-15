@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
@@ -387,6 +388,17 @@ describe('ReceiverClassResolver instanceof ternary narrowing', function () {
 
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->classUnion() instanceof \Workbench\App\Models\Post ? $this->classUnion() : null'), $scope)?->classes)
             ->toBe([UrlService::class, Post::class]);
+    });
+
+    // Only a class other than a model that the redeclaration names keeps the model from answering a forwarded call.
+    test('a proven class lacking a forwarded method hands it on to the backing model, which a redeclared class keeps out', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $proven = postScope();
+        $proven->provenProxy = [UrlService::class];
+
+        expect($resolver->proxyCallTarget('fresh', $proven))->toBe(Post::class)
+            ->and($resolver->proxyCallTarget('commentsCount', new AnalysisScope(new ReflectionClass(ProxyMediaOrStringResource::class), Post::class)))
+            ->toBeNull();
     });
 });
 

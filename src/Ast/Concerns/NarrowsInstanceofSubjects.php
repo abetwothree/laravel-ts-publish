@@ -41,7 +41,8 @@ trait NarrowsInstanceofSubjects
             return null;
         }
 
-        $classes = resolve(ReceiverClassResolver::class)->narrowedSubject($subject, $tested, $scope);
+        $receivers = resolve(ReceiverClassResolver::class);
+        $classes = $receivers->narrowedSubject($subject, $tested, $scope);
 
         if ($subject instanceof Variable && $variable !== null) {
             $previousVarClassBindings = $scope->varClassBindings;
@@ -61,6 +62,11 @@ trait NarrowsInstanceofSubjects
                 $scope->varClassBindings = $previousVarClassBindings;
                 $scope->varGuardBindings = $previousVarGuardBindings;
             }
+        }
+
+        // A test that rules out no class `$resource` is redeclared as proves nothing, so the arm reads it unproven.
+        if ($receivers->excludesNoNamedClass($classes, $scope)) {
+            return $resolve();
         }
 
         $previousProvenProxy = $scope->provenProxy;

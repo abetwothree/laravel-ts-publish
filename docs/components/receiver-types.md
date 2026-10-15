@@ -113,9 +113,12 @@ A test never widens a class the arm already names. When no class survives, the a
 resolved to, and when it resolves to nothing, it holds the tested classes. When the proven arm instead reads a member
 through the tested subject, as in `$this->resource instanceof SubscribedTeam ? $this->resource->subscriber : null`,
 `provenArm()` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, the binding `TernaryHandler` uses.
-On `$this->resource` the classes narrowed are the proof already in force, else every class `$resource` is redeclared
-as, the bound the backing model was picked within, so `@var Model` over a `Post` narrows to `Image` under
-`instanceof Image`.
+On `$this->resource` the classes narrowed are the proof already in force, else the classes `$resource` is redeclared
+as with the backing model standing in for each it is or extends, so `@var Model` over a `Post` narrows to `Post` under
+`instanceof Model` or `instanceof Arrayable`. A test that rules out all of those narrows the bare redeclaration, so
+`instanceof Image` there narrows to `Image`. A test that rules out none of them, as `instanceof Model` does on
+`@var Post|Image`, records no proof (`ReceiverClassResolver::excludesNoNamedClass()`), so every read in the arm keeps
+its unproven answer.
 
 These stay un-narrowed:
 
@@ -158,13 +161,13 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
 
 - **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, `forwardedThisReceiver()`
   names the class `ReceiverClassResolver::proxyCallTarget()` finds, since `JsonResource::__call()` forwards the call to
-  what `$this->resource` holds. It takes the first class that declares `m`: inside a proven arm, of the classes the
-  proof holds alone; otherwise of the classes `$resource` is redeclared as in declaration order, each the backing model
-  is or extends standing for it, then the `instanceof` guard's class, then the backing class. A non-model the
-  redeclaration names leaves the guard and the backing class out, so the model never answers for it. A collection's
-  items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and `$this->fresh()` is `Post |
-  null`. A method the resource declares, including every `JsonResource` helper such as `whenLoaded()`, keeps
-  `SubjectMethodTypeResolver`'s answer.
+  what `$this->resource` holds. It takes the first class that declares `m` of: the classes a proof holds it to inside
+  the arm it proves, then the classes `$resource` is redeclared as in declaration order, each the backing model is or
+  extends standing for it, then the `instanceof` guard's class, then the backing class. A class other than a model that
+  the redeclaration names leaves the guard and the backing class out, so the model never answers for it; a proven class
+  never does. A collection's items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and
+  `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper such as
+  `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
 - **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
