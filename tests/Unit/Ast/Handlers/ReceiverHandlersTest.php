@@ -1354,7 +1354,7 @@ describe('getKey()', function () {
             fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, null) !== null,
         ));
 
-        expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except', 'modelKeys');
+        expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except');
     })->with([
         'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding']],
         'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding']],

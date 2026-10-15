@@ -76,10 +76,11 @@ test('a helper passed a model no row backs yet reads its key as possibly null', 
     ]);
 });
 
-// A declared model binds as a row that exists, which an argument no row backs yet replaces.
+// A declared model binds as a row that exists, which an argument no row backs yet replaces, whichever new model it is.
 test('a helper declaring one concrete model reads its key as possibly null only where its call passes a new one', function () {
     expect(passedArgumentTypes(PassedArgumentEdgesResource::class, 'unsavedDeclared'))->toBe([
         'declared_unsaved_row' => '{ k: number | null }',
+        'declared_either_unsaved_row' => '{ k: number | null }',
         'declared_saved_row' => '{ k: number }',
     ]);
 });
