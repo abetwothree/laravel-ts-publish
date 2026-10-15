@@ -265,8 +265,8 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
   offset where the `if` ends. An earlier `return` and the guard's own body therefore read `$x` unnarrowed.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varClassBindings`, or records `provenProxy` for `$this->resource`, setting `modelClass` too when
-  one model is left. A test that rules out no class `$resource` is redeclared as records nothing, and an arm that
-  writes its subject is not narrowed.
+  one model is left. A test that rules out no class `$resource` is redeclared as, and no `null` it admits, records
+  nothing, and an arm that writes its subject is not narrowed.
 
 A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
 `GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee

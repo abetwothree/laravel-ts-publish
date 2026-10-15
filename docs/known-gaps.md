@@ -455,10 +455,12 @@ reads a collection's response from the keys its `toArray()` returns. Return an a
 
 ### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
 
-Over a paginator, Laravel merges the `meta` and `links` keys a collection's `toArray()` returns into its own pagination
-block with `array_merge_recursive()`, so a key both name is sent as a list. A `total` you add to `meta` is sent as
-`[3, 3]`, while the package publishes `number`. Name the key differently, or override `paginationInformation()` to build
-the block yourself.
+Over a paginator, a collection whose `toArray()` returns its wrap key, such as `data`, beside its own `meta` or `links`
+has those merged into Laravel's pagination block with `array_merge_recursive()`, so a key both name is sent as a list.
+A `total` you add to `meta` is sent as `[3, 3]`, while the package publishes `number`. Without the wrap key, Laravel
+nests the whole array under `data` and nothing merges. Name the key differently, or drop the duplicated key from
+`$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a block with other
+keys there: the package does not read `paginationInformation()`, so `& ResourcePagination` would no longer match.
 
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 

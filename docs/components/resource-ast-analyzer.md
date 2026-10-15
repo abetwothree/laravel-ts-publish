@@ -519,10 +519,11 @@ is backed by no model, whatever its docblock or `#[TsResource(model:)]` names: `
 `ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
 collection keeps its keys, else `R[]`. `wrapCollectionElementType()` is its analyzer-side caller, for every site that
-reflects on a collection class; `$this->resource`'s items call `collectionListType()` directly with the scope's
-`reindexesNumericKeys`. A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only
-a fixture of that exact call shape would notice. `grep -rnE 'collectionListType\(|wrapCollectionElementType\(' src/`
-lists the sites.
+reflects on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
+and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
+`true`, since those keep the keys they filter by. A site that spelled the list itself would keep emitting `R[]` for a
+keyed collection, and only a fixture of that exact call shape would notice.
+`grep -rnE 'collectionListType\(|wrapCollectionElementType\(' src/` lists the sites.
 
 Each `wrapCollectionElementType()` site reflects on the class Laravel instantiates:
 

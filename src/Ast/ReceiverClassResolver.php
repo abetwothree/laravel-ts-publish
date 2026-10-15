@@ -342,7 +342,8 @@ final class ReceiverClassResolver
      */
     public function redeclaresNullableProxy(AnalysisScope $scope): bool
     {
-        if (! $scope->hasResourceProxy()) {
+        // An `if` on `$this->resource instanceof X` in toArray() may rule null out, and where its proof ends is unread.
+        if (! $scope->hasResourceProxy() || $scope->instanceOfWrappedClass !== null) {
             return false;
         }
 
@@ -397,7 +398,7 @@ final class ReceiverClassResolver
 
     /**
      * Whether an `instanceof` test leaves `$this->resource` holding every class its redeclaration names, the backing
-     * class standing in for each it is or extends, so the test rules none of them out.
+     * class standing in for each it is or extends, and the redeclaration admits no null, so the test rules nothing out.
      *
      * @param  non-empty-list<class-string>  $proven
      */
@@ -412,6 +413,7 @@ final class ReceiverClassResolver
         // A builtin arm such as `string` names no class, so any class test rules it out.
         return $declared !== null
             && $declared['named']
+            && ! $declared['nullable']
             && $proven === $this->backedArms($declared['classes'], $scope->forwardsUndeclaredMembersTo);
     }
 

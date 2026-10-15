@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
@@ -1670,6 +1671,24 @@ describe('the resource proxy', function () {
         '@var Model' => [ProxyModelPostResource::class, 'Post'],
         'undeclared' => [ReceiverMethodResource::class, 'Post'],
     ]);
+
+    // A test for the backing model rules out the null a redeclaration admits, so the proven arm holds the model alone.
+    test('an instanceof proof keeps the null a nullable redeclaration states out of its arm', function (string $resource, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        '@var Post|null' => [ModelWrappedPropResource::class, '$this->resource instanceof '.Post::class.' ? $this->resource : \'none\'', 'Post | string'],
+        '@var ?Post' => [NullableShorthandWrappedResource::class, '$this->resource instanceof '.Post::class.' ? $this->resource : false', 'Post | boolean'],
+        '@var ?Post, inside when()' => [NullableShorthandWrappedResource::class, '$this->when($flag, fn () => $this->resource instanceof '.Post::class.' ? $this->resource : 0)', 'Post | number'],
+    ]);
+
+    test('an early-return instanceof guard keeps the null a nullable redeclaration states off the guarded read', function () {
+        $properties = new ResourceAstAnalyzer(new ReflectionClass(NullableGuardedPostResource::class), Post::class)->analyze()->properties;
+
+        expect(collect($properties)->firstWhere('name', 'guarded'))
+            ->toMatchArray(['name' => 'guarded', 'type' => 'Post', 'optional' => true]);
+    });
 
     test('a model-backed resource reads the class it redeclares $resource as, whole and through every forwarded member', function (string $resource, string $model, string $php, string $type) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), $model);
