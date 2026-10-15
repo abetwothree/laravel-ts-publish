@@ -6,8 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializeLoopResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentAttributesResolveResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentFrameworkCallsChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentFrameworkCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentListWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentResolveBodylessCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentResolveCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentWithBranchesResource;
@@ -93,9 +95,15 @@ test('a variable built on parent::with() is a branch like a literal', function (
     expect(parentCallMembers(ParentWithBranchesResource::class, 'with'))->toBe('lite?: boolean; extra?: string');
 });
 
-test('a $with a method writes is not read as its default', function () {
-    expect(parentCallMembers(ParentWithWrittenResource::class, 'with'))->toBe('extra: string');
-});
+test('a parent:: call whose answer the analyzer cannot read leaves the method its own keys', function (string $class, string $method, string $expected) {
+    expect(parentCallMembers($class, $method))->toBe($expected);
+})->with([
+    'a $with a method writes' => [ParentWithWrittenResource::class, 'with', 'extra: string'],
+    'a $with default with int keys' => [ParentListWithResource::class, 'with', 'extra: string'],
+    'an $attributes property, which resolve() sends in place of toArray()' => [
+        ParentAttributesResolveResource::class, 'resolve', 'resolved: boolean',
+    ],
+]);
 
 test('a toArray() that reads its own jsonSerialize() ends, though Laravel never returns from it', function () {
     expect(parentCallMembers(JsonSerializeLoopResource::class, 'toArray'))->toBe('id: number')
