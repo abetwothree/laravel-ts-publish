@@ -17956,6 +17956,16 @@
                     "optional": false
                 },
                 {
+                    "name": "loaded_author_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "comment_keys",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
                     "name": "bare_comments_count",
                     "type": "number",
                     "optional": false

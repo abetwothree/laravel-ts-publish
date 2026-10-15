@@ -45,6 +45,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrImageR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariableHeldModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
@@ -52,6 +53,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
@@ -1323,6 +1325,42 @@ describe('getKey()', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope))
             ->toEqual(new ReceiverType([Post::class], unsaved: true));
     });
+
+    // VariableHandler leaves getKey() to the receiver rules, so a closure parameter keys as the model it holds.
+    test('a variable bound to a loaded model keys as that model, through a closure parameter and a map', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(ReceiverMethodResource::class)->properties)->keyBy('name');
+
+        expect($props['loaded_author_key'])->toMatchArray(['type' => 'number', 'optional' => true])
+            ->and($props['comment_keys']['type'])->toBe('number[]');
+    });
+
+    // The package does not follow save(), so the key keeps the `| null` of a new model though Laravel sends a number.
+    test('a new model saved before its key is read still keys as possibly null', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(VariableHeldModelResource::class, 'savedDraft', LabeledPost::class)->properties);
+
+        expect($props->pluck('type', 'name')->all())->toBe(['saved_draft_key' => 'number | null']);
+    });
+
+    // VariableHandler declines every method typesByRule() names, so a rule ruleFor() gains reaches a variable unedited.
+    test('typesByRule() names exactly the methods ruleFor() answers', function (string $class, array $named) {
+        $rules = resolve(ReceiverMethodReturnResolver::class);
+        $ruleFor = new ReflectionMethod($rules, 'ruleFor');
+        $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), $class);
+        $methods = get_class_methods($class);
+
+        $typed = array_values(array_filter($methods, fn (string $method): bool => $rules->typesByRule($class, $method)));
+        $answered = array_values(array_filter(
+            $methods,
+            fn (string $method): bool => $ruleFor->invoke($rules, ReceiverType::of($class), $class, $method, $scope, null) !== null,
+        ));
+
+        expect($typed)->toBe($answered)->toContain(...$named)->not->toContain('only', 'except', 'modelKeys');
+    })->with([
+        'a concrete model' => [Post::class, ['getKey', 'toArray', 'all', 'getCasts', 'resolveRouteBinding']],
+        'an authenticatable model' => [User::class, ['getKey', 'getAuthIdentifier', 'toArray', 'all', 'resolveRouteBinding']],
+        'one identified by another column' => [EmailIdentifierUser::class, ['getKey', 'getAuthIdentifier']],
+        'an abstract model' => [CallPathAbstractModel::class, ['getKey']],
+    ]);
 
     test('a null key prints null once and an abstract model\'s union gains one null arm when unsaved', function () {
         PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);

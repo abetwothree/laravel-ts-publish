@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -203,6 +204,21 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
+     * Whether a rule types a model method from the model's class alone, such as getKey(), toArray() or all().
+     *
+     * A handler that reflects a model method directly, as VariableHandler does for a model a variable holds, leaves
+     * such a call to these rules.
+     *
+     * @param  class-string  $class
+     */
+    public function typesByRule(string $class, string $methodName): bool
+    {
+        DependencyRecorder::recordClass($class);
+
+        return $this->modelRule($class, $methodName) !== null;
+    }
+
+    /**
      * Convention rules that need the receiver's model rather than a reflected signature.
      *
      * @param  class-string  $class
@@ -221,40 +237,16 @@ final class ReceiverMethodReturnResolver
             return $items;
         }
 
-        $resolver = resolve(ModelAttributeResolver::class);
+        $modelRule = $this->modelRule($class, $methodName);
 
-        // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
-        if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
-            return $this->columnResult($receiver, $resolver->keyTsType($class));
-        }
-
-        // getAuthIdentifier() reads the column getAuthIdentifierName() names; an override of it is read as declared.
-        if ($methodName === 'getAuthIdentifier'
-            && is_subclass_of($class, Model::class)
-            && method_exists($class, $methodName)) {
-            return $this->columnResult($receiver, $resolver->authIdentifierTsType($class));
-        }
-
-        // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
-        if (in_array($methodName, self::ROUTE_BINDINGS, true) && $this->runsModelMethod($class, $methodName)) {
-            $bound = $this->selfType($class, nullable: true);
-
-            return $bound !== null && ValueResult::namesOnlyPublishedModels($bound) ? $bound : null;
+        if ($modelRule !== null) {
+            return $modelRule($receiver);
         }
 
         if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
-            $keyType = $resolver->keyTsType($receiver->elementModel);
+            $keyType = resolve(ModelAttributeResolver::class)->keyTsType($receiver->elementModel);
 
             return $keyType === null ? null : [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($keyType)];
-        }
-
-        // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
-        if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
-            return $this->attributeRecordResult(nullable: false);
-        }
-
-        if (isset(self::MODEL_ARRAY_RETURNS[$methodName]) && $this->runsModelMethod($class, $methodName)) {
-            return [...ValueResult::unknown(), 'type' => self::MODEL_ARRAY_RETURNS[$methodName]];
         }
 
         // A relation's collection is keyed 0..n-1, so all() is the list of its models.
@@ -284,6 +276,47 @@ final class ReceiverMethodReturnResolver
         }
 
         return $this->typesAsModelFilter($class, $methodName) ? $this->attributeFilterRule($receiver, $methodName, $scope, $call) : null;
+    }
+
+    /**
+     * The rule a model's class answers a method by, whatever else the receiver holds; typesByRule() names the same set.
+     *
+     * @param  class-string  $class
+     * @return (Closure(ReceiverType): (ValueExpressionResult|null))|null
+     */
+    private function modelRule(string $class, string $methodName): ?Closure
+    {
+        // An abstract model answers with the key type it declares, which a subclass that changes it does not keep.
+        if ($methodName === 'getKey' && $this->inheritsModelMethod($class, $methodName)) {
+            return fn (ReceiverType $receiver): ?array => $this->columnResult(
+                $receiver,
+                resolve(ModelAttributeResolver::class)->keyTsType($class),
+            );
+        }
+
+        // getAuthIdentifier() reads the column getAuthIdentifierName() names; an override of it is read as declared.
+        if ($methodName === 'getAuthIdentifier' && is_subclass_of($class, Model::class) && method_exists($class, $methodName)) {
+            return fn (ReceiverType $receiver): ?array => $this->columnResult(
+                $receiver,
+                resolve(ModelAttributeResolver::class)->authIdentifierTsType($class),
+            );
+        }
+
+        // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
+        if (in_array($methodName, self::ROUTE_BINDINGS, true) && $this->runsModelMethod($class, $methodName)) {
+            return fn (): ?array => $this->publishedSelfType($class);
+        }
+
+        // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
+        if ($methodName === 'toArray' && $this->runsModelMethod($class, $methodName)) {
+            return fn (): array => $this->attributeRecordResult(nullable: false);
+        }
+
+        $held = self::MODEL_ARRAY_RETURNS[$methodName] ?? null;
+
+        return $held !== null && $this->runsModelMethod($class, $methodName)
+            ? fn (): array => [...ValueResult::unknown(), 'type' => $held]
+            : null;
     }
 
     /**
@@ -563,6 +596,19 @@ final class ReceiverMethodReturnResolver
         }
 
         return $result;
+    }
+
+    /**
+     * The receiver class itself or null, as a route binding returns it, where the class is a published model.
+     *
+     * @param  class-string  $class
+     * @return ValueExpressionResult|null
+     */
+    private function publishedSelfType(string $class): ?array
+    {
+        $bound = $this->selfType($class, nullable: true);
+
+        return $bound !== null && ValueResult::namesOnlyPublishedModels($bound) ? $bound : null;
     }
 
     /**

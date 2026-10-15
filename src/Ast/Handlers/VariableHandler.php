@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -137,9 +138,16 @@ final class VariableHandler implements ExpressionHandler
             && ! $this->callsAttributeFilter($expr)
         ) {
             $boundModel = $this->boundModel($expr->var, $scope);
+            $method = $expr->name->toString();
 
-            if ($boundModel !== null) {
-                return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope, $boundModel);
+            // A rule types what reflection reads loosely, and the receiver order reads what it cannot, such as an
+            // untyped method's body, so both go on to ReceiverMethodCallHandler.
+            if ($boundModel !== null && ! resolve(ReceiverMethodReturnResolver::class)->typesByRule($boundModel, $method)) {
+                $result = $this->analyzeRelatedModelMethodCall($method, $scope, $boundModel);
+
+                if ($result['type'] !== 'unknown') {
+                    return $result;
+                }
             }
         }
 

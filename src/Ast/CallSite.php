@@ -13,7 +13,8 @@ use ReflectionParameter;
 
 /**
  * A call read where it is written, so the method it runs can be read with what the call passes: how each argument
- * binds a parameter whose declaration binds nothing, or one declaring an abstract class, interface or union it narrows.
+ * binds a parameter whose declaration binds nothing, one declaring an abstract class, interface or union it narrows,
+ * or one declaring a concrete model it passes as one no row backs yet.
  *
  * @phpstan-import-type PassedBinding from ParameterBinder
  *
@@ -89,7 +90,8 @@ final readonly class CallSite
 
     /**
      * How one argument binds its parameter: whatever it holds where the declaration binds nothing, else the narrower
-     * classes it holds where the declaration names an abstract class, interface or union; null otherwise.
+     * classes it holds where the declaration names an abstract class, interface or union, or a model no row backs yet
+     * where it names that concrete model; null otherwise.
      *
      * @return PassedBinding|null
      */
@@ -98,12 +100,20 @@ final readonly class CallSite
         $binder = resolve(ParameterBinder::class);
         $takes = $binder->takesPassedValue($parameter, $method);
         $declared = $takes ? null : $binder->narrowableClasses($parameter);
+        $model = $takes || $declared !== null ? null : $binder->declaredModel($parameter);
 
-        if (! $takes && $declared === null) {
+        if (! $takes && $declared === null && $model === null) {
             return null;
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolve($argument, $this->scope);
+
+        // A declared model binds as a row that exists; only an argument no row backs yet reads differently.
+        if ($model !== null) {
+            return $receiver !== null && $receiver->unsaved && $receiver->within([$model])
+                ? $binder->passedBinding($this->engine->resolve($argument), $receiver, refines: true)
+                : null;
+        }
 
         if ($declared !== null && ! $binder->narrows($declared, $receiver)) {
             return null;

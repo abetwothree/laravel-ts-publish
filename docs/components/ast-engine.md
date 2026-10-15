@@ -106,7 +106,9 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   `VariableHandler`'s `$variable->method()` arm decline every `only()`/`except()`. `RelationFilterHandler` claims none
   on `$this->resource` itself. On a model-less scope, as in the controller profile, `RelationCollectionChainHandler`
   declines a filter on a property that holds a model, so the receiver rules answer `$this->post->only([...])` with
-  `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`.
+  `Pick<Post, …>` and `except($keys)` with `Record<string, unknown>`. The same arm declines a method
+  `ReceiverMethodReturnResolver::typesByRule()` names, and one it would answer `unknown`, so `ReceiverMethodCallHandler`
+  answers `getKey()` or an untyped method on a route-bound or closure-bound model.
 - **`RelationFilterHandler` and `ReceiverMethodCallHandler`**: both claim a single-model relation filter, and they agree
   by construction, as [ResourceAstAnalyzer § Attribute filters][attribute-filters] explains. `ReceiverHandlersTest`'s
   "both claim … and answer it the same" cases pin the agreement.

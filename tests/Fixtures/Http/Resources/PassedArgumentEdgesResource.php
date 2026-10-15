@@ -48,6 +48,19 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
+     * A helper declaring one concrete model, passed a model no row backs yet and the resource's own row.
+     *
+     * @return array<string, mixed>
+     */
+    public function unsavedDeclared(): array
+    {
+        return [
+            'declared_unsaved_row' => $this->typedKeyed(new Post),
+            'declared_saved_row' => $this->typedKeyed($this->resource),
+        ];
+    }
+
+    /**
      * Helpers declaring an abstract class or a union, passed a narrower class or a value nothing types.
      *
      * @return array<string, mixed>
@@ -157,6 +170,14 @@ final class PassedArgumentEdgesResource extends JsonResource
      * @return array<string, mixed>
      */
     private function keyed($post): array
+    {
+        return ['k' => $post->getKey()];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function typedKeyed(Post $post): array
     {
         return ['k' => $post->getKey()];
     }

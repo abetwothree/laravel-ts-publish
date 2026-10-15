@@ -84,7 +84,7 @@ export const branched = annotatePageProps<BranchedPageProps>()(defineRoute({
     component: 'UserShapes/Branched',
 }));
 
-export type BoundPageProps = Inertia.SharedData & { post: Post, stats: { views: number; likes: number } };
+export type BoundPageProps = Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } };
 
 /** A route-bound model parameter. */
 export const bound = annotatePageProps<BoundPageProps>()(defineRoute({

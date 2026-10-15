@@ -625,9 +625,7 @@ subclasses.
 
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 
-The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A helper
-parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes `new Post`,
-so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes `number | null`.
+The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number.
 
 ## Deliberate non-goals
 

@@ -152,7 +152,8 @@ test('a reused body analysis still records every file it read as a cache depende
         ->and($paths)->toContain((new ReflectionClass(PostSummaryDetail::class))->getFileName());
 });
 
-// A concrete model's declaration binds whatever its calls pass; an abstract one is narrowed by each argument's class.
+// A concrete model's declaration binds as a row that exists unless a call passes one no row backs yet; an abstract one
+// is narrowed by each argument's class.
 test('an untyped helper body is analyzed once per binding its calls pass, a typed one once per class they narrow it to', function () use ($countLookups) {
     $lookups = $countLookups();
 
@@ -162,14 +163,14 @@ test('an untyped helper body is analyzed once per binding its calls pass, a type
         'first' => '{ title: string; detail: { rank: number } }',
         'again' => '{ title: string; detail: { rank: number } }',
         'author' => '{ title: unknown; detail: { rank: number } }',
-        'typed' => '{ key: unknown }',
-        'typed_author' => '{ key: unknown }',
+        'typed' => '{ key: number }',
+        'typed_author' => '{ key: number }',
         'titled' => '{ title: string }',
         'titled_new' => '{ title: string }',
     ])
         ->and($lookups['own:'.PostRowFormatter::class.'::row'] ?? 0)->toBe(2)
         ->and($lookups['own:'.PostRowFormatter::class.'::typed'] ?? 0)->toBe(2)
-        ->and($lookups['own:'.PostRowFormatter::class.'::titled'] ?? 0)->toBe(1);
+        ->and($lookups['own:'.PostRowFormatter::class.'::titled'] ?? 0)->toBe(2);
 });
 
 test('an answer reused for a call that binds the same still records every file it read', function () use ($countLookups) {

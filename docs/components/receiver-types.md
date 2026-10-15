@@ -219,7 +219,8 @@ names:
   `ReceiverType::$unsaved`, set by `new` and by `replicate()`, `replicateQuietly()` and `newInstance()` (through a
   local, a ternary or a `??` too), and by a query's, relation's or factory's `make()`, `makeOne()`,
   `newModelInstance()`, `firstOrNew()` and the rest of `UNSAVED_QUERY_MODELS`, adds `| null`: `number | null`. A fluent
-  call that returns the model itself, such as `fill()`, keeps the mark.
+  call that returns the model itself, such as `fill()`, keeps the mark. A helper parameter declared as one concrete
+  model keys as `| null` only where its call passes a model no row backs yet.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
 - **`getAuthIdentifier()`**: on a model that runs `Authenticatable`'s own, the type from

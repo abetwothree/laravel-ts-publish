@@ -32,6 +32,8 @@ export interface ReceiverMethodResource
     copy_key: number | null;
     made_key: number | null;
     made_comment_key: number | null;
+    loaded_author_key?: number;
+    comment_keys: number[];
     bare_comments_count: number;
     resource_comments_count: number;
     author_bound: User | null;
