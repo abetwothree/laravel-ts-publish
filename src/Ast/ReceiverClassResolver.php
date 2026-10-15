@@ -96,6 +96,9 @@ final class ReceiverClassResolver
     /** The factory methods that set a count, so make() and create() build a collection. */
     private const array FACTORY_COUNTS = ['count', 'times', 'forEachSequence'];
 
+    /** The Support\Collection methods that return one item, or null where none matches and no default is passed. */
+    private const array COLLECTION_ELEMENTS = ['first', 'last', 'firstWhere'];
+
     /** The docblock template each query, relation and factory class binds to the model it builds. */
     private const array QUERY_MODEL_TEMPLATES = [
         Builder::class => 'TModel',
@@ -683,6 +686,12 @@ final class ReceiverClassResolver
 
         if ($authModel !== null) {
             return ReceiverType::of($authModel, $shortCircuits);
+        }
+
+        $element = $this->collectedElement($call, $method, $receiver);
+
+        if ($element !== null) {
+            return ReceiverType::of($element, $shortCircuits);
         }
 
         $result = $this->merge(
@@ -1503,6 +1512,26 @@ final class ReceiverClassResolver
     private function isCallable(string $class, string $method, bool $fromInside): bool
     {
         return method_exists($class, $method) && ($fromInside || new ReflectionMethod($class, $method)->isPublic());
+    }
+
+    /**
+     * The element model a collection's first(), last() or firstWhere() hands back; none where the call passes a
+     * default, which Laravel returns where no item matches.
+     *
+     * @return class-string<Model>|null
+     */
+    private function collectedElement(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): ?string
+    {
+        if ($receiver->elementModel === null
+            || ! in_array($method, self::COLLECTION_ELEMENTS, true)
+            || ! $receiver->within([Collection::class])
+        ) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
+
+        return $arguments->hasUnpack() || $arguments->named('default') !== null ? null : $receiver->elementModel;
     }
 
     /**

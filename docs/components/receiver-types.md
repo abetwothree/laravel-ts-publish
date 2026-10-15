@@ -38,6 +38,7 @@ reflection answers, a decline included.
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, marked unsaved for `UNSAVED_QUERY_MODELS`; the same query where it returns itself, as `where()` does. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `returnClasses()` on every class, for a public method |

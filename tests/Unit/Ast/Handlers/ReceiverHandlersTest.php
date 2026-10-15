@@ -1877,3 +1877,48 @@ describe('a pipeline on a relation read through $this->resource?->', function ()
         expect($analyzer->resolve(receiverHandlerExpr('$this->resource?->comments->first()'))['type'])->toBe('Comment | null');
     });
 });
+
+describe('a relation collection\'s first(), last() and firstWhere() hold its element model', function () {
+    /** Runs the PHP expression as a resource body would, around a post whose comments are loaded. */
+    $runAsResource = function (string $php, EloquentCollection $comments): mixed {
+        $post = new Post;
+        $post->setRelation('comments', $comments);
+        $resource = new class($post) extends JsonResource {};
+
+        return Closure::bind(eval('return fn () => '.$php.';'), $resource, $resource)();
+    };
+
+    test('types a read on the element, and the runtime sends that', function (string $php, string $type) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $comment = (new Comment)->forceFill(['id' => 1, 'content' => 'Hi']);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type)
+            ->and($runAsResource($php, new EloquentCollection([$comment])))->toBe('Hi')
+            ->and($runAsResource($php, new EloquentCollection))->toBeNull();
+    })->with([
+        'first()' => ['$this->comments->first()?->content', 'string | null'],
+        'last()' => ['$this->comments->last()?->content', 'string | null'],
+        'firstWhere()' => ['$this->comments->firstWhere(\'id\', 1)?->content', 'string | null'],
+        'a nullsafe read of the collection' => ['$this->comments?->first()?->content', 'string | null'],
+        'through $this->resource' => ['$this->resource->comments->first()?->content', 'string | null'],
+        'find(), whose return depends on its argument' => ['$this->comments->find(1)?->content', 'unknown'],
+    ]);
+
+    test('reads the element through a plain arrow, which fails where no item is there', function () use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $php = '$this->comments->first()->content';
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('string')
+            ->and($runAsResource($php, new EloquentCollection([(new Comment)->forceFill(['content' => 'Hi'])])))->toBe('Hi')
+            ->and(fn () => $runAsResource($php, new EloquentCollection))->toThrow(ErrorException::class);
+    });
+
+    test('declines first() or last() given a default, which Laravel returns where no item matches', function (string $php) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+    })->with([
+        '$this->comments->first(null, \'none\')?->content',
+        '$this->comments->last(default: \'none\')?->content',
+    ]);
+});

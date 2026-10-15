@@ -610,8 +610,8 @@ it a `@var` docblock.
 
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
-`whenLoaded('author', function (User $a) { $a = $a->comments->first(); return $a->name; })` publishes `string`, though
-`$a` holds a `Comment` and Laravel sends `null`, because `first()` names no class. Annotate the assignment,
+`whenLoaded('author', function (User $a) { $a = $a->comments->find(1); return $a->name; })` publishes `string`, though
+`$a` holds a `Comment` and Laravel sends `null`, because `find()` names no class. Annotate the assignment,
 `/** @var Comment $a */`, and the read follows it. A closure parameter passed a value does the same: after
 `$t = json_decode($t)`, `$t` keeps the type it was passed.
 

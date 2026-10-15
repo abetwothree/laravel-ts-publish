@@ -94,7 +94,7 @@ class ReassignedClosureParamResource extends JsonResource
 
                 return $comment->content;
             })),
-            // `first()` names no class, so the old binding stands, though Laravel sends null (a Comment has no `name`).
+            // `first()` names a Comment, which has no `name`, so Laravel sends null.
             'unnamed_name' => $this->whenLoaded('author', function (User $author) {
                 $author = $author->comments->first();
 

@@ -487,8 +487,8 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'narrowed_bio?' => 'string | null',
         'narrowed_website?' => 'string | null',
         'mapped_reassigned?' => 'unknown',
-        // Collection::first() names no class, so the old binding is all that is known and stands (known gap).
-        'unnamed_name?' => 'string',
+        // first() names a Comment, which has no `name`, so Laravel sends null.
+        'unnamed_name?' => 'unknown',
         'sorted_pluck?' => 'string[]',
         'filtered_pluck?' => 'string[]',
         'values_map?' => 'string[]',
