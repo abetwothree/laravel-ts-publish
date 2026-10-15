@@ -9,7 +9,7 @@ use Workbench\App\Http\Resources\TagResource;
 
 /**
  * A test-only collection that keeps JsonResource's `resolve()`, the bare list of collected items, and reads it as a
- * value and as a spread.
+ * value, as a spread and as a whole return, the last through `jsonSerialize()` too.
  */
 class FrameworkValueReadsCollection extends ResourceCollection
 {
@@ -25,5 +25,17 @@ class FrameworkValueReadsCollection extends ResourceCollection
     public function meta($request): array
     {
         return [...$this->resolve($request), 'count' => 2];
+    }
+
+    /** @return array<int|string, mixed> */
+    public function listed($request): array
+    {
+        return $this->resolve($request);
+    }
+
+    /** @return array<int|string, mixed> */
+    public function serialized(): array
+    {
+        return $this->jsonSerialize();
     }
 }

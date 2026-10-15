@@ -59,6 +59,10 @@ test('a JsonResource method a parent:: call reaches reads what Laravel runs for 
     ],
 ]);
 
+test('a collection\'s returned $this->resolve() or $this->jsonSerialize() is its bare list, as a returned parent::resolve() is', function (string $method) {
+    expect(parentCallMembers(FrameworkValueReadsCollection::class, $method))->toBe('TagResource[]');
+})->with(['listed', 'serialized']);
+
 test('a returned parent::resolve() over the bare list carries the collected resource\'s import', function () {
     $analysis = resolve(AstEngine::class)->analyzeMethod(ParentResolveBodylessCollection::class, 'resolve');
 

@@ -351,10 +351,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         $parentMethod = $this->readParentCall($returned);
+        $frameworkMethod = $this->readThisFrameworkCall($returned);
         $analysis = match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
             $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
             $parentMethod !== null => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
+            $frameworkMethod !== null => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
             default => $this->analyzeArrayExpression($returned),
         };
 
@@ -1106,6 +1108,29 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * The method a `$this->` call names when the runtime class runs JsonResource's own body for it.
+     */
+    private function readThisFrameworkCall(Expr $expr): ?string
+    {
+        if (! $expr instanceof MethodCall || ! $expr->name instanceof Identifier || ! $this->hasThisReceiver($expr)) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+
+        return $this->thisRunsFrameworkBody($method) ? $method : null;
+    }
+
+    /**
+     * Whether `$this->$method()` runs JsonResource's own body for one of FRAMEWORK_READS; `$this` is the runtime class,
+     * so its declaration decides.
+     */
+    private function thisRunsFrameworkBody(string $method): bool
+    {
+        return in_array($method, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($this->runtimeClass(), $method);
+    }
+
+    /**
      * What a JsonResource method returns for the runtime class: with() its `$with` default, resolve() its filtered
      * toArray(), and jsonSerialize() its resolve(); null where that is not read statically or re-enters a read.
      */
@@ -1279,8 +1304,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        // `$this` is the runtime class, so its declaration decides whether JsonResource's own body runs.
-        if (in_array($methodName, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($this->runtimeClass(), $methodName)) {
+        if ($this->thisRunsFrameworkBody($methodName)) {
             return $this->frameworkMethodAnalysis($methodName);
         }
 
