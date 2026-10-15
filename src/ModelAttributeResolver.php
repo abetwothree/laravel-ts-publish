@@ -411,7 +411,8 @@ class ModelAttributeResolver
     {
         $doc = $class->getDocComment();
 
-        if ($doc === false) {
+        // Both patterns need the name verbatim, and most attributes a run asks about go unnamed in the docblock.
+        if ($doc === false || ! str_contains($doc, $attributeName)) {
             return null;
         }
 
