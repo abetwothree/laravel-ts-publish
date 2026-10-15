@@ -23,7 +23,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `| null` after a `?->` in the chain |
+| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
@@ -517,13 +517,14 @@ is backed by no model, whatever its docblock or `#[TsResource(model:)]` names: `
 `null` for it.
 
 `ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
-`wrapCollectionElementType()` is the one place that turns it into `Record<string, R>` instead of `R[]`, and every
-collection-typing site calls it. A site that skipped it would keep emitting `R[]` for a keyed collection, and only a
-fixture of that exact call shape would notice. `grep -rn 'wrapCollectionElementType(' src/` lists the sites. It spells
-the list through `ValueResult::collectionListType()`, which `$this->resource`'s items call directly with the scope's
-`reindexesNumericKeys`.
+`ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
+collection keeps its keys, else `R[]`. `wrapCollectionElementType()` is its analyzer-side caller, for every site that
+reflects on a collection class; `$this->resource`'s items call `collectionListType()` directly with the scope's
+`reindexesNumericKeys`. A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only
+a fixture of that exact call shape would notice. `grep -rnE 'collectionListType\(|wrapCollectionElementType\(' src/`
+lists the sites.
 
-Each site reflects on the class Laravel instantiates:
+Each `wrapCollectionElementType()` site reflects on the class Laravel instantiates:
 
 - **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
   run `JsonResource::collection()`.

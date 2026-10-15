@@ -35,8 +35,8 @@ trait ChecksPreserveKeys
     }
 
     /**
-     * Wrap a collected element type as `Record<string, R>` when the reflected class preserves its
-     * keys, or as `R[]` otherwise — the single point every collection-typing call site shares.
+     * Wrap a collected element type as `Record<string, R>` when the reflected class preserves its keys, or as `R[]`
+     * otherwise: the analyzer-side caller of ValueResult::collectionListType(), the one spelling of a collected list.
      *
      * @template T of object
      *

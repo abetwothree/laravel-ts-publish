@@ -18,9 +18,11 @@ entry per class and a header; a hit rehydrates the class's transformer from its 
 ## How a hit is decided
 
 The header busts the whole cache when the package version or the `ConfigFingerprint` changes. The fingerprint includes
-the names of the macros registered on `JsonResource`, since adding or removing one changes what a bare `$this->m()` in
-any resource publishes. An entry hits when the fingerprint of its recorded dependencies, plus the class's signature and
-the published-model signature, matches the stored one and every output file it wrote still exists.
+each macro registered on `JsonResource`, by name and by what it runs: an invokable's class, a function, or a class and
+method. A closure counts as `Closure`, since its file is already a recorded dependency. Adding, removing or re-pointing
+a macro changes what a bare `$this->m()` in any resource publishes. An entry hits when the fingerprint of its recorded
+dependencies, plus the class's signature and the published-model signature, matches the stored one and every output
+file it wrote still exists.
 
 A hit never renders, so the header also hashes the template each cached feature renders and every view it includes by
 a literal name: editing or deleting one rebuilds everything, publishing an unedited copy does not.

@@ -437,6 +437,29 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
+### A `& ResourcePagination` page prop over `simplePaginate()` or `cursorPaginate()` claims the length-aware `meta`
+
+An Inertia prop that passes a paginator to a resource collection, such as
+`new PostCollection(Post::query()->simplePaginate())`, publishes `PostCollection & ResourcePagination`, whose `meta` is
+the one `paginate()` sends; `SomeResource::collection()` over one publishes `JsonResourcePaginator<R>` with the same
+`meta`. A simple paginator's `meta` has no `last_page`, `links` or `total`, and a cursor paginator's also has no
+`current_page`, `from` or `to`, so a read of one compiles and gets `undefined`. Type the prop with `#[TsCasts]`, or use
+`paginate()`.
+
+### A resource collection whose `toArray()` returns `$this->resource` publishes an empty interface
+
+A collection whose `toArray()` returns `$this->resource`, `$this->resource->toArray()` or
+`$this->resource->jsonSerialize()` publishes an empty interface, though Laravel sends the collected items. The package
+reads a collection's response from the keys its `toArray()` returns. Return an array with named keys, such as
+`['data' => $this->collection]`, or type the response with `#[TsCasts]`.
+
+### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
+
+Over a paginator, Laravel merges the `meta` and `links` keys a collection's `toArray()` returns into its own pagination
+block with `array_merge_recursive()`, so a key both name is sent as a list. A `total` you add to `meta` is sent as
+`[3, 3]`, while the package publishes `number`. Name the key differently, or override `paginationInformation()` to build
+the block yourself.
+
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 
 Laravel's `JsonApiResource` (13, and 12 from 12.45) declares no `toArray()`, so a subclass without one walks
