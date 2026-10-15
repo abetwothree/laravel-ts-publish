@@ -53,8 +53,8 @@ use Throwable;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
- * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool}
- * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool}
+ * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
+ * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool, nullable: bool}
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type VarDocBinding from AnalysisScope
@@ -335,6 +335,18 @@ final class ReceiverClassResolver
             && ($declared === null || $this->admitting($declared['classes'], $backing) !== [])
             ? $backing
             : null;
+    }
+
+    /**
+     * Whether the subject's own redeclaration of `$resource` admits null, as `@var Post|null` and `@var ?Post` do.
+     */
+    public function redeclaresNullableProxy(AnalysisScope $scope): bool
+    {
+        if (! $scope->hasResourceProxy()) {
+            return false;
+        }
+
+        return $this->redeclaredProxyArms($scope->subjectReflection)['nullable'] ?? false;
     }
 
     /**
@@ -1127,10 +1139,10 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The factory `X::factory()` returns, remembering X; a count argument makes it build a collection, so none.
+     * The factory `X::factory()` returns, remembering X; none for a spread, or a count, which builds a collection.
      *
      * Asks the model itself, as newFactory(), `#[UseFactory]` or the naming convention decides the class; a factory
-     * that cannot be built, as without Faker, declines.
+     * class that cannot be resolved or built declines.
      */
     private function modelFactory(string $class, string $method, StaticCall $call): ?ReceiverType
     {
@@ -1243,8 +1255,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class arms of a subject's own redeclaration of `$resource`, as in `@var MediaType|string`, and whether each
-     * arm but `null` names a class; null for JsonResource's own `@var mixed`, or a redeclaration that names no class.
+     * The class arms of a subject's own redeclaration of `$resource`, as in `@var MediaType|string`, whether each arm
+     * but `null` names a class, and whether it admits null; null for JsonResource's own `@var mixed`, or for one that
+     * names no class.
      *
      * @param  ReflectionClass<object>  $subject
      * @return ProxyArms|null
@@ -1408,8 +1421,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class arms a docblock union names, resolved against the declaring file's imports, and whether every arm but
-     * `null` names one.
+     * The class arms a docblock union names, resolved against the declaring file's imports, whether every arm but
+     * `null` names one, and whether a `null` arm or a `?` prefix admits null.
      *
      * @param  ReflectionClass<object>  $context
      * @return DocblockArms
@@ -1419,6 +1432,7 @@ final class ReceiverClassResolver
         $useMap = LaravelTsPublish::parseFileUseStatements($context);
         $classes = [];
         $named = true;
+        $nullable = false;
 
         foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
             // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
@@ -1429,8 +1443,11 @@ final class ReceiverClassResolver
             }
 
             $name = $match[1];
+            $nullable = $nullable || str_starts_with($part, '?');
 
             if (strtolower($name) === 'null') {
+                $nullable = true;
+
                 continue;
             }
 
@@ -1447,7 +1464,7 @@ final class ReceiverClassResolver
             }
         }
 
-        return ['classes' => array_values(array_unique($classes)), 'named' => $named];
+        return ['classes' => array_values(array_unique($classes)), 'named' => $named, 'nullable' => $nullable];
     }
 
     /**

@@ -454,6 +454,53 @@ test('editing a class a resource reaches only by reflection rebuilds the resourc
     }
 });
 
+test('editing the body of a helper only the value read types rebuilds the resource', function () {
+    // PHP cannot reload a class, so the helper lives in a temp copy the test can edit; its class is not the resource's.
+    $suffix = bin2hex(random_bytes(4));
+    $sources = "$this->cacheDir-src";
+
+    $namespace = 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\ValueReadHelper\\';
+    $resource = $namespace.'LabelResource'.$suffix;
+    $published = $this->out.'/abe-two-three/laravel-ts-publish/tests/fixtures/stubs/value-read-helper/label-resource'.$suffix.'.ts';
+    Config::set('ts-publish.resources.additional_directories', [$resource]);
+    Config::set('ts-publish.resources.included', [$resource]);
+
+    // A cache hit rehydrates without the container, so each resolution here is a rebuild.
+    $builds = 0;
+    $this->app->resolving(ResourceGenerator::class, function () use (&$builds): void {
+        $builds++;
+    });
+
+    try {
+        mkdir($sources);
+
+        foreach (['Labeler', 'LabelResource'] as $name) {
+            $stub = (string) file_get_contents(__DIR__.'/../Fixtures/Stubs/ValueReadHelper/'.$name.'.php.stub');
+            file_put_contents($sources.'/'.$name.'.php', str_replace('__SUFFIX__', $suffix, $stub));
+            require_once $sources.'/'.$name.'.php';
+        }
+
+        $helperFile = (string) new ReflectionClass($namespace.'Labeler'.$suffix)->getFileName();
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(file_get_contents($published))->toContain('label: string;')
+            ->and(CacheBootstrap::manifest(CacheBootstrap::repository())->deps(ResourceGenerator::class.'::'.$resource))
+            ->toContain($helperFile)
+            ->and($builds)->toBe(1);
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(1);
+
+        file_put_contents($helperFile, str_replace("strtoupper('label')", "strlen('label')", (string) file_get_contents($helperFile)));
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($builds)->toBe(2);
+    } finally {
+        array_map(unlink(...), glob($sources.'/*.php') ?: []);
+        @rmdir($sources);
+    }
+});
+
 test('a partial run keeps the cache entries of the features it skipped', function () {
     Config::set('ts-publish.cache.store', 'array');
     Config::set('ts-publish.models.generator_class', CountingModelGenerator::class);

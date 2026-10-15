@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
@@ -125,6 +126,7 @@ use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
 use Workbench\App\Http\Resources\ReceiverPropertyResource;
 use Workbench\App\Http\Resources\RosterSlotResource;
+use Workbench\App\Http\Resources\SpacedDocblockResource;
 use Workbench\App\Http\Resources\TeamSubscriberLocalResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Attachment;
@@ -1300,6 +1302,27 @@ describe('getKey()', function () {
         ['\Workbench\App\Models\User::factory(2)->make()->getKey()', 'unknown'],
     ]);
 
+    test('declines a factory it cannot build, and a spread argument list, without failing the analysis', function (string $php, bool $guessed) {
+        $guesser = new ReflectionProperty(Factory::class, 'factoryNameResolver');
+        $previous = $guesser->getValue();
+
+        if ($guessed) {
+            Factory::guessFactoryNamesUsing(fn (string $model): string => 'Workbench\\Database\\Factories\\'.class_basename($model).'Factory');
+        }
+
+        try {
+            $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+            expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
+        } finally {
+            $guesser->setValue(null, $previous);
+        }
+    })->with([
+        // TestCase's guesser names a factory class that does not exist, so User::factory() throws.
+        'a factory class that cannot be resolved' => ['\Workbench\App\Models\User::factory()->make()->getKey()', false],
+        'a spread argument list' => ['\Workbench\App\Models\User::factory(...$args)->make()->getKey()', true],
+    ]);
+
     test('a local bound to a new model carries the unsaved flag to its getKey()', function (string $bound, string $type) {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
         $scope->localVarBindings['draft'] = receiverHandlerExpr($bound);
@@ -1633,6 +1656,20 @@ describe('the resource proxy', function () {
         expect($analyzer->resolve(receiverHandlerExpr('$this->when($flag, $this->resource)')))
             ->toBe(['type' => 'Post', 'optional' => true, 'modelFqcn' => Post::class]);
     });
+
+    // Laravel sends `null` for a top-level `PostResource::make(null)`; only a redeclaration says a resource gets one.
+    test('the bare $this->resource keeps the null arm a redeclaration of the backing model states', function (string $resource, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource')))
+            ->toBe(['type' => $type, 'optional' => false, 'modelFqcn' => Post::class]);
+    })->with([
+        '@var Post|null' => [ModelWrappedPropResource::class, 'Post | null'],
+        '@var ?Post' => [NullableShorthandWrappedResource::class, 'Post | null'],
+        '@var null | Post' => [SpacedDocblockResource::class, 'Post | null'],
+        '@var Model' => [ProxyModelPostResource::class, 'Post'],
+        'undeclared' => [ReceiverMethodResource::class, 'Post'],
+    ]);
 
     test('a model-backed resource reads the class it redeclares $resource as, whole and through every forwarded member', function (string $resource, string $model, string $php, string $type) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), $model);

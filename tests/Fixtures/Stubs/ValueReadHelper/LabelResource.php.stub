@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ValueReadHelper;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * Types `label` from Labeler__SUFFIX__::label(), which declares no return type, so only a read of its body types it.
+ */
+final class LabelResource__SUFFIX__ extends JsonResource
+{
+    /**
+     * Publishes the labeler's label.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        return ['label' => resolve(Labeler__SUFFIX__::class)->label()];
+    }
+}

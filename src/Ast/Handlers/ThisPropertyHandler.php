@@ -22,7 +22,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -131,7 +130,7 @@ final class ThisPropertyHandler implements ExpressionHandler
             $held = match (true) {
                 $items !== null => $items,
                 $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
-                default => $this->proxiedModel($receivers->proxyModel($scope))
+                default => $this->proxiedModel($receivers, $scope)
                     ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName),
             };
 
@@ -180,15 +179,26 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * The model the proxy is read as whole, as the model's own interface; null when it is read as no model, which
-     * publishes as the subject declares it.
+     * The model the proxy is read as whole, as the model's own interface with any null its redeclaration admits; null
+     * when it is read as no model, which publishes as the subject declares it.
      *
-     * @param  class-string<Model>|null  $model
      * @return ValueExpressionResult|null
      */
-    private function proxiedModel(?string $model): ?array
+    private function proxiedModel(ReceiverClassResolver $receivers, AnalysisScope $scope): ?array
     {
-        return $model === null ? null : [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model];
+        $model = $receivers->proxyModel($scope);
+
+        if ($model === null) {
+            return null;
+        }
+
+        $type = class_basename($model);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => $receivers->redeclaresNullableProxy($scope) ? ValueResult::withNullArm($type) : $type,
+            'modelFqcn' => $model,
+        ];
     }
 
     /**
