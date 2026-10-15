@@ -492,8 +492,8 @@ candidate also checks [`PublishedResourceRegistry`](../../src/Cache/PublishedRes
 `ResourceCollections::isPublishedResource()` is the one predicate, and
 `InspectsResourceCalls::isPublishedResourceClass()` delegates to it. These are the sites:
 
-- the candidate loop in `ToResourceHandler::resolveResourceForModel()`
-- both naming loops in `ToResourceHandler::resolveResourceCollectionForModel()`
+- the candidate loop in `GuessesModelResources::resolveResourceForModel()`
+- both naming loops in `GuessesModelResources::resolveResourceCollectionForModel()`
 - the naming-convention pick of `ResourceCollections::collectedElement()`, the one resolver every `#[Collects]`
   caller shares, where an unpublished pick collects nothing rather than fall through to `FooResource`
 
