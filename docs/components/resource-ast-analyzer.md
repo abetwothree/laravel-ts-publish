@@ -43,12 +43,10 @@ every profile, the order handlers run in decides which one answers; see
 `analyze()` builds the analysis in a fixed order, and each step carries a rule:
 
 - **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
-  bare list anywhere else**: `ResourceCollectionBody::sendsCollectedList()` holds for Laravel's own `toArray()` and for
-  a body, declared or inherited, whose every `return` is `parent::toArray()` over one that does, `$this->collection` or
-  `$this->resource`, bare or through `toArray()`, `jsonSerialize()` or `all()`, one of those spread alone, or a variable
-  assigned one and written nowhere else. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own
-  method's `@return` and casts, or its parent's answer while it names no API resource itself
-  ([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
+  bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) says which bodies
+  send it. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own method's `@return` and casts,
+  and one that names no API resource lists the raw models its parent's resource wraps
+  ([below](#a-stacked-body-less-collection-collects-what-its-own-class-names)).
   A spread, a variable, `+` or `array_merge()` that builds on the list reads it as `[key: number]: R`
   (`collectedListAnalysis()`), and a value as `R[]` (`StaticCallHandler`).
 - **The class's own declaration counts, a trait it uses included**:
@@ -114,10 +112,12 @@ Take `LeafCollection extends MidCollection extends ResourceCollection`, neither 
 own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before its walk reaches
 `MidCollection`. Its wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the
 slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
-off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. It keeps
-`MidCollection`'s type only when it names nothing
-([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
-A `toArray()` an ancestor or a trait declares still wins. The `Handover*Collection` fixtures pin it.
+off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()`
+finds nothing, Laravel sends raw models, so the element is the published model backing the API resource the nearest
+ancestor names, else that resource (`ResourceCollections::collectedElement()`); a pick that is no API resource is
+declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the runtime class's
+facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its `$this->collection` lists
+`LeafCollection`'s element. The `Handover*Collection` and `F38*Collection` fixtures pin it.
 
 ### An inherited shape needs an inherited model
 
@@ -527,17 +527,19 @@ has no such class; see [version-guarded Laravel classes](../laravel-version-guar
 `collects()` order: `#[Collects]`, the `$collects` default, then for `FooCollection` the bare `Foo` when that class
 exists, else `FooResource`. The first class found decides. One that is no API resource, where Laravel throws a
 `LogicException`, collects nothing and adds an analysis warning.
-`AnalysisScope::seedCollectionFacts()` seeds `$collectedResource` and `$reindexesNumericKeys` from it, on `rebase()`
-and for any scope `ResourceAstAnalyzer` reads, its own or one a caller supplies, so `$this->resource`'s items name the
-API resource `$this->collection` does. A collection is backed by no model, whatever its docblock or
-`#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
+`AnalysisScope::seedCollectionFacts()` seeds `$collectedResource`, `$collectedElement` and `$reindexesNumericKeys` from
+it, on `rebase()` and, from the runtime class, for any scope `ResourceAstAnalyzer` reads, its own or one a caller
+supplies: `$this->resource`'s items name the API resource Laravel maps them into, and `$this->collection` lists the
+element. A collection is backed by no model, whatever its docblock or `#[TsResource(model:)]` names:
+`ModelClassResolver::resolve()` returns `null` for it.
 
 `preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
 collection keeps its keys, else `R[]`. `ResourceCollections::listType()` is its caller for every site that reflects
 on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
 and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
-`true`, since those keep the keys they filter by. So does a value-position `parent::toArray()` over the collected list.
+`true`, since those keep the keys they filter by. So do `$this->collection` and a value-position `parent::toArray()`
+over the collected list, since an ancestor's body runs with the runtime class's keys.
 A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
 call shape would notice.
 `grep -rnE 'collectionListType\(|ResourceCollections::listType\(' src/` lists the sites.

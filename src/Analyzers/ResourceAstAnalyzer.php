@@ -18,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsReturnedVariables;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ExpressionDispatcher;
@@ -106,7 +105,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use ResolvesModelRelationTypes;
     use ResolvesModelTypes;
     use ResolvesRelatedModelTypes;
-    use ResolvesSingularResourceClass;
 
     /** Carries the subject reflection, model class, and all closure/spread bindings; see AnalysisScope. */
     protected AnalysisScope $scope;
@@ -135,6 +133,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  MethodContext|null  $context  a context already located for $methodName, used instead of locating one
      * @param  bool  $carriesImports  seeds AnalysisScope::$carriesImports; a supplied scope keeps its own
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
+     * @param  ReflectionClass<object>|null  $runtimeClass  the class `$this` is at run time when this reads an
+     *                                                      ancestor's body for it; null when that is the subject
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -145,6 +145,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         protected ?MethodContext $context = null,
         bool $carriesImports = true,
         private readonly array $passed = [],
+        private readonly ?ReflectionClass $runtimeClass = null,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -155,14 +156,25 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->scope->carriesImports = $carriesImports;
         }
 
-        // The subject alone decides these, so a supplied scope reads `$this->resource`'s items as an owned one does.
-        $this->scope->seedCollectionFacts();
+        // The runtime class alone decides these, so a supplied scope or an ancestor's body reads its items as it does.
+        $this->scope->seedCollectionFacts($this->runtimeClass());
 
         $this->ownsScope = $scope === null;
 
         if ($this->scope->modelClass !== null) {
             $this->loadModelInspectorData();
         }
+    }
+
+    /**
+     * The runtime class: the class `$this` is when the body runs, whose collects(), `$wrap` and keys every ancestor
+     * body it runs reads. The subject, unless this analyzer reads an ancestor's body for a subclass.
+     *
+     * @return ReflectionClass<object>
+     */
+    private function runtimeClass(): ReflectionClass
+    {
+        return $this->runtimeClass ?? $this->scope->subjectReflection;
     }
 
     /**
@@ -261,7 +273,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
         // static::class, so the response is the subject's own body-less one.
         if ($this->sendsCollectedList($this->scope->subjectReflection)) {
-            $response = $this->collectedListResponse();
+            $response = $this->buildCollectionDelegatedAnalysis();
 
             return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
         }
@@ -331,7 +343,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $analysis = match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
-            $this->returnsCollectedList($returned) => $this->collectedListResponse(),
+            $this->returnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
             default => $this->analyzeArrayExpression($returned),
         };
 
@@ -726,6 +738,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->methodName,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
+            runtimeClass: $this->runtimeClass,
         );
 
         return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
@@ -1062,7 +1075,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The parent's own analysis of $this->methodName, as an analyzer of that class reads it.
+     * The parent's own analysis of $this->methodName, read as the runtime class runs it.
      *
      * @param  ReflectionClass<object>  $parentClass
      */
@@ -1074,6 +1087,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->methodName,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
+            runtimeClass: $this->runtimeClass(),
         );
         $parentAnalyzer->sharedDataShareClass = $this->sharedDataShareClass();
 
@@ -1090,12 +1104,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function collectedListAnalysis(): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
-        $element = $this->scope->collectedResource;
-
-        $analysis->addProperty('[key: number]', [
-            ...ValueResult::unknown(),
-            ...($element === null ? [] : ['type' => TsNaming::resourceTypeName($element), 'resourceFqcn' => $element]),
-        ]);
+        $analysis->addProperty('[key: number]', ResourceCollections::elementValue($this->scope->collectedElement));
 
         return $analysis;
     }
@@ -1283,56 +1292,40 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The response of a collection whose toArray() sends the collected list: its own body-less collection's, or, for
-     * one that names no API resource, its parent's answer.
-     */
-    private function collectedListResponse(): ResourceAnalysis
-    {
-        $response = $this->buildCollectionDelegatedAnalysis();
-
-        if ($response->properties !== [] || $response->flatTypeAlias !== null) {
-            return $response;
-        }
-
-        // Laravel then collects raw models, which no published type describes yet, so the parent's type stands.
-        $parentClass = $this->scope->subjectReflection->getParentClass();
-        $inherited = $parentClass === false ? null : $this->parentAnalysis($parentClass);
-
-        return $inherited !== null && $inherited->properties !== [] ? $inherited : $response;
-    }
-
-    /**
-     * Build a ResourceAnalysis for a ResourceCollection subclass whose toArray() sends its collected list.
+     * Build a ResourceAnalysis for a ResourceCollection subclass whose toArray() sends its collected list, all of it
+     * the runtime class's: its collected element, its live wrap key and its keys.
      *
-     * The live wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the
-     * collection preserves keys; with no key that same list is the flatTypeAlias directly.
+     * The wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the class
+     * preserves keys; with no key that same list is the flatTypeAlias directly.
      */
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
-        $singular = $this->resolveSingularResourceClass($this->scope);
+        $element = $this->scope->collectedElement;
 
-        if ($singular === null) {
+        if ($element === null) {
             return new ResourceAnalysis;
         }
 
-        /** @var class-string<ResourceCollection> $subject */
-        $subject = $this->scope->subjectReflection->getName();
-        $wrapKey = ResourceWrapping::key($subject);
+        $runtime = $this->runtimeClass();
 
-        $listType = ResourceCollections::listType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
+        /** @var class-string<ResourceCollection> $runtimeName */
+        $runtimeName = $runtime->getName();
+        $wrapKey = ResourceWrapping::key($runtimeName);
+        $list = ResourceCollections::listType(TsNaming::resourceTypeName($element['fqcn']), $runtime);
 
         if ($wrapKey === null) {
-            return new ResourceAnalysis(flatTypeAlias: $listType, flatTypeAliasFqcn: $singular);
+            return new ResourceAnalysis(flatTypeAlias: $list, flatTypeAliasFqcn: $element['fqcn']);
         }
 
         return new ResourceAnalysis(
             properties: [[
                 'name' => $wrapKey,
-                'type' => $listType,
+                'type' => $list,
                 'optional' => false,
                 'description' => '',
             ]],
-            nestedResources: [$wrapKey => $singular],
+            nestedResources: $element['model'] ? [] : [$wrapKey => $element['fqcn']],
+            modelFqcns: $element['model'] ? [$wrapKey => $element['fqcn']] : [],
         );
     }
 

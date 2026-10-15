@@ -157,16 +157,9 @@ final class StaticCallHandler implements ExpressionHandler
 
         // A value read of `parent::toArray()` over a parent that sends the collected list is that list.
         if ($expr instanceof StaticCall && $this->readsParentCollectedList($expr, $scope)) {
-            $element = $scope->collectedResource;
+            $element = ResourceCollections::elementValue($scope->collectedElement);
 
-            return [
-                ...ValueResult::unknown(),
-                'type' => ValueResult::collectionListType(
-                    $element === null ? 'unknown' : TsNaming::resourceTypeName($element),
-                    ! $scope->reindexesNumericKeys,
-                ),
-                ...($element === null ? [] : ['resourceFqcn' => $element]),
-            ];
+            return [...$element, 'type' => ValueResult::collectionListType($element['type'], ! $scope->reindexesNumericKeys)];
         }
 
         // EnumResource::make($this->prop) or SomeResource::make/collection(); a `$expr::m()` it cannot name declines.

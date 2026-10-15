@@ -76,9 +76,10 @@ trait NarrowsInstanceofSubjects
         try {
             $scope->provenProxy = $classes;
 
-            // One proven model also answers the subject's model reads, such as an undeclared `$this->prop`.
+            // One proven model also answers the subject's model reads, such as an undeclared `$this->prop`. Not
+            // rebase(): the collection facts stay the runtime class's, which an ancestor's body runs as.
             if (count($classes) === 1 && is_a($classes[0], Model::class, true)) {
-                $scope->rebase($scope->subjectReflection, $classes[0]);
+                $scope->setBackingModel($classes[0]);
             }
 
             return $resolve();

@@ -41,6 +41,7 @@ use ReflectionClass;
  * whenLoaded relations, and recursive spreads resolve correctly as traversal descends.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type CollectedElement from ResourceCollections
  *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
@@ -127,8 +128,8 @@ final class AnalysisScope
 
     /**
      * The backing class `$this->resource` holds, or null; null on a resource collection, see proxyReceiver().
-     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor and
-     * rebase(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
+     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor,
+     * rebase() and setBackingModel(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
      *
      * @var class-string|null
      */
@@ -143,12 +144,20 @@ final class AnalysisScope
     public ?array $provenProxy = null;
 
     /**
-     * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
-     * it collects none. Set by seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
+     * The API resource the runtime class, a ResourceCollection, maps each item into; null when it collects none. Set by
+     * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
      *
      * @var class-string<JsonResource>|null
      */
     public ?string $collectedResource = null;
+
+    /**
+     * What each item the runtime class collects publishes as, the element `$this->collection` lists; see
+     * ResourceCollections::collectedElement(). Set with $collectedResource.
+     *
+     * @var CollectedElement|null
+     */
+    public ?array $collectedElement = null;
 
     /**
      * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
@@ -158,7 +167,7 @@ final class AnalysisScope
     public bool $carriesImports = true;
 
     /**
-     * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
+     * Whether the response the runtime class's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
      * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
      */
@@ -373,20 +382,37 @@ final class AnalysisScope
     public function rebase(ReflectionClass $subject, ?string $modelClass): void
     {
         $this->subjectReflection = $subject;
-        $this->modelClass = $modelClass;
-        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subject, $modelClass);
-        $this->seedCollectionFacts();
+        $this->setBackingModel($modelClass);
+        $this->seedCollectionFacts($subject);
     }
 
     /**
-     * Derive the subject's collection facts, `reindexesNumericKeys` and `collectedResource`, from ResourceCollections.
+     * Back the subject by another model, re-deriving the proxy target; the collection facts stay the runtime class's.
+     *
+     * @param  class-string<Model>|null  $modelClass
      */
-    public function seedCollectionFacts(): void
+    public function setBackingModel(?string $modelClass): void
     {
-        $this->reindexesNumericKeys = ResourceCollections::reindexesNumericKeys($this->subjectReflection);
-        $this->collectedResource = $this->subjectReflection->isSubclassOf(ResourceCollection::class)
-            ? ResourceCollections::collectedResource($this->subjectReflection->getName())
-            : null;
+        $this->modelClass = $modelClass;
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($this->subjectReflection, $modelClass);
+    }
+
+    /**
+     * Derive the collection facts from the runtime class, which an ancestor's body runs as: `reindexesNumericKeys`,
+     * `collectedResource` and `collectedElement`, from ResourceCollections.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     */
+    public function seedCollectionFacts(ReflectionClass $runtime): void
+    {
+        $this->reindexesNumericKeys = ResourceCollections::reindexesNumericKeys($runtime);
+        $this->collectedResource = null;
+        $this->collectedElement = null;
+
+        if ($runtime->isSubclassOf(ResourceCollection::class)) {
+            $this->collectedResource = ResourceCollections::collectedResource($runtime->getName());
+            $this->collectedElement = ResourceCollections::collectedElement($runtime);
+        }
     }
 
     /**

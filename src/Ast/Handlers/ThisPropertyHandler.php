@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
@@ -20,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -42,7 +40,6 @@ final class ThisPropertyHandler implements ExpressionHandler
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
-    use ResolvesSingularResourceClass;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -212,24 +209,19 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->collection in a ResourceCollection: the singular resource type as an array,
-     * or a keyed record when the collection preserves keys.
+     * Analyze $this->collection in a ResourceCollection: the runtime class's collected element as a list, or a keyed
+     * record when that class preserves keys, since an inherited body runs as the class Laravel builds.
      *
      * @return ValueExpressionResult
      */
     private function analyzeCollectionProperty(AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
-        $singular = $this->resolveSingularResourceClass($scope);
+        $element = ResourceCollections::elementValue($scope->collectedElement);
 
-        if ($singular === null) {
-            return $result;
+        if ($scope->collectedElement === null) {
+            return $element;
         }
 
-        return [
-            ...$result,
-            'type' => ResourceCollections::listType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
-            'resourceFqcn' => $singular,
-        ];
+        return [...$element, 'type' => ValueResult::collectionListType($element['type'], ! $scope->reindexesNumericKeys)];
     }
 }

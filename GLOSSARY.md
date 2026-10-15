@@ -102,6 +102,10 @@ _Avoid_: signature key, pattern key
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
+**Runtime class**:
+The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
+_Avoid_: leaf, publishing collection, called class
+
 **Resource proxy**:
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
 _Avoid_: wrapper, resource property

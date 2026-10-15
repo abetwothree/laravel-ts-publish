@@ -94,13 +94,12 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         // A body-less collection without a wrap key IS the paginator's data, so it becomes the paginator itself.
         if ($wrapKey === null && ResourceCollections::runsFrameworkToArray($reflection)) {
-            $singular = ResourceCollections::collectedResource($className);
+            $element = ResourceCollections::collectedElement($reflection);
 
-            return $singular === null ? null : [
-                ...ValueResult::unknown(),
-                'type' => $this->paginatedResourceType($singular, $reflection, 'data'),
+            return $element === null ? null : [
+                ...ResourceCollections::elementValue($element),
+                'type' => $this->paginatedResourceType($element['fqcn'], $reflection, 'data'),
                 'optional' => $optional,
-                'resourceFqcn' => $singular,
                 'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
             ];
         }

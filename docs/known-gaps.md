@@ -75,7 +75,8 @@ which works on both versions. The `FooCollection` to `FooResource` convention al
 Laravel reads the API resource a collection collects from its `collects()` method at runtime. The package reads the
 `#[Collects]` attribute, the `$collects` property's declared default and the naming convention, so a collection whose
 own `collects()` returns `PostResource::class`, or whose constructor assigns `$this->collects`, publishes an empty
-interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare `public $collects = PostResource::class;` instead.
+interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare
+`public $collects = PostResource::class;` instead.
 
 ### A non-promoted property a constructor always assigns still renders optional
 
@@ -409,17 +410,6 @@ alias `{relation}_{function}_{column}` a built-in cast on the parent model whose
 returns, such as `integer`, `float` or `decimal:2`, or declare it with an accessor or `@property`, and that type
 publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
 the response hold one.
-
-### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
-
-A collection that neither declares nor inherits a custom `toArray()` and is stacked on another collects what its own
-class names: its own `#[Collects]`, the `$collects` it inherits, then the naming convention on its own name. When none
-names a resource, as with `StackedUnnamedCollection` over `SupplierSummaryCollection`, Laravel collects the raw models,
-but the package publishes the parent's `SupplierSummaryResource[]` rather than an empty interface, which would drop the
-`data` key the response carries. That holds only for a parent that wraps: over a `$wrap = null` parent that names its
-API resource by attribute or by name, the stacked class still publishes an empty interface. Name the resource on the
-stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the
-published type and the response agree.
 
 ### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible, and a single API resource page prop publishes bare
 

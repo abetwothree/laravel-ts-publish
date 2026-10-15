@@ -4,10 +4,18 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38DialLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38NamedLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Gauge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGizmoResource;
+use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
 use Workbench\App\Http\Resources\SupplierCollection;
@@ -15,6 +23,7 @@ use Workbench\App\Http\Resources\SupplierSummaryCollection;
 use Workbench\App\Http\Resources\SupplierSummaryResource;
 use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Supplier;
 
 describe('ResourceCollections', function () {
     test('collectedResource() reads the $collects property, then the naming convention', function (string $collection, string $collected) {
@@ -45,6 +54,22 @@ describe('ResourceCollections', function () {
         'a keyed record' => [PreserveKeysFlatCollection::class, 'Record<string, R>'],
     ]);
 
+    test('collectedElement() is the API resource collected, else the model the nearest ancestor\'s resource wraps', function (string $collection, ?array $element) {
+        expect(ResourceCollections::collectedElement(new ReflectionClass($collection)))->toBe($element);
+    })->with([
+        'its own pick' => [SupplierCollection::class, ['fqcn' => SupplierSummaryResource::class, 'model' => false]],
+        'a stacked class naming none' => [StackedUnnamedCollection::class, ['fqcn' => Supplier::class, 'model' => true]],
+        'a pick that is no API resource' => [F38DialLeafCollection::class, null],
+        'naming none, with no collection above it' => [MiscCollection::class, null],
+    ]);
+
+    test('collectedElement() keeps the ancestor\'s resource while its model is unpublished', function () {
+        PublishedModelRegistry::register([Post::class]);
+
+        expect(ResourceCollections::collectedElement(new ReflectionClass(F38NamedLeafCollection::class)))
+            ->toBe(['fqcn' => StubGizmoResource::class, 'model' => false]);
+    });
+
     test('reindexesNumericKeys() holds for an API resource that does not keep its keys', function (string $class, bool $reindexes) {
         expect(ResourceCollections::reindexesNumericKeys(new ReflectionClass($class)))->toBe($reindexes);
     })->with([
@@ -68,4 +93,13 @@ test('a rebased scope carries the collection facts of the class it rebases onto'
     expect($collection)->toBe([SupplierSummaryResource::class, true])
         ->and($keyed)->toBe([TeamResource::class, false])
         ->and([$scope->collectedResource, $scope->reindexesNumericKeys])->toBe([null, false]);
+});
+
+test('a scope seeded from a runtime class carries its collection facts, not its subject\'s', function () {
+    $scope = new AnalysisScope(new ReflectionClass(InheritedBodyParentCollection::class));
+
+    $scope->seedCollectionFacts(new ReflectionClass(InheritedBodyLeafCollection::class));
+
+    expect([$scope->collectedResource, $scope->collectedElement, $scope->reindexesNumericKeys])
+        ->toBe([StubGizmoResource::class, ['fqcn' => StubGizmoResource::class, 'model' => false], true]);
 });

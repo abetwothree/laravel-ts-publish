@@ -2,23 +2,47 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaStackedCollectionController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastParentCallResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectionAllCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectionReturnCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Dial;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38AttrLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38AttrRowsLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38BodyLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38DialLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38FlatLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38FlatNamedLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38KeyedLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38KeyedParentLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38ListLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38NamedLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38PropKeyedLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38SpreadLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38ValueLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedSortedTagsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Lever;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeverCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSupplierListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RenamedStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceJsonSerializeCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceReturnCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceToArrayCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SortedTagsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubAttributeCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubAttrLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubChildOfStubCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubCollectsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFirstReturnCollection;
@@ -29,6 +53,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubLeafInheritCo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubLeafOwnCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubLoneSpreadCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubMergeCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubNamedLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubNestingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubPlainVariableCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubPlusCollection;
@@ -37,6 +62,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSpreadCollect
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubValueCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubVariableCollection;
 use Workbench\App\Http\Resources\SupplierCollection;
+use Workbench\App\Models\Post;
 
 /** The whole file a class publishes. */
 function publishedResourceFile(string $class): string
@@ -112,6 +138,81 @@ describe('a parent::toArray() a collection builds on is the bare collected list'
         'an array_merge() argument' => [StubMergeCollection::class, "export interface StubMergeCollection\n    [key: number]: StubGadgetResource;\n    extra: number;"],
         'a key\'s value' => [StubValueCollection::class, "export interface StubValueCollection\n    items: StubGadgetResource[];"],
     ]);
+});
+
+describe('a stacked collection collects by its own class, as Laravel does', function () use ($belowLaravel13) {
+    test('a leaf naming no resource sends the raw models of its parent\'s resource', function (string $class, string $expected) {
+        expect(publishedCollectionBody($class))->toBe($expected);
+    })->with([
+        'over #[Collects]' => [F38AttrLeafCollection::class, "export interface F38AttrLeafCollection\n    data: Supplier[];"],
+        'under its own wrap key' => [F38AttrRowsLeafCollection::class, "export interface F38AttrRowsLeafCollection\n    rows: Supplier[];"],
+        'over a $wrap = null parent' => [F38FlatLeafCollection::class, 'export type F38FlatLeafCollection = Supplier[];'],
+        'over a #[PreserveKeys] parent' => [F38KeyedParentLeafCollection::class, "export interface F38KeyedParentLeafCollection\n    data: Supplier[];"],
+        'under its own #[PreserveKeys]' => [F38KeyedLeafCollection::class, "export interface F38KeyedLeafCollection\n    data: Record<string, Supplier>;"],
+        'under its own $preserveKeys' => [F38PropKeyedLeafCollection::class, "export interface F38PropKeyedLeafCollection\n    data: Record<string, Supplier>;"],
+        'the stub over #[Collects]' => [StubAttrLeafCollection::class, "export interface StubAttrLeafCollection\n    data: Supplier[];"],
+    ])->skip($belowLaravel13);
+
+    test('a leaf naming no resource over the naming convention sends raw models', function () {
+        expect(publishedCollectionBody(F38NamedLeafCollection::class))->toBe("export interface F38NamedLeafCollection\n    data: Supplier[];")
+            ->and(publishedCollectionBody(StubNamedLeafCollection::class))->toBe("export interface StubNamedLeafCollection\n    data: Supplier[];")
+            ->and(publishedImportLines(F38NamedLeafCollection::class))->toBe(["import type { Supplier } from '../../../../../../workbench/app/models';"]);
+    });
+
+    test('a leaf naming no resource reads its parent\'s toArray() as the raw models, spread or as a value', function (string $class, string $expected) {
+        expect(publishedCollectionBody($class))->toBe($expected);
+    })->with([
+        'spread into a literal' => [F38SpreadLeafCollection::class, "export interface F38SpreadLeafCollection\n    [key: number]: Supplier;\n    extra: number;"],
+        'a key\'s value' => [F38ValueLeafCollection::class, "export interface F38ValueLeafCollection\n    items: Supplier[];"],
+    ]);
+
+    test('a leaf inheriting its parent\'s own toArray() reads $this->collection as its own resource', function () {
+        expect(publishedCollectionBody(InheritedBodyLeafCollection::class))
+            ->toBe("export interface InheritedBodyLeafCollection\n    data: StubGizmoResource[];\n    count: number;");
+    });
+
+    test('a leaf naming nothing reads $this->collection in its parent\'s body as the same element the delegated path publishes', function () {
+        expect(publishedCollectionBody(F38BodyLeafCollection::class))
+            ->toBe("export interface F38BodyLeafCollection\n    data: Supplier[];\n    count: number;")
+            ->and(publishedCollectionBody(F38ListLeafCollection::class))
+            ->toBe("export interface F38ListLeafCollection\n    data: Supplier[];");
+    });
+
+    test('a leaf whose parent resource\'s model is unpublished keeps the parent\'s resource', function (string $class, string $expected) {
+        PublishedModelRegistry::register([Post::class]);
+
+        expect(publishedCollectionBody($class))->toBe($expected);
+    })->with([
+        'the delegated list' => [F38NamedLeafCollection::class, "export interface F38NamedLeafCollection\n    data: StubGizmoResource[];"],
+        '$this->collection in its parent\'s body' => [F38BodyLeafCollection::class, "export interface F38BodyLeafCollection\n    data: StubWidgetResource[];\n    count: number;"],
+    ]);
+
+    test('a $wrap = null leaf naming no resource lists the raw models, and over a paginator is their paginator', function () {
+        $pageType = new InertiaPageAnalyzer()->analyze(['uses' => InertiaStackedCollectionController::class.'@flatPaginated'])['pageType'] ?? null;
+
+        expect(publishedCollectionBody(F38FlatNamedLeafCollection::class))->toBe('export type F38FlatNamedLeafCollection = Supplier[];')
+            ->and($pageType)->toBe('Inertia.SharedData & { suppliers: JsonResourcePaginator<Supplier> }');
+    });
+
+    // Laravel throws for the leaf's own pick, so the parent's element would type a response that never comes.
+    test('a leaf whose own collects() names no API resource is declined, not given its parent\'s element', function (string $class, string $collected) {
+        expect(publishedCollectionBody($class))->toBe('export interface '.class_basename($class))
+            ->and(AnalysisWarnings::all())->toContain([
+                'subject' => $class,
+                'message' => "The collected class {$collected} is not an API resource, so Laravel throws a LogicException; collect an API resource.",
+            ]);
+    })->with([
+        'by its own $collects' => [F38DialLeafCollection::class, Dial::class],
+        'by its own name' => [LeverCollection::class, Lever::class],
+    ]);
+});
+
+// The narrowing backs the proxy by the proven model; an ancestor's body still runs as the subclass Laravel builds.
+test('an instanceof arm in an ancestor\'s body keeps the keys of the class Laravel builds', function () {
+    expect(publishedCollectionBody(SortedTagsResource::class))
+        ->toBe("export interface SortedTagsResource\n    tags: string[] | null;")
+        ->and(publishedCollectionBody(KeyedSortedTagsResource::class))
+        ->toBe("export interface KeyedSortedTagsResource\n    tags: Record<number, string> | null;");
 });
 
 test('a resource key holding a collection sends its own toArray() keys unless that body is the collected list', function () {

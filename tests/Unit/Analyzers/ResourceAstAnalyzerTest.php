@@ -259,6 +259,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Release;
+use Workbench\App\Models\Supplier;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -4435,11 +4436,12 @@ it('collects a stacked collection\'s own #[Collects] over the $collects it inher
     expect($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]');
 })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 
-// Laravel collects raw models here, which no resource type describes, so the parent's type stays rather than none.
-it('keeps the parent\'s collected type when a stacked collection names none itself', function () {
+// Laravel collects raw models here, so the element is the model the parent's resource is backed by.
+it('publishes the raw models of the parent\'s resource when a stacked collection names none itself', function () {
     $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnnamedCollection::class)))->analyze();
 
-    expect($analysis->properties[0]['type'])->toBe('SupplierSummaryResource[]');
+    expect($analysis->properties[0]['type'])->toBe('Supplier[]')
+        ->and($analysis->modelFqcns)->toBe(['data' => Supplier::class]);
 });
 
 it('honours a stacked collection\'s own $wrap = null over the wrap it inherits', function () {
