@@ -119,9 +119,12 @@ describe('with the resource macros a provider registers', function () {
             ->and($sent['held_rows'])->toBe($sent['held']);
     });
 
-    it('types a macro from its own callable', function () {
+    it('types a macro from its own callable, and never one named like a method the subject declares', function () {
         $scope = new AnalysisScope(new ReflectionClass(MacroShadowingResource::class), MacroShadowedPost::class);
         $macros = resolve(MacroCallResolver::class);
+
+        // PHP runs the declared toArray(), so this macro is never reached.
+        JsonResource::macro('toArray', fn (): int => 1);
 
         expect($macros->runsMacro($scope->subjectReflection, 'label'))->toBeTrue()
             ->and($macros->runsMacro($scope->subjectReflection, 'toArray'))->toBeFalse()

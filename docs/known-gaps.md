@@ -46,8 +46,9 @@ method a return type or a `@return` docblock, and the call takes it.
 
 A macro's body is read without what the call passes, so `$this->format($x)` on an untyped macro closure publishes
 `unknown`. A closure declared outside a class method, such as in `bootstrap/app.php`, gets no body read, and a macro
-registered after the application boots, or by a deferred provider, is not seen at all. Give the closure a return type or
-a `@return` docblock.
+registered after the application boots, or by a deferred provider, is not seen at all. Give the closure a return type. A
+`@return` docblock works only on a closure declared inside a class, such as in a service provider's `boot()`, because
+its short class names resolve against that class's file.
 
 ### `config()` on an absent key with no default types as null
 

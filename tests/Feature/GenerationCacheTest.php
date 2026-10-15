@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
@@ -368,6 +369,42 @@ test('a resource macro registered between two runs rebuilds the resource that ca
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($published())->toContain('label: string;');
+});
+
+test('a resource macro re-pointed at another invokable between two runs rebuilds the resource that calls it', function () {
+    Config::set('ts-publish.resources.additional_directories', [
+        ...Config::array('ts-publish.resources.additional_directories'),
+        MacroShadowingResource::class,
+    ]);
+    Config::set('ts-publish.resources.included', [MacroShadowingResource::class]);
+
+    $published = function (): string {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->out, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getFilename() === 'macro-shadowing-resource.ts') {
+                return (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        return '';
+    };
+
+    JsonResource::macro('ticket', new TicketMacro);
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('ticket: number;');
+
+    // Neither file the first run recorded changes: only what the macro runs does.
+    JsonResource::macro('ticket', new class
+    {
+        /** A string the first invokable's float never was. */
+        public function __invoke(): string
+        {
+            return 'T';
+        }
+    });
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('ticket: string;');
 });
 
 test('editing a class a resource reaches only by reflection rebuilds the resource', function () {

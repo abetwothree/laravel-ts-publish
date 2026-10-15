@@ -37,8 +37,8 @@ class ConfigFingerprint
 
     /**
      * Hash the output-affecting `ts-publish` config, each database connection's driver, the templates the cached
-     * features render and the API resource macro names, so the cache busts when any changes: an aggregate publishes
-     * as its driver returns it, a hit never renders its template again, and a macro answers what a namesake answered.
+     * features render and what each API resource macro runs, so the cache busts when any changes: an aggregate
+     * publishes as its driver returns it, a hit never renders its template again, and a macro types what it answers.
      *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
@@ -55,7 +55,7 @@ class ConfigFingerprint
                 'database.default' => Config::get('database.default'),
                 'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
                 'templates' => self::templateFiles(),
-                'resource-macros' => self::resourceMacroNames(),
+                'resource-macros' => self::resourceMacros(),
             ];
 
             self::ksortRecursive($config);
@@ -69,18 +69,30 @@ class ConfigFingerprint
     }
 
     /**
-     * The sorted names of the macros every API resource shares, which it runs before forwarding a call to its model.
+     * The macros every API resource shares, which it runs before forwarding a call to its model, each by what it runs.
      *
-     * @return list<string>
+     * @return array<string, string> macro name => macroIdentity()
      */
-    private static function resourceMacroNames(): array
+    private static function resourceMacros(): array
     {
         /** @var array<string, mixed> $macros */
         $macros = new ReflectionProperty(JsonResource::class, 'macros')->getValue();
-        $names = array_map(strval(...), array_keys($macros));
-        sort($names);
 
-        return $names;
+        return array_map(self::macroIdentity(...), $macros);
+    }
+
+    /**
+     * What a macro runs: an object's class, a function or `A::b` string, or an array's class and method joined by `::`.
+     * Every closure is `Closure`, since its declaring file is a recorded dependency and a moved line changes nothing.
+     */
+    private static function macroIdentity(mixed $macro): string
+    {
+        return match (true) {
+            is_object($macro) => $macro::class,
+            is_string($macro) => $macro,
+            is_array($macro) => implode('::', array_map(self::macroIdentity(...), $macro)),
+            default => get_debug_type($macro),
+        };
     }
 
     /**

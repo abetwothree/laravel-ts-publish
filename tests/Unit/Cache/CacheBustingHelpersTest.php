@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\ConfigFingerprint;
 use AbeTwoThree\LaravelTsPublish\Support\PackageVersion;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 
 /**
  * Create a directory and register it ahead of the package's own views, as a published copy of them would be.
@@ -187,4 +189,37 @@ it('changes the config fingerprint when a resource macro is registered or flushe
 
     expect($registered)->not->toBe($before)
         ->and(ConfigFingerprint::compute())->toBe($before);
+});
+
+it('changes the config fingerprint when a macro is re-pointed at another class, function or method', function (mixed $first, mixed $second) {
+    JsonResource::macro('ticket', $first);
+    $before = ConfigFingerprint::compute();
+
+    JsonResource::macro('ticket', $second);
+
+    expect(ConfigFingerprint::compute())->not->toBe($before);
+})->with([
+    'an invokable object' => [new TicketMacro, new class
+    {
+        /** Another invokable's value. */
+        public function __invoke(): string
+        {
+            return 'T';
+        }
+    }],
+    'a class and method' => [[Str::class, 'upper'], [Str::class, 'lower']],
+    'a class::method string' => [Str::class.'::upper', Str::class.'::lower'],
+    'a function name' => ['strtoupper', 'strtolower'],
+]);
+
+it('keeps the config fingerprint when a closure macro is declared on another line', function () {
+    JsonResource::macro('label', fn (): string => 'a');
+    $before = ConfigFingerprint::compute();
+
+    JsonResource::macro(
+        'label',
+        fn (): string => 'b',
+    );
+
+    expect(ConfigFingerprint::compute())->toBe($before);
 });
