@@ -51,8 +51,15 @@ every profile, the order handlers run in decides which one answers; see
   (`collectedListAnalysis()`), and a value as `R[]` (`StaticCallHandler`).
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
-  `analyzeParentToArray()`. An ancestor's analysis wins only when it has properties. An empty one falls through to
-  `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
+  `analyzeParentCall()`. An ancestor's analysis wins only when it has properties or a flat type. An empty one falls
+  through to `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
+- **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads what
+  that body returns for the runtime class** (`frameworkMethodAnalysis()`): the `$with` default no method writes, the
+  runtime class's `toArray()`, or its own `resolve()`; declined where `resolveResourceData()`, `toAttributes()` or
+  `$attributes` replaces the `toArray()` call. Over the collected list it is the flat list in a whole `return`, else
+  `[key: number]: R`. `$this->` decides by the runtime class's declaration; a body only the runtime class declares is
+  still read as the subject's (#79). A read that re-enters a method on `$methodsOnStack` is `null`, as Laravel never
+  returns from it, and a `parent::` value read stays `unknown`. `nestedAnalyzer()` builds every nested analyzer.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
@@ -62,12 +69,13 @@ every profile, the order handlers run in decides which one answers; see
   entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
   `return` is read; any other return is skipped.
 - **Any other body falls back to its own first `return`**, never a closure's, shaped by the method's own `@return` and
-  `#[TsCasts]` as a branch is: `parent::toArray()`, a collection's collected list read as above, an `array_merge()` of
-  literals and `parent::` calls, `$this->only()` or `$this->except()`, a bare `$this->method()`, which resolves like a
-  `...$this->method()` spread, or a variable. The same forms, read by `analyzeArrayExpression()`, are the base of a
-  variable `ReadsReturnedVariables` walks; a `+=` of one adds only new keys and every signature entry, a whole
-  re-assignment drops the writes before it, and a key first written in a branch, loop, `try` or `switch` publishes
-  optional, except in a `do` body before its first `break` or `continue`.
+  `#[TsCasts]` as a branch is: `parent::toArray()`, `parent::with()`, `parent::resolve()`, `parent::jsonSerialize()`,
+  a collection's collected list read as above, an `array_merge()` of literals and `parent::` calls, `$this->only()` or
+  `$this->except()`, a bare `$this->method()`, which resolves like a `...$this->method()` spread, or a variable. The
+  same forms, read by `analyzeArrayExpression()`, are the base of a variable `ReadsReturnedVariables` walks; a `+=` of
+  one adds only new keys and every signature entry, a whole re-assignment drops the writes before it, and a key first
+  written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body before its first `break` or
+  `continue`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`

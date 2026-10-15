@@ -233,7 +233,7 @@ test('a parent delegating to no model makes a child variable built on it skip', 
     expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string; extra?: boolean');
 });
 
-// At a JsonResource, parent::with() is `[]` and parent::jsonSerialize() is the subject's toArray(), never the model.
+// At a JsonResource, parent::with() is the `$with` default and parent::jsonSerialize() the subject's toArray().
 test('a parent call to a method other than toArray() over a JsonResource publishes none of the model\'s keys', function (string $method, array $members) {
     $published = array_map(
         fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
@@ -243,7 +243,7 @@ test('a parent call to a method other than toArray() over a JsonResource publish
     expect($published)->toBe($members);
 })->with([
     'a variable built on parent::with()' => ['with', ['extra: string']],
-    'a return of parent::jsonSerialize()' => ['jsonSerialize', []],
+    'a return of parent::jsonSerialize()' => ['jsonSerialize', ['id: number']],
 ]);
 
 test('the body fallback types a with() built on parent::with() by the keys it writes', function () {

@@ -35,6 +35,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -106,6 +108,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use ResolvesModelTypes;
     use ResolvesRelatedModelTypes;
 
+    /** JsonResource methods whose own bodies answer from the runtime class, which the analyzer reads in their place. */
+    private const array FRAMEWORK_READS = ['jsonSerialize', 'resolve', 'with'];
+
     /** Carries the subject reflection, model class, and all closure/spread bindings; see AnalysisScope. */
     protected AnalysisScope $scope;
 
@@ -120,6 +125,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /** Whether the handler profile invokes callables, read once from it by invokesCallables(). */
     private ?bool $invokingProfile = null;
+
+    /** @var array<string, true> the runtime class's methods whose reads enclose this one, so a read of one re-enters */
+    private array $methodsOnStack = [];
+
+    /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
+    private bool $returnedWhole = true;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -201,14 +212,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether this analysis reads a collection's toArray(), and a class's toArray() sends the collected list.
-     *
-     * @param  ReflectionClass<object>  $class  the subject, or its parent for a `parent::toArray()` call
+     * Whether this analysis reads a collection's toArray(), and the subject's toArray() sends the collected list.
      */
-    private function toArraySendsCollectedList(ReflectionClass $class): bool
+    private function toArraySendsCollectedList(): bool
     {
         return $this->readsCollectionToArray()
-            && resolve(ResourceCollectionBody::class)->sendsCollectedList($class);
+            && resolve(ResourceCollectionBody::class)->sendsCollectedList($this->scope->subjectReflection);
     }
 
     /**
@@ -272,17 +281,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
         // static::class, so the response is the subject's own body-less one.
-        if ($this->toArraySendsCollectedList($this->scope->subjectReflection)) {
+        if ($this->toArraySendsCollectedList()) {
             $response = $this->buildCollectionDelegatedAnalysis();
 
             return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
         }
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
-            $inherited = $this->analyzeParentToArray();
+            $inherited = $this->analyzeParentCall($this->methodName, $this->returnedWhole);
 
             // An empty result means no ancestor declared the method either, so keep delegating.
-            if ($inherited !== null && $inherited->properties !== []) {
+            if ($inherited !== null && ($inherited->properties !== [] || $inherited->flatTypeAlias !== null)) {
                 return $inherited;
             }
 
@@ -341,9 +350,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
+        $parentMethod = $this->readParentCall($returned);
         $analysis = match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
             $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
+            $parentMethod !== null => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
             default => $this->analyzeArrayExpression($returned),
         };
 
@@ -418,9 +429,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call to the
-     * method itself, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call or a `+`
-     * of any of them; null for any other expression.
+     * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call
+     * readParentCall() reads, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call
+     * or a `+` of any of them; null for any other expression.
      */
     protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
     {
@@ -428,8 +439,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $this->analyzeReturnArray($expr, $topLevel);
         }
 
-        if ($this->isParentCallTo($expr, $this->methodName)) {
-            return $this->analyzeParentToArray();
+        $parentMethod = $this->readParentCall($expr);
+
+        if ($parentMethod !== null) {
+            return $this->analyzeParentCall($parentMethod);
         }
 
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
@@ -476,7 +489,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if (! $expr instanceof MethodCall) {
             return $expr instanceof Array_
-                || $this->isParentCallTo($expr, $this->methodName)
+                || $this->readParentCall($expr) !== null
                 || ($expr instanceof FuncCall
                     && $this->mergedArrayLiteral($expr, $this->scope->subjectReflection, $this->methodName) !== null);
         }
@@ -568,9 +581,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $analysis = new ResourceAnalysis;
 
         foreach ($array->items as $item) {
-            // Handle ...parent::toArray($request) spread
-            if ($item->key === null && $item->unpack && $this->isParentCallTo($item->value, $this->methodName)) {
-                $parentAnalysis = $this->analyzeParentToArray();
+            // Handle a ...parent::toArray($request) spread, or of any parent:: call readParentCall() reads
+            $parentMethod = $item->key === null && $item->unpack ? $this->readParentCall($item->value) : null;
+
+            if ($parentMethod !== null) {
+                $parentAnalysis = $this->analyzeParentCall($parentMethod);
 
                 if ($parentAnalysis !== null) {
                     $analysis->merge($parentAnalysis);
@@ -732,14 +747,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        $filtering = new self(
-            $this->scope->subjectReflection,
-            $model,
-            $this->methodName,
-            $this->handlerProfile,
-            carriesImports: $this->scope->carriesImports,
-            runtimeClass: $this->runtimeClass(),
-        );
+        $filtering = $this->nestedAnalyzer($this->scope->subjectReflection, $this->methodName, $model);
 
         return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
     }
@@ -1052,9 +1060,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Resolve and analyze what the parent class's declaration of $this->methodName hands a `parent::` call.
+     * Resolve and analyze what the parent class's declaration of a method hands a `parent::` call to it.
+     *
+     * A whole read is the method's own return, which takes the collected list flat; a spread or variable builds on it.
      */
-    protected function analyzeParentToArray(): ?ResourceAnalysis
+    protected function analyzeParentCall(string $method, bool $whole = false): ?ResourceAnalysis
     {
         $parentClass = $this->scope->subjectReflection->getParentClass();
 
@@ -1062,39 +1072,184 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
+        if (in_array($method, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($parentClass, $method)) {
+            return $this->frameworkMethodAnalysis($method, $whole);
+        }
+
         if ($parentClass->getName() === JsonResource::class) {
-            return $this->methodName === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
+            return $method === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
         }
 
         // Read before a parent analyzer is built, which would answer the collected list's response instead.
-        if ($this->toArraySendsCollectedList($parentClass)) {
+        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection)) {
             return $this->collectedListAnalysis();
         }
 
-        return $this->parentAnalysis($parentClass);
+        return $this->nestedAnalysis($parentClass, $method, $whole);
     }
 
     /**
-     * The parent's own analysis of $this->methodName, read as the runtime class runs it.
-     *
-     * @param  ReflectionClass<object>  $parentClass
+     * The method a `parent::` call names when the analyzer reads it: the analyzed method itself, or, in an API
+     * resource, one of FRAMEWORK_READS.
      */
-    private function parentAnalysis(ReflectionClass $parentClass): ResourceAnalysis
+    protected function readParentCall(Expr $expr): ?string
     {
-        $parentAnalyzer = new self(
-            $parentClass,
-            $this->scope->modelClass,
-            $this->methodName,
+        if (! $expr instanceof StaticCall || ! $expr->name instanceof Identifier || ! $this->isParentCallTo($expr)) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+        $readsFramework = in_array($method, self::FRAMEWORK_READS, true)
+            && $this->runtimeClass()->isSubclassOf(JsonResource::class);
+
+        return $method === $this->methodName || $readsFramework ? $method : null;
+    }
+
+    /**
+     * What a JsonResource method returns for the runtime class: with() its `$with` default, resolve() its filtered
+     * toArray(), and jsonSerialize() its resolve(); null where that is not read statically or re-enters a read.
+     */
+    private function frameworkMethodAnalysis(string $method, bool $whole = false): ?ResourceAnalysis
+    {
+        $runtime = $this->runtimeClass();
+
+        if ($method === 'with') {
+            return $this->withDefaultAnalysis();
+        }
+
+        if ($method === 'jsonSerialize' && ! $this->declaredByJsonResource($runtime, 'resolve')) {
+            return $this->runtimeClassAnalysis('resolve', $whole);
+        }
+
+        // From 12.45 resolve() reaches toArray() through toAttributes(), which an override or `$attributes` replaces.
+        if ($this->replacesJsonResource($runtime, 'resolveResourceData')
+            || $this->replacesJsonResource($runtime, 'toAttributes')
+            || $runtime->hasProperty('attributes')
+        ) {
+            return null;
+        }
+
+        if ($this->reentersRuntimeMethod('toArray')) {
+            return null;
+        }
+
+        // A collection's toArray() analysis is the response that wraps the list, while resolve() returns the list.
+        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection, $runtime)) {
+            return $whole ? $this->flatCollectedListAnalysis() : $this->collectedListAnalysis();
+        }
+
+        $analysis = $this->runtimeClassAnalysis('toArray', $whole);
+
+        if ($analysis !== null) {
+            self::reindexNumericKeyedArrays($analysis, $runtime);
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * The analysis of one of the runtime class's own methods, null where a read of it encloses this one: Laravel
+     * re-enters it until the stack runs out.
+     */
+    private function runtimeClassAnalysis(string $method, bool $whole): ?ResourceAnalysis
+    {
+        return $this->reentersRuntimeMethod($method) ? null : $this->nestedAnalysis($this->runtimeClass(), $method, $whole);
+    }
+
+    /**
+     * Whether a read of the runtime class's method encloses this one.
+     */
+    private function reentersRuntimeMethod(string $method): bool
+    {
+        return $method === $this->methodName || isset($this->methodsOnStack[$method]);
+    }
+
+    /**
+     * Analyze a method of the subject's parent or of the runtime class in an analyzer of its own, whose lenient reads
+     * count as this one's; a whole read there stays whole only when this one's is.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function nestedAnalysis(ReflectionClass $class, string $method, bool $whole = false): ResourceAnalysis
+    {
+        $analyzer = $this->nestedAnalyzer($class, $method, $this->scope->modelClass);
+        $analyzer->returnedWhole = $whole;
+
+        $analysis = $analyzer->analyze();
+        $this->lenientReads += $analyzer->lenientReads;
+
+        return $analysis;
+    }
+
+    /**
+     * The one place a nested analyzer is built: it reads a body as the runtime class runs it, with the methods whose
+     * reads enclose it and the share() whose casts InertiaSharedDataAnalyzer applies.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  class-string<Model>|null  $modelClass
+     */
+    private function nestedAnalyzer(ReflectionClass $class, string $method, ?string $modelClass): self
+    {
+        $analyzer = new self(
+            $class,
+            $modelClass,
+            $method,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
             runtimeClass: $this->runtimeClass(),
         );
-        $parentAnalyzer->sharedDataShareClass = $this->sharedDataShareClass();
+        $analyzer->sharedDataShareClass = $this->sharedDataShareClass();
+        $analyzer->methodsOnStack = $this->methodsOnStack + [$this->methodName => true];
 
-        $analysis = $parentAnalyzer->analyze();
-        $this->lenientReads += $parentAnalyzer->lenientReads;
+        return $analyzer;
+    }
+
+    /**
+     * The keys of the runtime class's `$with` default, which JsonResource::with() returns; null when a method writes
+     * the property, or its default is not an array with string keys.
+     */
+    private function withDefaultAnalysis(): ?ResourceAnalysis
+    {
+        $runtime = $this->runtimeClass();
+
+        if (! resolve(SubjectPropertyTypeResolver::class)->holdsDefault($runtime, 'with')) {
+            return null;
+        }
+
+        $default = $runtime->getProperty('with')->getDefaultValue();
+
+        if (! is_array($default) || array_any(array_keys($default), fn (int|string $key): bool => is_int($key))) {
+            return null;
+        }
+
+        $analysis = new ResourceAnalysis;
+        $values = resolve(ValueResolver::class);
+
+        foreach ($default as $key => $value) {
+            $analysis->addProperty((string) $key, $values->resolveConstantValue($value) ?? ValueResult::unknown());
+        }
 
         return $analysis;
+    }
+
+    /**
+     * Whether a class runs JsonResource's own declaration of a method.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function declaredByJsonResource(ReflectionClass $class, string $method): bool
+    {
+        return $class->hasMethod($method) && $class->getMethod($method)->getDeclaringClass()->getName() === JsonResource::class;
+    }
+
+    /**
+     * Whether a class runs its own declaration of a method rather than JsonResource's.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function replacesJsonResource(ReflectionClass $class, string $method): bool
+    {
+        return $class->hasMethod($method) && ! $this->declaredByJsonResource($class, $method);
     }
 
     /**
@@ -1122,6 +1277,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if (isset($this->scope->visitedSpreadMethods[$methodName])) {
             return null;
+        }
+
+        // `$this` is the runtime class, so its declaration decides whether JsonResource's own body runs.
+        if (in_array($methodName, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($this->runtimeClass(), $methodName)) {
+            return $this->frameworkMethodAnalysis($methodName);
         }
 
         $method = $this->scope->subjectReflection->getMethod($methodName);
@@ -1301,27 +1461,51 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
+        /** @var class-string<ResourceCollection> $runtimeName */
+        $runtimeName = $this->runtimeClass()->getName();
+        $wrapKey = ResourceWrapping::key($runtimeName);
+
+        if ($wrapKey === null) {
+            return $this->flatCollectedListAnalysis();
+        }
+
+        $list = $this->collectedListValue();
+        $analysis = new ResourceAnalysis;
+
+        if ($list !== null) {
+            $analysis->addProperty($wrapKey, $list);
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * The collected list as a whole value, the bare list `resolve()` returns: the flatTypeAlias, on its element's
+     * import channel; empty where Laravel throws.
+     */
+    private function flatCollectedListAnalysis(): ResourceAnalysis
+    {
+        $list = $this->collectedListValue();
+
+        return $list === null
+            ? new ResourceAnalysis
+            : new ResourceAnalysis(flatTypeAlias: $list['type'], flatTypeAliasFqcn: $this->scope->collectedElement['fqcn'] ?? null);
+    }
+
+    /**
+     * The runtime class's collected list as a value, or null where Laravel throws for a pick that is no API resource,
+     * mapping the items into one the run does not publish.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function collectedListValue(): ?array
+    {
         $element = $this->scope->collectedElement;
         $runtime = $this->runtimeClass();
 
-        // Laravel throws for a pick that is no API resource, and maps the items into one the run does not publish.
-        if ($element === null && ! ResourceCollections::keepsRawItems($runtime)) {
-            return new ResourceAnalysis;
-        }
-
-        /** @var class-string<ResourceCollection> $runtimeName */
-        $runtimeName = $runtime->getName();
-        $wrapKey = ResourceWrapping::key($runtimeName);
-        $list = ResourceCollections::listValue($element, ResourceCollections::preservesKeys($runtime));
-
-        if ($wrapKey === null) {
-            return new ResourceAnalysis(flatTypeAlias: $list['type'], flatTypeAliasFqcn: $element['fqcn'] ?? null);
-        }
-
-        $analysis = new ResourceAnalysis;
-        $analysis->addProperty($wrapKey, $list);
-
-        return $analysis;
+        return $element === null && ! ResourceCollections::keepsRawItems($runtime)
+            ? null
+            : ResourceCollections::listValue($element, ResourceCollections::preservesKeys($runtime));
     }
 
     /**

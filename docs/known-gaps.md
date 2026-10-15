@@ -465,13 +465,20 @@ keys there: the package does not read `paginationInformation()`, so `& ResourceP
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 
 Laravel's `JsonApiResource` (13, and 12 from 12.45) declares no `toArray()`, so a subclass without one walks
-`ResourceAstAnalyzer::analyzeParentToArray()` up to `JsonResource` and publishes whole-model delegation: the model's
+`ResourceAstAnalyzer::analyzeParentCall()` up to `JsonResource` and publishes whole-model delegation: the model's
 columns, appended accessors and relations. Laravel sends a JSON:API document instead,
 `{ data: { id, type, attributes?, relationships?, links?, meta? }, included?, jsonapi? }`, with `attributes` from
 `toAttributes()`. Declaring `toArray()` does not help: `toAttributes()` falls back to it, so its keys become
 `data.attributes`, while the package publishes them as the whole response. No attribute replaces the whole type, since
 `#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
 `#[TsExclude]` or `resources.excluded`, and type the document by hand.
+
+### An overridden `resolve()` or `jsonSerialize()` changes what Laravel sends, and the package reads neither
+
+An API resource publishes the keys its `toArray()` returns. Laravel sends its `resolve()` as the response's `data` and
+as each item of a resource collection, and its `jsonSerialize()` where another API resource nests it as a single value,
+so a key either override adds, such as `[...parent::resolve($request), 'resolved' => true]`, is sent there and missing
+from the published type. Put the keys in `toArray()`.
 
 ### A `__toString()` class with no public property publishes `Record<string, never>`; three others publish `unknown`
 

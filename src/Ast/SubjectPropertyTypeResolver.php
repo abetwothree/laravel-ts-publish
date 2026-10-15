@@ -37,7 +37,8 @@ use Throwable;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
- * type second, an untyped default no method rewrites third — and answer whether the class declares it at all.
+ * type second, an untyped default no method rewrites third — and answer whether the class declares it at all, and
+ * whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -99,6 +100,19 @@ final class SubjectPropertyTypeResolver
         }
 
         return true;
+    }
+
+    /**
+     * Whether a read of the property still holds its declared default: it has one, and no method the class runs
+     * writes it.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    public function holdsDefault(ReflectionClass $subject, string $name): bool
+    {
+        return $subject->hasProperty($name)
+            && $subject->getProperty($name)->hasDefaultValue()
+            && ! $this->writesProperty($subject, $name);
     }
 
     /**

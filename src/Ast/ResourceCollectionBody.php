@@ -46,10 +46,9 @@ final class ResourceCollectionBody
      */
     public function returnsCollectedList(Expr $returned, ReflectionClass $declaring): bool
     {
+        // In toArray() a parent::resolve() or parent::jsonSerialize() runs this same body again, which never returns.
         if ($this->isParentCallTo($returned, 'toArray')) {
-            $parent = $declaring->getParentClass();
-
-            return $parent !== false && $this->sendsCollectedList($parent);
+            return $this->parentCallSendsCollectedList('toArray', $declaring);
         }
 
         if ($returned instanceof Array_) {
@@ -72,6 +71,28 @@ final class ResourceCollectionBody
                 && $this->isThisPropertyFetch($returned)
                 && $returned->name instanceof Identifier
                 && $returned->name->toString() === 'collection');
+    }
+
+    /**
+     * Whether `parent::$method()` in the declaring class's body hands back the collected list: `parent::toArray()`
+     * runs the parent's toArray(), and a `parent::resolve()` or `parent::jsonSerialize()` asked with the runtime class,
+     * where it reaches JsonResource's resolve(), runs that class's own, as late static binding does.
+     *
+     * @template T of object
+     * @template U of object
+     *
+     * @param  ReflectionClass<T>  $declaring
+     * @param  ReflectionClass<U>|null  $runtime
+     */
+    public function parentCallSendsCollectedList(string $method, ReflectionClass $declaring, ?ReflectionClass $runtime = null): bool
+    {
+        $runs = match ($method) {
+            'toArray' => $declaring->getParentClass(),
+            'resolve', 'jsonSerialize' => $runtime ?? false,
+            default => false,
+        };
+
+        return $runs !== false && $this->sendsCollectedList($runs);
     }
 
     /**

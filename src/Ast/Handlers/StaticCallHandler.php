@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
@@ -51,7 +50,6 @@ final class StaticCallHandler implements ExpressionHandler
     use BuildsInlineObjectTypes;
     use InspectsAstNodes;
     use InspectsResourceCalls;
-    use InspectsResourceSubject;
     use ReadsNullablePayloads;
     use ResolvesAuthHelperCalls;
     use ResolvesEnumPropertyArgTypes;
@@ -169,17 +167,13 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a call is `parent::toArray()` in a resource collection whose parent's toArray() sends the collected list.
+     * Whether a call is `parent::toArray()` over a parent whose toArray() sends the collected list; a value read of any
+     * other `parent::` call is not read as that list.
      */
     private function readsParentCollectedList(StaticCall $call, AnalysisScope $scope): bool
     {
-        if (! $this->isParentCallTo($call, 'toArray') || ! $this->isResourceCollection($scope)) {
-            return false;
-        }
-
-        $parent = $scope->subjectReflection->getParentClass();
-
-        return $parent !== false && resolve(ResourceCollectionBody::class)->sendsCollectedList($parent);
+        return $this->isParentCallTo($call, 'toArray')
+            && resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList('toArray', $scope->subjectReflection);
     }
 
     /**
