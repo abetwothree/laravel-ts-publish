@@ -66,8 +66,16 @@ publishes an empty interface instead of `PostResource[]`. An empty interface acc
 `undefined`, so it looks specific and checks almost nothing. Laravel's own `collects()` cannot read the attribute on
 12 either, and the package mirrors the framework rather than guessing. Set `public $collects = PostResource::class;`,
 which works on both versions. The `FooCollection` to `FooResource` convention also works while the run publishes
-`FooResource` ([`ResourceCollections`](../src/Ast/ResourceCollections.php)), and
+`FooResource` and no class `Foo` sits beside the collection, since Laravel takes `Foo` first
+([`ResourceCollections`](../src/Ast/ResourceCollections.php)), and
 [Laravel version guards](./laravel-version-guards.md) records the version floor.
+
+### A collection that collects through an overridden `collects()` or a `$collects` set in its constructor publishes an empty interface
+
+Laravel reads the API resource a collection collects from its `collects()` method at runtime. The package reads the
+`#[Collects]` attribute, the `$collects` property's declared default and the naming convention, so a collection whose
+own `collects()` returns `PostResource::class`, or whose constructor assigns `$this->collects`, publishes an empty
+interface, though Laravel sends `{ data: PostResource[] }`. Declare `public $collects = PostResource::class;` instead.
 
 ### A non-promoted property a constructor always assigns still renders optional
 
@@ -422,7 +430,7 @@ because `ResourceAstAnalyzer::analyzeParentToArray()` analyzes the parent as its
 `toArray()`: it only repeats the inherited one, and the collection then resolves from its own class, as a body-less one
 does.
 
-### A wrap set after boot or forced by `$forceWrapping` is invisible, and a single API resource page prop publishes bare
+### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible, and a single API resource page prop publishes bare
 
 The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
 `JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and Inertia collection prop that wraps by
@@ -435,7 +443,8 @@ prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the bod
 
 A single API resource as an Inertia page prop or in shared data, `new R($m)` or `R::make($m)`, publishes `R`, though
 Inertia sends it wrapped, `{ data: R }` by default; so does a collection whose own `toArray()` lacks its wrap key, which
-Laravel nests under `data`. After `withoutWrapping()` both are sent bare, as published. Type such a prop with
+Laravel nests under `data`. After `withoutWrapping()` both are sent bare, as published, except that over a paginator
+Laravel still nests the collection's body under `data`, as the package publishes it. Type such a prop with
 `#[TsCasts]`.
 
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
@@ -570,6 +579,16 @@ A resource that sends its model's `toArray()`, or spreads a related model's, lis
 be named: a `get(): mixed` cast documented `@return Rota`, a native union of such classes or
 `AsCollection::using(Collection::class, Rota::class)` keeps the numeric keys, as earlier releases did. Declare the
 cast's native return type, or type the key with `#[TsCasts]`.
+
+### A resource collection's items publish as a list or a record by `#[PreserveKeys]`, not by the keys they arrive with
+
+A resource collection publishes `R[]`, or `Record<string, R>` when it preserves keys through `#[PreserveKeys]` or
+`$preserveKeys`. Laravel sends the items as an array or an object by the keys the caller passed in, which the package
+never sees. Given items keyed by `keyBy()`, a collection that does not preserve keys sends an object while publishing
+`R[]`. Given a list, one that preserves keys sends an array while publishing `Record<string, R>`. In a custom
+`toArray()`, `$this->collection` and `$this->resource` keep their input's keys whatever the class preserves, so items a
+`filter()` left sparse are sent as an object too. Give `#[PreserveKeys]` to a collection that receives keyed items, call
+`values()` on filtered items before passing them in, or type the key with `#[TsCasts]`.
 
 ### A collection that does not preserve keys lists the arrays of an element that does
 

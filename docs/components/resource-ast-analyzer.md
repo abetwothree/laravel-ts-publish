@@ -471,16 +471,18 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 a `#[UseResource]` or `#[UseResourceCollection]` attribute, or Laravel's naming convention. Only the convention invents
 a class name. `InspectsResourceCalls::isResourceClass()` accepts any class that exists, including a `#[TsExclude]`d or
 third-party resource that gets no file, and its import would name a missing module. So every site that invents a
-candidate asks `isPublishedResourceClass()`, or `ResourceCollections`' private copy of it, which also checks
-[`PublishedResourceRegistry`](../../src/Cache/PublishedResourceRegistry.php). These are the sites:
+candidate also checks [`PublishedResourceRegistry`](../../src/Cache/PublishedResourceRegistry.php), through
+`ResourceCollections::isPublishedResource()`, which `InspectsResourceCalls::isPublishedResourceClass()` delegates to.
+These are the sites:
 
 - the candidate loop in `ToResourceHandler::resolveResourceForModel()`
 - both naming loops in `ToResourceHandler::resolveResourceCollectionForModel()`
-- the naming-convention branch of `ResourceCollections::collectedResource()`, the one resolver every `#[Collects]`
-  caller shares
+- the naming-convention pick of `ResourceCollections::collectedResource()`, the one resolver every `#[Collects]`
+  caller shares, where an unpublished pick collects nothing rather than fall through to `FooResource`
 
 A class the developer wrote down stays on `isResourceClass()`: an explicit argument, `#[UseResource]`,
-`#[UseResourceCollection]`, `#[Collects]`, `$collects`, `SomeResource::make()` and `new SomeResource()`.
+`#[UseResourceCollection]`, `SomeResource::make()` and `new SomeResource()`. `#[Collects]` and `$collects` are taken
+as written too, unless they name no API resource ([`#[Collects]` and `#[PreserveKeys]`](#collects-and-preservekeys)).
 
 The registry fails open: while it is empty, `isPublished()` answers `true`, so `RunnerForSource`, which never
 registers, analyzes without narrowing. `Runner::run()` and `RunnerForSource::run()` reset it first.
@@ -513,7 +515,10 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 [`ResourceCollections`](../../src/Ast/ResourceCollections.php) holds a collection's facts for the analyzer and the
 handlers alike: `collectedResource()`, `preservesKeys()`, `listType()` and `reindexesNumericKeys()`.
 `collectedResource()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
-has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
+has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md). It follows Laravel's
+`collects()` order: `#[Collects]`, the `$collects` default, then for `FooCollection` the bare `Foo` when that class
+exists, else `FooResource`. The first class found decides. One that is no API resource, where Laravel throws a
+`LogicException`, collects nothing and adds an analysis warning.
 `AnalysisScope::seedCollectionFacts()` seeds `$collectedResource` and `$reindexesNumericKeys` from it, on `rebase()`
 and for any scope `ResourceAstAnalyzer` reads, its own or one a caller supplies, so `$this->resource`'s items name the
 API resource `$this->collection` does. A collection is backed by no model, whatever its docblock or

@@ -6236,12 +6236,13 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
+        // Laravel's collects() takes the bare Ledger before LedgerResource whenever the bare class exists.
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('LedgerResource[]')
-            ->and($analysis->nestedResources)->toHaveKey('data', LedgerResource::class);
+            ->and($data['type'])->toBe('Ledger[]')
+            ->and($analysis->nestedResources)->toHaveKey('data', Ledger::class);
     });
 
-    test('the naming convention resolves its first, Resource-suffixed candidate when published', function () {
+    test('the naming convention resolves its Resource-suffixed candidate when published', function () {
         PublishedResourceRegistry::register([SupplierSummaryResource::class]);
 
         $reflection = new ReflectionClass(SupplierSummaryCollection::class);
@@ -6255,7 +6256,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('the naming convention falls through to its bare, unsuffixed candidate when published', function () {
+    test('the naming convention resolves its bare, unsuffixed candidate when published', function () {
         // Non-vacuous: Admin\StoreResource does not exist, so only the bare candidate can resolve.
         expect(class_exists('Workbench\App\Http\Resources\Admin\StoreResource'))->toBeFalse();
 
@@ -6272,8 +6273,8 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('both naming-convention candidates are rejected when neither is published', function () {
-        // Non-vacuous: both losing candidates genuinely exist — only #[TsExclude] keeps them
+    test('the bare candidate decides, so neither is collected while it is unpublished', function () {
+        // Non-vacuous: both candidates genuinely exist — only #[TsExclude] keeps them
         // out of the published set, so class_exists() alone would accept either.
         expect(class_exists(LedgerResource::class))->toBeTrue()
             ->and(class_exists(Ledger::class))->toBeTrue();

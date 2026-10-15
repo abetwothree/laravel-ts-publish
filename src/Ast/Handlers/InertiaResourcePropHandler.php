@@ -140,7 +140,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $reflection = self::reflect($className);
         $optional = $this->hasConditionalArgument($expr, $className);
 
-        // The anonymous collection wraps by its own `$wrap`, the slot every class shares, never the collected one's.
+        // The anonymous collection wraps by its own `$wrap`, `JsonResource`'s shared slot, never the collected one's.
         $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
 
         if ($this->firstArgumentIsPaginator($this->resourcePayloadArguments($expr, $className)->at(0), $engine)) {

@@ -15,6 +15,7 @@ use Workbench\App\Http\Resources\PostResource;
 afterEach(function () {
     JsonResource::flushState();
     HandoverCollection::wrap('handovers');
+    EnumResource::wrap('');
 });
 
 it('reads the live key of the slot each class shares or redeclares', function () {
@@ -41,10 +42,13 @@ it('lists no override while every slot holds its declared default', function () 
 it('lists each slot a runtime wrap changed once, by the class that declares it, sorted by class', function () {
     HandoverCollection::wrap('crew');
     JsonResource::withoutWrapping();
+    EnumResource::wrap('enum');
 
-    // The subclass sharing the redeclared slot is loaded too, and reads the same change.
+    // The subclass sharing the redeclared slot is loaded too, and reads the same change. EnumResource sorts first but
+    // is declared after JsonResource, its parent, so only the sort puts it there.
     expect(class_exists(HandoverDigestCollection::class))->toBeTrue()
         ->and(ResourceWrapping::runtimeOverrides())->toBe([
+            EnumResource::class => 'enum',
             JsonResource::class => null,
             HandoverCollection::class => 'crew',
         ]);

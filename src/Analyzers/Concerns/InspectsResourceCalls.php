@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -100,14 +100,12 @@ trait InspectsResourceCalls
     }
 
     /**
-     * Whether a class is a resource this run will also emit a file for.
-     *
-     * A convention-guessed candidate must be one, or the import it produces points at no module.
+     * Whether a class is an API resource this run will also emit a file for, as ResourceCollections decides it.
      *
      * @phpstan-assert-if-true class-string<JsonResource> $fqcn
      */
     protected function isPublishedResourceClass(string $fqcn): bool
     {
-        return $this->isResourceClass($fqcn) && PublishedResourceRegistry::isPublished($fqcn);
+        return ResourceCollections::isPublishedResource($fqcn);
     }
 }

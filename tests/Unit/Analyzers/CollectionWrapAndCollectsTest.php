@@ -5,7 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaPaginatedBodyController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Dial;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DialAttributeCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DialCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Gauge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MeterCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
@@ -110,5 +117,29 @@ describe('an Inertia collection prop reads the live $wrap', function () {
 
         expect(wrapPageType(InertiaNamedCollectionsController::class.'@namedCollectionPaginated'))
             ->toBe('Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> }');
+    });
+});
+
+describe('collects() resolves in Laravel\'s order', function () {
+    it('collects the bare Foo before FooResource', function () {
+        $analysis = collectionAnalysis(GaugeCollection::class);
+
+        expect($analysis->properties[0]['type'])->toBe('Gauge[]')
+            ->and($analysis->nestedResources)->toBe(['data' => Gauge::class]);
+    });
+
+    it('declines a class Laravel would refuse to collect, and warns', function (string $class) {
+        expect(collectionAnalysis($class)->properties)->toBeEmpty()
+            ->and(AnalysisWarnings::all())->toContain([
+                'subject' => $class,
+                'message' => 'The collected class '.Dial::class.' is not an API resource, so Laravel throws a LogicException; collect an API resource.',
+            ]);
+    })->with([
+        'a bare convention candidate' => [DialCollection::class],
+        'a $collects beside a convention candidate' => [MeterCollection::class],
+    ]);
+
+    it('lets a #[Collects] naming a non-resource decide over the $collects beside it', function () {
+        expect(collectionAnalysis(DialAttributeCollection::class)->properties)->toBeEmpty();
     })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 });

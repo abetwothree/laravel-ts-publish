@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
@@ -19,8 +20,11 @@ use ReflectionClass;
 final class ResourceCollections
 {
     /**
-     * Resolve the API resource a ResourceCollection collects, from the #[Collects] attribute, the $collects property
-     * default, or the FooCollection → FooResource naming convention.
+     * Resolve the API resource a ResourceCollection collects, in the order Laravel's `collects()` reads: the
+     * #[Collects] attribute, the `$collects` default, then the bare `Foo` and the `FooResource` its name implies.
+     *
+     * The first class found decides, and one that is no API resource yields null, since Laravel throws rather than
+     * read on. Only a convention guess must also be published.
      *
      * @param  class-string  $collectionFqcn
      * @return class-string<JsonResource>|null
@@ -28,51 +32,18 @@ final class ResourceCollections
     public static function collectedResource(string $collectionFqcn): ?string
     {
         $reflection = new ReflectionClass($collectionFqcn);
+        $named = self::namedCollectedClass($reflection);
+        $collected = $named ?? self::conventionalCollectedClass($reflection);
 
-        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
-        if (class_exists($collectsAttribute)) {
-            // Priority 1: #[Collects] attribute (Laravel 13.0+)
-            $collectsAttrs = $reflection->getAttributes($collectsAttribute);
-
-            if ($collectsAttrs !== []) {
-                $collectsClass = $collectsAttrs[0]->newInstance()->class;
-
-                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
-                    return $collectsClass;
-                }
-            }
+        if ($collected === null) {
+            return null;
         }
 
-        // Priority 2: explicit $collects property default value
-        /** @var array<string, mixed> $defaults */
-        $defaults = $reflection->getDefaultProperties();
-        $collects = $defaults['collects'] ?? null;
-
-        if (is_string($collects) && class_exists($collects) && is_a($collects, JsonResource::class, true)) {
-            return $collects;
+        if (! is_a($collected, JsonResource::class, true)) {
+            return self::declineCollected($collectionFqcn, $collected);
         }
 
-        // Priority 3: naming convention — FooCollection → FooResource, gated on the published set
-        $className = $reflection->getShortName();
-        $namespace = $reflection->getNamespaceName();
-
-        if (str_ends_with($className, 'Collection')) {
-            $base = substr($className, 0, -10);
-
-            $candidate = $namespace.'\\'.$base.'Resource';
-
-            if (self::isPublishedResource($candidate)) {
-                return $candidate;
-            }
-
-            $candidate = $namespace.'\\'.$base;
-
-            if (self::isPublishedResource($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
+        return $named !== null || PublishedResourceRegistry::isPublished($collected) ? $collected : null;
     }
 
     /**
@@ -140,8 +111,67 @@ final class ResourceCollections
      *
      * @phpstan-assert-if-true class-string<JsonResource> $fqcn
      */
-    private static function isPublishedResource(string $fqcn): bool
+    public static function isPublishedResource(string $fqcn): bool
     {
         return class_exists($fqcn) && is_a($fqcn, JsonResource::class, true) && PublishedResourceRegistry::isPublished($fqcn);
+    }
+
+    /**
+     * The class a collection names by its #[Collects] attribute (Laravel 13) or its `$collects` default, or null.
+     *
+     * @param  ReflectionClass<object>  $collection
+     */
+    private static function namedCollectedClass(ReflectionClass $collection): ?string
+    {
+        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
+
+        if (class_exists($collectsAttribute)) {
+            $attributes = $collection->getAttributes($collectsAttribute);
+
+            if ($attributes !== []) {
+                return $attributes[0]->newInstance()->class;
+            }
+        }
+
+        $collects = $collection->getDefaultProperties()['collects'] ?? null;
+
+        return is_string($collects) && $collects !== '' ? $collects : null;
+    }
+
+    /**
+     * The class Laravel's naming convention picks for a `FooCollection`: `Foo` when it exists, else `FooResource`.
+     *
+     * @param  ReflectionClass<object>  $collection
+     */
+    private static function conventionalCollectedClass(ReflectionClass $collection): ?string
+    {
+        $name = $collection->getName();
+
+        if (! str_ends_with($name, 'Collection')) {
+            return null;
+        }
+
+        $base = substr($name, 0, -strlen('Collection'));
+
+        foreach ([$base, $base.'Resource'] as $candidate) {
+            if (class_exists($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Warn that a collection collects a class Laravel refuses to, and collect nothing.
+     */
+    private static function declineCollected(string $collectionFqcn, string $collected): null
+    {
+        AnalysisWarnings::addOnce($collectionFqcn, sprintf(
+            'The collected class %s is not an API resource, so Laravel throws a LogicException; collect an API resource.',
+            $collected,
+        ));
+
+        return null;
     }
 }

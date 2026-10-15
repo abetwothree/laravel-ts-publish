@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Gauge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
 use Workbench\App\Http\Resources\SupplierCollection;
@@ -18,7 +22,14 @@ describe('ResourceCollections', function () {
     })->with([
         'the $collects property' => [SupplierCollection::class, SupplierSummaryResource::class],
         'FooCollection collects FooResource' => [SupplierSummaryCollection::class, SupplierSummaryResource::class],
+        'FooCollection collects a bare Foo before FooResource' => [GaugeCollection::class, Gauge::class],
     ]);
+
+    test('collectedResource() collects nothing when a populated registry leaves the convention\'s pick unpublished', function () {
+        PublishedResourceRegistry::register([GaugeResource::class]);
+
+        expect(ResourceCollections::collectedResource(GaugeCollection::class))->toBeNull();
+    });
 
     test('preservesKeys() reads the class\'s $preserveKeys', function (string $collection, bool $preserves) {
         expect(ResourceCollections::preservesKeys(new ReflectionClass($collection)))->toBe($preserves);
