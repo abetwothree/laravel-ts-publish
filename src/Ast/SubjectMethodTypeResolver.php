@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -39,28 +40,34 @@ final class SubjectMethodTypeResolver
     }
 
     /**
-     * What a call forwarded to `$this->resource` returns: the answer of the first class it holds that declares the
-     * method, final even when it types nothing, so a model namesake never answers for a wrapped class. A bare
-     * `$this->m()`, `$this::m()`, `$this->resource::m()` and `$this->resource->m()` all read this.
+     * What a call forwarded to `$this->resource` returns: the union of each ReceiverClassResolver::proxyCallTargets()
+     * answer, final even when one types nothing, so a model namesake never answers for a class declaring the method.
+     * A bare `$this->m()`, `$this::m()`, `$this->resource::m()` and `$this->resource->m()` all read this.
      *
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null null as well for a resource collection's items, which the receiver rules type
      */
     public function resolveForwarded(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
     {
-        $held = resolve(ReceiverClassResolver::class)->proxyHeld($scope);
+        $results = [];
 
-        if ($held === null || $held->collectedItems) {
-            return null;
-        }
+        foreach (resolve(ReceiverClassResolver::class)->proxyCallTargets($methodName, $scope) as $class) {
+            $result = $this->forwardedOn($class, $methodName, $scope, $site);
 
-        foreach ($held->classes as $class) {
-            if (method_exists($class, $methodName)) {
-                return $this->forwardedOn($class, $methodName, $scope, $site);
+            if ($result === null) {
+                return null;
             }
+
+            $results[] = $result;
         }
 
-        return null;
+        // A union drops an `unknown` arm, which would publish a type one class does not return.
+        return match (true) {
+            $results === [] => null,
+            count($results) === 1 => $results[0],
+            array_any($results, fn (array $result): bool => TsTypeString::isUnknownOnly($result['type'])) => null,
+            default => ValueResult::unionResults($results),
+        };
     }
 
     /**

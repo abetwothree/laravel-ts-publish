@@ -34,7 +34,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedMediaResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedPageCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrImageResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
@@ -1519,6 +1523,75 @@ describe('the resource proxy', function () {
         ['$this->resource->value', 'string'],
         // MediaType::extensions() declares only array, so its match of string lists types it.
         ['$this->resource->extensions()', 'string[]'],
+    ]);
+});
+
+describe('what $this->resource holds, through every path', function () {
+    $prefixes = '{ image: string; video: string; audio: string; document: string; archive: string }';
+
+    test('a redeclared model supertype holds the backing model', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyModelPostResource::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'Post'],
+        ['$this->commentsCount()', 'number'],
+        ['$this->resource->commentsCount()', 'number'],
+        ['$this->getKey()', 'number'],
+        ['$this->fresh()', 'Post | null'],
+        ['$this->author->getKey()', 'number'],
+    ]);
+
+    test('an instanceof test narrows a redeclared union to the class it proves', function (?string $model, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyPostOrImageResource::class), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr('$this->resource instanceof '.Post::class.' ? '.$php.' : null'))['type'])->toBe($type);
+    })->with([
+        [null, '$this->resource', 'Post | null'],
+        [null, '$this->fresh()', 'Post | null'],
+        [null, '$this->author->getKey()', 'number | null'],
+        [null, '$this->author->fresh()', 'User | null'],
+        [Post::class, '$this->resource', 'Post | null'],
+        [Post::class, '$this->fresh()', 'Post | null'],
+        [Post::class, '$this->author->getKey()', 'number | null'],
+        [Post::class, '$this->author->fresh()', 'User | null'],
+    ]);
+
+    // An arm that lacks the method throws, so the call types from every class that runs it.
+    test('a redeclared union of models types a call from every class that runs it', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyPostOrImageResource::class));
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'Post | Image'],
+        ['$this->fresh()', 'Post | Image | null'],
+        ['$this->resource->fresh()', 'Post | Image | null'],
+        ['$this->commentsCount()', 'number'],
+        ['$this->resource->commentsCount()', 'number'],
+    ]);
+
+    // A method call cannot run on the string arm, so the enum answers it, and the model never does.
+    test('a redeclaration with a builtin arm still names its class arm', function (?string $model, string $php, string $type) use ($prefixes) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ProxyMediaOrStringResource::class), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type === 'prefixes' ? $prefixes : $type);
+    })->with([
+        [null, '$this->maxSizeMb()', 'number'],
+        [null, '$this->resource->maxSizeMb()', 'number'],
+        [null, '$this->resource::mimePrefixes()', 'prefixes'],
+        [Post::class, '$this->maxSizeMb()', 'number'],
+        [Post::class, '$this->resource->maxSizeMb()', 'number'],
+        [Post::class, '$this->resource::mimePrefixes()', 'prefixes'],
+        [Post::class, '$this->commentsCount()', 'unknown'],
+    ]);
+
+    // After the negated early return PHP holds the media type for the rest of toArray().
+    test('a guard on a model-backed resource answers a method it declares', function (string $key, string $type) use ($prefixes) {
+        $props = collect(pipelineAnalyzer(ProxyGuardedMediaResource::class)->analyze()->properties)->keyBy('name');
+
+        expect($props[$key]['type'])->toBe($type === 'prefixes' ? $prefixes : $type);
+    })->with([
+        ['max', 'number'],
+        ['max_via_resource', 'number'],
+        ['prefixes', 'prefixes'],
     ]);
 });
 

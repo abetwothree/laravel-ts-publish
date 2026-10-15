@@ -24,8 +24,8 @@ describe('SubjectMethodTypeResolver::resolve()', function () {
         $shadowing = new AnalysisScope(new ReflectionClass(CallPathModelResource::class), CallPathModel::class);
         $invoice = new AnalysisScope(new ReflectionClass(NamesakeInvoiceResource::class), NamesakeInvoice::class);
 
-        // shadowedLabel()'s own body delegates to the model's string namesake. Nothing types opaque(), and JsonResource's
-        // resolveRouteBinding() declares nothing, so the model's typed namesake answers for neither.
+        // shadowedLabel()'s own body delegates to the model's string namesake. Nothing types opaque(), and
+        // JsonResource's resolveRouteBinding() declares nothing, so the model's typed namesake answers for neither.
         expect(resolve(SubjectMethodTypeResolver::class)->resolve($shadowing, 'shadowedLabel'))
             ->toMatchArray(['type' => 'string', 'optional' => false])
             ->and(resolve(SubjectMethodTypeResolver::class)->resolve($invoice, 'opaque'))->toBeNull()

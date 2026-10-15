@@ -403,7 +403,7 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze a `$this->resource::staticMethod()` call against the first class `$this->resource` holds that declares it.
+     * Analyze a `$this->resource::staticMethod()` call against the classes `$this->resource` holds that declare it.
      *
      * @return ValueExpressionResult
      */

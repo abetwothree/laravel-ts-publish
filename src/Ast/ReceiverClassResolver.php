@@ -46,6 +46,9 @@ use ReflectionUnionType;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
+ * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool}
+ * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool}
+ *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type VarDocBinding from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
@@ -201,12 +204,25 @@ final class ReceiverClassResolver
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        return $scope->subjectReflection->hasMethod($method) ? null : $this->proxyHeld($scope);
+        if ($scope->subjectReflection->hasMethod($method)) {
+            return null;
+        }
+
+        $held = $this->proxyHeld($scope);
+
+        if ($held !== null && $held->collectedItems) {
+            return $held;
+        }
+
+        $targets = $this->proxyCallTargets($method, $scope);
+
+        return $targets === [] ? null : new ReceiverType($targets);
     }
 
     /**
-     * What `$this->resource` holds: the classes the subject redeclares it as, else AnalysisScope::proxyReceiver(); null
-     * where the subject has no resource proxy. The one answer for its value, its members and the calls it forwards.
+     * What `$this->resource` holds as a receiver and a value: the classes the subject redeclares it as, or the backing
+     * class AnalysisScope::proxyReceiver() names when the redeclaration admits it, as `@var Model` admits a post; null
+     * where the subject has no resource proxy, or the redeclaration has an arm that names no class.
      */
     public function proxyHeld(AnalysisScope $scope): ?ReceiverType
     {
@@ -215,16 +231,46 @@ final class ReceiverClassResolver
         }
 
         $proxy = $scope->proxyReceiver();
-        $declared = $this->redeclaredProxyClasses($scope->subjectReflection);
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
 
         if ($declared === null) {
             return $proxy;
         }
 
-        // A collection's constructor always swaps in its items, so the redeclaration names only the class they arrive in.
-        return $proxy !== null && $proxy->collectedItems
-            ? new ReceiverType($declared, collectedItems: true, elementResource: $proxy->elementResource)
-            : new ReceiverType($declared);
+        // A collection's constructor always swaps in its items, so its redeclaration names only their holder.
+        if ($proxy !== null && $proxy->collectedItems) {
+            return $declared['named']
+                ? new ReceiverType($declared['classes'], collectedItems: true, elementResource: $proxy->elementResource)
+                : $proxy;
+        }
+
+        $backing = $scope->forwardsUndeclaredMembersTo;
+
+        return match (true) {
+            ! $declared['named'] => null,
+            $this->admits($declared['classes'], $backing) => $proxy,
+            default => new ReceiverType($declared['classes']),
+        };
+    }
+
+    /**
+     * The classes a call forwarded to `$this->resource` runs on: those that declare the method in the first group of
+     * proxyCallCandidates() where any does, since an arm that lacks it throws. Empty when none does, or for a resource
+     * collection's items, which the receiver rules type.
+     *
+     * @return list<class-string>
+     */
+    public function proxyCallTargets(string $method, AnalysisScope $scope): array
+    {
+        foreach ($this->proxyCallCandidates($scope) as $group) {
+            $runs = array_values(array_filter($group, fn (string $class): bool => method_exists($class, $method)));
+
+            if ($runs !== []) {
+                return $runs;
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -940,19 +986,69 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a subject's own redeclaration of `$resource` names, such as `@var MediaType|null`; null for
-     * JsonResource's own `@var mixed`, which names nothing.
+     * The class arms of a subject's own redeclaration of `$resource`, as in `@var MediaType|string`, and whether each
+     * arm but `null` names a class; null for JsonResource's own `@var mixed`, or a redeclaration that names no class.
      *
      * @param  ReflectionClass<object>  $subject
-     * @return non-empty-list<class-string>|null
+     * @return ProxyArms|null
      */
-    private function redeclaredProxyClasses(ReflectionClass $subject): ?array
+    private function redeclaredProxyArms(ReflectionClass $subject): ?array
     {
         $property = $subject->getProperty('resource');
+        $declaring = $property->getDeclaringClass();
 
-        return str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
-            ? null
-            : $this->propertyClasses($property, $subject->getName());
+        // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
+        $docComment = str_starts_with($declaring->getName(), 'Illuminate\\') ? false : $property->getDocComment();
+        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+
+        if ($declared === null || $declared === '') {
+            return null;
+        }
+
+        $arms = $this->docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
+
+        return $arms['classes'] === [] ? null : $arms;
+    }
+
+    /**
+     * Whether a backing class is one of the declared classes, or a subtype of one.
+     *
+     * @param  list<class-string>  $declared
+     */
+    private function admits(array $declared, ?string $backing): bool
+    {
+        return $backing !== null && array_any($declared, fn (string $class): bool => is_a($backing, $class, true));
+    }
+
+    /**
+     * The groups of classes a call forwarded to `$this->resource` may run on, in the order they answer: the classes the
+     * subject redeclares it as, then the `instanceof` guard's class, then the backing class. A non-model the
+     * redeclaration names is final, so the model never answers for it; empty for a resource collection's items.
+     *
+     * @return list<non-empty-list<class-string>>
+     */
+    private function proxyCallCandidates(AnalysisScope $scope): array
+    {
+        $proxy = $scope->proxyReceiver();
+
+        if (! $scope->hasResourceProxy() || ($proxy !== null && $proxy->collectedItems)) {
+            return [];
+        }
+
+        $backing = $scope->forwardsUndeclaredMembersTo;
+        $fallback = array_map(
+            fn (string $class): array => [$class],
+            array_values(array_unique(array_filter([$scope->instanceOfWrappedClass, $backing]))),
+        );
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? [];
+
+        if ($declared === [] || $this->admits($declared, $backing)) {
+            return $fallback;
+        }
+
+        return array_any($declared, fn (string $class): bool => ! is_a($class, Model::class, true))
+            ? [$declared]
+            : [$declared, ...$fallback];
     }
 
     /**
@@ -1000,13 +1096,30 @@ final class ReceiverClassResolver
      */
     private function docblockClasses(string $type, ReflectionClass $context, string $staticClass, string $selfClass): ?array
     {
+        $arms = $this->docblockArms($type, $context, $staticClass, $selfClass);
+
+        return $arms['named'] && $arms['classes'] !== [] ? $arms['classes'] : null;
+    }
+
+    /**
+     * The class arms a docblock union names, resolved against the declaring file's imports, and whether every arm but
+     * `null` names one.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @return DocblockArms
+     */
+    private function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
+    {
         $useMap = LaravelTsPublish::parseFileUseStatements($context);
         $classes = [];
+        $named = true;
 
         foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
             // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
             if (! preg_match('/^\??([\\\\\w$]+)(?:<.*>)?$/s', $part, $match)) {
-                return null;
+                $named = false;
+
+                continue;
             }
 
             $name = $match[1];
@@ -1021,14 +1134,14 @@ final class ReceiverClassResolver
                 default => LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $context->getNamespaceName()),
             };
 
-            if (! $this->isClassLike($class)) {
-                return null;
+            if ($this->isClassLike($class)) {
+                $classes[] = $class;
+            } else {
+                $named = false;
             }
-
-            $classes[] = $class;
         }
 
-        return $classes === [] ? null : array_values(array_unique($classes));
+        return ['classes' => array_values(array_unique($classes)), 'named' => $named];
     }
 
     /**

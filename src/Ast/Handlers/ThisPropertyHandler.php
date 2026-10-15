@@ -123,7 +123,7 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
-        // unreachable: the value is what the proxy holds, a collection's items, the backing model or a redeclared class.
+        // unreachable: the value is what the proxy holds, its items, the backing model or a redeclared class.
         if ($this->isProxyFetch($expr, $scope)) {
             $proxy = resolve(ReceiverClassResolver::class)->proxyHeld($scope);
             $held = ($proxy === null ? null : resolve(ReceiverMethodReturnResolver::class)->heldItems($proxy, $scope))

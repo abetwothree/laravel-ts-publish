@@ -37,9 +37,9 @@ the element with a return type or a `@return` docblock, or the key with `#[TsCas
 
 `'label' => $this->label()` publishes `unknown` when the resource's own `label(): mixed` returns a value no rule types,
 though the backing model declares `label(): string`. PHP runs the resource's method, so the model's type is only right
-when the two bodies agree. The same holds for the class an `@var` on `public $resource` names: the model never answers
-for it, and a method that class lacks publishes `unknown`, since Laravel throws. Give the method a return type or a
-`@return` docblock, and the call takes it.
+when the two bodies agree. The same holds for a class other than a model that an `@var` on `public $resource` names:
+the model never answers for it, and a method that class lacks publishes `unknown`, since Laravel throws. Give the
+method a return type or a `@return` docblock, and the call takes it.
 
 ### `config()` on an absent key with no default types as null
 

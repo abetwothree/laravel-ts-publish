@@ -126,10 +126,9 @@ final class AnalysisScope
     public ?string $instanceOfWrappedClass = null;
 
     /**
-     * The backing class `$this->resource` holds, which an undeclared `$this->member` read or call forwards to unless the
-     * subject redeclares `$resource` (ReceiverClassResolver::proxyHeld()), or null; null on a resource collection, see
-     * proxyReceiver(). Derived by the constructor and rebase(), so every scope carries it; ResourceAstAnalyzer
-     * re-derives it and TernaryHandler narrows it.
+     * The backing class `$this->resource` holds, or null; null on a resource collection, see proxyReceiver().
+     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor and
+     * rebase(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
      *
      * @var class-string|null
      */
