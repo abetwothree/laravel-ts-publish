@@ -5,5 +5,5 @@
  */
 export interface LedgerCollection
 {
-    data: unknown;
+    data: unknown[];
 }

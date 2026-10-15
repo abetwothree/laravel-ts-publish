@@ -7,5 +7,5 @@
  */
 export interface RegistrarGroupCollection
 {
-    data: unknown;
+    data: unknown[];
 }

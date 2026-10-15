@@ -2860,14 +2860,14 @@ describe('ResourceAstAnalyzer with OrderCollection (explicit $collects)', functi
 });
 
 describe('ResourceAstAnalyzer with MiscCollection (unresolvable singular)', function () {
-    test('falls back to unknown when singular resource cannot be resolved', function () {
+    test('lists unknown items when singular resource cannot be resolved', function () {
         $reflection = new ReflectionClass(MiscCollection::class);
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
 
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
     });
 });
@@ -6291,7 +6291,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
 
         PublishedResourceRegistry::reset();

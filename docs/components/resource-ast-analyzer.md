@@ -541,7 +541,7 @@ collection keeps its keys, else `R[]`. `ResourceCollections::listValue()` is tha
 import channel and `unknown[]` without one; `$this->collection`, a value-position `parent::toArray()` over the collected
 list, `$this->resource`'s items (`heldItems()`, with the scope's `reindexesNumericKeys`), a nested collection and the
 delegated response read it. `only()`/`except()` on the items spell it once with `false` and once with `true`, since
-those keep the keys they filter by. `$this->collection` alone publishes `unknown`, not `unknown[]`, without an element.
+those keep the keys they filter by.
 A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
 call shape would notice.
 `grep -rnE 'collectionListType\(|ResourceCollections::(listType|listValue)\(' src/` lists the sites.

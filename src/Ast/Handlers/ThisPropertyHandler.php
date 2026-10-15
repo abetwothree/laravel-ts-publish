@@ -210,14 +210,12 @@ final class ThisPropertyHandler implements ExpressionHandler
 
     /**
      * Analyze $this->collection in a ResourceCollection: the runtime class's collected list, keyed as that class keeps
-     * keys, since an inherited body runs as the class Laravel builds; `unknown` while it collects no element.
+     * keys, since an inherited body runs as the class Laravel builds.
      *
      * @return ValueExpressionResult
      */
     private function analyzeCollectionProperty(AnalysisScope $scope): array
     {
-        return $scope->collectedElement === null
-            ? ValueResult::unknown()
-            : ResourceCollections::listValue($scope->collectedElement, ! $scope->reindexesNumericKeys);
+        return ResourceCollections::listValue($scope->collectedElement, ! $scope->reindexesNumericKeys);
     }
 }

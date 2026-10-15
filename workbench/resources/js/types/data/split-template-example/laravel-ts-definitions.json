@@ -14526,7 +14526,7 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "unknown",
+                    "type": "unknown[]",
                     "optional": false
                 }
             ]
@@ -15336,7 +15336,7 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "unknown",
+                    "type": "unknown[]",
                     "optional": false
                 }
             ]
@@ -18097,7 +18097,7 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "unknown",
+                    "type": "unknown[]",
                     "optional": false
                 }
             ]

@@ -262,7 +262,7 @@ test('ts:publish writes modular files to namespace-based directories', function 
     // Both candidates exist but are #[TsExclude]d, so the gate rejects both and no import leaks.
     $ledgerCollectionContent = file_get_contents("$outputDir/app/http/resources/ledger-collection.ts");
     expect($ledgerCollectionContent)
-        ->toContain('data: unknown;')
+        ->toContain('data: unknown[];')
         ->not->toContain('import type');
 });
 

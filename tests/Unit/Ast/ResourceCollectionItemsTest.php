@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCol
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageKeyedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageRawCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageRawKeyedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketLeafCollection;
 
 const PAGE_ITEMS = 'PageItemResource[] | LengthAwarePaginator<PageItemResource> | SimplePaginator<PageItemResource> | CursorPaginator<PageItemResource>';
@@ -70,6 +71,8 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'nothing collected: first()' => [PageRawCollection::class, '$this->resource->first()', 'unknown'],
         'nothing collected: total()' => [PageRawCollection::class, '$this->resource->total()', 'number'],
         'nothing collected: only()' => [PageRawCollection::class, "\$this->resource->only(['id'])", 'unknown[] | Record<string, unknown>'],
+        'nothing collected: $this->collection' => [PageRawCollection::class, '$this->collection', 'unknown[]'],
+        'nothing collected, kept keys: $this->collection' => [PageRawKeyedCollection::class, '$this->collection', 'Record<string, unknown>'],
         'raw models: the value' => [StubSprocketLeafCollection::class, '$this->resource', PAGE_ITEMS_MODELS],
         'raw models: first()' => [StubSprocketLeafCollection::class, '$this->resource->first()', 'Supplier | null'],
         'raw models: items()' => [StubSprocketLeafCollection::class, '$this->resource->items()', 'Supplier[]'],

@@ -3779,7 +3779,7 @@ declare global {
         }
         /** A collection of ledger entries. */
         export interface LedgerCollection {
-            data: unknown;
+            data: unknown[];
         }
         /**
          * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
@@ -4052,7 +4052,7 @@ declare global {
             products?: app.models.Product[];
         }
         export interface MiscCollection {
-            data: unknown;
+            data: unknown[];
         }
         /** A MissingValue passed on through `??`, a `when()` default and a ternary keeps its key optional. */
         export interface MissingValueOperatorsResource {
@@ -4907,7 +4907,7 @@ declare global {
          * this must degrade to unknown rather than silently falling through to RegistrarResource.
          */
         export interface RegistrarGroupCollection {
-            data: unknown;
+            data: unknown[];
         }
         /**
          * The Resource-suffixed naming candidate for Registrar — must win over the bare Registrar
