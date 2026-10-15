@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` or `relatedModel` a collection or relation carries, and `collectedItems` with `elementResource` for a resource collection's items |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries or the `relatedModel` a relation, query or factory builds, and `collectedItems` with `elementResource` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
@@ -37,11 +37,13 @@ reflection answers, a decline included.
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, marked unsaved for `UNSAVED_QUERY_MODELS`; the same query where it returns itself, as `where()` does. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `returnClasses()` on every class, for a public method |
-| `static::m()`, `self::m()`, `parent::m()` | The subject, or its framework parent for `parent`, then `returnClasses()`, at any visibility |
-| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a public method |
+| `static::m()`, `self::m()`, `parent::m()` | The subject, or its framework parent for `parent`, then `returnClasses()`, at any visibility. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
+| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
+| `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
 | `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent`; marked unsaved |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
@@ -160,7 +162,8 @@ and a method no class runs declines.
 
 Two receivers come from outside `resolve()`, which names nothing for a bare `$this`:
 
-- **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, `forwardedThisReceiver()`
+- **A resource forwarding a call**: on a `JsonResource` subject that does not declare `m`, for `$this->m()` and for the
+  `static::m()`, `self::m()` and `$this::m()` PHP sends to `__call()`, `forwardedThisReceiver()`
   names the class `ReceiverClassResolver::proxyCallTarget()` finds, since `JsonResource::__call()` forwards the call to
   what `$this->resource` holds. It takes the first class that declares `m` of: the classes a proof holds it to inside
   the arm it proves, then the classes `$resource` is redeclared as in declaration order, each the backing model is or
@@ -211,7 +214,8 @@ declares `Model|null`. Each rule answers only on the receiver it names:
   `number | string`. Where code decides the key, through an overridden `getKeyType()`, `getKeyName()` or `uniqueIds()`,
   or a constructor or initializer naming it, the rule declines. A model whose `$primaryKey` is `null` publishes `null`.
   `ReceiverType::$unsaved`, set by `new` and by `replicate()`, `replicateQuietly()` and `newInstance()` (through a
-  local, a ternary or a `??` too), adds `| null`: `number | null`.
+  local, a ternary or a `??` too), and by a query's, relation's or factory's `make()`, `makeOne()`,
+  `newModelInstance()`, `firstOrNew()` and the rest of `UNSAVED_QUERY_MODELS`, adds `| null`: `number | null`.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,

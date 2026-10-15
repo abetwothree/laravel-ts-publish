@@ -4843,6 +4843,8 @@ declare global {
             resource_key: number;
             draft_key: number | null;
             copy_key: number | null;
+            made_key: number | null;
+            made_comment_key: number | null;
             bare_comments_count: number;
             resource_comments_count: number;
             author_bound: app.models.User | null;

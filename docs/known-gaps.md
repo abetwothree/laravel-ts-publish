@@ -626,10 +626,9 @@ looks at its subclasses.
 ### A model saved after `new` or `replicate()` still publishes `getKey()` with `| null`
 
 The package does not follow `save()`, so the key stays `number | null` although the runtime holds a number. A fluent
-call such as `(new Post)->fill([...])->getKey()`, or `make()`, publishes `number` although the runtime holds null. A
-helper parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes
-`new Post`, so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes
-`number | null`.
+call such as `(new Post)->fill([...])->getKey()` publishes `number` although the runtime holds null. A helper
+parameter declared as one concrete model, such as `Post $p`, binds as a saved one even when its call passes `new Post`,
+so `$p->getKey()` there publishes `unknown`; an untyped one, or a `transform()` callback's, publishes `number | null`.
 
 ## Deliberate non-goals
 

@@ -44,6 +44,8 @@ final class ReceiverMethodResource extends JsonResource
             'resource_key' => $this->resource->getKey(),
             'draft_key' => (new Post)->getKey(),
             'copy_key' => $this->resource->replicate()->getKey(),
+            'made_key' => Post::make(['title' => 'Draft'])->getKey(),
+            'made_comment_key' => $this->resource->comments()->make()->getKey(),
             'bare_comments_count' => $this->commentsCount(),
             'resource_comments_count' => $this->resource->commentsCount(),
             'author_bound' => $this->author?->resolveRouteBinding($this->user_id),

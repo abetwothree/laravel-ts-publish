@@ -92,6 +92,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideMo
 use Illuminate\Contracts\Auth\CanResetPassword;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -1233,6 +1234,52 @@ describe('getKey()', function () {
         ['$this->resource->fresh()->getKey()', 'number'],
         ['(true ? new \Workbench\App\Models\Post : $this->resource)->getKey()', 'number | null'],
         ['($this->resource ?? new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+    ]);
+
+    // Model::__callStatic() runs an undeclared static call on a new query, whose docblocks return TModel or $this.
+    test('names the model a query or relation builds, adding null where it may be one no row backs yet', function (string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['\Workbench\App\Models\Post::make([\'title\' => \'x\'])->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::firstOrNew([\'title\' => \'x\'])->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::newModelInstance()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::query()->make()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::where(\'title\', \'x\')->latest()->make()->getKey()', 'number | null'],
+        ['$this->resource->comments()->make()->getKey()', 'number | null'],
+        ['$this->resource->comments()->firstOrNew([])->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::query()->getModel()->getKey()', 'number | null'],
+        ['$this->resource->newQuery()->getModel()->getKey()', 'number | null'],
+        ['$this->author->profile()->newRelatedInstanceFor($this->author)->getKey()', 'number | null'],
+        ['\Workbench\App\Models\Post::create([])->getKey()', 'number'],
+        ['\Workbench\App\Models\Post::query()->firstOrFail()->getKey()', 'number'],
+        ['$this->resource->comments()->create([])->getKey()', 'number'],
+        ['\Workbench\App\Models\Post::find(1)->getKey()', 'unknown'],
+        ['\Workbench\App\Models\Post::query()->get()->getKey()', 'unknown'],
+        ['\Workbench\App\Models\Post::query()->getRelated()->getKey()', 'unknown'],
+    ]);
+
+    test('names the model a factory builds while no count is set', function (string $php, string $type) {
+        $guesser = new ReflectionProperty(Factory::class, 'factoryNameResolver');
+        $previous = $guesser->getValue();
+        Factory::guessFactoryNamesUsing(fn (string $model): string => 'Workbench\\Database\\Factories\\'.class_basename($model).'Factory');
+
+        try {
+            $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+
+            expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+        } finally {
+            $guesser->setValue(null, $previous);
+        }
+    })->with([
+        ['\Workbench\App\Models\User::factory()->make()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\User::factory()->state([])->makeOne()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\User::factory()->create()->getKey()', 'number'],
+        ['\Workbench\App\Models\User::factory([\'name\' => \'x\'])->make()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\User::factory()->newModel()->getKey()', 'number | null'],
+        ['\Workbench\App\Models\User::factory()->count(2)->make()->getKey()', 'unknown'],
+        ['\Workbench\App\Models\User::factory(2)->make()->getKey()', 'unknown'],
     ]);
 
     test('a local bound to a new model carries the unsaved flag to its getKey()', function (string $bound, string $type) {

@@ -17946,6 +17946,16 @@
                     "optional": false
                 },
                 {
+                    "name": "made_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
+                    "name": "made_comment_key",
+                    "type": "number | null",
+                    "optional": false
+                },
+                {
                     "name": "bare_comments_count",
                     "type": "number",
                     "optional": false

@@ -226,6 +226,31 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::className()'), $scope))->toBeNull();
     });
 
+    test('a static call a model lacks runs on a new query of it, and a query or relation names the model it builds', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $model = new AnalysisScope(new ReflectionClass(Post::class));
+
+        expect($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()'), postScope()))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+            ->and($resolver->resolve(receiverExpr('static::where("title", "x")'), $model))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: Post::class))
+            ->and($resolver->resolve(receiverExpr('static::make()'), $model))->toEqual(new ReceiverType([Post::class], unsaved: true))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->make()'), postScope()))
+            ->toEqual(new ReceiverType([Comment::class], unsaved: true))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
+            ->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+    });
+
+    test('a static-syntax call the subject lacks reads as $this->m(), as __call() runs it', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+
+        expect($resolver->resolve(receiverExpr('static::fresh()'), postScope()))
+            ->toEqual($resolver->resolve(receiverExpr('$this->fresh()'), postScope()))
+            ->and($resolver->resolve(receiverExpr('static::fresh()'), postScope())?->classes)->toBe([Post::class])
+            ->and($resolver->resolve(receiverExpr('$this::fresh()'), postScope())?->classes)->toBe([Post::class]);
+    });
+
     test('a ternary or coalesce holds every non-null arm, and declines on any unresolved arm', function () {
         $resolver = resolve(ReceiverClassResolver::class);
 

@@ -26,6 +26,7 @@ class MacroShadowingResource extends JsonResource
             'label_this_static' => $this::label(),
             'label_self' => self::label(),
             'moment_length' => $this->moment()->length(),
+            'moment_length_static' => static::moment()->length(),
             'shout' => $this->shout(),
             'typed_shout' => $this->typedShout(),
             'badge' => $this->badge(),

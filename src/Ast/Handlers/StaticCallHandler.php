@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -165,9 +166,10 @@ final class StaticCallHandler implements ExpressionHandler
     /**
      * Analyze a static method call like EnumResource::make() or SomeResource::make/collection().
      *
-     * @return ValueExpressionResult
+     * @return ValueExpressionResult|null null where the subject's `__call()` answers the call and types nothing, so
+     *                                    ReceiverMethodCallHandler reads it as it reads `$this->m()`
      */
-    private function analyzeStaticCall(StaticCall $call, AnalysisScope $scope, ExpressionEngine $engine): array
+    private function analyzeStaticCall(StaticCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $result = ValueResult::unknown();
         $className = $this->resolveStaticCallClassName($call);
@@ -183,9 +185,8 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         // In an instance method PHP sends a static-syntax call to a method the subject lacks to `__call()`.
-        if ($className === $scope->subjectReflection->getName() && ! $scope->subjectReflection->hasMethod($methodName)) {
-            return resolve(SubjectMethodTypeResolver::class)
-                ->resolve($scope, $methodName, new CallSite($call, $scope, $engine)) ?? $result;
+        if (resolve(ReceiverClassResolver::class)->sendsToSubjectCall($call, $scope)) {
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $methodName, new CallSite($call, $scope, $engine));
         }
 
         // EnumResource::make($this->prop)

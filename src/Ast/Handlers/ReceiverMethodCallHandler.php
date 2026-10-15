@@ -54,7 +54,11 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $onThis = ! $expr instanceof StaticCall && $expr->var instanceof Variable && $expr->var->name === 'this';
+
+        // PHP sends a static-syntax call the subject lacks to `__call()`, so it reads as `$this->m()` does.
+        $onThis = $expr instanceof StaticCall
+            ? $receivers->sendsToSubjectCall($expr, $scope)
+            : $expr->var instanceof Variable && $expr->var->name === 'this';
 
         // A macro runs before anything the subject forwards to; `$this` is never null, so `?->` adds no `| null`.
         if ($onThis && resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $expr->name->toString())) {
@@ -62,8 +66,8 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
         }
 
         $receiver = match (true) {
-            $expr instanceof StaticCall => $receivers->resolveStaticReceiver($expr, $scope),
             $onThis => $receivers->forwardedThisReceiver($expr->name->toString(), $scope) ?? $this->filteredModelSubject($expr, $scope),
+            $expr instanceof StaticCall => $receivers->resolveStaticReceiver($expr, $scope),
             default => $receivers->resolve($expr->var, $scope),
         };
 
@@ -72,7 +76,7 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
             return null;
         }
 
-        $fromInside = $expr instanceof StaticCall && $expr->class instanceof Name && $expr->class->isSpecialClassName();
+        $fromInside = ! $onThis && $expr instanceof StaticCall && $expr->class instanceof Name && $expr->class->isSpecialClassName();
         $site = new CallSite($expr, $scope, $engine);
         $result = resolve(ReceiverMethodReturnResolver::class)
             ->resolve($receiver, $expr->name->toString(), $scope, $fromInside, $expr, $site);

@@ -11,7 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -19,8 +22,11 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -40,6 +46,7 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use Throwable;
 
 /**
  * Answers which PHP class(es) an expression holds.
@@ -72,6 +79,30 @@ final class ReceiverClassResolver
     /** The Model methods whose result is a copy no row backs yet. */
     private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
 
+    /** The query, relation and factory methods whose model may be one no row backs yet. */
+    private const array UNSAVED_QUERY_MODELS = [
+        'make',
+        'makeOne',
+        'newModelInstance',
+        'firstOrNew',
+        'getModel',
+        'newModel',
+        'newRelatedInstanceFor',
+    ];
+
+    /** The factory methods that build one model while no count is set, though each declares a collection too. */
+    private const array FACTORY_MODELS = ['make', 'makeOne', 'create', 'createOne'];
+
+    /** The factory methods that set a count, so make() and create() build a collection. */
+    private const array FACTORY_COUNTS = ['count', 'times', 'forEachSequence'];
+
+    /** The docblock template each query, relation and factory class binds to the model it builds. */
+    private const array QUERY_MODEL_TEMPLATES = [
+        Builder::class => 'TModel',
+        Relation::class => 'TRelatedModel',
+        Factory::class => 'TModel',
+    ];
+
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
      */
@@ -96,12 +127,19 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve the classes a static call returns: `X::m()`, `self::`/`static::`/`parent::`, or `$expr::m()`.
+     * Resolve the classes a static call returns: `X::m()`, `self::`/`static::`/`parent::`, or `$expr::m()`; one the
+     * subject's `__call()` answers reads as `$this->m()`, and one a model lacks runs on a new query of the model.
      */
     public function resolveStaticClass(StaticCall $call, AnalysisScope $scope): ?ReceiverType
     {
         if (! $call->name instanceof Identifier || $call->isFirstClassCallable()) {
             return null;
+        }
+
+        $method = $call->name->toString();
+
+        if ($this->sendsToSubjectCall($call, $scope)) {
+            return $this->fromThisMethodCall($method, $scope);
         }
 
         $receiver = $this->resolveStaticReceiver($call, $scope);
@@ -110,18 +148,38 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $method = $call->name->toString();
         $fromInside = $call->class instanceof Name && $call->class->isSpecialClassName();
 
         return $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
-                    ? $this->typeOf($this->returnClasses($class, $method))
-                    : null,
+                    ? $this->modelFactory($class, $method, $call) ?? $this->returned($class, $method)
+                    : $this->forwardedStaticQuery($class, $method),
                 $receiver->classes,
             ),
             $receiver->shortCircuits,
         );
+    }
+
+    /**
+     * Whether PHP sends a static-syntax call to the subject's `__call()`, where a macro or the resource proxy answers
+     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the subject lacks.
+     */
+    public function sendsToSubjectCall(StaticCall $call, AnalysisScope $scope): bool
+    {
+        $subject = $scope->subjectReflection;
+
+        if (! $call->name instanceof Identifier || $subject->hasMethod($call->name->toString())) {
+            return false;
+        }
+
+        $class = $call->class;
+        $onSubject = $class instanceof Variable
+            ? $class->name === 'this'
+            : $class instanceof Name && $this->subjectClassName($class, $subject) === $subject->getName();
+
+        return $onSubject
+            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($subject, $call->name->toString()));
     }
 
     /**
@@ -611,7 +669,7 @@ final class ReceiverClassResolver
 
         $shortCircuits = $receiver->shortCircuits || $call instanceof NullsafeMethodCall;
 
-        if ($method === 'getRelated' && $receiver->relatedModel !== null) {
+        if ($method === 'getRelated' && $receiver->relatedModel !== null && $receiver->within([Relation::class])) {
             return ReceiverType::of($receiver->relatedModel, $shortCircuits);
         }
 
@@ -628,7 +686,10 @@ final class ReceiverClassResolver
         }
 
         return $this->merge(
-            array_map(fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false), $receiver->classes),
+            array_map(
+                fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false, $receiver->relatedModel),
+                $receiver->classes,
+            ),
             $shortCircuits,
         );
     }
@@ -800,7 +861,7 @@ final class ReceiverClassResolver
         // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
         return $classes === []
             ? $arm
-            : new ReceiverType(array_values(array_unique($classes)), $arm->shortCircuits, $arm->elementModel, $arm->relatedModel, $arm->unsaved);
+            : $arm->withClasses(array_values(array_unique($classes)));
     }
 
     /**
@@ -969,11 +1030,18 @@ final class ReceiverClassResolver
      * What a method call returns on one class; a relation method on a model also remembers its related model.
      *
      * @param  bool  $fromInside  the call is on `$this`, so a non-public method is reachable
+     * @param  class-string<Model>|null  $queried  the model the receiver, a query, relation or factory, builds
      */
-    private function memberMethod(string $class, string $method, bool $fromInside): ?ReceiverType
+    private function memberMethod(string $class, string $method, bool $fromInside, ?string $queried = null): ?ReceiverType
     {
         if (! $this->isCallable($class, $method, $fromInside)) {
             return null;
+        }
+
+        $built = $queried === null ? null : $this->queriedModel($class, $method, $queried);
+
+        if ($built !== null) {
+            return $built;
         }
 
         $related = is_a($class, Model::class, true)
@@ -984,7 +1052,114 @@ final class ReceiverClassResolver
             return new ReceiverType($this->returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
         }
 
-        return $this->typeOf($this->returnClasses($class, $method));
+        return $this->returned($class, $method);
+    }
+
+    /**
+     * What a static call a concrete model does not declare returns: Model::__callStatic() runs it on a new query.
+     */
+    private function forwardedStaticQuery(string $class, string $method): ?ReceiverType
+    {
+        if (! is_subclass_of($class, Model::class) || method_exists($class, $method) || new ReflectionClass($class)->isAbstract()) {
+            return null;
+        }
+
+        return $this->memberMethod(Builder::class, $method, false, $class);
+    }
+
+    /**
+     * What a method returns on one class, remembering the model a model's own query builds, as `query()`'s
+     * `Builder<static>` does.
+     */
+    private function returned(string $class, string $method): ?ReceiverType
+    {
+        $classes = $this->returnClasses($class, $method);
+
+        if ($classes !== [Builder::class] || ! is_a($class, Model::class, true)) {
+            return $this->typeOf($classes);
+        }
+
+        $declared = $this->declaredReturn($class, $method);
+        $ownQuery = $declared !== null && preg_match('/^[^|<>]+<(?:static|\$this)>$/', $declared) === 1;
+
+        return new ReceiverType($classes, relatedModel: $ownQuery ? $class : null);
+    }
+
+    /**
+     * What a query, relation or factory method returns for the model it builds: that model where the docblock returns
+     * the class's model template, as Builder::make()'s `TModel` does, or the same query where it returns `$this`.
+     *
+     * @param  class-string<Model>  $queried
+     */
+    private function queriedModel(string $class, string $method, string $queried): ?ReceiverType
+    {
+        $template = array_find(
+            self::QUERY_MODEL_TEMPLATES,
+            fn (string $name, string $queryClass): bool => is_a($class, $queryClass, true),
+        );
+        $factory = is_a($class, Factory::class, true);
+
+        if ($template === null || ($factory && in_array($method, self::FACTORY_COUNTS, true))) {
+            return null;
+        }
+
+        if ($this->declaredReturn($class, $method) === $template || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
+            $model = ReceiverType::of($queried);
+
+            return in_array($method, self::UNSAVED_QUERY_MODELS, true) ? $model->asUnsaved() : $model;
+        }
+
+        $classes = $this->returnClasses($class, $method);
+
+        return $classes === [$class] ? new ReceiverType($classes, relatedModel: $queried) : null;
+    }
+
+    /**
+     * The factory `X::factory()` returns, remembering X; a count argument makes it build a collection, so none.
+     *
+     * Asks the model itself, as newFactory(), `#[UseFactory]` or the naming convention decides the class; a factory
+     * that cannot be built, as without Faker, declines.
+     */
+    private function modelFactory(string $class, string $method, StaticCall $call): ?ReceiverType
+    {
+        if ($method !== 'factory' || ! is_subclass_of($class, Model::class) || ! in_array(HasFactory::class, class_uses_recursive($class), true)) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod($class, $method));
+        $count = $arguments->named('count')?->value;
+
+        // Laravel reads an array or callable first argument as state, not a count.
+        if ($arguments->hasUnpack()
+            || ($count !== null && ! $count instanceof Array_ && ! $count instanceof ClosureExpr && ! $count instanceof ArrowFunction)
+        ) {
+            return null;
+        }
+
+        $factory = [$class, $method];
+
+        try {
+            $built = is_callable($factory) ? $factory() : null;
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $built instanceof Factory) {
+            return null;
+        }
+
+        DependencyRecorder::recordClass($built::class);
+
+        return new ReceiverType([$built::class], relatedModel: $class);
+    }
+
+    /**
+     * A method's `@return` docblock type as written, or null when it has none.
+     */
+    private function declaredReturn(string $class, string $method): ?string
+    {
+        return resolve(PropertyDocblockTypeReader::class)
+            ->extractReturnType((string) new ReflectionMethod($class, $method)->getDocComment());
     }
 
     /**
@@ -1266,7 +1441,7 @@ final class ReceiverClassResolver
     /**
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
-     * An element or related model survives only when every part agrees on it.
+     * An element or related model, and a resource collection's items, survive only when every part agrees on them.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -1275,6 +1450,8 @@ final class ReceiverClassResolver
         $classes = [];
         $elementModels = [];
         $relatedModels = [];
+        $elementResources = [];
+        $collectedItems = true;
         $unsaved = false;
 
         foreach ($types as $type) {
@@ -1285,6 +1462,8 @@ final class ReceiverClassResolver
             $classes = [...$classes, ...$type->classes];
             $elementModels[$type->elementModel ?? ''] = $type->elementModel;
             $relatedModels[$type->relatedModel ?? ''] = $type->relatedModel;
+            $elementResources[$type->elementResource ?? ''] = $type->elementResource;
+            $collectedItems = $collectedItems && $type->collectedItems;
             $unsaved = $unsaved || $type->unsaved;
         }
 
@@ -1293,11 +1472,13 @@ final class ReceiverClassResolver
         }
 
         return new ReceiverType(
-            array_values(array_unique($classes)),
-            $shortCircuits,
-            count($elementModels) === 1 ? reset($elementModels) : null,
-            count($relatedModels) === 1 ? reset($relatedModels) : null,
-            $unsaved,
+            classes: array_values(array_unique($classes)),
+            shortCircuits: $shortCircuits,
+            elementModel: count($elementModels) === 1 ? reset($elementModels) : null,
+            relatedModel: count($relatedModels) === 1 ? reset($relatedModels) : null,
+            unsaved: $unsaved,
+            collectedItems: $collectedItems,
+            elementResource: count($elementResources) === 1 ? reset($elementResources) : null,
         );
     }
 
