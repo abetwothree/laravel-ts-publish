@@ -274,14 +274,11 @@ final class ToResourceHandler implements ExpressionHandler
     private function resolveResourceCollectionForModel(string $modelFqcn): ?array
     {
         // Vendor returns `new $useResourceCollection($this)` unconditionally once the attribute
-        // names an existing class — it never falls through to #[UseResource] or the naming
-        // convention, even when the element type can't be determined here. Match that: stop hard.
+        // names an existing class — it never falls through to #[UseResource] or the naming convention.
         $collectionFqcn = $this->resolveUseResourceCollectionAttribute($modelFqcn);
 
         if ($collectionFqcn !== null) {
-            return ResourceCollections::collectedElement(new ReflectionClass($collectionFqcn)) === null
-                ? null
-                : ['collection' => $collectionFqcn, 'resource' => null];
+            return ['collection' => $collectionFqcn, 'resource' => null];
         }
 
         $resourceFqcn = $this->resolveUseResourceAttribute($modelFqcn);

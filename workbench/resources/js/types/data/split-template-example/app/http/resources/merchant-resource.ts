@@ -1,5 +1,5 @@
 import type { RoleType } from '../../enums';
-import type { EventLogResource, RegistrarResource, SupplierCollection, UserCollection, UserResource } from '.';
+import type { EventLogResource, RegistrarGroupCollection, RegistrarResource, SupplierCollection, UserCollection, UserResource } from '.';
 
 /**
  * Exercises Model::toResource() / Collection::toResourceCollection() resolution: naming
@@ -30,7 +30,7 @@ export interface MerchantResource
     filing?: unknown;
     alert?: unknown;
     registrar?: RegistrarResource | null;
-    registrars?: unknown;
+    registrars?: RegistrarGroupCollection;
     suppliers?: SupplierCollection;
     unpublished_guess?: unknown;
     unpublished_guess_collection?: unknown;

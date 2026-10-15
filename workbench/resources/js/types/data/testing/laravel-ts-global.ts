@@ -3965,7 +3965,7 @@ declare global {
             filing?: unknown;
             alert?: unknown;
             registrar?: RegistrarResource | null;
-            registrars?: unknown;
+            registrars?: RegistrarGroupCollection;
             suppliers?: SupplierCollection;
             unpublished_guess?: unknown;
             unpublished_guess_collection?: unknown;

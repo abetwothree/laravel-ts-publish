@@ -15011,7 +15011,7 @@
                 },
                 {
                     "name": "registrars",
-                    "type": "unknown",
+                    "type": "RegistrarGroupCollection",
                     "optional": true
                 },
                 {

@@ -214,6 +214,7 @@ use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
+use Workbench\App\Http\Resources\RegistrarGroupCollection;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ReleaseColumnsResource;
@@ -6162,13 +6163,13 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
             ->and($this->nested)->toHaveKey('suppliers', SupplierCollection::class);
     });
 
-    test('toResourceCollection() degrades to unknown when #[UseResourceCollection]\'s element is undeterminable, without falling through', function () {
+    test('toResourceCollection() publishes the body of the #[UseResourceCollection] class naming no resource, without falling through', function () {
         // RegistrarResource exists and would be the WRONG fallback element type if the matched
         // #[UseResourceCollection] attribute fell through instead of stopping hard.
         expect(class_exists(RegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrars']['type'])->toBe('unknown')
-            ->and($this->nested)->not->toHaveKey('registrars');
+        expect($this->props['registrars']['type'])->toBe('RegistrarGroupCollection')
+            ->and($this->nested)->toHaveKey('registrars', RegistrarGroupCollection::class);
     })->skip(
         ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResourceCollection'),
         'UseResourceCollection attribute requires Laravel 12.29+',

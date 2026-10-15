@@ -48,7 +48,7 @@ class MerchantResource extends JsonResource
             'filing' => $this->whenLoaded('filing', fn ($m) => $m->toResource()),
             'alert' => $this->whenLoaded('alert', fn ($m) => $m->toResource()),
             'registrar' => $this->whenLoaded('registrar', fn ($m) => $m->toResource()),
-            // Negative: registrars does not have a resource class, so the output is unknown
+            // #[UseResourceCollection] names a collection with its own toArray() and no resource: its type, not unknown
             'registrars' => $this->whenLoaded('registrars', fn ($rows) => $rows->toResourceCollection()),
             'suppliers' => $this->whenLoaded('suppliers', fn ($rows) => $rows->toResourceCollection()),
             // Negative: AttachmentResource / AttachmentCollection exist but are #[TsExclude]d, so
