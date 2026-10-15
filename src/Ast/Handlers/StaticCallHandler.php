@@ -403,7 +403,7 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze a `$this->resource::staticMethod()` call against the wrapped class, then the @mixin model.
+     * Analyze a `$this->resource::staticMethod()` call against the first class `$this->resource` holds that declares it.
      *
      * @return ValueExpressionResult
      */

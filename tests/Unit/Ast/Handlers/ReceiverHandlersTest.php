@@ -28,14 +28,20 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRawPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyRelationPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
@@ -1363,7 +1369,7 @@ describe('$this->resource->m() publishes what the bare $this->m() does', functio
 describe('a forwarded model method reads the same in every spelling', function () {
     $spellings = ['$this->%s()', '$this::%s()', '$this->resource::%s()', '$this->resource->%s()'];
 
-    test('the wrapped class answers when it declares the method, else the model does', function (string $method, string $type) use ($spellings) {
+    test('the wrapped class answers when it declares the method', function (string $method, string $type) use ($spellings) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
 
         foreach ($spellings as $spelling) {
@@ -1372,16 +1378,47 @@ describe('a forwarded model method reads the same in every spelling', function (
     })->with([
         ['onBoth', 'number'],
         ['onWrapped', 'boolean'],
-        ['onModel', 'string'],
     ]);
 
-    test('a protected method declines, as PHP sends it to __call', function (string $method) use ($spellings) {
+    // The wrapped class an `@var` names is final, so the model's onModel() never answers: Laravel throws
+    // BadMethodCallException.
+    test('a protected method, or one the wrapped class lacks, is unknown, as the forwarded call throws', function (string $method) use ($spellings) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ForwardedMethodResource::class), ForwardedMethodPost::class);
 
         foreach ($spellings as $spelling) {
             expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe('unknown');
         }
-    })->with(['guarded', 'hiddenOnWrapped']);
+    })->with(['guarded', 'hiddenOnWrapped', 'onModel']);
+
+    // The model declares each method public and typed. A protected method throws Error, which forwardCallTo() rethrows.
+    test('a wrapped method that types nothing never borrows the model\'s typed namesake', function (string $resource, string $method) use ($spellings) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), NamesakeInvoice::class);
+
+        foreach ($spellings as $spelling) {
+            expect($analyzer->resolve(receiverHandlerExpr(sprintf($spelling, $method)))['type'])->toBe('unknown');
+        }
+    })->with([
+        'a protected method' => [NamesakeProtectedResource::class, 'isFirst'],
+        'a mixed method whose body types nothing' => [NamesakeWrappedResource::class, 'opaque'],
+    ]);
+});
+
+describe('the method declaration PHP runs is final', function () {
+    test('the subject\'s own method, else the wrapped class\'s, types the call, else it publishes unknown', function (string $resource, string $key, string $type) {
+        expect(collect(pipelineAnalyzer($resource)->analyze()->properties)->keyBy('name')[$key]['type'])->toBe($type);
+    })->with([
+        [NamesakeWrappedResource::class, 'status', 'string'],
+        [NamesakeWrappedResource::class, 'status_via_resource', 'string'],
+        [NamesakeWrappedResource::class, 'kind', 'string'],
+        [NamesakeWrappedResource::class, 'reference', 'string'],
+        [NamesakeWrappedResource::class, 'total', 'number'],
+        [NamesakeWrappedResource::class, 'opaque', 'unknown'],
+        [NamesakeWrappedResource::class, 'opaque_via_resource', 'unknown'],
+        [NamesakeProtectedResource::class, 'first', 'unknown'],
+        [NamesakeProtectedResource::class, 'first_via_resource', 'unknown'],
+        [NamesakeInvoiceResource::class, 'opaque', 'unknown'],
+        [NamesakeInvoiceResource::class, 'untyped_opaque', 'unknown'],
+    ]);
 });
 
 // Every API resource has the proxy, model or not: PHP reads the declared JsonResource::$resource before any __get().
@@ -1455,6 +1492,23 @@ describe('the resource proxy', function () {
             ->toBe(['type' => 'Post', 'optional' => true, 'modelFqcn' => Post::class]);
     });
 
+    test('a model-backed resource reads the class it redeclares $resource as, whole and through every forwarded member', function (string $resource, string $model, string $php, string $type) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass($resource), $model);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        [MediaTypeResource::class, Post::class, '$this->resource', 'MediaTypeType | null'],
+        [MediaTypeResource::class, Post::class, '$this->maxSizeMb()', 'number'],
+        [MediaTypeResource::class, Post::class, '$this::maxSizeMb()', 'number'],
+        [MediaTypeResource::class, Post::class, '$this->resource->maxSizeMb()', 'number'],
+        [MediaTypeResource::class, Post::class, '$this->resource::mimePrefixes()', '{ image: string; video: string; audio: string; document: string; archive: string }'],
+        // Post's commentsCount() never answers: MediaType has none, so Laravel throws.
+        [MediaTypeResource::class, Post::class, '$this->commentsCount()', 'unknown'],
+        [NamesakeWrappedResource::class, NamesakeInvoice::class, '$this->resource', '{ code: number }'],
+        [NamesakeWrappedResource::class, NamesakeInvoice::class, '$this->resource->code', 'number'],
+        [NamesakeWrappedResource::class, NamesakeInvoice::class, '$this->status()', 'string'],
+    ]);
+
     test('a model-less resource reads its redeclared $resource as before', function (string $php, string $type) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MediaTypeResource::class));
 
@@ -1498,6 +1552,28 @@ describe('a ResourceCollection holds its items, never the collected model', func
         ['$this->getKey()', 'unknown'],
         ['$this->resource->pluck(\'title\')', 'unknown'],
         ['$this->collection', 'ProxyCollectedPostResource[]'],
+    ]);
+
+    // A guard holds only inside its branch, so `page`, read past it, keeps every class the items may arrive in.
+    test('a guard on a paginator keeps the items answer', function (string $key, string $type) {
+        expect(collect(pipelineAnalyzer(ProxyGuardedPageCollection::class)->analyze()->properties)->keyBy('name')[$key]['type'])->toBe($type);
+    })->with([
+        ['total', 'number'],
+        ['total_via_resource', 'number'],
+        ['page_items', 'ProxyCollectedPostResource[]'],
+        ['page', 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>'],
+    ]);
+
+    test('a collection that redeclares $resource holds its items in the class it names, whole and through every member', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyDeclaredPageCollection::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource', 'LengthAwarePaginator<ProxyCollectedPostResource>'],
+        ['$this->resource->toArray()', 'LengthAwarePaginator<ProxyCollectedPostResource>'],
+        ['$this->total()', 'number'],
+        ['$this->resource->total()', 'number'],
+        ['$this->first()', 'ProxyCollectedPostResource | null'],
+        ['$this->resource->first()', 'ProxyCollectedPostResource | null'],
+        ['$this->items()', 'ProxyCollectedPostResource[]'],
     ]);
 
     test('a collection that collects no resource holds unknown items', function () {

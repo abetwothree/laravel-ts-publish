@@ -33,6 +33,14 @@ and it comes back.
 union arm it is never left out ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms)). Type
 the element with a return type or a `@return` docblock, or the key with `#[TsCasts]`, and the list takes its type.
 
+### A method whose declaration and body type nothing publishes `unknown`, even when a model or wrapped class declares a typed namesake
+
+`'label' => $this->label()` publishes `unknown` when the resource's own `label(): mixed` returns a value no rule types,
+though the backing model declares `label(): string`. PHP runs the resource's method, so the model's type is only right
+when the two bodies agree. The same holds for the class an `@var` on `public $resource` names: the model never answers
+for it, and a method that class lacks publishes `unknown`, since Laravel throws. Give the method a return type or a
+`@return` docblock, and the call takes it.
+
 ### `config()` on an absent key with no default types as null
 
 `config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A

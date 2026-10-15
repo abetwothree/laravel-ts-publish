@@ -15,7 +15,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -121,12 +123,12 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
-        // unreachable: the value is a collection's items, the model the subject wraps, else what it declares it holds.
+        // unreachable: the value is what the proxy holds, a collection's items, the backing model or a redeclared class.
         if ($this->isProxyFetch($expr, $scope)) {
-            $items = $this->isResourceCollection($scope) ? $scope->proxyReceiver() : null;
-            $held = $items !== null
-                ? resolve(ReceiverMethodReturnResolver::class)->heldItems($items, $scope)
-                : $this->proxiedModel($scope) ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
+            $proxy = resolve(ReceiverClassResolver::class)->proxyHeld($scope);
+            $held = ($proxy === null ? null : resolve(ReceiverMethodReturnResolver::class)->heldItems($proxy, $scope))
+                ?? $this->proxiedModel($proxy, $scope)
+                ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName);
 
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
         }
@@ -173,15 +175,16 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * The model the proxy holds, as the model's own interface, or null when it holds no model.
+     * The backing model as the model's own interface when the proxy holds it; null when it holds anything else, which
+     * publishes as the subject declares it.
      *
      * @return ValueExpressionResult|null
      */
-    private function proxiedModel(AnalysisScope $scope): ?array
+    private function proxiedModel(?ReceiverType $proxy, AnalysisScope $scope): ?array
     {
         $model = $scope->forwardsUndeclaredMembersTo;
 
-        return $model !== null && is_a($model, Model::class, true)
+        return $model !== null && $proxy?->classes === [$model] && is_a($model, Model::class, true)
             ? [...ValueResult::unknown(), 'type' => class_basename($model), 'modelFqcn' => $model]
             : null;
     }
