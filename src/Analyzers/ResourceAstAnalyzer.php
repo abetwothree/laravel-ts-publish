@@ -46,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -191,9 +192,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     private function runsFrameworkCollectionToArray(): bool
     {
-        return $this->methodName === 'toArray'
-            && $this->isResourceCollection($this->scope)
-            && $this->scope->subjectReflection->getMethod('toArray')->getDeclaringClass()->getName() === ResourceCollection::class;
+        return $this->methodName === 'toArray' && ResourceCollections::runsFrameworkToArray($this->scope->subjectReflection);
     }
 
     /**
@@ -1223,8 +1222,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Build a ResourceAnalysis for a ResourceCollection subclass that has no toArray() method.
      *
-     * A non-empty $wrap key produces `{ data: R[] }`, keyed as `Record<string, R>` when the collection
-     * preserves keys; a null $wrap makes that same element type the flatTypeAlias directly.
+     * The live wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the
+     * collection preserves keys; with no key that same list is the flatTypeAlias directly.
      */
     protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
     {
@@ -1234,24 +1233,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return new ResourceAnalysis;
         }
 
-        // JsonResource declares `public static $wrap = 'data'`, so reflection always finds a value; an
-        // inherited `$wrap = null` is as deliberate as an own one.
-        /** @var string|null $wrapKey */
-        $wrapKey = $this->scope->subjectReflection->hasProperty('wrap')
-            ? $this->scope->subjectReflection->getProperty('wrap')->getDefaultValue()
-            : 'data';
+        /** @var class-string<ResourceCollection> $subject */
+        $subject = $this->scope->subjectReflection->getName();
+        $wrapKey = ResourceWrapping::key($subject);
 
         $elementType = ResourceCollections::listType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
 
-        if ($wrapKey === null || $wrapKey === '') {
+        if ($wrapKey === null) {
             return new ResourceAnalysis(flatTypeAlias: $elementType, flatTypeAliasFqcn: $singular);
         }
 
-        $key = $wrapKey ? $wrapKey : 'data';
-
         return new ResourceAnalysis(
             properties: [[
-                'name' => $key,
+                'name' => $wrapKey,
                 'type' => $elementType,
                 'optional' => false,
                 'description' => '',

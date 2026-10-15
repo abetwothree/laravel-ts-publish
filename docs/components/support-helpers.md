@@ -21,6 +21,9 @@ The helpers and the test that pins them live in these files:
 - [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
   re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
   resource publisher and the enum-value warning.
+- [`Support\ResourceWrapping`](../../src/Support/ResourceWrapping.php): the key an API resource response wraps its
+  body in, read from the live `$wrap` of the class Laravel instantiates, and each slot the booted app changed. Static
+  and `@internal`, read by the collection analysis, the Inertia collection props and the cache header.
 - [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
   `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
   payload. Static and `@internal`.
@@ -43,6 +46,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does `json_encode()` write a string for this class? | `StringSerialization` |
 | Does an API resource response re-index this array into a list? | `ResourceReindexing` |
 | What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
+| Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
 | Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |

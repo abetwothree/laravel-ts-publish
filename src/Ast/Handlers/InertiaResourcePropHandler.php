@@ -11,7 +11,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -22,9 +25,9 @@ use PhpParser\Node\Name;
 use ReflectionClass;
 
 /**
- * A resource handed straight to `Inertia::render()` is serialized whole, so its prop type is the
- * collection's own JSON shape, not the element array a nested resource key flattens to. What the
- * resource wraps decides the rest: a paginator adds the pagination members, a plain collection does not.
+ * A resource handed straight to `Inertia::render()` is serialized whole, so its prop type is the collection's own JSON
+ * shape, not the element array a nested resource key flattens to. What the resource wraps decides the rest: a paginator
+ * adds the pagination members, a plain collection does not, and the live wrap key places the items.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -87,29 +90,30 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             ];
         }
 
-        // A flat collection ($wrap = null) IS the paginator's data, so it becomes the paginator
-        // itself over its singular resource; a wrapping one keeps its own type beside the members.
-        $defaults = $reflection->getDefaultProperties();
+        $wrapKey = ResourceWrapping::key($className);
 
-        if (! array_key_exists('wrap', $defaults) || $defaults['wrap'] !== null) {
-            return [
+        // A body-less collection without a wrap key IS the paginator's data, so it becomes the paginator itself.
+        if ($wrapKey === null && ResourceCollections::runsFrameworkToArray($reflection)) {
+            $singular = ResourceCollections::collectedResource($className);
+
+            return $singular === null ? null : [
                 ...ValueResult::unknown(),
-                'type' => TsNaming::resourceTypeName($className).' & ResourcePagination',
+                'type' => $this->paginatedResourceType($singular, $reflection, 'data'),
                 'optional' => $optional,
-                'resourceFqcn' => $className,
-                'customImports' => ['@tolki/types' => ['ResourcePagination']],
+                'resourceFqcn' => $singular,
+                'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
             ];
         }
 
-        $singular = ResourceCollections::collectedResource($className);
-
-        if ($singular === null) {
-            return null;
-        }
+        // Without a wrap key, Laravel nests a body under `data` beside the pagination members.
+        $name = TsNaming::resourceTypeName($className);
 
         return [
-            ...$this->paginatedResourceType($singular, $reflection),
+            ...ValueResult::unknown(),
+            'type' => ($wrapKey === null ? '{ data: '.$name.' }' : $name).' & ResourcePagination',
             'optional' => $optional,
+            'resourceFqcn' => $className,
+            'customImports' => ['@tolki/types' => ['ResourcePagination']],
         ];
     }
 
@@ -136,43 +140,60 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $reflection = self::reflect($className);
         $optional = $this->hasConditionalArgument($expr, $className);
 
+        // The anonymous collection wraps by its own `$wrap`, the slot every class shares, never the collected one's.
+        $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
+
         if ($this->firstArgumentIsPaginator($this->resourcePayloadArguments($expr, $className)->at(0), $engine)) {
             return [
-                ...$this->paginatedResourceType($className, $reflection),
+                ...ValueResult::unknown(),
+                'type' => $this->paginatedResourceType($className, $reflection, $wrapKey ?? 'data'),
                 'optional' => $optional,
+                'resourceFqcn' => $className,
+                'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
             ];
         }
 
+        $name = TsNaming::resourceTypeName($className);
+
+        if ($wrapKey === 'data') {
+            return [
+                ...ValueResult::unknown(),
+                'type' => 'AnonymousResourceCollection<'.$name.'>',
+                'optional' => $optional,
+                'resourceFqcn' => $className,
+                'customImports' => ['@tolki/types' => ['AnonymousResourceCollection']],
+            ];
+        }
+
+        $items = ResourceCollections::listType($name, $reflection);
+
         return [
             ...ValueResult::unknown(),
-            'type' => 'AnonymousResourceCollection<'.TsNaming::resourceTypeName($className).'>',
+            'type' => $wrapKey === null ? $items : '{ '.JsEmitter::validJsObjectKey($wrapKey).': '.$items.' }',
             'optional' => $optional,
             'resourceFqcn' => $className,
-            'customImports' => ['@tolki/types' => ['AnonymousResourceCollection']],
         ];
     }
 
     /**
-     * The paginator type over a singular resource, keyed when the reflected class preserves keys.
+     * The paginator response over a singular resource, its items under the key the response nests them in and keyed
+     * when the reflected class preserves keys.
+     *
+     * Laravel falls back to `data` for a paginated response without a wrap key, so a caller passes `data` then.
      *
      * @param  class-string  $singular
      * @param  ReflectionClass<object>  $reflection  the class whose preserve-keys state applies
-     * @return ValueExpressionResult
      */
-    private function paginatedResourceType(string $singular, ReflectionClass $reflection): array
+    private function paginatedResourceType(string $singular, ReflectionClass $reflection, string $itemsKey): string
     {
         $name = TsNaming::resourceTypeName($singular);
 
-        $type = ResourceCollections::preservesKeys($reflection)
-            ? "Omit<JsonResourcePaginator<{$name}>, 'data'> & { data: Record<string, {$name}> }"
-            : 'JsonResourcePaginator<'.$name.'>';
+        if ($itemsKey === 'data' && ! ResourceCollections::preservesKeys($reflection)) {
+            return 'JsonResourcePaginator<'.$name.'>';
+        }
 
-        return [
-            ...ValueResult::unknown(),
-            'type' => $type,
-            'resourceFqcn' => $singular,
-            'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
-        ];
+        return "Omit<JsonResourcePaginator<{$name}>, 'data'> & { "
+            .JsEmitter::validJsObjectKey($itemsKey).': '.ResourceCollections::listType($name, $reflection).' }';
     }
 
     /**

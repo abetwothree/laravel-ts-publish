@@ -538,9 +538,9 @@ Three consumers rewrite a `MethodAnalysis`'s channels before importing, so they 
 spell two same-named tokens runs `ImportNameRegistry` over the result. See
 [ImportNameRegistry](import-name-registry.md).
 
-A `$wrap = null` collection comes back from `analyze()` with all three fields empty, its singular resource's import
-included. Its whole answer lives in `MethodAnalysis::$flatTypeAlias` and `$flatTypeAliasFqcn`, which neither
-`AnalysisImports` nor `AnalysisComposer` reads.
+A body-less collection whose live wrap key is null or empty comes back from `analyze()` with all three fields empty,
+its singular resource's import included. Its whole answer lives in `MethodAnalysis::$flatTypeAlias` and
+`$flatTypeAliasFqcn`, which neither `AnalysisImports` nor `AnalysisComposer` reads.
 
 `tests/Feature/AnalyzeApiProbeTest.php` renders `analyze()` results into
 `workbench/resources/js/types/data/testing/analysis-probe/`, so the

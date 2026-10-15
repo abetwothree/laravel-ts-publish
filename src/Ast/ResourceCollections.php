@@ -6,12 +6,13 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
 /**
  * A resource collection's facts, read off the class Laravel instantiates: the API resource it collects, whether it
- * keeps its source keys, and the list its items publish as. Static so the publisher's re-index can ask of a class it
- * never analyzes.
+ * keeps its source keys, the list its items publish as, and whether its body is Laravel's own. Static so the
+ * publisher's re-index can ask of a class it never analyzes.
  *
  * @internal
  */
@@ -104,6 +105,19 @@ final class ResourceCollections
     public static function listType(string $elementType, ReflectionClass $collection): string
     {
         return ValueResult::collectionListType($elementType, self::preservesKeys($collection));
+    }
+
+    /**
+     * Whether a collection runs `ResourceCollection`'s own `toArray()`, which neither it nor an ancestor overrides.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $collection
+     */
+    public static function runsFrameworkToArray(ReflectionClass $collection): bool
+    {
+        return $collection->hasMethod('toArray')
+            && $collection->getMethod('toArray')->getDeclaringClass()->getName() === ResourceCollection::class;
     }
 
     /**

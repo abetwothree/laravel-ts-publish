@@ -98,8 +98,8 @@ final class AstEngine
     }
 
     /**
-     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
-     * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
+     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs, except for
+     * a collection whose live wrap key is null or empty, whose whole answer is MethodAnalysis::$flatTypeAlias.
      *
      * The three fields agree with each other: same-basename imports are aliased apart and the
      * property types spell the aliases, an `EnumResource::make()` property is already wrapped as

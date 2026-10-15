@@ -335,7 +335,7 @@ class ResourceTransformer extends CoreTransformer
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
 
-        // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
+        // A body-less collection whose live wrap key is null or empty emits an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
             $this->typeAlias = $analysis->flatTypeAlias;
 

@@ -104,9 +104,10 @@ unimported class, which `tsc` rejects with TS2304.
 Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`. Laravel's
 `collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
 own name, and `runsFrameworkCollectionToArray()` lets `LeafCollection` resolve that before its walk reaches
-`MidCollection`. It inherits `$wrap`, `null` included, because `buildCollectionDelegatedAnalysis()` reads the default
-through reflection. It reads `#[PreserveKeys]` off its own class only, as Laravel does; an inherited `$preserveKeys`
-property still applies. It keeps `MidCollection`'s type only when it names nothing
+`MidCollection`. Its wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the
+slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
+off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. It keeps
+`MidCollection`'s type only when it names nothing
 ([known gap](../known-gaps.md#a-stacked-collection-that-names-no-resource-itself-publishes-its-parents-though-laravel-collects-raw-models)).
 A `toArray()` an ancestor or a trait declares still wins. The `Handover*Collection` fixtures pin it.
 

@@ -422,13 +422,21 @@ because `ResourceAstAnalyzer::analyzeParentToArray()` analyzes the parent as its
 `toArray()`: it only repeats the inherited one, and the collection then resolves from its own class, as a body-less one
 does.
 
-### A runtime `withoutWrapping()` is invisible, so a collection publishes `{ data: R[] }` for a bare list
+### A wrap set after boot or forced by `$forceWrapping` is invisible, and a single API resource page prop publishes bare
 
-The package reads each collection's declared `$wrap` default, never a value the app sets at runtime. After
-`JsonResource::withoutWrapping()`, often called in a service provider, every body-less collection that does not
-redeclare `$wrap` sends a bare list, while its published interface still has the `data` key. A runtime `wrap('items')`
-is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
-extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
+The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
+`JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and Inertia collection prop that wraps by
+it. A wrap set anywhere else, such as in middleware, a controller or behind `runningInConsole()`, is not seen, so the
+published types keep the key the booted app had. Set it unconditionally in a provider's `boot()`.
+
+`JsonResource::$forceWrapping` (Laravel 12.45 and later) is not read. With it on, Laravel wraps a body that already
+holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
+prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
+
+A single API resource as an Inertia page prop or in shared data, `new R($m)` or `R::make($m)`, publishes `R`, though
+Inertia sends it wrapped, `{ data: R }` by default; so does a collection whose own `toArray()` lacks its wrap key, which
+Laravel nests under `data`. After `withoutWrapping()` both are sent bare, as published. Type such a prop with
+`#[TsCasts]`.
 
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
 
@@ -580,13 +588,14 @@ an object, while the type stays `string[]`. Use `sort()`, or `array_values()` be
 
 `toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.
 
-### A `$wrap = null` API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
+### An unwrapped API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
 
-`toArray()` returning `['id' => 1, 42 => 'a']` on a resource with `public static $wrap = null` publishes
-`{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or `additional` data;
-otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is `array_merge_recursive()`d
-and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
-known statically. Use a string key.
+`toArray()` returning `['id' => 1, 42 => 'a']` on a resource sent without a wrap key, one with
+`public static $wrap = null` or, after a runtime `JsonResource::withoutWrapping()`, every one that does not redeclare
+`$wrap`, publishes `{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or
+`additional` data; otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is
+`array_merge_recursive()`d and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two
+a resource is cannot be known statically. Use a string key.
 
 ### A `broadcastWith()` payload whose top-level keys are all int publishes an object
 
