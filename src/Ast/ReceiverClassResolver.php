@@ -685,13 +685,16 @@ final class ReceiverClassResolver
             return ReceiverType::of($authModel, $shortCircuits);
         }
 
-        return $this->merge(
+        $result = $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false, $receiver->relatedModel),
                 $receiver->classes,
             ),
             $shortCircuits,
         );
+
+        // A fluent call such as fill() hands the same model back, so no row backs it yet either.
+        return $result !== null && $receiver->unsaved && $this->returnsItself($receiver, $method) ? $result->asUnsaved() : $result;
     }
 
     /**
@@ -1500,6 +1503,14 @@ final class ReceiverClassResolver
     private function isCallable(string $class, string $method, bool $fromInside): bool
     {
         return method_exists($class, $method) && ($fromInside || new ReflectionMethod($class, $method)->isPublic());
+    }
+
+    /**
+     * Whether a method returns each class the receiver holds as that same class, as `$this` or `static` does.
+     */
+    private function returnsItself(ReceiverType $receiver, string $method): bool
+    {
+        return array_all($receiver->classes, fn (string $class): bool => $this->returnClasses($class, $method) === [$class]);
     }
 
     /**

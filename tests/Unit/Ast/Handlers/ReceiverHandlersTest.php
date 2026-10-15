@@ -1234,6 +1234,9 @@ describe('getKey()', function () {
         ['$this->resource->fresh()->getKey()', 'number'],
         ['(true ? new \Workbench\App\Models\Post : $this->resource)->getKey()', 'number | null'],
         ['($this->resource ?? new \Workbench\App\Models\Post)->getKey()', 'number | null'],
+        ['(new \Workbench\App\Models\Post)->fill([\'title\' => \'x\'])->getKey()', 'number | null'],
+        ['$this->resource->replicate()->forceFill([])->getKey()', 'number | null'],
+        ['$this->resource->fill([\'title\' => \'x\'])->getKey()', 'number'],
     ]);
 
     // Model::__callStatic() runs an undeclared static call on a new query, whose docblocks return TModel or $this.
