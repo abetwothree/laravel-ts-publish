@@ -22,6 +22,8 @@ export interface CategoryLineageResource
     parent_new_loaded?: CategoryResource | null;
     parent_make_direct: CategoryResource | null;
     parent_nullsafe_resource: CategoryResource | null;
+    parent_siblings: CategoryResource[] | null;
+    parent_siblings_nullsafe: CategoryResource[] | null;
     parent_in_array: { parent: CategoryResource | null };
     parent_when?: CategoryResource | null;
     children_names?: string[];

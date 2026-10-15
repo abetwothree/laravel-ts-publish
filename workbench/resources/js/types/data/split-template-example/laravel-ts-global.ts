@@ -2851,6 +2851,8 @@ declare global {
             parent_new_loaded?: CategoryResource | null;
             parent_make_direct: CategoryResource | null;
             parent_nullsafe_resource: CategoryResource | null;
+            parent_siblings: CategoryResource[] | null;
+            parent_siblings_nullsafe: CategoryResource[] | null;
             parent_in_array: { parent: CategoryResource | null };
             parent_when?: CategoryResource | null;
             children_names?: string[];
@@ -4998,12 +5000,15 @@ declare global {
         }
         /**
          * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
-         * unions their resources and a plain attribute read unions the targets' own column types.
+         * unions their resources and a plain attribute read unions the targets' own column types. The
+         * closure-less toResource() unions the same resources, and its `?->` spelling adds null.
          */
         export interface ReviewResource {
             id: number;
             reviewable?: ArtistResource | VenueResource;
             reviewable_name?: string;
+            reviewable_resource: ArtistResource | VenueResource;
+            reviewable_nullsafe_resource: ArtistResource | VenueResource | null;
         }
         /**
          * A nullsafe call on a morphTo whose methods the resource's own model also has. Only the relation's generic says

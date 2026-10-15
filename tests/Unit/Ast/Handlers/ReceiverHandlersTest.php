@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ProxyRelationController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MorphSpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeProtectedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedResource;
@@ -718,6 +719,21 @@ describe('a nullsafe method on a chain reads each step as one model, through the
             'assignable_title' => 'unknown',
             'assignee_label' => 'string | null',
             'assignee_title' => 'string | null',
+        ]);
+    });
+
+    test('leaves every spelling of a call on a morphTo that names no targets unknown, and types the narrowed one', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(MorphSpellingsResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'proxy_title' => 'unknown',
+            'proxy_title_nullsafe' => 'unknown',
+            'resource_title' => 'unknown',
+            'resource_title_nullsafe' => 'unknown',
+            'static_label' => 'unknown',
+            'assignee_title' => 'string',
+            'assignee_title_nullsafe' => 'string | null',
         ]);
     });
 });

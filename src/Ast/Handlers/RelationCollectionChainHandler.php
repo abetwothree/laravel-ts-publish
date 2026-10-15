@@ -79,7 +79,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $chainResult = $this->analyzeRelationCollectionChain($expr, $scope, $engine);
 
             if ($chainResult !== null) {
-                return $this->rootsAtNullsafeProxy($expr, $scope) ? $this->withNull($chainResult) : $chainResult;
+                return $this->chainShortCircuits($expr) ? $this->withNull($chainResult) : $chainResult;
             }
         }
 
@@ -321,20 +321,6 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             'type' => $sequentialKeys ? $mapped : $this->keyedObjectArm($mapped),
             'optional' => false,
         ];
-    }
-
-    /**
-     * Whether a call chain is rooted at `$this->resource?->relation`, the one `?->` this handler lets short-circuit.
-     */
-    private function rootsAtNullsafeProxy(MethodCall $call, AnalysisScope $scope): bool
-    {
-        $node = $call;
-
-        while ($node instanceof MethodCall) {
-            $node = $node->var;
-        }
-
-        return $node instanceof NullsafePropertyFetch && $this->isProxyFetch($node->var, $scope);
     }
 
     /**

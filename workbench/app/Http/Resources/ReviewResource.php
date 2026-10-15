@@ -10,7 +10,8 @@ use Workbench\App\Models\Review;
 
 /**
  * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
- * unions their resources and a plain attribute read unions the targets' own column types.
+ * unions their resources and a plain attribute read unions the targets' own column types. The
+ * closure-less toResource() unions the same resources, and its `?->` spelling adds null.
  *
  * @mixin Review
  */
@@ -25,6 +26,8 @@ class ReviewResource extends JsonResource
             'id' => $this->id,
             'reviewable' => $this->whenLoaded('reviewable', fn ($subject) => $subject->toResource()),
             'reviewable_name' => $this->whenLoaded('reviewable', fn ($subject) => $subject->name),
+            'reviewable_resource' => $this->reviewable->toResource(),
+            'reviewable_nullsafe_resource' => $this->reviewable?->toResource(),
         ];
     }
 }

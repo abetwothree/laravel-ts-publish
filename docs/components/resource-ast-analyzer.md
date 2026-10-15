@@ -23,7 +23,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()` |
+| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |

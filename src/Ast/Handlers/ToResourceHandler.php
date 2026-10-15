@@ -54,28 +54,22 @@ final class ToResourceHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // $model->toResource()/toResourceCollection() — a whenLoaded closure param bound to a
-        // model, or $this->relation accessed directly. Checked by method name alone so both
-        // receiver shapes share one resolution path; see resolveToResourceReceiverModel().
-        if ($expr instanceof MethodCall && $expr->name instanceof Identifier && $expr->name->toString() === 'toResource') {
-            return $this->analyzeToResourceCall($expr, $scope);
+        if (! ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall) || ! $expr->name instanceof Identifier) {
+            return null;
         }
 
-        // $model?->toResource() is null for a null receiver, where the arrow form above throws.
-        if ($expr instanceof NullsafeMethodCall && $expr->name instanceof Identifier && $expr->name->toString() === 'toResource') {
-            $result = $this->analyzeToResourceCall($expr, $scope);
+        // A whenLoaded closure param bound to a model, or `$this->relation` accessed directly: one path for both
+        // receiver shapes, see resolveToResourceReceiverModel().
+        $result = match ($expr->name->toString()) {
+            'toResource' => $this->analyzeToResourceCall($expr, $scope),
+            'toResourceCollection' => $this->analyzeToResourceCollectionCall($expr, $scope),
+            default => null,
+        };
 
-            return [...$result, 'type' => ValueResult::withNullArm($result['type'])];
-        }
-
-        if ($expr instanceof MethodCall
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'toResourceCollection'
-        ) {
-            return $this->analyzeToResourceCollectionCall($expr, $scope);
-        }
-
-        return null;
+        // A `?->` here or earlier in the chain ends the whole expression as null, where a plain `->` on null throws.
+        return $result !== null && $this->chainShortCircuits($expr)
+            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            : $result;
     }
 
     /**
@@ -144,7 +138,7 @@ final class ToResourceHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzeToResourceCollectionCall(MethodCall $call, AnalysisScope $scope): array
+    private function analyzeToResourceCollectionCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): array
     {
         $result = ValueResult::unknown();
         $args = $this->callArguments($call, Collection::class, 'toResourceCollection');

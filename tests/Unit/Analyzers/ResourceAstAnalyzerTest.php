@@ -46,6 +46,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ShortCircuitedCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpellingsAcrossLocationsResource;
@@ -120,6 +121,7 @@ use Workbench\App\Http\Resources\BulletinOwnershipSpreadResource;
 use Workbench\App\Http\Resources\BulletinResource;
 use Workbench\App\Http\Resources\BulletinWrappedResource;
 use Workbench\App\Http\Resources\CaseSpreadResource;
+use Workbench\App\Http\Resources\CategoryLineageResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
 use Workbench\App\Http\Resources\ClassConstantResource;
@@ -6034,6 +6036,30 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // pre-existing path (resolveEnumFromPropertyArg()) this feature does not touch.
         ->and($props['status_marker']['type'])->toContain('Status')
         ->and($analysis->enumResources)->toHaveKey('status_marker', Status::class);
+});
+
+describe('toResource() and toResourceCollection() after a `?->` that can end the chain', function () {
+    test('add null where a `?->` earlier in the same chain can end it, and only there', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(ShortCircuitedCategoryResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'grandparent' => 'CategoryResource | null',
+            'grandparent_proxy' => 'CategoryResource | null',
+            'grandparent_explicit' => 'CategoryResource | null',
+            'local_grandparent' => 'CategoryResource',
+            'siblings_static' => 'CategoryResource[]',
+        ]);
+    });
+
+    test('a sibling list read through a nullable parent publishes null, with or without its own `?->`', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(CategoryLineageResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['parent_siblings'])->toBe('CategoryResource[] | null')
+            ->and($props['parent_siblings_nullsafe'])->toBe('CategoryResource[] | null')
+            ->and($props['parent_nullsafe_resource'])->toBe('CategoryResource | null');
+    });
 });
 
 describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceCollection())', function () {

@@ -12,6 +12,7 @@ use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
@@ -23,6 +24,8 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
@@ -95,6 +98,28 @@ trait InspectsAstNodes
     protected function hasThisReceiver(MethodCall $call): bool
     {
         return $call->var instanceof Variable && $call->var->name === 'this';
+    }
+
+    /**
+     * Whether a `?->` in this member chain can end the whole expression as null: PHP skips the rest of a chain, up to
+     * the first node that is not a property read, method call or offset read, once a nullsafe step meets null.
+     */
+    protected function chainShortCircuits(Expr $expr): bool
+    {
+        while ($expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
+            || $expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof ArrayDimFetch
+        ) {
+            if ($expr instanceof NullsafeMethodCall || $expr instanceof NullsafePropertyFetch) {
+                return true;
+            }
+
+            $expr = $expr->var;
+        }
+
+        return false;
     }
 
     /**

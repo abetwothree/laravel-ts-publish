@@ -344,7 +344,7 @@ model, and the `| null` comes back.
 
 `$this->assignable->label()` publishes `unknown` in every spelling when the relation names no target, even if the
 resource's own model declares `label()`, since the related model could be any. Name the targets in
-`@return MorphTo<A|B, $this>`.
+`@return MorphTo<A|B, $this>`, or declare the inverse `morphMany`/`morphOne` on each target, which types it too.
 
 ### A `whenHas()` or `whenAppended()` value the engine cannot type publishes `unknown`
 

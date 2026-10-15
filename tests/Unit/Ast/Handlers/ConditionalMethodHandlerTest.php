@@ -42,6 +42,7 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\ArtistResource;
+use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
 use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\ImageResource;
@@ -647,6 +648,24 @@ test('a morph union closure param binds every target and toResource unions their
         ->and($props['reviewable']['optional'])->toBeTrue()
         ->and($props['reviewable_name']['type'])->toBe('string')
         ->and(array_keys($analysis->nestedResources))->toContain(ArtistResource::class, VenueResource::class);
+});
+
+test('a morph union\'s toResource() publishes the closure\'s union without a closure, and null after a `?->`', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReviewResource::class), Review::class)->analyze()->properties)
+        ->keyBy('name');
+
+    expect($props['reviewable_resource'])->toMatchArray(['type' => 'ArtistResource | VenueResource', 'optional' => false])
+        ->and($props['reviewable_nullsafe_resource'])->toMatchArray(['type' => 'ArtistResource | VenueResource | null', 'optional' => false])
+        ->and($props['reviewable']['type'])->toBe($props['reviewable_resource']['type']);
+});
+
+test('a ?-> on a whenLoaded parameter still adds null before toResource(), as it does for any other call', function () {
+    $expr = new AstParser()->parseSource('<?php $this->whenLoaded("post", fn ($p) => $p?->author->toResource());')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class)->resolve($expr))
+        ->toMatchArray(['type' => 'UserResource | null', 'optional' => true]);
 });
 
 // transform() calls $callback($value): the parameter holds the value, so it takes whatever that value is bound to.

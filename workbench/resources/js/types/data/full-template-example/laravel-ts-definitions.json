@@ -11563,6 +11563,16 @@
                     "optional": false
                 },
                 {
+                    "name": "parent_siblings",
+                    "type": "CategoryResource[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "parent_siblings_nullsafe",
+                    "type": "CategoryResource[] | null",
+                    "optional": false
+                },
+                {
                     "name": "parent_in_array",
                     "type": "{ parent: CategoryResource | null }",
                     "optional": false
@@ -18444,6 +18454,16 @@
                     "name": "reviewable_name",
                     "type": "string",
                     "optional": true
+                },
+                {
+                    "name": "reviewable_resource",
+                    "type": "ArtistResource | VenueResource",
+                    "optional": false
+                },
+                {
+                    "name": "reviewable_nullsafe_resource",
+                    "type": "ArtistResource | VenueResource | null",
+                    "optional": false
                 }
             ]
         },
