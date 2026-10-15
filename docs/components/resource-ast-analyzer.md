@@ -75,7 +75,8 @@ every profile, the order handlers run in decides which one answers; see
   same forms, read by `analyzeArrayExpression()`, are the base of a variable `ReadsReturnedVariables` walks; a `+=` of
   one adds only new keys and every signature entry, a whole re-assignment drops the writes before it, and a key first
   written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body before its first `break` or
-  `continue`.
+  `continue`. An `unset()` of a named key drops it and its import channels, or makes it optional where it may not
+  run; any other `unset()` of the variable is a write the walk does not read.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
