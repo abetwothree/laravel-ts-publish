@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
@@ -20,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -48,7 +48,6 @@ use ReflectionNamedType;
 final class StaticCallHandler implements ExpressionHandler
 {
     use BuildsInlineObjectTypes;
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use InspectsResourceSubject;
@@ -205,12 +204,12 @@ final class StaticCallHandler implements ExpressionHandler
         // checks below: ResourceCollection extends JsonResource, so isResourceClass() matches it too and
         // would yield the unsuffixed collection name instead of 'OrderItemResource[]'.
         if (is_a($className, ResourceCollection::class, true) && in_array($methodName, ['make', 'collection'], true)) {
-            $collected = $this->resolveCollectedResourceClass($className);
+            $collected = ResourceCollections::collectedResource($className);
 
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalArgument($call, $className),
                     'resourceFqcn' => $collected,
                 ];
@@ -239,7 +238,7 @@ final class StaticCallHandler implements ExpressionHandler
             /** @var class-string $className */
             return [
                 ...$result,
-                'type' => $this->wrapCollectionElementType($resourceName, new ReflectionClass($className)),
+                'type' => ResourceCollections::elementType($resourceName, new ReflectionClass($className)),
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -12,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -31,7 +31,6 @@ use ReflectionClass;
  */
 final class NewResourceHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
@@ -85,12 +84,12 @@ final class NewResourceHandler implements ExpressionHandler
         // new SomeCollection($this->items) — resolve the collected element type. Must precede the
         // generic isResourceClass() branch below, for the same reason as in analyzeStaticCall().
         if (is_a($className, ResourceCollection::class, true)) {
-            $collected = $this->resolveCollectedResourceClass($className);
+            $collected = ResourceCollections::collectedResource($className);
 
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalNewArgument($expr, $className),
                     'resourceFqcn' => $collected,
                 ];

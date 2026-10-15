@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
@@ -33,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -89,7 +89,6 @@ use ReflectionMethod;
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
-    use ChecksPreserveKeys;
     use CollectsLocalVarBindings;
     use FiltersModelAttributes;
     use InspectsAstNodes;
@@ -155,10 +154,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         // The subject alone decides these, so a supplied scope reads `$this->resource`'s items as an owned one does.
-        $this->scope->reindexesNumericKeys = self::reindexes($this->scope->subjectReflection);
-        $this->scope->collectedResource = $this->isResourceCollection($this->scope)
-            ? $this->resolveSingularResourceClass($this->scope)
-            : null;
+        $this->scope->seedCollectionFacts();
 
         $this->ownsScope = $scope === null;
 
@@ -213,19 +209,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether a class's response re-indexes a numeric-keyed array into a list: an API resource that does not preserve
-     * keys.
-     *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $resource
-     */
-    private static function reindexes(ReflectionClass $resource): bool
-    {
-        return $resource->isSubclassOf(JsonResource::class) && ! self::collectionPreservesKeys($resource);
-    }
-
-    /**
      * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
      * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
      *
@@ -238,7 +221,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void
     {
-        if (self::reindexes($resource)) {
+        if (ResourceCollections::reindexesNumericKeys($resource)) {
             $analysis->rewritePropertyTypes(ResourceReindexing::reindexedType(...));
         }
     }
@@ -1258,7 +1241,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             ? $this->scope->subjectReflection->getProperty('wrap')->getDefaultValue()
             : 'data';
 
-        $elementType = $this->wrapCollectionElementType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
+        $elementType = ResourceCollections::elementType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
 
         if ($wrapKey === null || $wrapKey === '') {
             return new ResourceAnalysis(flatTypeAlias: $elementType, flatTypeAliasFqcn: $singular);

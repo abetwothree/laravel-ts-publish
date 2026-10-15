@@ -66,7 +66,7 @@ publishes an empty interface instead of `PostResource[]`. An empty interface acc
 `undefined`, so it looks specific and checks almost nothing. Laravel's own `collects()` cannot read the attribute on
 12 either, and the package mirrors the framework rather than guessing. Set `public $collects = PostResource::class;`,
 which works on both versions. The `FooCollection` to `FooResource` convention also works while the run publishes
-`FooResource` ([`InspectsResourceCalls`](../src/Analyzers/Concerns/InspectsResourceCalls.php)), and
+`FooResource` ([`ResourceCollections`](../src/Ast/ResourceCollections.php)), and
 [Laravel version guards](./laravel-version-guards.md) records the version floor.
 
 ### A non-promoted property a constructor always assigns still renders optional

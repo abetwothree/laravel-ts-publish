@@ -18,8 +18,8 @@ These are the classes a change to resource analysis usually touches:
 | [`ReadsReturnedVariables`](../../src/Ast/Concerns/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
-| [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources, the published-set gate and `#[Collects]` resolution |
-| [`ChecksPreserveKeys`](../../src/Analyzers/Concerns/ChecksPreserveKeys.php) | `R[]` or `Record<string, R>` for a collected resource |
+| [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
+| [`ResourceCollections`](../../src/Ast/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
@@ -470,13 +470,13 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 a `#[UseResource]` or `#[UseResourceCollection]` attribute, or Laravel's naming convention. Only the convention invents
 a class name. `InspectsResourceCalls::isResourceClass()` accepts any class that exists, including a `#[TsExclude]`d or
 third-party resource that gets no file, and its import would name a missing module. So every site that invents a
-candidate asks `isPublishedResourceClass()`, which also checks
+candidate asks `isPublishedResourceClass()`, or `ResourceCollections`' private copy of it, which also checks
 [`PublishedResourceRegistry`](../../src/Cache/PublishedResourceRegistry.php). These are the sites:
 
 - the candidate loop in `ToResourceHandler::resolveResourceForModel()`
 - both naming loops in `ToResourceHandler::resolveResourceCollectionForModel()`
-- the naming-convention branch of `InspectsResourceCalls::resolveCollectedResourceClass()`, the one resolver every
-  `#[Collects]` caller shares
+- the naming-convention branch of `ResourceCollections::collectedResource()`, the one resolver every `#[Collects]`
+  caller shares
 
 A class the developer wrote down stays on `isResourceClass()`: an explicit argument, `#[UseResource]`,
 `#[UseResourceCollection]`, `#[Collects]`, `$collects`, `SomeResource::make()` and `new SomeResource()`.
@@ -509,23 +509,25 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
-`resolveCollectedResourceClass()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because
-Laravel 12 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
-`ResourceAstAnalyzer` seeds `AnalysisScope::$collectedResource` from `resolveSingularResourceClass()` for any scope, its
-own or one a caller supplies, so `$this->resource`'s items name the API resource `$this->collection` does. A collection
-is backed by no model, whatever its docblock or `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns
-`null` for it.
+[`ResourceCollections`](../../src/Ast/ResourceCollections.php) holds a collection's facts for the analyzer and the
+handlers alike: `collectedResource()`, `preservesKeys()`, `elementType()` and `reindexesNumericKeys()`.
+`collectedResource()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
+has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
+`AnalysisScope::seedCollectionFacts()` seeds `$collectedResource` and `$reindexesNumericKeys` from it, on `rebase()`
+and for any scope `ResourceAstAnalyzer` reads, its own or one a caller supplies, so `$this->resource`'s items name the
+API resource `$this->collection` does. A collection is backed by no model, whatever its docblock or
+`#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
 
-`ChecksPreserveKeys::collectionPreservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
+`preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
-collection keeps its keys, else `R[]`. `wrapCollectionElementType()` is its analyzer-side caller, for every site that
-reflects on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
+collection keeps its keys, else `R[]`. `ResourceCollections::elementType()` is its caller for every site that reflects
+on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
 and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
 `true`, since those keep the keys they filter by. A site that spelled the list itself would keep emitting `R[]` for a
 keyed collection, and only a fixture of that exact call shape would notice.
-`grep -rnE 'collectionListType\(|wrapCollectionElementType\(' src/` lists the sites.
+`grep -rnE 'collectionListType\(|ResourceCollections::elementType\(' src/` lists the sites.
 
-Each `wrapCollectionElementType()` site reflects on the class Laravel instantiates:
+Each `elementType()` site reflects on the class Laravel instantiates:
 
 - **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
   run `JsonResource::collection()`.
@@ -533,8 +535,8 @@ Each `wrapCollectionElementType()` site reflects on the class Laravel instantiat
 - **`resolveResourceCollectionForModel()`'s `collectionFqcn`**: an argument-less `toResourceCollection()`. That is the
   plain resource when no collection class was found, from the `#[UseResource]` arm or the bare naming fallback.
 
-Inertia page props share the trait through `InertiaResourcePropHandler`, so a key-preserving paginated collection
-publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`.
+Inertia page props share `preservesKeys()` through `InertiaResourcePropHandler`, so a key-preserving paginated
+collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`.
 
 ### A method called on a new resource types its payload
 

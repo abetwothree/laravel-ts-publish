@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -18,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -39,9 +38,7 @@ use ReflectionClass;
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
-    use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
@@ -231,7 +228,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         return [
             ...$result,
-            'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
+            'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
             'resourceFqcn' => $singular,
         ];
     }

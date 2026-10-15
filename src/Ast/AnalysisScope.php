@@ -144,7 +144,7 @@ final class AnalysisScope
 
     /**
      * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
-     * it collects none. Set by ResourceAstAnalyzer for any scope, its own or one a caller supplies.
+     * it collects none. Set by seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
      *
      * @var class-string<JsonResource>|null
      */
@@ -160,7 +160,7 @@ final class AnalysisScope
     /**
      * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
-     * ResourceAstAnalyzer for any scope, its own or one a caller supplies.
+     * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
      */
     public bool $reindexesNumericKeys = false;
 
@@ -364,8 +364,8 @@ final class AnalysisScope
     }
 
     /**
-     * Move the scope to another subject and backing model, re-deriving the proxy target from them: the one way a
-     * builder rebases a scope after construction. ResourceAstAnalyzer then seeds the subject's collection facts.
+     * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
+     * them: the one way a builder rebases a scope after construction.
      *
      * @param  ReflectionClass<object>  $subject
      * @param  class-string<Model>|null  $modelClass
@@ -375,6 +375,18 @@ final class AnalysisScope
         $this->subjectReflection = $subject;
         $this->modelClass = $modelClass;
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subject, $modelClass);
+        $this->seedCollectionFacts();
+    }
+
+    /**
+     * Derive the subject's collection facts, `reindexesNumericKeys` and `collectedResource`, from ResourceCollections.
+     */
+    public function seedCollectionFacts(): void
+    {
+        $this->reindexesNumericKeys = ResourceCollections::reindexesNumericKeys($this->subjectReflection);
+        $this->collectedResource = $this->subjectReflection->isSubclassOf(ResourceCollection::class)
+            ? ResourceCollections::collectedResource($this->subjectReflection->getName())
+            : null;
     }
 
     /**

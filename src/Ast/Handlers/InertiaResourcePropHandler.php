@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -32,7 +32,6 @@ use ReflectionClass;
  */
 final class InertiaResourcePropHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
 
@@ -102,7 +101,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             ];
         }
 
-        $singular = $this->resolveCollectedResourceClass($className);
+        $singular = ResourceCollections::collectedResource($className);
 
         if ($singular === null) {
             return null;
@@ -164,7 +163,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $name = TsNaming::resourceTypeName($singular);
 
-        $type = self::collectionPreservesKeys($reflection)
+        $type = ResourceCollections::preservesKeys($reflection)
             ? "Omit<JsonResourcePaginator<{$name}>, 'data'> & { data: Record<string, {$name}> }"
             : 'JsonResourcePaginator<'.$name.'>';
 

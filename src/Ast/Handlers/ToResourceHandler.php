@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
@@ -13,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
@@ -40,7 +40,6 @@ use ReflectionMethod;
  */
 final class ToResourceHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ResolvesModelRelationTypes;
@@ -154,7 +153,7 @@ final class ToResourceHandler implements ExpressionHandler
             /** @var class-string $explicit */
             return [
                 ...$result,
-                'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($explicit), new ReflectionClass($explicit)),
+                'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($explicit), new ReflectionClass($explicit)),
                 'optional' => false,
                 'resourceFqcn' => $explicit,
             ];
@@ -170,7 +169,7 @@ final class ToResourceHandler implements ExpressionHandler
 
         return [
             ...$result,
-            'type' => $this->wrapCollectionElementType(
+            'type' => ResourceCollections::elementType(
                 TsNaming::resourceTypeName($resolved['resourceFqcn']),
                 new ReflectionClass($resolved['collectionFqcn']),
             ),
@@ -272,7 +271,7 @@ final class ToResourceHandler implements ExpressionHandler
         $collectionFqcn = $this->resolveUseResourceCollectionAttribute($modelFqcn);
 
         if ($collectionFqcn !== null) {
-            $resourceFqcn = $this->resolveCollectedResourceClass($collectionFqcn);
+            $resourceFqcn = ResourceCollections::collectedResource($collectionFqcn);
 
             return $resourceFqcn !== null
                 ? ['collectionFqcn' => $collectionFqcn, 'resourceFqcn' => $resourceFqcn]
@@ -296,7 +295,7 @@ final class ToResourceHandler implements ExpressionHandler
                 && is_a($collectionCandidate, ResourceCollection::class, true)
                 && PublishedResourceRegistry::isPublished($collectionCandidate)
             ) {
-                $collectedFqcn = $this->resolveCollectedResourceClass($collectionCandidate);
+                $collectedFqcn = ResourceCollections::collectedResource($collectionCandidate);
 
                 return $collectedFqcn !== null
                     ? ['collectionFqcn' => $collectionCandidate, 'resourceFqcn' => $collectedFqcn]
