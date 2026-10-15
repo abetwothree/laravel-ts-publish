@@ -9,7 +9,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
@@ -154,8 +153,7 @@ final class ReceiverMethodReturnResolver
 
     /**
      * A resource collection's items as a value, one arm per class that may hold them, as Laravel serializes each: the
-     * collected API resource's list for Support\Collection, the `@tolki/types` paginator over it for a paginator.
-     * The element is `unknown` when the collection collects no API resource.
+     * collected list for Support\Collection, the `@tolki/types` paginator over the element for a paginator.
      *
      * @return ValueExpressionResult|null null for a receiver that holds no resource collection's items
      */
@@ -165,8 +163,8 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $element = $receiver->elementResource;
-        $name = $element === null ? 'unknown' : TsNaming::resourceTypeName($element);
+        $list = ResourceCollections::listValue($receiver->collectedElement, ! $scope->reindexesNumericKeys);
+        $element = ResourceCollections::elementValue($receiver->collectedElement)['type'];
         $arms = [];
         $paginators = [];
 
@@ -174,17 +172,16 @@ final class ReceiverMethodReturnResolver
             $paginator = TolkiTypes::MAP[$class] ?? null;
 
             if ($paginator === null) {
-                $arms[] = ValueResult::collectionListType($name, ! $scope->reindexesNumericKeys);
+                $arms[] = $list['type'];
 
                 continue;
             }
 
-            $arms[] = "{$paginator}<{$name}>";
+            $arms[] = "{$paginator}<{$element}>";
             $paginators[] = $paginator;
         }
 
-        $result = [...ValueResult::unknown(), 'type' => implode(' | ', $arms)];
-        $result = $element === null ? $result : [...$result, 'resourceFqcn' => $element];
+        $result = [...$list, 'type' => implode(' | ', $arms)];
 
         return $paginators === [] ? $result : [...$result, 'customImports' => ['@tolki/types' => $paginators]];
     }
@@ -514,20 +511,20 @@ final class ReceiverMethodReturnResolver
         AnalysisScope $scope,
         MethodCall|NullsafeMethodCall|StaticCall|null $call,
     ): ?array {
-        $element = $receiver->elementResource;
+        $element = $receiver->collectedElement;
 
         if (in_array($methodName, self::ITEMS_VALUE, true)) {
-            return $this->heldItems(new ReceiverType([$class], collectedItems: true, elementResource: $element), $scope);
+            return $this->heldItems(new ReceiverType([$class], collectedItems: true, collectedElement: $element), $scope);
         }
 
-        $name = $element === null ? 'unknown' : TsNaming::resourceTypeName($element);
+        $item = ResourceCollections::elementValue($element);
+        $name = $item['type'];
 
         // Collection::only() and except() keep the keys they filter by, so the items they keep may come back keyed.
         if (in_array($methodName, self::ITEMS_SUBSET, true)) {
             $kept = ValueResult::collectionListType($name, false).' | '.ValueResult::collectionListType($name, true);
-            $result = [...ValueResult::unknown(), 'type' => $kept];
 
-            return $element === null ? $result : [...$result, 'resourceFqcn' => $element];
+            return [...$item, 'type' => $kept];
         }
 
         if ($element === null) {
@@ -535,16 +532,13 @@ final class ReceiverMethodReturnResolver
         }
 
         return match (true) {
-            in_array($methodName, self::ITEMS_ELEMENT, true) => $this->mayReturnDefault($call, $methodName) ? null : [
-                ...ValueResult::unknown(),
-                'type' => "{$name} | null",
-                'resourceFqcn' => $element,
-            ],
-            in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => [
-                ...ValueResult::unknown(),
-                'type' => ValueResult::collectionListType($name, ! $scope->reindexesNumericKeys),
-                'resourceFqcn' => $element,
-            ],
+            in_array($methodName, self::ITEMS_ELEMENT, true) => $this->mayReturnDefault($call, $methodName)
+                ? null
+                : [...$item, 'type' => "{$name} | null"],
+            in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => $this->heldItems(
+                new ReceiverType([Collection::class], collectedItems: true, collectedElement: $element),
+                $scope,
+            ),
             default => null,
         };
     }

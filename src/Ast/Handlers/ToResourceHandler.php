@@ -37,6 +37,8 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type GuessedCollection = array{collection: class-string<ResourceCollection>, resource: null}|array{collection: null, resource: class-string}
+ *
  * @internal
  */
 final class ToResourceHandler implements ExpressionHandler
@@ -168,24 +170,19 @@ final class ToResourceHandler implements ExpressionHandler
             return $result;
         }
 
-        // Laravel builds the guessed collection, so one whose toArray() is not the collected list sends its own keys.
-        if (resolve(ResourceCollectionBody::class)->sendsOwnShape($resolved['collectionFqcn'])) {
-            return [
-                ...$result,
-                'type' => TsNaming::resourceTypeName($resolved['collectionFqcn']),
-                'optional' => false,
-                'resourceFqcn' => $resolved['collectionFqcn'],
-            ];
+        if ($resolved['collection'] !== null) {
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($resolved['collection']);
+
+            return $nested === null ? $result : [...$nested, 'optional' => false];
         }
+
+        $resource = $resolved['resource'];
 
         return [
             ...$result,
-            'type' => ResourceCollections::listType(
-                TsNaming::resourceTypeName($resolved['resourceFqcn']),
-                new ReflectionClass($resolved['collectionFqcn']),
-            ),
+            'type' => ResourceCollections::listType(TsNaming::resourceTypeName($resource), new ReflectionClass($resource)),
             'optional' => false,
-            'resourceFqcn' => $resolved['resourceFqcn'],
+            'resourceFqcn' => $resource,
         ];
     }
 
@@ -267,12 +264,12 @@ final class ToResourceHandler implements ExpressionHandler
     }
 
     /**
-     * Reproduce Collection::toResourceCollection()'s guessResourceCollection() order: the
-     * #[UseResourceCollection] attribute, then #[UseResource], then the naming convention —
-     * trying `{Guessed}Collection` classes before the bare guessed resources.
+     * Reproduce Collection::toResourceCollection()'s guessResourceCollection() order, #[UseResourceCollection], then
+     * #[UseResource], then the naming convention trying `{Guessed}Collection` before the bare guessed resources: the
+     * collection class Laravel builds, or the resource whose `::collection()` it calls.
      *
      * @param  class-string<Model>  $modelFqcn
-     * @return array{collectionFqcn: class-string, resourceFqcn: class-string}|null
+     * @return GuessedCollection|null
      */
     private function resolveResourceCollectionForModel(string $modelFqcn): ?array
     {
@@ -282,17 +279,15 @@ final class ToResourceHandler implements ExpressionHandler
         $collectionFqcn = $this->resolveUseResourceCollectionAttribute($modelFqcn);
 
         if ($collectionFqcn !== null) {
-            $resourceFqcn = ResourceCollections::collectedResource($collectionFqcn);
-
-            return $resourceFqcn !== null
-                ? ['collectionFqcn' => $collectionFqcn, 'resourceFqcn' => $resourceFqcn]
-                : null;
+            return ResourceCollections::collectedElement(new ReflectionClass($collectionFqcn)) === null
+                ? null
+                : ['collection' => $collectionFqcn, 'resource' => null];
         }
 
         $resourceFqcn = $this->resolveUseResourceAttribute($modelFqcn);
 
         if ($resourceFqcn !== null) {
-            return ['collectionFqcn' => $resourceFqcn, 'resourceFqcn' => $resourceFqcn];
+            return ['collection' => null, 'resource' => $resourceFqcn];
         }
 
         $candidates = $this->guessResourceNames($modelFqcn);
@@ -306,17 +301,13 @@ final class ToResourceHandler implements ExpressionHandler
                 && is_a($collectionCandidate, ResourceCollection::class, true)
                 && PublishedResourceRegistry::isPublished($collectionCandidate)
             ) {
-                $collectedFqcn = ResourceCollections::collectedResource($collectionCandidate);
-
-                return $collectedFqcn !== null
-                    ? ['collectionFqcn' => $collectionCandidate, 'resourceFqcn' => $collectedFqcn]
-                    : null;
+                return ['collection' => $collectionCandidate, 'resource' => null];
             }
         }
 
         foreach ($candidates as $candidate) {
             if ($this->isPublishedResourceClass($candidate)) {
-                return ['collectionFqcn' => $candidate, 'resourceFqcn' => $candidate];
+                return ['collection' => null, 'resource' => $candidate];
             }
         }
 
@@ -382,7 +373,7 @@ final class ToResourceHandler implements ExpressionHandler
      * Read the #[UseResourceCollection] attribute directly off a model class.
      *
      * @param  class-string<Model>  $modelFqcn
-     * @return class-string|null
+     * @return class-string<ResourceCollection>|null
      */
     private function resolveUseResourceCollectionAttribute(string $modelFqcn): ?string
     {

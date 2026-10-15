@@ -205,7 +205,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      *
      * @param  ReflectionClass<object>  $class  the subject, or its parent for a `parent::toArray()` call
      */
-    private function sendsCollectedList(ReflectionClass $class): bool
+    private function toArraySendsCollectedList(ReflectionClass $class): bool
     {
         return $this->readsCollectionToArray()
             && resolve(ResourceCollectionBody::class)->sendsCollectedList($class);
@@ -214,7 +214,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Whether this analysis reads a collection's toArray() and the body returns its collected list whole.
      */
-    private function returnsCollectedList(Expr $returned): bool
+    private function toArrayReturnsCollectedList(Expr $returned): bool
     {
         return $this->readsCollectionToArray()
             && resolve(ResourceCollectionBody::class)->returnsCollectedList($returned, $this->scope->subjectReflection);
@@ -272,7 +272,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // Wherever the toArray() that sends the collected list is declared, Laravel's collects(), `$wrap` and keys read
         // static::class, so the response is the subject's own body-less one.
-        if ($this->sendsCollectedList($this->scope->subjectReflection)) {
+        if ($this->toArraySendsCollectedList($this->scope->subjectReflection)) {
             $response = $this->buildCollectionDelegatedAnalysis();
 
             return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
@@ -343,7 +343,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $analysis = match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
-            $this->returnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
+            $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
             default => $this->analyzeArrayExpression($returned),
         };
 
@@ -738,7 +738,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->methodName,
             $this->handlerProfile,
             carriesImports: $this->scope->carriesImports,
-            runtimeClass: $this->runtimeClass,
+            runtimeClass: $this->runtimeClass(),
         );
 
         return $filtering->analyzeThisAttributeFilter(new MethodCall(new Variable('this'), $call->name, $call->args));
@@ -1067,7 +1067,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         // Read before a parent analyzer is built, which would answer the collected list's response instead.
-        if ($this->sendsCollectedList($parentClass)) {
+        if ($this->toArraySendsCollectedList($parentClass)) {
             return $this->collectedListAnalysis();
         }
 
@@ -1311,22 +1311,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
         /** @var class-string<ResourceCollection> $runtimeName */
         $runtimeName = $runtime->getName();
         $wrapKey = ResourceWrapping::key($runtimeName);
-        $list = ResourceCollections::listType(TsNaming::resourceTypeName($element['fqcn']), $runtime);
+        $list = ResourceCollections::listValue($element, ResourceCollections::preservesKeys($runtime));
 
         if ($wrapKey === null) {
-            return new ResourceAnalysis(flatTypeAlias: $list, flatTypeAliasFqcn: $element['fqcn']);
+            return new ResourceAnalysis(flatTypeAlias: $list['type'], flatTypeAliasFqcn: $element['fqcn']);
         }
 
-        return new ResourceAnalysis(
-            properties: [[
-                'name' => $wrapKey,
-                'type' => $list,
-                'optional' => false,
-                'description' => '',
-            ]],
-            nestedResources: $element['model'] ? [] : [$wrapKey => $element['fqcn']],
-            modelFqcns: $element['model'] ? [$wrapKey => $element['fqcn']] : [],
-        );
+        $analysis = new ResourceAnalysis;
+        $analysis->addProperty($wrapKey, $list);
+
+        return $analysis;
     }
 
     /**

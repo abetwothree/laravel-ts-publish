@@ -113,12 +113,13 @@ own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before i
 `MidCollection`. Its wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the
 slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
 off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()`
-finds nothing, Laravel sends raw models, so the element is the published model backing the API resource the nearest
-ancestor names, else that resource (`ResourceCollections::collectedElement()`); a pick that is no API resource, or
-one the run does not publish, is declined, never replaced. A `toArray()` an ancestor or a trait declares still wins,
-and runs with the runtime class's facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so
-its `$this->collection` lists `LeafCollection`'s element. The `Handover*Collection` and `F38*Collection` fixtures
-pin it.
+finds nothing, Laravel sends raw models, so the element is the published model backing the nearest ancestor's pick,
+else that pick while the run publishes it; an ancestor pick that is no API resource names nothing
+(`ResourceCollections::collectedElement()`). The class's own pick that is no API resource, or one the run does not
+publish, is declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the
+runtime class's facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its
+`$this->collection` and `$this->resource` read `LeafCollection`'s element. The `Handover*Collection`,
+`F38*Collection` and `StubSprocket*Collection` fixtures pin it.
 
 ### An inherited shape needs an inherited model
 
@@ -486,7 +487,7 @@ candidate also checks [`PublishedResourceRegistry`](../../src/Cache/PublishedRes
 
 - the candidate loop in `ToResourceHandler::resolveResourceForModel()`
 - both naming loops in `ToResourceHandler::resolveResourceCollectionForModel()`
-- the naming-convention pick of `ResourceCollections::collectedResource()`, the one resolver every `#[Collects]`
+- the naming-convention pick of `ResourceCollections::collectedElement()`, the one resolver every `#[Collects]`
   caller shares, where an unpublished pick collects nothing rather than fall through to `FooResource`
 
 A class the developer wrote down stays on `isResourceClass()`: an explicit argument, `#[UseResource]`,
@@ -522,40 +523,37 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 ### `#[Collects]` and `#[PreserveKeys]`
 
 [`ResourceCollections`](../../src/Ast/ResourceCollections.php) holds a collection's facts for the analyzer and the
-handlers alike: `collectedResource()`, `preservesKeys()`, `listType()` and `reindexesNumericKeys()`.
-`collectedResource()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
+handlers alike: `collectedElement()`, `preservesKeys()`, `listValue()`, `listType()` and `reindexesNumericKeys()`.
+`collectedElement()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md). It follows Laravel's
 `collects()` order: `#[Collects]`, the `$collects` default, then for `FooCollection` the bare `Foo` when that class
 exists, else `FooResource`. The first class found decides. One that is no API resource, where Laravel throws a
 `LogicException`, collects nothing and adds an analysis warning.
-`AnalysisScope::seedCollectionFacts()` seeds `$collectedResource`, `$collectedElement` and `$reindexesNumericKeys` from
-it, on `rebase()` and, from the runtime class, for any scope `ResourceAstAnalyzer` reads, its own or one a caller
-supplies: `$this->resource`'s items name the API resource Laravel maps them into, and `$this->collection` lists the
-element. A collection is backed by no model, whatever its docblock or `#[TsResource(model:)]` names:
-`ModelClassResolver::resolve()` returns `null` for it.
+`AnalysisScope::seedCollectionFacts()` seeds `$collectedElement` and `$reindexesNumericKeys` from it, on `rebase()`
+and, from the runtime class, for any scope `ResourceAstAnalyzer` reads, its own or one a caller supplies:
+`$this->collection` lists that element, and `$this->resource`'s items carry it on `ReceiverType::$collectedElement`,
+since Laravel sets one to the other. A collection is backed by no model, whatever its docblock or
+`#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
 
 `preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
-collection keeps its keys, else `R[]`. `ResourceCollections::listType()` is its caller for every site that reflects
-on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
-and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
-`true`, since those keep the keys they filter by. So do `$this->collection` and a value-position `parent::toArray()`
-over the collected list, since an ancestor's body runs with the runtime class's keys.
+collection keeps its keys, else `R[]`. `ResourceCollections::listValue()` is that list as a value, the element on its
+import channel and `unknown[]` without one; `$this->collection`, a value-position `parent::toArray()` over the collected
+list, `$this->resource`'s items (`heldItems()`, with the scope's `reindexesNumericKeys`), a nested collection and the
+delegated response read it. `only()`/`except()` on the items spell it once with `false` and once with `true`, since
+those keep the keys they filter by. `$this->collection` alone publishes `unknown`, not `unknown[]`, without an element.
 A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
 call shape would notice.
-`grep -rnE 'collectionListType\(|ResourceCollections::listType\(' src/` lists the sites.
+`grep -rnE 'collectionListType\(|ResourceCollections::(listType|listValue)\(' src/` lists the sites.
 
-Each `listType()` site reflects on the class Laravel instantiates:
+`listType()` spells the list alone for a site that names its API resource and reflects on the class Laravel keys it by:
+`SomeResource::collection()`, `toResourceCollection(SomeResource::class)`, an argument-less `toResourceCollection()`
+that finds no collection class, from the `#[UseResource]` arm or the bare naming fallback, and the Inertia props below.
 
-- **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
-  run `JsonResource::collection()`.
-- **The `ResourceCollection` subclass**: `make()`, `new` and a collection whose `toArray()` sends the collected list.
-- **`resolveResourceCollectionForModel()`'s `collectionFqcn`**: an argument-less `toResourceCollection()`. That is the
-  plain resource when no collection class was found, from the `#[UseResource]` arm or the bare naming fallback.
-
-A collection whose `toArray()` does not send the collected list is the exception. Nested by `new`, `make()` or a
-guessed `toResourceCollection()`, it publishes its own type, the body Laravel sends, while the run publishes it
-(`ResourceCollectionBody::sendsOwnShape()`). An excluded one keeps `R[]`, so no import names a missing file.
+A `ResourceCollection` subclass nested by `new`, `make()`, `::collection()` or a guessed `toResourceCollection()` is
+`ResourceCollectionBody::nestedValue()`. While the run publishes it and its `toArray()` does not send the collected
+list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
+its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.
 
 Inertia page props share `preservesKeys()` through `InertiaResourcePropHandler`, so a key-preserving paginated
 collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`.

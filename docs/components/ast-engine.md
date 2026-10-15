@@ -144,8 +144,8 @@ docblocks say what each binding table holds. These six facts span other classes:
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
   `InspectsAstNodes::isProxyFetch()` and `isModelMemberFetch()`.
 - **`rebase()` moves a scope to another subject**: a builder calls it rather than writing `subjectReflection` or
-  `modelClass`, so the proxy target and the subject's collection facts, `reindexesNumericKeys`, `collectedResource`
-  and `collectedElement`, follow, as `AstEngine::analyzeModelClosure()` does. The narrowing changes only the backing,
+  `modelClass`, so the proxy target and the subject's collection facts, `reindexesNumericKeys` and
+  `collectedElement`, follow, as `AstEngine::analyzeModelClosure()` does. The narrowing changes only the backing,
   through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
   runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
   collection's items as the class Laravel builds does.

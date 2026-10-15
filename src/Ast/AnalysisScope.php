@@ -144,16 +144,9 @@ final class AnalysisScope
     public ?array $provenProxy = null;
 
     /**
-     * The API resource the runtime class, a ResourceCollection, maps each item into; null when it collects none. Set by
-     * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
-     *
-     * @var class-string<JsonResource>|null
-     */
-    public ?string $collectedResource = null;
-
-    /**
-     * What each item the runtime class collects publishes as, the element `$this->collection` lists; see
-     * ResourceCollections::collectedElement(). Set with $collectedResource.
+     * What each item the runtime class, a ResourceCollection, collects publishes as: the element `$this->collection`
+     * lists and `$this->resource` holds; see ResourceCollections::collectedElement(). Set by seedCollectionFacts(), on
+     * rebase() and for any scope ResourceAstAnalyzer reads.
      *
      * @var CollectedElement|null
      */
@@ -398,21 +391,17 @@ final class AnalysisScope
     }
 
     /**
-     * Derive the collection facts from the runtime class, which an ancestor's body runs as: `reindexesNumericKeys`,
-     * `collectedResource` and `collectedElement`, from ResourceCollections.
+     * Derive the collection facts from the runtime class, which an ancestor's body runs as: `reindexesNumericKeys` and
+     * `collectedElement`, from ResourceCollections.
      *
      * @param  ReflectionClass<object>  $runtime
      */
     public function seedCollectionFacts(ReflectionClass $runtime): void
     {
         $this->reindexesNumericKeys = ResourceCollections::reindexesNumericKeys($runtime);
-        $this->collectedResource = null;
-        $this->collectedElement = null;
-
-        if ($runtime->isSubclassOf(ResourceCollection::class)) {
-            $this->collectedResource = ResourceCollections::collectedResource($runtime->getName());
-            $this->collectedElement = ResourceCollections::collectedElement($runtime);
-        }
+        $this->collectedElement = $runtime->isSubclassOf(ResourceCollection::class)
+            ? ResourceCollections::collectedElement($runtime)
+            : null;
     }
 
     /**
@@ -434,7 +423,7 @@ final class AnalysisScope
             return new ReceiverType(
                 [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
                 collectedItems: true,
-                elementResource: $this->collectedResource,
+                collectedElement: $this->collectedElement,
             );
         }
 

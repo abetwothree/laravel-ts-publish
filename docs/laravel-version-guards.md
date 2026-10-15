@@ -36,7 +36,7 @@ one in `ResourceCollectionItemsTest.php` covers `AttributedPostCollection`, whic
 The one in `CollectionWrapAndCollectsTest.php` covers `DialAttributeCollection`, whose attribute names a class that is
 no API resource; Laravel 12 ignores it, so the `$collects` beside it wins.
 `PostFlatCollection`'s collected resource is reachable only through the attribute, so on Laravel 12
-`ResourceCollections::collectedResource()` returns null and the type degrades.
+`ResourceCollections::collectedElement()` returns null and the type degrades.
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute
 but also follows the `FooCollection` to `FooResource` naming convention (no `Post` class sits beside it), so it
 resolves either way.

@@ -10,10 +10,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCol
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageKeyedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageRawCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketLeafCollection;
 
 const PAGE_ITEMS = 'PageItemResource[] | LengthAwarePaginator<PageItemResource> | SimplePaginator<PageItemResource> | CursorPaginator<PageItemResource>';
 const PAGE_ITEMS_KEYED = 'Record<string, PageItemResource> | LengthAwarePaginator<PageItemResource> | SimplePaginator<PageItemResource> | CursorPaginator<PageItemResource>';
 const PAGE_ITEMS_RAW = 'unknown[] | LengthAwarePaginator<unknown> | SimplePaginator<unknown> | CursorPaginator<unknown>';
+const PAGE_ITEMS_MODELS = 'Supplier[] | LengthAwarePaginator<Supplier> | SimplePaginator<Supplier> | CursorPaginator<Supplier>';
 
 /** The published type of one expression read inside a collection's toArray(). */
 function collectionItemsType(string $subject, string $php): string
@@ -68,6 +70,11 @@ describe("a resource collection's \$this->resource holds its items, in a collect
         'nothing collected: first()' => [PageRawCollection::class, '$this->resource->first()', 'unknown'],
         'nothing collected: total()' => [PageRawCollection::class, '$this->resource->total()', 'number'],
         'nothing collected: only()' => [PageRawCollection::class, "\$this->resource->only(['id'])", 'unknown[] | Record<string, unknown>'],
+        'raw models: the value' => [StubSprocketLeafCollection::class, '$this->resource', PAGE_ITEMS_MODELS],
+        'raw models: first()' => [StubSprocketLeafCollection::class, '$this->resource->first()', 'Supplier | null'],
+        'raw models: items()' => [StubSprocketLeafCollection::class, '$this->resource->items()', 'Supplier[]'],
+        'raw models: only()' => [StubSprocketLeafCollection::class, "\$this->resource->only(['id'])", 'Supplier[] | Record<string, Supplier>'],
+        'raw models: $this->collection' => [StubSprocketLeafCollection::class, '$this->collection', 'Supplier[]'],
     ]);
 
     test('publishes the same items through a scope its caller supplies', function (string $subject, string $expected) {

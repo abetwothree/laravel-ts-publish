@@ -42,6 +42,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceJsonSeria
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceReturnCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResourceToArrayCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SortedTagsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedLeafNestingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubAttributeCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubAttrLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubChildOfStubCollection;
@@ -61,6 +62,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubPlainVariable
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubPlusCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubRowsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSpreadCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubSprocketLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubValueCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubVariableCollection;
 use Workbench\App\Http\Resources\SupplierCollection;
@@ -215,6 +218,33 @@ describe('a stacked collection collects by its own class, as Laravel does', func
 
         expect(publishedCollectionBody(KnobCollection::class))->toBe('export interface KnobCollection');
     });
+
+    // Laravel sets `$this->resource` to the items `$this->collection` lists, or the paginator holding them.
+    test('a leaf naming no resource reads $this->resource in its parent\'s body as the raw models, in every holder', function (string $class, string $element) {
+        expect(publishedCollectionBody($class))->toBe(implode("\n", [
+            'export interface '.class_basename($class),
+            "    page: {$element}[] | LengthAwarePaginator<{$element}> | SimplePaginator<{$element}> | CursorPaginator<{$element}>;",
+            "    first: {$element} | null;",
+        ]));
+    })->with([
+        'the parent' => [StubSprocketCollection::class, 'StubSprocketResource'],
+        'the leaf' => [StubSprocketLeafCollection::class, 'Supplier'],
+    ]);
+
+    test('a leaf naming no resource reads $this->resource with the raw models\' import', function () {
+        expect(publishedImportLines(StubSprocketLeafCollection::class))
+            ->toContain("import type { Supplier } from '../../../../../../workbench/app/models';");
+    });
+
+    // Laravel nests a body-less collection through jsonSerialize(), which sends the collected list without its wrap.
+    test('a resource key holding a leaf naming no resource sends the raw models bare', function () {
+        expect(publishedCollectionBody(StackedLeafNestingResource::class))->toBe(implode("\n", [
+            'export interface StackedLeafNestingResource',
+            '    leaf_new: Supplier[];',
+            '    leaf_make: Supplier[];',
+        ]))->and(publishedImportLines(StackedLeafNestingResource::class))
+            ->toBe(["import type { Supplier } from '../../../../../../workbench/app/models';"]);
+    });
 });
 
 // The narrowing backs the proxy by the proven model; an ancestor's body still runs as the subclass Laravel builds.
@@ -258,12 +288,12 @@ test('an excluded nested collection with a body keeps R[] and imports nothing fr
 // The method lookup is memoized across a run, so a later build that nests the same collection parses nothing.
 test('a nested collection\'s body is a dependency of the build that reads it, on a warm lookup too', function () {
     $body = resolve(ResourceCollectionBody::class);
-    $body->sendsOwnShape(InheritedBodyParentCollection::class);
+    $body->nestedValue(InheritedBodyParentCollection::class);
 
     DependencyRecorder::start();
 
     try {
-        $body->sendsOwnShape(InheritedBodyParentCollection::class);
+        $body->nestedValue(InheritedBodyParentCollection::class);
         $paths = DependencyRecorder::paths();
     } finally {
         DependencyRecorder::stop();

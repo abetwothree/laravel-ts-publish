@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -20,7 +19,6 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
-use ReflectionClass;
 
 /**
  * `new SomeResource(...)`, `new EnumResource($this->prop)`, `new SomeCollection($this->items)`,
@@ -82,28 +80,13 @@ final class NewResourceHandler implements ExpressionHandler
                 ?? $result;
         }
 
-        // new SomeCollection($this->items) — resolve the collected element type. Must precede the
-        // generic isResourceClass() branch below, for the same reason as in analyzeStaticCall().
+        // new SomeCollection($this->items). Must precede the generic isResourceClass() branch below, for the same
+        // reason as in analyzeStaticCall().
         if (is_a($className, ResourceCollection::class, true)) {
-            // A collection whose toArray() is not the collected list sends that body's keys.
-            if (resolve(ResourceCollectionBody::class)->sendsOwnShape($className)) {
-                return [
-                    ...$result,
-                    'type' => TsNaming::resourceTypeName($className),
-                    'optional' => $this->hasConditionalNewArgument($expr, $className),
-                    'resourceFqcn' => $className,
-                ];
-            }
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
 
-            $collected = ResourceCollections::collectedResource($className);
-
-            if ($collected !== null) {
-                return [
-                    ...$result,
-                    'type' => ResourceCollections::listType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
-                    'optional' => $this->hasConditionalNewArgument($expr, $className),
-                    'resourceFqcn' => $collected,
-                ];
+            if ($nested !== null) {
+                return [...$nested, 'optional' => $this->hasConditionalNewArgument($expr, $className)];
             }
         }
 

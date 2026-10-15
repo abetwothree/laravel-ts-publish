@@ -6,8 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -23,6 +25,8 @@ use ReflectionClass;
  * Whether a resource collection's toArray() sends its collected list, the list ResourceCollection::toArray() returns:
  * the response wraps that list as it wraps a body-less collection's, and a resource key holding the collection sends
  * it bare.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @internal
  */
@@ -102,20 +106,26 @@ final class ResourceCollectionBody
     }
 
     /**
-     * Whether a resource key holding a collection Laravel builds sends the keys its own toArray() returns rather than
-     * the collected list; only for a collection the run publishes, so its type has a file to import from.
+     * A collection Laravel builds in a resource key, as the value it sends there: its own type while the run publishes
+     * it and its toArray() sends other keys, else the list it collects; null when it collects no element.
+     *
+     * @param  class-string<ResourceCollection>  $collection
+     * @return ValueExpressionResult|null
      */
-    public function sendsOwnShape(string $collectionFqcn): bool
+    public function nestedValue(string $collection): ?array
     {
-        if (! is_a($collectionFqcn, ResourceCollection::class, true)) {
-            return false;
+        // The nesting class's type follows this body, and a memoized method lookup records nothing on a later build.
+        DependencyRecorder::recordClass($collection);
+
+        $reflection = new ReflectionClass($collection);
+
+        if (PublishedClasses::exports($collection) && ! $this->sendsCollectedList($reflection)) {
+            return [...ValueResult::unknown(), 'type' => TsNaming::resourceTypeName($collection), 'resourceFqcn' => $collection];
         }
 
-        // The nesting class's type follows this body, and a memoized method lookup records nothing on a later build.
-        DependencyRecorder::recordClass($collectionFqcn);
+        $element = ResourceCollections::collectedElement($reflection);
 
-        return PublishedClasses::exports($collectionFqcn)
-            && ! $this->sendsCollectedList(new ReflectionClass($collectionFqcn));
+        return $element === null ? null : ResourceCollections::listValue($element, ResourceCollections::preservesKeys($reflection));
     }
 
     /**

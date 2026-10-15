@@ -157,9 +157,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         // A value read of `parent::toArray()` over a parent that sends the collected list is that list.
         if ($expr instanceof StaticCall && $this->readsParentCollectedList($expr, $scope)) {
-            $element = ResourceCollections::elementValue($scope->collectedElement);
-
-            return [...$element, 'type' => ValueResult::collectionListType($element['type'], ! $scope->reindexesNumericKeys)];
+            return ResourceCollections::listValue($scope->collectedElement, ! $scope->reindexesNumericKeys);
         }
 
         // EnumResource::make($this->prop) or SomeResource::make/collection(); a `$expr::m()` it cannot name declines.
@@ -226,25 +224,10 @@ final class StaticCallHandler implements ExpressionHandler
         // checks below: ResourceCollection extends JsonResource, so isResourceClass() matches it too and
         // would yield the unsuffixed collection name instead of 'OrderItemResource[]'.
         if (is_a($className, ResourceCollection::class, true) && in_array($methodName, ['make', 'collection'], true)) {
-            // make() builds the collection, so one whose toArray() is not the collected list sends its own keys.
-            if ($methodName === 'make' && resolve(ResourceCollectionBody::class)->sendsOwnShape($className)) {
-                return [
-                    ...$result,
-                    'type' => TsNaming::resourceTypeName($className),
-                    'optional' => $this->hasConditionalArgument($call, $className),
-                    'resourceFqcn' => $className,
-                ];
-            }
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
 
-            $collected = ResourceCollections::collectedResource($className);
-
-            if ($collected !== null) {
-                return [
-                    ...$result,
-                    'type' => ResourceCollections::listType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
-                    'optional' => $this->hasConditionalArgument($call, $className),
-                    'resourceFqcn' => $collected,
-                ];
+            if ($nested !== null) {
+                return [...$nested, 'optional' => $this->hasConditionalArgument($call, $className)];
             }
         }
 

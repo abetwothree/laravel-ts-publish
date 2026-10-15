@@ -22,41 +22,16 @@ use ReflectionClass;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type CollectedElement = array{fqcn: class-string<JsonResource|Model>, model: bool}
+ * @phpstan-type CollectedElement = array{fqcn: class-string<JsonResource>, model: false}|array{fqcn: class-string<Model>, model: true}
  *
  * @internal
  */
 final class ResourceCollections
 {
     /**
-     * Resolve the API resource a ResourceCollection collects, in Laravel's `collects()` order: #[Collects], the
-     * `$collects` default, then the bare `Foo` and the `FooResource` its name implies. The first class found decides;
-     * one that is no API resource yields null, as Laravel throws; only a convention guess must also be published.
-     *
-     * @param  class-string  $collectionFqcn
-     * @return class-string<JsonResource>|null
-     */
-    public static function collectedResource(string $collectionFqcn): ?string
-    {
-        $reflection = new ReflectionClass($collectionFqcn);
-        $named = self::namedCollectedClass($reflection);
-        $collected = $named ?? self::conventionalCollectedClass($reflection);
-
-        if ($collected === null) {
-            return null;
-        }
-
-        if (! is_a($collected, JsonResource::class, true)) {
-            return self::declineCollected($collectionFqcn, $collected);
-        }
-
-        return $named !== null || PublishedResourceRegistry::isPublished($collected) ? $collected : null;
-    }
-
-    /**
-     * What each item a runtime class collects publishes as: the API resource its collects() picks, else, when that
-     * finds nothing, the raw models the nearest ancestor collection's resource wraps, as that resource's backing model
-     * when it is published, else as the resource itself.
+     * What each item a runtime class collects publishes as: its own pick in Laravel's `collects()` order, null for one
+     * that is no API resource, as Laravel throws, or an unpublished convention guess; with no pick, the raw models the
+     * nearest ancestor's pick wraps.
      *
      * @template T of object
      *
@@ -65,19 +40,20 @@ final class ResourceCollections
      */
     public static function collectedElement(ReflectionClass $runtime): ?array
     {
-        $resource = self::collectedResource($runtime->getName());
+        $named = self::namedCollectedClass($runtime);
+        $collected = $named ?? self::conventionalCollectedClass($runtime);
 
-        if ($resource !== null) {
-            return ['fqcn' => $resource, 'model' => false];
+        if ($collected === null) {
+            return self::ancestorElement($runtime);
         }
 
-        // Laravel throws for a pick that is no API resource and maps each item into an unpublished one: either way,
-        // the class's own pick decides, never an ancestor's.
-        if (self::namedCollectedClass($runtime) !== null || self::conventionalCollectedClass($runtime) !== null) {
-            return null;
+        if (! is_a($collected, JsonResource::class, true)) {
+            return self::declineCollected($runtime->getName(), $collected);
         }
 
-        return self::ancestorElement($runtime);
+        return $named !== null || PublishedResourceRegistry::isPublished($collected)
+            ? ['fqcn' => $collected, 'model' => false]
+            : null;
     }
 
     /**
@@ -98,6 +74,20 @@ final class ResourceCollections
             'type' => TsNaming::resourceTypeName($element['fqcn']),
             ...($element['model'] ? ['modelFqcn' => $element['fqcn']] : ['resourceFqcn' => $element['fqcn']]),
         ];
+    }
+
+    /**
+     * A collected element's list as a value: `R[]`, or `Record<string, R>` when the collection keeps its keys, on R's
+     * import channel; `unknown` items for none, still the list Laravel sends of them.
+     *
+     * @param  CollectedElement|null  $element
+     * @return ValueExpressionResult
+     */
+    public static function listValue(?array $element, bool $preservesKeys): array
+    {
+        $item = self::elementValue($element);
+
+        return [...$item, 'type' => ValueResult::collectionListType($item['type'], $preservesKeys)];
     }
 
     /**
@@ -221,8 +211,9 @@ final class ResourceCollections
     }
 
     /**
-     * The element of a collection whose collects() finds nothing, from the nearest ancestor collection naming an API
-     * resource: Laravel then sends the raw models that resource would wrap, which its backing model types best.
+     * The element of a collection whose collects() finds nothing, from the nearest ancestor collection with a pick:
+     * Laravel then sends the raw models that pick would wrap, which its published backing model types best, else the
+     * pick itself while the run publishes it. A pick that is no API resource names nothing.
      *
      * @template T of object
      *
@@ -236,22 +227,40 @@ final class ResourceCollections
                 return null;
             }
 
-            $resource = self::collectedResource($ancestor->getName());
+            $pick = self::pick($ancestor);
 
-            if ($resource === null) {
+            if ($pick === null) {
                 continue;
             }
 
-            // The resource's docblock or attribute names the model, so the collection's type follows its file.
-            DependencyRecorder::recordClass($resource);
-            $model = resolve(ModelClassResolver::class)->resolve(new ReflectionClass($resource));
+            if (! is_a($pick, JsonResource::class, true)) {
+                return null;
+            }
 
-            return $model !== null && PublishedClasses::exports($model)
-                ? ['fqcn' => $model, 'model' => true]
-                : ['fqcn' => $resource, 'model' => false];
+            // The resource's docblock or attribute names the model, so the collection's type follows its file.
+            DependencyRecorder::recordClass($pick);
+            $model = resolve(ModelClassResolver::class)->resolve(new ReflectionClass($pick));
+
+            return match (true) {
+                $model !== null && PublishedClasses::exports($model) => ['fqcn' => $model, 'model' => true],
+                PublishedClasses::exports($pick) => ['fqcn' => $pick, 'model' => false],
+                default => null,
+            };
         }
 
         return null;
+    }
+
+    /**
+     * The class a collection's `collects()` would pick, unchecked: named, else by convention.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $collection
+     */
+    private static function pick(ReflectionClass $collection): ?string
+    {
+        return self::namedCollectedClass($collection) ?? self::conventionalCollectedClass($collection);
     }
 
     /**
