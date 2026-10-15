@@ -9,6 +9,8 @@ follows the folder.
 | `Models/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
 | `Http/Resources/`, `Http/Requests/`, `Http/Controllers/` | API resources and collections, form requests, Inertia controllers |
 | `Tables/` | Inertia UI tables |
+| `Providers/` | service providers a test registers |
+| `Mixins/` | mixins and invokables a test registers as macros on a `Macroable` class |
 | `TsPublish/` | subclasses and implementations of this package's extension points, in the folder of their parent in `src/`: a `ModelTransformer` subclass in `TsPublish/Transformers/` |
 | `Packages/InertiaUiTable/` | a stand-in for the `inertiaui/table` package, autoloaded as `InertiaUI\Table\` from `composer.json` |
 | `Stubs/` | `.php.stub` sources a test requires or copies; never autoloaded |

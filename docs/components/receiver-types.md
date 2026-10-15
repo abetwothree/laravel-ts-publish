@@ -16,6 +16,7 @@ These classes carry receiver inference:
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
+| [`MacroCallResolver`] | The macro a `Macroable` subject's `__call()` runs for a name it does not declare, and what that macro returns |
 | [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-no-fqcn-channel): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
 | [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`] | What an `instanceof` condition proves, and the binding its proven arm resolves under |
 
@@ -34,7 +35,7 @@ reflection answers, a decline included.
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
-| `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
+| `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
@@ -167,7 +168,11 @@ Two receivers come from outside `resolve()`, which names nothing for a bare `$th
   the redeclaration names leaves the guard and the backing class out, so the model never answers for it; a proven class
   never does. A collection's items go to the receiver rules. On a `Post` resource, `$this->getKey()` is `number` and
   `$this->fresh()` is `Post | null`. A method the resource declares, including every `JsonResource` helper such as
-  `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer.
+  `whenLoaded()`, keeps `SubjectMethodTypeResolver`'s answer. A macro registered under the name runs first, so
+  `MacroCallResolver` types the call from the macro's callable: its native return, its `@return`, then a closure's body
+  read with `$this` bound to the resource and its captured variables read where it is declared.
+  `forwardedThisReceiver()` names nothing for a macro, and `$this->resource->m()` keeps the model, which it calls
+  directly.
 - **A model's own body**: a model method or accessor body has the model as its subject, so nothing forwards.
   `ReceiverClassResolver::modelSubject()` names the model for `only()` and `except()` alone, which
   `RelationCollectionChainHandler` declines on a model-backed scope.
@@ -182,12 +187,13 @@ Earlier claimants of these node classes decline a call they cannot type, as
 
 `RelationCollectionChainHandler` claims a `$this->prop->m()` call only through `$this->resource`; on a date-cast column;
 or on a model-less subject's own typed property. Through `$this->resource` it reads the class `proxyCallTarget()` finds,
-final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as the bare `$this->m()`,
-`$this::m()` and `$this->resource::m()` do: only a public method, with the receiver rules' answer for a model method
-they type (`typesModelMethod()`), such as `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a
-subject's own property it reads `forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver
-rules, as it leaves a resource collection's items. Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s,
-inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
+final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as `$this->resource::m()` does,
+and the bare `$this->m()`, `$this::m()`, `static::m()` and `self::m()` do when no macro has the name: only a public
+method, with the receiver rules' answer for a model method they type (`typesModelMethod()`), such as `toArray()` or
+`getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and
+leaves those methods, and a filter on a held model, to the receiver rules, as it leaves a resource collection's items.
+Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so
+`$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
@@ -382,6 +388,7 @@ These pages cover the neighbors of receiver resolution:
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that catch a regression to `unknown` or an
   unimportable token.
 
+[`MacroCallResolver`]: ../../src/Ast/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php

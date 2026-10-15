@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
@@ -54,6 +55,12 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
 
         $receivers = resolve(ReceiverClassResolver::class);
         $onThis = ! $expr instanceof StaticCall && $expr->var instanceof Variable && $expr->var->name === 'this';
+
+        // A macro runs before anything the subject forwards to; `$this` is never null, so `?->` adds no `| null`.
+        if ($onThis && resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $expr->name->toString())) {
+            return resolve(MacroCallResolver::class)->resolve($scope, $expr->name->toString());
+        }
+
         $receiver = match (true) {
             $expr instanceof StaticCall => $receivers->resolveStaticReceiver($expr, $scope),
             $onThis => $receivers->forwardedThisReceiver($expr->name->toString(), $scope) ?? $this->filteredModelSubject($expr, $scope),

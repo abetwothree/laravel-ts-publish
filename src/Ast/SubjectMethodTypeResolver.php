@@ -9,8 +9,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Resolve a generic `$this->method()`/`$this::method()` call by the one declaration PHP runs: the subject's own, else
- * that of the first class `$this->resource` holds that declares it, as `__call` forwards it there.
+ * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the subject's own
+ * declaration, else a macro registered under the name, else the declaration of the first class `$this->resource` holds
+ * that declares it, as `__call` forwards it there.
  *
  * Shared because more than one guard reflects a subject method the same way: StaticCallHandler's
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
@@ -33,6 +34,13 @@ final class SubjectMethodTypeResolver
         // PHP runs the subject's own declaration, so a namesake it shadows never answers for it.
         if ($scope->subjectReflection->hasMethod($methodName)) {
             return $this->resolveOn($scope->subjectReflection, $methodName, $site);
+        }
+
+        // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
+        $macros = resolve(MacroCallResolver::class);
+
+        if ($macros->runsMacro($scope->subjectReflection, $methodName)) {
+            return $macros->resolve($scope, $methodName);
         }
 
         return $this->resolveForwarded($scope, $methodName, $site);

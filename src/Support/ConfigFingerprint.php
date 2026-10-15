@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\ViewName;
 use InvalidArgumentException;
+use ReflectionProperty;
 use Throwable;
 
 class ConfigFingerprint
@@ -34,9 +36,9 @@ class ConfigFingerprint
     private const string VIEW_DIRECTIVE = '/@(?:include(?:If|When|Unless|First|Isolated)?|extends(?:First)?|each|component(?:First)?)\s*(\((?:[^()]++|(?1))*\))/';
 
     /**
-     * Hash the output-affecting `ts-publish` config, each database connection's driver, and the templates the cached
-     * features render, so the cache busts when any changes: a relation aggregate publishes as its connection's driver
-     * returns it, and a cache hit never renders its template again.
+     * Hash the output-affecting `ts-publish` config, each database connection's driver, the templates the cached
+     * features render and the API resource macro names, so the cache busts when any changes: an aggregate publishes
+     * as its driver returns it, a hit never renders its template again, and a macro answers what a namesake answered.
      *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
@@ -53,6 +55,7 @@ class ConfigFingerprint
                 'database.default' => Config::get('database.default'),
                 'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
                 'templates' => self::templateFiles(),
+                'resource-macros' => self::resourceMacroNames(),
             ];
 
             self::ksortRecursive($config);
@@ -63,6 +66,21 @@ class ConfigFingerprint
             // A per-run token can never match a stored manifest header, forcing a full rebuild over stale output.
             return 'unfingerprintable-'.bin2hex(random_bytes(16));
         }
+    }
+
+    /**
+     * The sorted names of the macros every API resource shares, which it runs before forwarding a call to its model.
+     *
+     * @return list<string>
+     */
+    private static function resourceMacroNames(): array
+    {
+        /** @var array<string, mixed> $macros */
+        $macros = new ReflectionProperty(JsonResource::class, 'macros')->getValue();
+        $names = array_map(strval(...), array_keys($macros));
+        sort($names);
+
+        return $names;
     }
 
     /**

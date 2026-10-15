@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\ConfigFingerprint;
 use AbeTwoThree\LaravelTsPublish\Support\PackageVersion;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
@@ -27,6 +28,7 @@ beforeEach(function () {
 
 afterEach(function () {
     File::deleteDirectory($this->views);
+    JsonResource::flushMacros();
 });
 
 it('returns a non-empty package version string', function () {
@@ -173,4 +175,16 @@ it('fingerprints a template that includes itself without looping', function () {
 
     expect($first)->not->toStartWith('unfingerprintable-')
         ->and(ConfigFingerprint::compute())->toBe($first);
+});
+
+it('changes the config fingerprint when a resource macro is registered or flushed', function () {
+    $before = ConfigFingerprint::compute();
+
+    JsonResource::macro('fingerprinted', fn (): int => 1);
+    $registered = ConfigFingerprint::compute();
+
+    JsonResource::flushMacros();
+
+    expect($registered)->not->toBe($before)
+        ->and(ConfigFingerprint::compute())->toBe($before);
 });

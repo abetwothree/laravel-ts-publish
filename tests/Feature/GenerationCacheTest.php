@@ -10,11 +10,13 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -69,6 +71,8 @@ afterEach(function () {
             @rmdir($dir);
         }
     }
+
+    JsonResource::flushMacros();
 });
 
 test('manifest is written on first run', function () {
@@ -338,6 +342,32 @@ test('a model that becomes publishable between runs is named by a resource that 
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($published())->toContain('archive: AuditArchive');
+});
+
+test('a resource macro registered between two runs rebuilds the resource that calls it', function () {
+    Config::set('ts-publish.resources.additional_directories', [
+        ...Config::array('ts-publish.resources.additional_directories'),
+        MacroShadowingResource::class,
+    ]);
+    Config::set('ts-publish.resources.included', [MacroShadowingResource::class]);
+
+    $published = function (): string {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->out, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getFilename() === 'macro-shadowing-resource.ts') {
+                return (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        return '';
+    };
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('label: number;');
+
+    JsonResource::macro('label', fn (): string => 'macro-label');
+
+    expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+        ->and($published())->toContain('label: string;');
 });
 
 test('editing a class a resource reaches only by reflection rebuilds the resource', function () {

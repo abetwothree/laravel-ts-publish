@@ -42,6 +42,13 @@ when the two bodies agree. The same holds for a class other than a model that an
 the model never answers for it, and a method that class lacks publishes `unknown`, since Laravel throws. Give the
 method a return type or a `@return` docblock, and the call takes it.
 
+### A resource macro typed only by its body publishes `unknown` when its value depends on its arguments
+
+A macro's body is read without what the call passes, so `$this->format($x)` on an untyped macro closure publishes
+`unknown`. A closure declared outside a class method, such as in `bootstrap/app.php`, gets no body read, and a macro
+registered after the application boots, or by a deferred provider, is not seen at all. Give the closure a return type or
+a `@return` docblock.
+
 ### `config()` on an absent key with no default types as null
 
 `config('unset.key')` with no default publishes `null`, the value on the machine that ran the publish. A

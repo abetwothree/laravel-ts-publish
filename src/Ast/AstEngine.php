@@ -22,7 +22,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other five methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other six methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -192,6 +192,43 @@ final class AstEngine
         );
 
         return $analyzer->resolve($closure);
+    }
+
+    /**
+     * The value a closure returns when bound to a subject it was not declared in, as `Macroable::__call()` binds a
+     * macro: `$this` is the subject, while its captured variables read the method that declares it; null when the
+     * read declines.
+     *
+     * @param  class-string  $subjectClass
+     * @param  class-string<Model>|null  $modelClass
+     * @return ValueExpressionResult|null
+     *
+     * @internal
+     */
+    public function analyzeBoundClosure(
+        string $subjectClass,
+        ?string $modelClass,
+        ClosureExpr|ArrowFunction $closure,
+        MethodContext $context,
+    ): ?array {
+        $scope = $this->bindingsFor($context);
+        $scope->rebase(self::genericReflection($subjectClass), $modelClass);
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $context->method->name->toString(),
+            scope: $scope,
+            context: $context,
+        );
+
+        // A parameter owns its name inside the closure, and nothing binds what a call passes it.
+        $scope->releaseUnclaimedParameters($closure);
+
+        if ($closure instanceof ClosureExpr) {
+            $this->seedBody($closure->stmts, $scope);
+        }
+
+        return $this->returnsValue($closure, $analyzer, $scope);
     }
 
     /**

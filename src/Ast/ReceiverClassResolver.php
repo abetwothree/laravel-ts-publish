@@ -198,13 +198,16 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when the subject does not declare `m`: what `$this->resource` holds, since
-     * `JsonResource::__call()` forwards it there. The scope carries which subjects forward, so this resolver keeps to
-     * plain PHP semantics rather than one framework class's magic.
+     * The class a bare `$this->m()` runs on when the subject neither declares `m` nor has a macro by that name: what
+     * `$this->resource` holds, since `JsonResource::__call()` forwards it there. The scope carries which subjects
+     * forward, so this resolver keeps to plain PHP semantics rather than one framework class's magic.
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        if ($scope->subjectReflection->hasMethod($method)) {
+        // `__call()` runs a macro registered under the name before it forwards anything.
+        if ($scope->subjectReflection->hasMethod($method)
+            || resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $method)
+        ) {
             return null;
         }
 
@@ -632,7 +635,7 @@ final class ReceiverClassResolver
 
     /**
      * Resolve `$this->m()`: the subject's own method, else that of what `$this->resource` holds, since JsonResource
-     * forwards `__call()` there.
+     * forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it returns.
      */
     private function fromThisMethodCall(string $method, AnalysisScope $scope): ?ReceiverType
     {
@@ -644,10 +647,46 @@ final class ReceiverClassResolver
 
         $forwarded = $this->forwardedThisReceiver($method, $scope);
 
-        return $forwarded === null ? null : $this->merge(
+        if ($forwarded === null) {
+            $macro = resolve(MacroCallResolver::class)->macroFor($subject, $method);
+
+            return $this->typeOf($this->macroReturnClasses($macro, $subject->getName()));
+        }
+
+        return $this->merge(
             array_map(fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false), $forwarded->classes),
             false,
         );
+    }
+
+    /**
+     * The classes a macro returns: its native return type, else its `@return`; `static` and `self` name the subject a
+     * closure is bound to.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    private function macroReturnClasses(mixed $macro, string $subjectClass): ?array
+    {
+        $function = resolve(MacroCallResolver::class)->reflect($macro);
+
+        if ($function instanceof ReflectionMethod) {
+            return $this->returnClasses($function->getDeclaringClass()->getName(), $function->getName());
+        }
+
+        if ($function === null) {
+            return null;
+        }
+
+        if ($function->hasReturnType()) {
+            return $this->nativeClasses($function->getReturnType(), $subjectClass, $subjectClass);
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $function->getDocComment());
+        $context = $function->getClosureScopeClass();
+
+        return $docblock === null || $context === null
+            ? null
+            : $this->docblockClasses($docblock, $context, $subjectClass, $subjectClass);
     }
 
     /**
