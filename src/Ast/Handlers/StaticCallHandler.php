@@ -209,7 +209,7 @@ final class StaticCallHandler implements ExpressionHandler
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => ResourceCollections::listType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalArgument($call, $className),
                     'resourceFqcn' => $collected,
                 ];
@@ -238,7 +238,7 @@ final class StaticCallHandler implements ExpressionHandler
             /** @var class-string $className */
             return [
                 ...$result,
-                'type' => ResourceCollections::elementType($resourceName, new ReflectionClass($className)),
+                'type' => ResourceCollections::listType($resourceName, new ReflectionClass($className)),
                 'optional' => $optional,
                 'resourceFqcn' => $className,
             ];

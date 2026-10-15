@@ -153,7 +153,7 @@ final class ToResourceHandler implements ExpressionHandler
             /** @var class-string $explicit */
             return [
                 ...$result,
-                'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($explicit), new ReflectionClass($explicit)),
+                'type' => ResourceCollections::listType(TsNaming::resourceTypeName($explicit), new ReflectionClass($explicit)),
                 'optional' => false,
                 'resourceFqcn' => $explicit,
             ];
@@ -169,7 +169,7 @@ final class ToResourceHandler implements ExpressionHandler
 
         return [
             ...$result,
-            'type' => ResourceCollections::elementType(
+            'type' => ResourceCollections::listType(
                 TsNaming::resourceTypeName($resolved['resourceFqcn']),
                 new ReflectionClass($resolved['collectionFqcn']),
             ),

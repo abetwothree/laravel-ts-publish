@@ -101,7 +101,7 @@ final class ResourceCollections
      *
      * @param  ReflectionClass<T>  $collection
      */
-    public static function elementType(string $elementType, ReflectionClass $collection): string
+    public static function listType(string $elementType, ReflectionClass $collection): string
     {
         return ValueResult::collectionListType($elementType, self::preservesKeys($collection));
     }

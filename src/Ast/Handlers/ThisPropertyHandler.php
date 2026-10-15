@@ -228,7 +228,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         return [
             ...$result,
-            'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
+            'type' => ResourceCollections::listType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
             'resourceFqcn' => $singular,
         ];
     }

@@ -1241,7 +1241,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             ? $this->scope->subjectReflection->getProperty('wrap')->getDefaultValue()
             : 'data';
 
-        $elementType = ResourceCollections::elementType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
+        $elementType = ResourceCollections::listType(TsNaming::resourceTypeName($singular), $this->scope->subjectReflection);
 
         if ($wrapKey === null || $wrapKey === '') {
             return new ResourceAnalysis(flatTypeAlias: $elementType, flatTypeAliasFqcn: $singular);

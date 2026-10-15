@@ -89,7 +89,7 @@ final class NewResourceHandler implements ExpressionHandler
             if ($collected !== null) {
                 return [
                     ...$result,
-                    'type' => ResourceCollections::elementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
+                    'type' => ResourceCollections::listType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
                     'optional' => $this->hasConditionalNewArgument($expr, $className),
                     'resourceFqcn' => $collected,
                 ];

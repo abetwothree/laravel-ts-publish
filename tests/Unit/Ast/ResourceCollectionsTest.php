@@ -27,8 +27,8 @@ describe('ResourceCollections', function () {
         're-indexes' => [SupplierCollection::class, false],
     ]);
 
-    test('elementType() lists the element, or keys it by string when the collection keeps its keys', function (string $collection, string $type) {
-        expect(ResourceCollections::elementType('R', new ReflectionClass($collection)))->toBe($type);
+    test('listType() lists the element, or keys it by string when the collection keeps its keys', function (string $collection, string $type) {
+        expect(ResourceCollections::listType('R', new ReflectionClass($collection)))->toBe($type);
     })->with([
         'a list' => [SupplierCollection::class, 'R[]'],
         'a keyed record' => [PreserveKeysFlatCollection::class, 'Record<string, R>'],

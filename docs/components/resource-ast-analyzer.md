@@ -510,7 +510,7 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 ### `#[Collects]` and `#[PreserveKeys]`
 
 [`ResourceCollections`](../../src/Ast/ResourceCollections.php) holds a collection's facts for the analyzer and the
-handlers alike: `collectedResource()`, `preservesKeys()`, `elementType()` and `reindexesNumericKeys()`.
+handlers alike: `collectedResource()`, `preservesKeys()`, `listType()` and `reindexesNumericKeys()`.
 `collectedResource()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md).
 `AnalysisScope::seedCollectionFacts()` seeds `$collectedResource` and `$reindexesNumericKeys` from it, on `rebase()`
@@ -520,14 +520,14 @@ API resource `$this->collection` does. A collection is backed by no model, whate
 
 `preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
-collection keeps its keys, else `R[]`. `ResourceCollections::elementType()` is its caller for every site that reflects
+collection keeps its keys, else `R[]`. `ResourceCollections::listType()` is its caller for every site that reflects
 on a collection class. `$this->resource`'s items call `collectionListType()` directly: their value, `items()`
 and `getCollection()` with the scope's `reindexesNumericKeys`, and `only()`/`except()` once with `false` and once with
 `true`, since those keep the keys they filter by. A site that spelled the list itself would keep emitting `R[]` for a
 keyed collection, and only a fixture of that exact call shape would notice.
-`grep -rnE 'collectionListType\(|ResourceCollections::elementType\(' src/` lists the sites.
+`grep -rnE 'collectionListType\(|ResourceCollections::listType\(' src/` lists the sites.
 
-Each `elementType()` site reflects on the class Laravel instantiates:
+Each `listType()` site reflects on the class Laravel instantiates:
 
 - **The singular resource**: `SomeResource::collection()` and `toResourceCollection(SomeResource::class)`, which both
   run `JsonResource::collection()`.
