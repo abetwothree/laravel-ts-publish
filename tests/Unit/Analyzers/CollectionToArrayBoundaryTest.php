@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38ValueLeafColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedSortedTagsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KnobCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\Lever;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeverCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastStubCollection;
@@ -48,6 +49,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubCollectsColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFirstReturnCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFlatCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGadgetCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGizmoResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubKeyedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubLeafInheritCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubLeafOwnCollection;
@@ -191,6 +193,7 @@ describe('a stacked collection collects by its own class, as Laravel does', func
         $pageType = new InertiaPageAnalyzer()->analyze(['uses' => InertiaStackedCollectionController::class.'@flatPaginated'])['pageType'] ?? null;
 
         expect(publishedCollectionBody(F38FlatNamedLeafCollection::class))->toBe('export type F38FlatNamedLeafCollection = Supplier[];')
+            ->and(publishedImportLines(F38FlatNamedLeafCollection::class))->toBe(["import type { Supplier } from '../../../../../../workbench/app/models';"])
             ->and($pageType)->toBe('Inertia.SharedData & { suppliers: JsonResourcePaginator<Supplier> }');
     });
 
@@ -205,6 +208,13 @@ describe('a stacked collection collects by its own class, as Laravel does', func
         'by its own $collects' => [F38DialLeafCollection::class, Dial::class],
         'by its own name' => [LeverCollection::class, Lever::class],
     ]);
+
+    // Laravel maps every item into the pick it finds, so neither the parent's resource nor its model types them.
+    test('a leaf whose own convention pick is an API resource the run does not publish is declined', function () {
+        PublishedResourceRegistry::register([StubGizmoResource::class]);
+
+        expect(publishedCollectionBody(KnobCollection::class))->toBe('export interface KnobCollection');
+    });
 });
 
 // The narrowing backs the proxy by the proven model; an ancestor's body still runs as the subclass Laravel builds.

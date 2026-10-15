@@ -114,10 +114,11 @@ own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before i
 slot of the nearest class that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]`
 off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()`
 finds nothing, Laravel sends raw models, so the element is the published model backing the API resource the nearest
-ancestor names, else that resource (`ResourceCollections::collectedElement()`); a pick that is no API resource is
-declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the runtime class's
-facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its `$this->collection` lists
-`LeafCollection`'s element. The `Handover*Collection` and `F38*Collection` fixtures pin it.
+ancestor names, else that resource (`ResourceCollections::collectedElement()`); a pick that is no API resource, or
+one the run does not publish, is declined, never replaced. A `toArray()` an ancestor or a trait declares still wins,
+and runs with the runtime class's facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so
+its `$this->collection` lists `LeafCollection`'s element. The `Handover*Collection` and `F38*Collection` fixtures
+pin it.
 
 ### An inherited shape needs an inherited model
 

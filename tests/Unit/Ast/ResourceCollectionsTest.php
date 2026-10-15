@@ -13,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GaugeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KnobCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KnobResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGizmoResource;
 use Workbench\App\Http\Resources\MiscCollection;
@@ -68,6 +70,13 @@ describe('ResourceCollections', function () {
 
         expect(ResourceCollections::collectedElement(new ReflectionClass(F38NamedLeafCollection::class)))
             ->toBe(['fqcn' => StubGizmoResource::class, 'model' => false]);
+    });
+
+    test('collectedElement() declines a stacked class whose own convention pick the run does not publish', function () {
+        PublishedResourceRegistry::register([StubGizmoResource::class]);
+
+        expect(class_exists(KnobResource::class))->toBeTrue()
+            ->and(ResourceCollections::collectedElement(new ReflectionClass(KnobCollection::class)))->toBeNull();
     });
 
     test('reindexesNumericKeys() holds for an API resource that does not keep its keys', function (string $class, bool $reindexes) {
