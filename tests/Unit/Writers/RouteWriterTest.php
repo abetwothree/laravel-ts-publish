@@ -583,7 +583,7 @@ test('route output imports AsEnum beside another @tolki/ts type a page prop\'s o
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
 
     expect($generator->content)
-        ->toContain("import { defineRoute, annotatePageProps, type CaseValue, type AsEnum } from '@tolki/ts';")
+        ->toContain("import { defineRoute, annotatePageProps, type AsEnum, type CaseValue } from '@tolki/ts';")
         ->toContain("import type { Role, Status } from '../../enums';");
 });
 
