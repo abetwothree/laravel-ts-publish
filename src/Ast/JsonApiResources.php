@@ -150,7 +150,7 @@ final class JsonApiResources
         }
 
         return ! $reflection->hasProperty('relationships')
-            || ($reflection->getDefaultProperties()['relationships'] === []
+            || (($reflection->getDefaultProperties()['relationships'] ?? null) === []
                 && resolve(SubjectPropertyTypeResolver::class)->holdsDefault($reflection, 'relationships'));
     }
 

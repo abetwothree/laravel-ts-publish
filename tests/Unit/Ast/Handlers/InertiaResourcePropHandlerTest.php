@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\EmptyRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeyedApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PagePropApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\TypedRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\UnreadRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WrittenRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostCollection;
@@ -270,6 +271,7 @@ it('types a JSON:API document over never only for a resource that provably decla
     'an empty $relationships' => [EmptyRelationshipsApiResource::class, 'JsonApiDocument<EmptyRelationshipsApiResource, never>'],
     'an empty $relationships a method writes' => [WrittenRelationshipsApiResource::class, 'JsonApiDocument<WrittenRelationshipsApiResource>'],
     'a toRelationships() returning a variable' => [UnreadRelationshipsApiResource::class, 'JsonApiDocument<UnreadRelationshipsApiResource>'],
+    'a typed $relationships without a default' => [TypedRelationshipsApiResource::class, 'JsonApiDocument<TypedRelationshipsApiResource>'],
 ])->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
 
 it('reads the wrapped paginator by the constructor and collection() parameter name', function () {
