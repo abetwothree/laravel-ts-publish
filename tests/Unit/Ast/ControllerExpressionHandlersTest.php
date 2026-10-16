@@ -134,7 +134,7 @@ it('tries InertiaResourcePropHandler before the receiver handlers for a toResour
 });
 
 // Both claim a MethodCall, but by disjoint names, so each declines the other's and their order is free.
-it('ModelFinderHandler and InertiaResourcePropHandler decline each other\'s method calls', function () {
+test('ModelFinderHandler and InertiaResourcePropHandler decline each other\'s method calls', function () {
     $reflection = new ReflectionClass(InertiaController::class);
     $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
     $collection = new MethodCall($paginator, 'toResourceCollection');

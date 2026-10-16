@@ -12,6 +12,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PagePropApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFlatCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGadgetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -303,7 +306,7 @@ it('types toResourceCollection() as the response of the collection Laravel guess
 });
 
 // Wrap report: the anonymous collection keeps R's keys whether or not a paginator is beside them.
-it('an unpaginated anonymous prop over a key-preserving resource publishes the record', function () {
+test('an unpaginated anonymous prop over a key-preserving resource publishes the record', function () {
     $keyed = new StaticCall(new Name(PreserveKeysTeamResource::class), 'collection', [new Arg(new StaticCall(new Name(Team::class), 'all'))]);
 
     expect(inertiaResourcePropResult($keyed))->toBe([
@@ -366,3 +369,37 @@ it('reads a nullable paginator payload\'s kinds without its null arm', function 
         ->and(inertiaResourcePropResult(new New_(new Name(PostCollection::class), [new Arg($null)]))['type'] ?? null)
         ->toBe('PostCollection');
 });
+
+it('types a $wrap = null collection whose body sends the collected list as its paginator\'s response, and beside its unpaginated self', function () {
+    $sometimes = new Arg(new Ternary(new Variable('flag'), new StaticCall(new Name(Post::class), 'all'), paginatorArg()->value));
+
+    expect(inertiaResourcePropResult(new New_(new Name(StubFlatCollection::class), [paginatorArg()])))->toBe([
+        'type' => 'JsonResourcePaginator<StubGadgetResource>',
+        'optional' => false,
+        'resourceFqcn' => StubGadgetResource::class,
+        'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
+    ])
+        ->and(inertiaResourcePropResult(new New_(new Name(StubFlatCollection::class), [$sometimes])))->toBe([
+            'type' => 'StubFlatCollection | JsonResourcePaginator<StubGadgetResource>',
+            'optional' => false,
+            'resourceFqcn' => StubGadgetResource::class,
+            'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
+            'embeddedResourceFqcns' => [StubFlatCollection::class],
+        ]);
+});
+
+// Laravel calls `X::collection($items)`, which for a collection or the EnumResource builds no anonymous resource list.
+it('declines toResourceCollection() of a collection or the EnumResource, given or named by #[UseResource]', function () {
+    $posts = new StaticCall(new Name(Post::class), 'all');
+    $given = fn (string $class): MethodCall => new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name($class), 'class'))]);
+
+    expect(inertiaResourcePropResult($given(PostCollection::class)))->toBeNull()
+        ->and(inertiaResourcePropResult($given(EnumResource::class)))->toBeNull();
+});
+
+it('declines a guessed toResourceCollection() whose #[UseResource] names a collection', function () {
+    expect(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(Cog::class), 'all'), 'toResourceCollection')))->toBeNull();
+})->skip(
+    ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResource'),
+    'UseResource attribute requires Laravel 12.29+',
+);
