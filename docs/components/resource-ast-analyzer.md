@@ -49,21 +49,17 @@ every profile, the order handlers run in decides which one answers; see
   resource that overrides `toAttributes()` publishes it, whatever its `toArray()`, since Laravel sends it from 12.45.
 - **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
   bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) says which bodies
-  send it. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own method's `@return` and casts,
-  and one that names no API resource lists the raw models its parent's resource wraps
-  ([below](#a-stacked-body-less-collection-collects-what-its-own-class-names)).
-  A spread, a variable, `+` or `array_merge()` that builds on the list reads it as `[key: number]: R`
-  (`collectedListAnalysis()`), and a value as `R[]` (`StaticCallHandler`).
+  send it, and `buildCollectionDelegatedAnalysis()` publishes the response under the method's own `@return` and casts
+  ([below](#a-stacked-body-less-collection-collects-what-its-own-class-names)). Code that builds on the list reads it
+  as `[key: number]: R` (`collectedListAnalysis()`).
 - **The class's own declaration counts, a trait it uses included**:
   [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentCall()`. An ancestor's analysis wins only when it has properties or a flat type. An empty one falls
   through to `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
 - **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads that
-  body for the runtime class** (`frameworkMethodAnalysis()`), unless `resolveResourceData()`, `toAttributes()` or
-  `$attributes` replaces `toArray()`; JsonApiResource's own `resolve()` sends the resource object under `data`. A
-  whole `return` of the collected list is flat, else `[key: number]: R`. A body only the runtime class declares is
-  still read as the subject's, which takes only the runtime class's
-  [collection facts](#a-stacked-body-less-collection-collects-what-its-own-class-names). A re-entered read is `null`.
+  body for the runtime class** (`frameworkMethodAnalysis()`). A body only the runtime class declares is still read as
+  the subject's, which takes only the runtime class's
+  [collection facts](#a-stacked-body-less-collection-collects-what-its-own-class-names).
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
@@ -72,15 +68,10 @@ every profile, the order handlers run in decides which one answers; see
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
   entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
   `return` is read; any other return is skipped.
-- **Any other body falls back to its own first `return`**, never a closure's, shaped by the method's own `@return` and
-  `#[TsCasts]` as a branch is: `parent::toArray()`, `parent::with()`, `parent::resolve()`, `parent::jsonSerialize()`,
-  a collection's collected list read as above, an `array_merge()` of literals and `parent::` calls, `$this->only()` or
-  `$this->except()`, a bare `$this->method()`, which resolves like a `...$this->method()` spread, or a variable. The
-  same forms, read by `analyzeArrayExpression()`, are the base of a variable `ReadsReturnedVariables` walks; a `+=` of
-  one adds only new keys and every signature entry, a whole re-assignment drops the writes before it, and a key first
-  written in a branch, loop, `try` or `switch` publishes optional, except in a `do` body before its first `break` or
-  `continue`. An `unset()` of a named key drops it and its import channels, or makes it optional where it may not
-  run; any other `unset()` of the variable is a write the walk does not read.
+- **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
+  method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
+  are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
+  written in a branch publishing optional.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
@@ -123,16 +114,12 @@ unimported class, which `tsc` rejects with TS2304.
 Take `LeafCollection extends MidCollection extends ResourceCollection`, neither declaring `toArray()`. Laravel's
 `collects()` reads the class's own `#[Collects]`, then the `$collects` it inherits, then the naming convention on its
 own name, and `sendsCollectedList()` lets `LeafCollection` resolve that before its walk reaches `MidCollection`. Its
-wrap key is the live `$wrap` that `ResourceWrapping::key()` reads by late static binding: the slot of the nearest class
-that declares `$wrap`, as the booted app left it, `null` included. It reads `#[PreserveKeys]` off its own class only, as
-Laravel does; an inherited `$preserveKeys` property still applies. When its `collects()` finds nothing, Laravel sends
-raw models, so the element is the published model backing the nearest ancestor's pick, else that pick while the run
-publishes it (`ResourceCollections::collectedElement()`). With neither, as for an ancestor pick that is no API resource,
-the raw items list as `unknown`. The class's own pick that is no API resource, or one the run does not publish, is
-declined, never replaced. A `toArray()` an ancestor or a trait declares still wins, and runs with the runtime class's
-facts: `ResourceAstAnalyzer::$runtimeClass` seeds the nested analyzer's scope, so its `$this->collection` and
-`$this->resource` read `LeafCollection`'s element. The `Handover*Collection`, `F38*Collection` and
-`StubSprocket*Collection` fixtures pin it.
+wrap key is the live `$wrap` of the nearest class that declares one (`ResourceWrapping::key()`). It reads
+`#[PreserveKeys]` off its own class only, as Laravel does; an inherited `$preserveKeys` property still applies. When its
+own `collects()` finds nothing, Laravel sends raw models, which `ResourceCollections::collectedElement()` names from the
+nearest ancestor's pick. A `toArray()` an ancestor or a trait declares still wins, and runs with the runtime class's
+facts (`ResourceAstAnalyzer::$runtimeClass`), so its `$this->collection` reads `LeafCollection`'s element. The
+`Handover*Collection`, `F38*Collection` and `StubSprocket*Collection` fixtures pin it.
 
 ### An inherited shape needs an inherited model
 
@@ -148,27 +135,21 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
 - **`id` and `type`**: `id` is `string`, as Laravel casts `toId()`. `type` is Laravel's own expression over the class
   name, run when `ts:publish` runs, or the one literal a `toType()` override returns
   (`JsonApiResources::typeLiteral()`), else `string`.
-- **`attributes`**: the first source `toAttributes()` reads: an override, through `analyzeThisMethodSpread()`, then
-  JsonApiResource's own sources, which a `...parent::toAttributes()` in the override reads too: the `$attributes`
-  names as `$this->resource->{name}` reads, an own `toArray()` read as `analyze()` reads a body, so a whole or spread
-  `parent::toArray()` is the model's own array, then whole-model delegation. A keyless name in the array an override
-  or an own `toArray()` returns reads the model attribute too (`$readsKeylessAttributeNames`). The model's
-  `#[TsCasts]`, then the resource's, lay over its members and never over `id` or `type`, so `ResourceTransformer`
-  lays neither at the top level. It is optional unless one member is always sent, since Laravel drops an empty one.
+- **`attributes`**: the first source `toAttributes()` reads in Laravel's order, an override, `$attributes`, an own
+  `toArray()` or whole-model delegation (`BuildsJsonApiResourceObject`). The model's `#[TsCasts]`, then the resource's,
+  lay over its members and never over `id` or `type`, so `ResourceTransformer` lays neither at the top level. It is
+  optional unless one member is always sent, since Laravel drops an empty one.
 - **`relationships`, `links`, `meta`**: every relationship `$relationships` or a `toRelationships()` literal declares,
   each optional, as only an `include` sends it (`JsonApiResources::relationships()`); `links` and `meta` read a
   `toLinks()` or `toMeta()` override, else the `$jsonApiLinks` or `$jsonApiMeta` default.
 - **`resolve()` and `jsonSerialize()`**: a read reaching JsonApiResource's own `resolve()` is the resource object
   under `data`, declined inside a method that builds the object, where Laravel never returns. A call to the
   resource's `toArray()` read as a value (`MethodReturnTypeResolver`'s `readsCall`) is its body, never the object.
-- **Positions**: an instance read as a value, `new R`, `R::make()`, `toResource()` or `resolve()`, is
-  `{ data: R }` (`JsonApiResources::instanceType()`), `| null` where the payload can be; each item of a named
-  collection is that too, through `ResourceCollections::elementValue()`; `R::collection()` is `R[]`. An Inertia prop
-  is the `@tolki/types` document, `JsonApiDocument<R, I>`, `JsonApiCollection<R, I>` or each paginator kind's
-  (`TolkiTypes`), where `I` is every resource object an include can reach (`JsonApiResources::includedResources()`):
-  a published JSON:API resource, else `JsonApiResourceObject<'type'>`, and nothing for a plain resource, which throws.
-  `I` is `never` for a resource that declares no relationship (`JsonApiResources::declaresNoRelationships()`), and is
-  left to the generic's default where an include may add one the package cannot read.
+- **Positions**: an instance read as a value, a named collection's item included, is `{ data: R }`
+  (`JsonApiResources::instanceType()`), and `R::collection()` is `R[]`. An Inertia prop is the `@tolki/types`
+  document (`TolkiTypes`), whose `I` is every resource object an include can reach
+  (`JsonApiResources::includedResources()`): `never` for a resource that declares no relationship, and the generic's
+  default where an include may add one the package cannot read.
 
 ## Attribute filters on any model receiver
 
@@ -568,50 +549,37 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 handlers alike: `collectedElement()`, `preservesKeys()`, `listValue()`, `listType()` and `reindexesNumericKeys()`.
 `collectedElement()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md). It follows Laravel's
-`collects()` order: `#[Collects]`, the `$collects` default, then for `FooCollection` the bare `Foo` when that class
-exists, else `FooResource`. The first class found decides. One that is no API resource, where Laravel throws a
-`LogicException`, collects nothing and adds an analysis warning.
-`AnalysisScope::seedCollectionFacts()` seeds `$collectedElement` and `$reindexesNumericKeys` from it, on `rebase()`
-and, from the runtime class, for any scope `ResourceAstAnalyzer` reads, its own or one a caller supplies:
-`$this->collection` lists that element, and `$this->resource`'s items carry it on `ReceiverType::$collectedElement`,
-since Laravel sets one to the other. A collection is backed by no model, whatever its docblock or
+`collects()` order, and a pick that is no API resource, where Laravel throws a `LogicException`, collects nothing and
+adds an analysis warning. `AnalysisScope::seedCollectionFacts()` seeds a scope's `$collectedElement` and
+`$reindexesNumericKeys` from the runtime class, once a run per class, so `$this->collection` and `$this->resource`'s
+items carry the one element Laravel sets both to. A collection is backed by no model, whatever its docblock or
 `#[TsResource(model:)]` names: `ModelClassResolver::resolve()` returns `null` for it.
 
 `preservesKeys()` honors both `#[PreserveKeys]` and `public $preserveKeys = true`.
 `ValueResult::collectionListType()` is the one place that spells a collected list: `Record<string, R>` when the
-collection keeps its keys, else `R[]`. `ResourceCollections::listValue()` is that list as a value, the element on its
-import channel; `$this->collection`, a value-position `parent::toArray()` over the collected list, `$this->resource`'s
-items (`heldItems()`, with the scope's `reindexesNumericKeys`), a nested collection and the delegated response read it.
-`only()`/`except()` on the items spell it once with `false` and once with `true`, since those keep the keys they
-filter by. Without an element, the first three are `unknown[]`. The delegated response is `{ <wrap>: unknown[] }` while
-`ResourceCollections::keepsRawItems()` holds, since `collects()` then picks nothing and Laravel sends the raw items, and
-is empty where Laravel throws or maps the items into an unpublished resource. A nested collection is `null`, so its
-caller keeps its own fallback.
+collection keeps its keys, else `R[]`. `ResourceCollections::listValue()` is that list as a value, on the element's
+import channel, and `unknown[]` without an element; `only()`/`except()` on the items spell it once with `false` and
+once with `true`, since those keep the keys they filter by. `listType()` spells the list alone where a site names its
+API resource, keyed by the class Laravel reads the keys off, such as `SomeResource::collection()`'s `SomeResource`.
 A site that spelled the list itself would keep emitting `R[]` for a keyed collection, and only a fixture of that exact
 call shape would notice.
 `grep -rnE 'collectionListType\(|ResourceCollections::(listType|listValue)\(' src/` lists the sites.
-
-`listType()` spells the list alone for a site that names its API resource and reflects on the class Laravel keys it by:
-`SomeResource::collection()` (a `ResourceCollection` subclass's included, an anonymous list of that class),
-`toResourceCollection(SomeResource::class)`, an argument-less `toResourceCollection()` that finds no collection class,
-from the `#[UseResource]` arm or the bare naming fallback, and the Inertia props below.
 
 A `ResourceCollection` subclass nested by `new`, `make()` or a guessed `toResourceCollection()` is
 `ResourceCollectionBody::nestedValue()`. While the run publishes it and its `toArray()` does not send the collected
 list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
 its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.
 
-`InertiaResourcePropHandler` types `new` and `make()` of an API resource or collection, `R::collection()`,
-`EnumResource::collection()`, `toResource()` and `toResourceCollection()`, in a prop or a shared value at any depth, as
-its `toResponse()` data. A single resource and a body without the live wrap key sit inside that key, such as
-`{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body already holds it;
-`EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps` publishes a top-level
-one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with `import type`. Over a
-paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and an anonymous or flat one
-is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`;
-`TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes none, publishes each. A
-JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare list once
-`withoutWrapping()` empties the shared key.
+`InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
+lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
+key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body
+already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
+publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
+`import type`. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and
+an anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
+`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes
+none, publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare
+list once `withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 
