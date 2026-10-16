@@ -325,7 +325,7 @@ test('an argument-less toResourceCollection() lists the resource collection #[Us
 
 // The token needs the collection's own file, so outside the published set the key keeps the list it collects.
 test('an excluded nested collection with a body keeps R[] and imports nothing from it', function (array $excluded, string $type) {
-    config()->set('ts-publish.resources.excluded', $excluded);
+    config()->set('ts-publish.resources.excluded', [...config()->array('ts-publish.resources.excluded'), ...$excluded]);
     PublishedResourceRegistry::register(resolve(ResourcesCollector::class)->collect());
 
     expect(publishedCollectionBody(NestedSupplierListResource::class))->toBe(implode("\n", [

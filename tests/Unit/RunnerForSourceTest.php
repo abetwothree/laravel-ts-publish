@@ -293,7 +293,7 @@ test('throws when broadcast event publishing is disabled', function () {
 })->throws(InvalidArgumentException::class, 'broadcast events are disabled');
 
 test('a --source run clears a full run\'s stale registry instead of narrowing against it', function () {
-    config()->set('ts-publish.resources.excluded', [UserResource::class]);
+    config()->set('ts-publish.resources.excluded', [...config()->array('ts-publish.resources.excluded'), UserResource::class]);
 
     $fullRunner = new Runner;
     $fullRunner->run();

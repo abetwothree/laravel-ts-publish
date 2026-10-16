@@ -19,6 +19,8 @@ These are the classes a change to resource analysis usually touches:
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
 | [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
+| [`BuildsJsonApiResourceObject`](../../src/Analyzers/Concerns/BuildsJsonApiResourceObject.php) | A JSON:API resource's resource object, composed from the analyzer's reads of the runtime class |
+| [`JsonApiResources`](../../src/Ast/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
 | [`ResourceCollections`](../../src/Ast/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
 | [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
 | [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
@@ -42,6 +44,10 @@ every profile, the order handlers run in decides which one answers; see
 
 `analyze()` builds the analysis in a fixed order, and each step carries a rule:
 
+- **A JSON:API resource's `toArray()` is never its response**: `analyze()` publishes the resource object
+  ([below](#jsonapi-resources)), unless a caller located the body or the read is an ancestor's for a subclass. A plain
+  resource that overrides `toAttributes()` and declares no `toArray()` publishes `toAttributes()`, which Laravel sends
+  from 12.45.
 - **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
   bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) says which bodies
   send it. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own method's `@return` and casts,
@@ -55,8 +61,9 @@ every profile, the order handlers run in decides which one answers; see
   through to `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
 - **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads that
   body for the runtime class** (`frameworkMethodAnalysis()`), unless `resolveResourceData()`, `toAttributes()` or
-  `$attributes` replaces `toArray()`. A whole `return` of the collected list is flat, else `[key: number]: R`. A body
-  only the runtime class declares is still read as the subject's, which takes only the runtime class's
+  `$attributes` replaces `toArray()`; JsonApiResource's own `resolve()` sends the resource object under `data`. A
+  whole `return` of the collected list is flat, else `[key: number]: R`. A body only the runtime class declares is
+  still read as the subject's, which takes only the runtime class's
   [collection facts](#a-stacked-body-less-collection-collects-what-its-own-class-names). A re-entered read is `null`.
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
@@ -134,6 +141,25 @@ A subclass's inherited analysis types its columns only when a model backs it.
 [`ModelClassResolver::resolve()`](../../src/Ast/ModelClassResolver.php) reads the nearest ancestor's `@mixin` or
 `@extends` when the class has none of its own; its docblock lists the full precedence. That step runs for any resource
 without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
+
+## JSON:API resources
+
+A `JsonApiResource` subclass publishes the resource object Laravel sends as `data`, read off the runtime class:
+
+- **`id` and `type`**: `id` is `string`, as Laravel casts `toId()`. `type` is Laravel's own expression over the class
+  name, run when `ts:publish` runs, or the one literal a `toType()` override returns
+  (`JsonApiResources::typeLiteral()`), else `string`.
+- **`attributes`**: the first source `toAttributes()` reads: an override or an own `toArray()`, each through
+  `analyzeThisMethodSpread()`, the `$attributes` names as `$this->resource->{name}` reads, then whole-model delegation.
+  A keyless name in an override's returned array reads the model attribute too (`$readsKeylessAttributeNames`). The
+  model's `#[TsCasts]`, then the resource's, lay over its members and never over `id` or `type`, so
+  `ResourceTransformer` lays neither at the top level. It is optional unless one member is always sent, since Laravel
+  drops an empty one.
+- **`relationships`, `links`, `meta`**: every relationship `$relationships` or a `toRelationships()` literal declares,
+  each optional, as only an `include` sends it (`JsonApiResources::relationships()`); `links` and `meta` read a
+  `toLinks()` or `toMeta()` override, else the `$jsonApiLinks` or `$jsonApiMeta` default.
+- **`resolve()` and `jsonSerialize()`**: a read reaching JsonApiResource's own `resolve()` is the resource object
+  under `data`, declined inside a method that builds the object, where Laravel never returns.
 
 ## Attribute filters on any model receiver
 

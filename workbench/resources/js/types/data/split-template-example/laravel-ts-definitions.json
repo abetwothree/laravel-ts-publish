@@ -14511,6 +14511,291 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\AttributesPostResource": {
+            "name": "AttributesPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'attributes_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string; word_count: number | null; is_long: boolean; secret?: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\BarePostResource": {
+            "name": "BarePostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'bare_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ id: number; title: string; content: string; user_id: number; status: StatusType; published_at: string | null; metadata: Record<string, {title: string, content: string}>; rating: string | null; category: string; options: Record<string, string> | null; deleted_at: string | null; created_at: string | null; updated_at: string | null; category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; author?: User; category_rel?: Category | null; comments?: Comment[]; tags?: Tag[]; images?: Image[]; attachment?: Attachment | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\CastedAttributesPostResource": {
+            "name": "CastedAttributesPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'casted_attributes_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ metadata: Record<string, {title: string, content: string}>; rating: `${number}` | null; status: StatusType }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\CategoryResource": {
+            "name": "CategoryResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'categories'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ name: string; slug: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\ClosureRelationsPostResource": {
+            "name": "ClosureRelationsPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'closure_relations_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string; published_at: string | null; excerpt: string | null; is_published: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "relationships",
+                    "type": "{ author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'> }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\CommentResource": {
+            "name": "CommentResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'comments'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ content: string; is_flagged: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "relationships",
+                    "type": "{ user?: JsonApiToOneRelationship<'users'> }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\DefaultLinksPostResource": {
+            "name": "DefaultLinksPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'default_links_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "links",
+                    "type": "{ describedby: string }",
+                    "optional": true
+                },
+                {
+                    "name": "meta",
+                    "type": "{ version: number; stable: boolean }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\IdentifiedPostResource": {
+            "name": "IdentifiedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'articles'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\LinkedPostResource": {
+            "name": "LinkedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'linked_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "links",
+                    "type": "{ self: string }",
+                    "optional": true
+                },
+                {
+                    "name": "meta",
+                    "type": "{ readable: boolean; words: number | null }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\PostResource": {
+            "name": "PostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string; content: string; word_count: number | null; published_at: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "relationships",
+                    "type": "{ author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'>; categoryRel?: JsonApiToOneRelationship<'categories'> }",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\ToArrayPostResource": {
+            "name": "ToArrayPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'to_array_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string; rating: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\ToAttributesOnlyPlainResource": {
+            "name": "ToAttributesOnlyPlainResource",
+            "properties": [
+                {
+                    "name": "headline",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\UserResource": {
+            "name": "UserResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'users'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ name: string; email: string }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\KpiResource": {
             "name": "KpiResource",
             "properties": [

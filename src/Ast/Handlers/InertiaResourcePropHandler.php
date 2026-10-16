@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
@@ -527,11 +528,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      */
     private function sendsResourceObject(string $className): bool
     {
-        $jsonApi = 'Illuminate\Http\Resources\JsonApi\JsonApiResource';
-
         return $this->isResourceClass($className)
             && ! $this->isEnumResourceClass($className)
-            && ! (class_exists($jsonApi) && is_a($className, $jsonApi, true));
+            && ! JsonApiResources::is($className);
     }
 
     /**

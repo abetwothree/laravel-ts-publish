@@ -488,16 +488,14 @@ cached run keeps `siblings: CategoryResource[] | null`, where `--fresh` publishe
 `Record<string, CategoryResource> | null`; a page prop that calls the guess keeps its old type the same way. Run
 `ts:publish --fresh` after adding such a class.
 
-### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
+### A JSON:API resource's sparse fieldsets, dynamic `toType()` and runtime type literal are not typed
 
-Laravel's `JsonApiResource` (13, and 12 from 12.45) declares no `toArray()`, so a subclass without one walks
-`ResourceAstAnalyzer::analyzeParentCall()` up to `JsonResource` and publishes whole-model delegation: the model's
-columns, appended accessors and relations. Laravel sends a JSON:API document instead,
-`{ data: { id, type, attributes?, relationships?, links?, meta? }, included?, jsonapi? }`, with `attributes` from
-`toAttributes()`. Declaring `toArray()` does not help: `toAttributes()` falls back to it, so its keys become
-`data.attributes`, while the package publishes them as the whole response. No attribute replaces the whole type, since
-`#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
-`#[TsExclude]` or `resources.excluded`, and type the document by hand.
+A JSON:API resource publishes the resource object Laravel sends with no `?fields[…]` in the request, so every
+attribute it always sends is required, though a sparse fieldset sends only the ones it names; read such a response
+through `JsonApiSparse<R>` from `@tolki/types`. A `toType()` that returns anything but one string literal publishes
+`type: string`. The literal is computed when `ts:publish` runs, so a morph map or `Pluralizer::useLanguage()` set only
+later is not in it, and the generation cache cannot see either. Keys `additional()` adds beside `data`, and the outer
+key a subclass that redeclares `$wrap` adds, are not published.
 
 ### An overridden `resolve()` or `jsonSerialize()` changes what Laravel sends, and the package reads neither
 

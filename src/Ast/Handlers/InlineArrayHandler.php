@@ -119,6 +119,187 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
+     *
+     * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms  the arms the object type intersects with
+     * @return ValueExpressionResult
+     */
+    public function inlineObjectResult(MethodAnalysis $analysis, array $spreadArms = []): array
+    {
+        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
+
+        if ($analysis->properties === [] && $spreadArms === []) {
+            return ['type' => 'Record<string, unknown>', 'optional' => false];
+        }
+
+        $useTolki = Config::boolean('ts-publish.enums.use_tolki_package');
+
+        // Tolki on: EnumResource-wrapped properties render as `AsEnum<typeof X>`, matching the
+        // top-level enum resource transformer. Substituting the bare token in place keeps every
+        // other union arm — a keyed `Record<...>` arm, an extra default arm — intact.
+        if ($useTolki) {
+            foreach ($analysis->properties as &$prop) {
+                if (! isset($analysis->enumResources[$prop['name']])) {
+                    continue;
+                }
+
+                $fqcn = $analysis->enumResources[$prop['name']];
+                $tsInfo = LaravelTsPublish::toTsType($fqcn);
+                $constName = $tsInfo['enums'][0] ?? class_basename($fqcn);
+                $bareTypeName = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
+                $asEnumType = 'AsEnum<typeof '.$constName.'>';
+
+                // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
+                // still shows them apart; blanket substitution would rewrite the direct arm too.
+                $isMixed = ($analysis->directEnumFqcns[$prop['name']] ?? null) === $fqcn;
+                $members = TsTypeString::splitTopLevelUnion($prop['type']);
+
+                $prop['type'] = $isMixed
+                    ? $this->expandMixedEnumType(
+                        $members,
+                        $bareTypeName,
+                        $asEnumType,
+                        $analysis->enumResourceArmShapes[$prop['name']] ?? null,
+                    )
+                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
+            }
+
+            unset($prop);
+        }
+
+        // Each spread resource intersects with the remaining explicit keys, minus whichever of its
+        // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
+        // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
+        $spreadArmTypes = array_values(array_unique(
+            $this->buildSpreadArmTypes($spreadArms, array_column($analysis->properties, 'name')),
+        ));
+        $type = match (true) {
+            $spreadArms === [] => $this->buildInlineObjectType($analysis),
+            $analysis->properties === [] => implode(' & ', $spreadArmTypes),
+            default => implode(' & ', [...$spreadArmTypes, $this->buildInlineObjectType($analysis)]),
+        };
+
+        $result = ['type' => $type, 'optional' => false];
+
+        if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
+            $result['keepsKeys'] = true;
+        }
+
+        // Propagate import metadata so FQCNs referenced inside the inline object reach the outer analysis.
+        // With Tolki enabled, enum resources need value imports (const) rather than type imports; direct
+        // enum accesses always need type imports.
+        if ($useTolki) {
+            // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
+            // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
+            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, false);
+
+            $enumResourceFqcns = array_values($analysis->enumResources);
+            // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
+            foreach ($analysis->inlineEnumResourceFqcns as $nestedFqcns) {
+                foreach ($nestedFqcns as $fqcn) {
+                    $enumResourceFqcns[] = $fqcn;
+                }
+            }
+            // Never deduped: same positional reasoning as $embeddedEnumFqcns above, for the
+            // EnumResource-wrapped (value-import) channel.
+            $embeddedEnumResourceFqcns = $enumResourceFqcns;
+        } else {
+            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
+            // deduped, same positional reasoning as the Tolki-on branch above.
+            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, true);
+            $embeddedEnumResourceFqcns = [];
+        }
+
+        // Spread arms lead the type, so their tokens lead each queue.
+        $armFqcns = $this->spreadArmFqcns($spreadArms);
+        $embeddedEnumFqcns = [...$armFqcns['enums'], ...$embeddedEnumFqcns];
+        $embeddedEnumResourceFqcns = [...$armFqcns['enumResources'], ...$embeddedEnumResourceFqcns];
+
+        $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
+        $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
+
+        // Spread arms lead the type, then each key once, at its first position, with every occurrence kept: the
+        // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
+        // member's own arms.
+        $embeddedModelFqcns = [
+            ...$armFqcns['models'],
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineModelFqcns,
+                $analysis->modelFqcns,
+                class_basename(...),
+                $sharedNames,
+            ),
+        ];
+
+        // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
+        // wrapped one) must not claim an import the transformer would then emit unused.
+        $embeddedEnumFqcns = array_values(array_filter(
+            $embeddedEnumFqcns,
+            fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
+                LaravelTsPublish::toTsType($fqcn)['type'],
+                $result['type'],
+            ),
+        ));
+
+        if ($embeddedEnumFqcns !== []) {
+            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedEnumResourceFqcns !== []) {
+            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
+        }
+
+        if ($embeddedModelFqcns !== []) {
+            $result['embeddedModelFqcns'] = $embeddedModelFqcns;
+        }
+
+        // Nested resources are tracked separately so they merge into resource imports, not model imports. One entry
+        // per resource token, in the order the type spells them: spread arms lead the type, then each member, and a
+        // member whose own union names two resources carries both. Never deduped, as for the models above.
+        $embeddedResourceFqcns = [
+            ...$armFqcns['resources'],
+            ...$this->memberFqcns(
+                $analysis,
+                $analysis->inlineResourceFqcns,
+                $analysis->nestedResources,
+                $resourceNameOf,
+                $sharedNames,
+            ),
+        ];
+
+        if ($embeddedResourceFqcns !== []) {
+            $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
+        }
+
+        foreach ($spreadArms as $arm) {
+            if (isset($arm['result'])) {
+                $analysis->carry($arm['result']['carriedFqcns'] ?? []);
+
+                foreach ($arm['result']['customImports'] ?? [] as $path => $types) {
+                    $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
+                }
+            }
+        }
+
+        // A #[TsType(import: …)] token inside the inline object is spelled in the emitted type string,
+        // so its import has to travel out with it.
+        if ($analysis->customImports !== []) {
+            $result['customImports'] = $analysis->customImports;
+        }
+
+        // A member's carried class travels on its own, never queued: only a text with no class of its name keeps it.
+        if ($analysis->carried !== []) {
+            $result['carriedFqcns'] = $analysis->carried;
+        }
+
+        return $result;
+    }
+
+    /**
      * Resolve `$var->toArray()` to the name of `$var`, or null when the expression is not that shape, or `$var` is read
      * past the write that ended its parameter binding, which then names no model `$var` holds.
      *
@@ -294,179 +475,9 @@ final class InlineArrayHandler implements ExpressionHandler
 
         $analysis = $engine->returnArrayAnalysis($array);
 
-        // No outer cast can retype a member, so a member's own method-level cast is the one in force.
-        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
-
         // A spread whose value resolves to a bare named resource (not an array/collection of one), to a
         // bound model's toArray(), or to a bound collection's toArray(), intersects with the literal's keys.
-        $spreadArms = $this->collectInlineArraySpreadArms($array, $scope, $engine);
-
-        if ($analysis->properties === [] && $spreadArms === []) {
-            return ['type' => 'Record<string, unknown>', 'optional' => false];
-        }
-
-        $useTolki = Config::boolean('ts-publish.enums.use_tolki_package');
-
-        // Tolki on: EnumResource-wrapped properties render as `AsEnum<typeof X>`, matching the
-        // top-level enum resource transformer. Substituting the bare token in place keeps every
-        // other union arm — a keyed `Record<...>` arm, an extra default arm — intact.
-        if ($useTolki) {
-            foreach ($analysis->properties as &$prop) {
-                if (! isset($analysis->enumResources[$prop['name']])) {
-                    continue;
-                }
-
-                $fqcn = $analysis->enumResources[$prop['name']];
-                $tsInfo = LaravelTsPublish::toTsType($fqcn);
-                $constName = $tsInfo['enums'][0] ?? class_basename($fqcn);
-                $bareTypeName = $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type';
-                $asEnumType = 'AsEnum<typeof '.$constName.'>';
-
-                // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
-                // still shows them apart; blanket substitution would rewrite the direct arm too.
-                $isMixed = ($analysis->directEnumFqcns[$prop['name']] ?? null) === $fqcn;
-                $members = TsTypeString::splitTopLevelUnion($prop['type']);
-
-                $prop['type'] = $isMixed
-                    ? $this->expandMixedEnumType(
-                        $members,
-                        $bareTypeName,
-                        $asEnumType,
-                        $analysis->enumResourceArmShapes[$prop['name']] ?? null,
-                    )
-                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
-            }
-
-            unset($prop);
-        }
-
-        // Each spread resource intersects with the remaining explicit keys, minus whichever of its
-        // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
-        // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
-        $spreadArmTypes = array_values(array_unique(
-            $this->buildSpreadArmTypes($spreadArms, array_column($analysis->properties, 'name')),
-        ));
-        $type = match (true) {
-            $spreadArms === [] => $this->buildInlineObjectType($analysis),
-            $analysis->properties === [] => implode(' & ', $spreadArmTypes),
-            default => implode(' & ', [...$spreadArmTypes, $this->buildInlineObjectType($analysis)]),
-        };
-
-        $result = ['type' => $type, 'optional' => false];
-
-        if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
-            $result['keepsKeys'] = true;
-        }
-
-        // Propagate import metadata so FQCNs referenced inside the inline object reach the outer analysis.
-        // With Tolki enabled, enum resources need value imports (const) rather than type imports; direct
-        // enum accesses always need type imports.
-        if ($useTolki) {
-            // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
-            // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
-            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, false);
-
-            $enumResourceFqcns = array_values($analysis->enumResources);
-            // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
-            foreach ($analysis->inlineEnumResourceFqcns as $nestedFqcns) {
-                foreach ($nestedFqcns as $fqcn) {
-                    $enumResourceFqcns[] = $fqcn;
-                }
-            }
-            // Never deduped: same positional reasoning as $embeddedEnumFqcns above, for the
-            // EnumResource-wrapped (value-import) channel.
-            $embeddedEnumResourceFqcns = $enumResourceFqcns;
-        } else {
-            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
-            // deduped, same positional reasoning as the Tolki-on branch above.
-            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, true);
-            $embeddedEnumResourceFqcns = [];
-        }
-
-        // Spread arms lead the type, so their tokens lead each queue.
-        $armFqcns = $this->spreadArmFqcns($spreadArms);
-        $embeddedEnumFqcns = [...$armFqcns['enums'], ...$embeddedEnumFqcns];
-        $embeddedEnumResourceFqcns = [...$armFqcns['enumResources'], ...$embeddedEnumResourceFqcns];
-
-        $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
-        $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
-
-        // Spread arms lead the type, then each key once, at its first position, with every occurrence kept: the
-        // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
-        // member's own arms.
-        $embeddedModelFqcns = [
-            ...$armFqcns['models'],
-            ...$this->memberFqcns(
-                $analysis,
-                $analysis->inlineModelFqcns,
-                $analysis->modelFqcns,
-                class_basename(...),
-                $sharedNames,
-            ),
-        ];
-
-        // An enum whose bare name no longer occurs in the final type (its arm was substituted by a
-        // wrapped one) must not claim an import the transformer would then emit unused.
-        $embeddedEnumFqcns = array_values(array_filter(
-            $embeddedEnumFqcns,
-            fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
-                LaravelTsPublish::toTsType($fqcn)['type'],
-                $result['type'],
-            ),
-        ));
-
-        if ($embeddedEnumFqcns !== []) {
-            $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
-        }
-
-        if ($embeddedEnumResourceFqcns !== []) {
-            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
-        }
-
-        if ($embeddedModelFqcns !== []) {
-            $result['embeddedModelFqcns'] = $embeddedModelFqcns;
-        }
-
-        // Nested resources are tracked separately so they merge into resource imports, not model imports. One entry
-        // per resource token, in the order the type spells them: spread arms lead the type, then each member, and a
-        // member whose own union names two resources carries both. Never deduped, as for the models above.
-        $embeddedResourceFqcns = [
-            ...$armFqcns['resources'],
-            ...$this->memberFqcns(
-                $analysis,
-                $analysis->inlineResourceFqcns,
-                $analysis->nestedResources,
-                $resourceNameOf,
-                $sharedNames,
-            ),
-        ];
-
-        if ($embeddedResourceFqcns !== []) {
-            $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
-        }
-
-        foreach ($spreadArms as $arm) {
-            if (isset($arm['result'])) {
-                $analysis->carry($arm['result']['carriedFqcns'] ?? []);
-
-                foreach ($arm['result']['customImports'] ?? [] as $path => $types) {
-                    $analysis->customImports[$path] = [...($analysis->customImports[$path] ?? []), ...$types];
-                }
-            }
-        }
-
-        // A #[TsType(import: …)] token inside the inline object is spelled in the emitted type string,
-        // so its import has to travel out with it.
-        if ($analysis->customImports !== []) {
-            $result['customImports'] = $analysis->customImports;
-        }
-
-        // A member's carried class travels on its own, never queued: only a text with no class of its name keeps it.
-        if ($analysis->carried !== []) {
-            $result['carriedFqcns'] = $analysis->carried;
-        }
-
-        return $result;
+        return $this->inlineObjectResult($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine));
     }
 
     /**

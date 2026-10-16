@@ -35,4 +35,16 @@ final class TolkiTypes
         'SimplePaginator' => ['blocks' => 'ResourceSimplePagination', 'response' => 'JsonResourceSimplePaginator'],
         'CursorPaginator' => ['blocks' => 'ResourceCursorPagination', 'response' => 'JsonResourceCursorPaginator'],
     ];
+
+    /**
+     * Maps each kind of relationship a JSON:API resource object sends to its `@tolki/types` name: to-one, to-many, or
+     * either, where neither the resolver nor the model says which.
+     *
+     * @var array{toOne: string, toMany: string, either: string}
+     */
+    public const JSON_API_RELATIONSHIPS = [
+        'toOne' => 'JsonApiToOneRelationship',
+        'toMany' => 'JsonApiToManyRelationship',
+        'either' => 'JsonApiRelationship',
+    ];
 }

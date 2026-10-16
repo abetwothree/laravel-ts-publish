@@ -44,8 +44,12 @@ The list of collected PHP files that file watchers, such as the Vite plugin, rea
 ### Feature output
 
 **API resource**:
-A Laravel `JsonResource` class, published as an interface for the JSON it returns.
+A Laravel `JsonResource` class, published as an interface for the JSON it returns. A JSON:API resource publishes the resource object it sends as `data`.
 _Avoid_: resource
+
+**Resource object**:
+The `{ id, type, attributes, relationships?, links?, meta? }` member a JSON:API resource sends as `data`, and as each `included` entry.
+_Avoid_: document
 
 **Enum-resolved interface**:
 A parallel model interface, such as `{Model}Resource`, that types each enum column as a resolved `AsEnum<>` instance instead of a raw value.

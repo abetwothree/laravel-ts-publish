@@ -13,7 +13,7 @@ import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
-import type { CursorPaginator, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
+import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { BroadcastableEvent } from '@/types/broadcast';
@@ -5774,6 +5774,94 @@ declare global {
         /** A collection of admin stores. */
         export interface StoreCollection {
             data: Store[];
+        }
+    }
+    export namespace workbench.app.http.resources.jsonApi {
+        /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
+        export interface AttributesPostResource {
+            id: string;
+            type: 'attributes_posts';
+            attributes: { title: string; word_count: number | null; is_long: boolean; secret?: string };
+        }
+        /** A JSON:API resource naming no attributes, so toAttributes() falls back to the model's own toArray(). */
+        export interface BarePostResource {
+            id: string;
+            type: 'bare_posts';
+            attributes: { id: number; title: string; content: string; user_id: number; status: workbench.app.enums.StatusType; published_at: string | null; metadata: Record<string, {title: string, content: string}>; rating: string | null; category: string; options: Record<string, string> | null; deleted_at: string | null; created_at: string | null; updated_at: string | null; category_id: number | null; visibility: workbench.app.enums.VisibilityType | null; priority: workbench.app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; author?: workbench.app.models.User; category_rel?: workbench.app.models.Category | null; comments?: workbench.app.models.Comment[]; tags?: workbench.app.models.Tag[]; images?: workbench.app.models.Image[]; attachment?: workbench.app.models.Attachment | null };
+        }
+        /** A JSON:API resource naming an attribute the model's #[TsCasts] types, and casting another one itself. */
+        export interface CastedAttributesPostResource {
+            id: string;
+            type: 'casted_attributes_posts';
+            attributes: { metadata: Record<string, {title: string, content: string}>; rating: `${number}` | null; status: workbench.app.enums.StatusType };
+        }
+        /** A JSON:API resource a nullable to-one relationship names. */
+        export interface CategoryResource {
+            id: string;
+            type: 'categories';
+            attributes: { name: string; slug: string };
+        }
+        /**
+         * A JSON:API resource whose toAttributes() mixes attribute names with a closure Laravel calls, and whose
+         * toRelationships() resolves each relationship through a closure.
+         */
+        export interface ClosureRelationsPostResource {
+            id: string;
+            type: 'closure_relations_posts';
+            attributes: { title: string; published_at: string | null; excerpt: string | null; is_published: boolean };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'> };
+        }
+        /** A JSON:API resource with a to-one relationship of its own, which a nested include follows. */
+        export interface CommentResource {
+            id: string;
+            type: 'comments';
+            attributes: { content: string; is_flagged: boolean };
+            relationships?: { user?: JsonApiToOneRelationship<'users'> };
+        }
+        /** A JSON:API resource sending links and meta through the defaults toLinks() and toMeta() return. */
+        export interface DefaultLinksPostResource {
+            id: string;
+            type: 'default_links_posts';
+            attributes: { title: string };
+            links?: { describedby: string };
+            meta?: { version: number; stable: boolean };
+        }
+        /** A JSON:API resource overriding toId() with an int, which Laravel sends as a string, and toType() with a literal. */
+        export interface IdentifiedPostResource {
+            id: string;
+            type: 'articles';
+            attributes: { title: string };
+        }
+        /** A JSON:API resource overriding toLinks() and toMeta(). */
+        export interface LinkedPostResource {
+            id: string;
+            type: 'linked_posts';
+            attributes: { title: string };
+            links?: { self: string };
+            meta?: { readable: boolean; words: number | null };
+        }
+        /** A body-less JSON:API resource: its attributes and relationships named by property. */
+        export interface PostResource {
+            id: string;
+            type: 'posts';
+            attributes: { title: string; content: string; word_count: number | null; published_at: string | null };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'>; categoryRel?: JsonApiToOneRelationship<'categories'> };
+        }
+        /** A JSON:API resource declaring toArray(), which toAttributes() falls back to, so its keys are the attributes. */
+        export interface ToArrayPostResource {
+            id: string;
+            type: 'to_array_posts';
+            attributes: { title: string; rating: string | null };
+        }
+        /** A plain API resource declaring toAttributes() and no toArray(), which Laravel 12.45 and later sends. */
+        export interface ToAttributesOnlyPlainResource {
+            headline: string;
+        }
+        /** A JSON:API resource naming its attributes only. */
+        export interface UserResource {
+            id: string;
+            type: 'users';
+            attributes: { name: string; email: string };
         }
     }
     export namespace workbench.app.http.resources.reportCards {

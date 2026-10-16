@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\BuildsJsonApiResourceObject;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\FiltersModelAttributes;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
@@ -25,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
@@ -68,6 +70,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\For_;
@@ -92,6 +95,7 @@ use ReflectionMethod;
  */
 class ResourceAstAnalyzer implements ExpressionEngine
 {
+    use BuildsJsonApiResourceObject;
     use CollectsLocalVarBindings;
     use FiltersModelAttributes;
     use InspectsAstNodes;
@@ -108,7 +112,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use ResolvesModelTypes;
     use ResolvesRelatedModelTypes;
 
-    /** JsonResource methods whose own bodies answer from the runtime class, which the analyzer reads in their place. */
+    /** Laravel's own methods whose bodies answer from the runtime class, which the analyzer reads in their place. */
     private const array FRAMEWORK_READS = ['jsonSerialize', 'resolve', 'with'];
 
     /** Carries the subject reflection, model class, and all closure/spread bindings; see AnalysisScope. */
@@ -238,6 +242,18 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * Whether this analysis reads a plain resource's toArray() while Laravel sends its toAttributes() override instead,
+     * as resolve() does once JsonResource declares toAttributes(); a collection's items are not its attributes.
+     */
+    private function sendsOwnToAttributes(): bool
+    {
+        return $this->methodName === 'toArray'
+            && JsonApiResources::shipped()
+            && $this->replacesJsonResource($this->runtimeClass(), 'toAttributes')
+            && ! $this->isResourceCollection($this->scope);
+    }
+
+    /**
      * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
      * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
      *
@@ -276,6 +292,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             DependencyRecorder::recordClass($this->scope->modelClass);
         }
 
+        // A JSON:API resource sends its resource object as `data`, whatever toArray() returns: toArray() feeds at most
+        // its attributes.
+        if ($this->sendsJsonApiResourceObject()) {
+            return $this->buildJsonApiResourceObject();
+        }
+
         $context = $this->context ?? $this->locateSubjectMethod();
         $toArrayMethod = $context?->method;
 
@@ -288,6 +310,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
+            if ($this->sendsOwnToAttributes()) {
+                return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
+            }
+
             $inherited = $this->analyzeParentCall($this->methodName, $this->returnedWhole);
 
             // An empty result means no ancestor declared the method either, so keep delegating.
@@ -580,9 +606,37 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function analyzeReturnArray(Array_ $array, bool $topLevel = true): ResourceAnalysis
     {
+        // Laravel maps the keyless names of the array a JSON:API toAttributes() returns, never of one nested in it.
+        $readsAttributeNames = $this->readsKeylessAttributeNames;
+        $this->readsKeylessAttributeNames = false;
+
+        try {
+            $analysis = $this->analyzeReturnArrayItems($array, $topLevel, $readsAttributeNames);
+        } finally {
+            $this->readsKeylessAttributeNames = $readsAttributeNames;
+        }
+
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * Analyze the items of an array literal analyzeReturnArray() reads; with $readsAttributeNames a keyless string reads
+     * the model attribute it names, `$this->resource->{name}`.
+     */
+    private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames): ResourceAnalysis
+    {
         $analysis = new ResourceAnalysis;
 
         foreach ($array->items as $item) {
+            if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
+                $analysis->forgetChannels($item->value->value);
+                $analysis->addProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
+
+                continue;
+            }
+
             // Handle a ...parent::toArray($request) spread, or of any parent:: call readParentCall() reads
             $parentMethod = $item->key === null && $item->unpack ? $this->readParentCall($item->value) : null;
 
@@ -717,8 +771,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             $analysis->addProperty($keyName, $result);
         }
-
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
     }
@@ -1074,7 +1126,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        if (in_array($method, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($parentClass, $method)) {
+        if (in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($parentClass, $method)) {
             return $this->frameworkMethodAnalysis($method, $whole);
         }
 
@@ -1122,17 +1174,30 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether `$this->$method()` runs JsonResource's own body for one of FRAMEWORK_READS; `$this` is the runtime class,
-     * so its declaration decides.
+     * Whether `$this->$method()` runs Laravel's own body for one of FRAMEWORK_READS; `$this` is the runtime class, so
+     * its declaration decides.
      */
     private function thisRunsFrameworkBody(string $method): bool
     {
-        return in_array($method, self::FRAMEWORK_READS, true) && $this->declaredByJsonResource($this->runtimeClass(), $method);
+        return in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($this->runtimeClass(), $method);
+    }
+
+    /**
+     * Whether a class runs Laravel's own declaration of one of FRAMEWORK_READS: JsonResource's, or the resolve() a
+     * JSON:API resource inherits from JsonApiResource.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function runsFrameworkRead(ReflectionClass $class, string $method): bool
+    {
+        return $this->declaredByJsonResource($class, $method)
+            || ($method === 'resolve' && JsonApiResources::runsFrameworkResolve($class->getName()));
     }
 
     /**
      * What a JsonResource method returns for the runtime class: with() its `$with` default, resolve() its filtered
-     * toArray(), and jsonSerialize() its resolve(); null where that is not read statically or re-enters a read.
+     * toArray() or a JSON:API resource object under `data`, and jsonSerialize() its resolve(); null where that is not
+     * read statically or re-enters a read.
      */
     private function frameworkMethodAnalysis(string $method, bool $whole = false): ?ResourceAnalysis
     {
@@ -1140,6 +1205,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         if ($method === 'with') {
             return $this->withDefaultAnalysis();
+        }
+
+        if (JsonApiResources::runsFrameworkResolve($runtime->getName())) {
+            return $this->jsonApiDocumentDataAnalysis();
         }
 
         if ($method === 'jsonSerialize' && ! $this->declaredByJsonResource($runtime, 'resolve')) {
@@ -1324,9 +1393,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->proofsAcrossCall($this->scope, $call),
         );
 
+        $readsAttributeNames = $this->readsKeylessAttributeNames;
+
         try {
             $this->seedVarBindings($method, $targetMethod->stmts, $passed);
 
+            // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
+            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
             $branches = [];
 
             foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
@@ -1344,6 +1417,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
+            $this->readsKeylessAttributeNames = $readsAttributeNames;
             $this->scope->leaveSubjectMethod($methodName, $caller);
         }
 
@@ -1418,58 +1492,75 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function applyTsCastsFromMethod(ReflectionMethod $method, ResourceAnalysis $analysis): void
     {
         foreach ($method->getAttributes(TsCasts::class) as $attr) {
-            $keys = array_column($analysis->properties, 'name');
-            $types = JsEmitter::castsByKey($attr->newInstance()->types, $keys);
+            $this->layTsCasts($attr->newInstance()->types, $analysis);
+        }
+    }
 
-            JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
+    /**
+     * Lay one #[TsCasts] map over an analysis, updating every entry of a key it names and adding a key the analysis
+     * lacks; with $keptCasts, a model's map retypes only the keys the analysis has and none of those it holds.
+     *
+     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  CastMap|null  $keptCasts  the casts a model's map never replaces
+     */
+    private function layTsCasts(array $types, ResourceAnalysis $analysis, ?array $keptCasts = null): void
+    {
+        $keys = array_column($analysis->properties, 'name');
+        $types = JsEmitter::castsByKey($types, $keys);
 
-            foreach ($types as $property => $value) {
-                // PHP stores a numeric cast key as an int, while a property names its key as a string.
-                $property = (string) $property;
-                $type = is_array($value) ? $value['type'] : $value;
-                $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
-                $import = is_array($value) ? ($value['import'] ?? null) : null;
+        JsEmitter::warnAmbiguousCasts($this->subjectReflection()->getName(), array_keys($types), $keys);
 
-                if ($optional === true) {
-                    ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember($property, $type, true);
-                }
+        foreach ($types as $property => $value) {
+            // PHP stores a numeric cast key as an int, while a property names its key as a string.
+            $property = (string) $property;
 
-                $found = false;
+            if ($keptCasts !== null && (isset($keptCasts[$property]) || ! in_array($property, $keys, true))) {
+                continue;
+            }
 
-                // Every entry of a key written twice: the last one publishes, and the reconciler reads them all.
-                foreach ($analysis->properties as &$prop) {
-                    if ($prop['name'] === $property) {
-                        $prop['type'] = $type;
-                        unset($prop['bodyType'], $prop['fillType']);
+            $type = is_array($value) ? $value['type'] : $value;
+            $optional = is_array($value) && isset($value['optional']) ? (bool) $value['optional'] : null;
+            $import = is_array($value) ? ($value['import'] ?? null) : null;
 
-                        if ($optional !== null) {
-                            $prop['optional'] = $optional;
-                        }
+            if ($optional === true) {
+                ['type' => $type, 'optional' => $optional] = JsEmitter::signatureSafeMember($property, $type, true);
+            }
 
-                        $found = true;
+            $found = false;
+
+            // Every entry of a key written twice: the last one publishes, and the reconciler reads them all.
+            foreach ($analysis->properties as &$prop) {
+                if ($prop['name'] === $property) {
+                    $prop['type'] = $type;
+                    unset($prop['bodyType'], $prop['fillType']);
+
+                    if ($optional !== null) {
+                        $prop['optional'] = $optional;
                     }
+
+                    $found = true;
                 }
+            }
 
-                unset($prop);
+            unset($prop);
 
-                if (! $found) {
-                    $analysis->properties[] = [
-                        'name' => $property,
-                        'type' => $type,
-                        'optional' => $optional ?? false,
-                        'description' => '',
-                    ];
-                }
+            if (! $found) {
+                $analysis->properties[] = [
+                    'name' => $property,
+                    'type' => $type,
+                    'optional' => $optional ?? false,
+                    'description' => '',
+                ];
+            }
 
-                // The publisher fits the key's import channels to this text once it knows which cast is in force.
-                $analysis->casts[$property] = $optional === null
-                    ? ['type' => $type, 'import' => $import]
-                    : ['type' => $type, 'import' => $import, 'optional' => $optional];
+            // The publisher fits the key's import channels to this text once it knows which cast is in force.
+            $analysis->casts[$property] = $optional === null
+                ? ['type' => $type, 'import' => $import]
+                : ['type' => $type, 'import' => $import, 'optional' => $optional];
 
-                if ($import !== null) {
-                    foreach (TsTypeString::extractImportableTypes($type) as $importName) {
-                        $analysis->customImports[$import][] = $importName;
-                    }
+            if ($import !== null) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
+                    $analysis->customImports[$import][] = $importName;
                 }
             }
         }
