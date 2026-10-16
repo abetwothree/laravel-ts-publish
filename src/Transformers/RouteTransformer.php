@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
@@ -171,7 +172,7 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Merge page-type and request-type import maps and store the sorted result.
+     * Merge page-type and request-type import maps, and `AsEnum` when a page type reads it; store the sorted result.
      */
     protected function buildTypeImports(): self
     {
@@ -188,9 +189,31 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
+        // Held here rather than in a template flag, so a custom template that loops over the imports still has it.
+        if ($this->pageTypesReadAsEnum()) {
+            $merged['@tolki/ts'] = ['AsEnum'];
+        }
+
         $this->typeImports = TsNaming::sortImportPaths($merged);
 
         return $this;
+    }
+
+    /**
+     * Whether a page type reads `AsEnum`, which an EnumResource prop publishes as under `enums.use_tolki_package`.
+     */
+    protected function pageTypesReadAsEnum(): bool
+    {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+            return false;
+        }
+
+        $pageTypes = array_merge(...array_map(
+            static fn (array $action): array => array_values((array) ($action['pageType'] ?? [])),
+            $this->actions,
+        ));
+
+        return TsTypeString::typeNameOccursIn('AsEnum', ...$pageTypes);
     }
 
     /**

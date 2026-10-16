@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -31,16 +30,7 @@ class RouteWriter extends CoreWriter
 
         /** @var view-string $template */
         $template = Config::string('ts-publish.routes.template');
-        $data = $transformer->data();
-        $pageTypes = array_merge(...array_map(
-            static fn (array $action): array => array_values((array) ($action['pageType'] ?? [])),
-            $data->actions,
-        ));
-
-        // The template imports `AsEnum` beside defineRoute under this flag, as the resource template does.
-        $usesAsEnum = Config::boolean('ts-publish.enums.use_tolki_package') && TsTypeString::typeNameOccursIn('AsEnum', ...$pageTypes);
-
-        $content = view($template, ['data' => $data, 'usesTolkiPackage' => $usesAsEnum])->render();
+        $content = view($template, ['data' => $transformer->data()])->render();
 
         if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeRouteFile($filename, $content, $transformer->namespacePath);
