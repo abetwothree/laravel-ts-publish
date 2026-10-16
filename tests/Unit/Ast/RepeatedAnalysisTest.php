@@ -5,13 +5,16 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceResponseBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -29,10 +32,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowFormatter;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostRowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryDetail;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostSummaryResource;
+use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\MutualSpreadAResource;
 use Workbench\App\Http\Resources\MutualSpreadBResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Warehouse;
 
 /**
  * Swap in a MethodLocator that counts each lookup as `own:` or `any:` plus `class::method`: the engine looks a body up
@@ -298,4 +305,78 @@ test('a reused collected-list read records the files the first one read', functi
 
     expect($first)->toContain((string) new ReflectionClass(ItemsKeyPostCollection::class)->getFileName())
         ->and($recorded())->toEqualCanonicalizing($first);
+});
+
+// The host's class checks stand in for the guess, so a second guess for the same model reaches them no more.
+test('the resource and the collection Laravel guesses for a model are each read once a run, and again after a reset', function () {
+    $checks = new ArrayObject;
+    $guesser = new class($checks)
+    {
+        use GuessesModelResources;
+
+        /** @param  ArrayObject<int, string>  $checks */
+        public function __construct(private readonly ArrayObject $checks) {}
+
+        /** The resource Laravel's toResource() guesses for the model. */
+        public function resource(string $model): ?string
+        {
+            return $this->resolveResourceForModel($model);
+        }
+
+        /**
+         * The collection Laravel's toResourceCollection() guesses for the model.
+         *
+         * @return array<string, string|null>|null
+         */
+        public function collection(string $model): ?array
+        {
+            return $this->resolveResourceCollectionForModel($model);
+        }
+
+        /** Count the check, then answer as InspectsResourceCalls does. */
+        protected function isResourceClass(string $fqcn): bool
+        {
+            $this->checks[] = $fqcn;
+
+            return class_exists($fqcn) && is_a($fqcn, JsonResource::class, true);
+        }
+
+        /** Count the check, then answer as InspectsResourceCalls does. */
+        protected function isPublishedResourceClass(string $fqcn): bool
+        {
+            $this->checks[] = $fqcn;
+
+            return ResourceCollections::isPublishedResource($fqcn);
+        }
+
+        /** No guess reads a property fetch. */
+        protected function isThisPropertyFetch(Expr $expr): bool
+        {
+            return false;
+        }
+
+        /**
+         * No guess reads a relation.
+         *
+         * @return array<string, mixed>
+         */
+        protected function resolveModelRelationTypeInfo(string $name, AnalysisScope $scope): array
+        {
+            return [];
+        }
+    };
+
+    $reads = [$guesser->resource(Warehouse::class), $guesser->collection(Warehouse::class)];
+    $first = count($checks);
+    $reused = [$guesser->resource(Warehouse::class), $guesser->collection(Warehouse::class)];
+    $afterReuse = count($checks);
+    resolve(AnalysisMemo::class)->reset();
+    $guesser->resource(Warehouse::class);
+    $guesser->collection(Warehouse::class);
+
+    expect($reads)->toBe([WarehouseResource::class, ['collection' => null, 'resource' => WarehouseResource::class]])
+        ->and($reused)->toBe($reads)
+        ->and($first)->toBeGreaterThan(0)
+        ->and($afterReuse)->toBe($first)
+        ->and(count($checks))->toBe(2 * $first);
 });
