@@ -19,6 +19,7 @@ use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaCallablePropsController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
+use Workbench\App\Http\Controllers\InertiaEnumResourceController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
 use Workbench\App\Http\Controllers\InertiaJsonApiController;
@@ -125,6 +126,7 @@ Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('in
 Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
 Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 Route::get('/posts/{post}/enum-case', [InertiaEnumCaseController::class, 'show'])->name('posts.enum-case');
+Route::get('/enum-resources/statuses', [InertiaEnumResourceController::class, 'index'])->name('enum-resources.statuses');
 Route::get('/key-edges', [InertiaKeyEdgesController::class, 'show'])->name('key-edges.show');
 Route::get('/list-props', [InertiaListPropsController::class, 'show'])->name('list-props.show');
 

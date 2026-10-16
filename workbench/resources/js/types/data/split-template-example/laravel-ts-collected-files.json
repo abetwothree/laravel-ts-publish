@@ -56,6 +56,7 @@
     "app\/Http\/Controllers\/InertiaCallablePropsController.php",
     "app\/Http\/Controllers\/InertiaController.php",
     "app\/Http\/Controllers\/InertiaEnumCaseController.php",
+    "app\/Http\/Controllers\/InertiaEnumResourceController.php",
     "app\/Http\/Controllers\/InertiaFacilityController.php",
     "app\/Http\/Controllers\/InertiaFormRequestController.php",
     "app\/Http\/Controllers\/InertiaJsonApiController.php",
