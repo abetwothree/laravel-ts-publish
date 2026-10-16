@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingOverrideApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
@@ -192,3 +194,10 @@ test('a class constant resolver names no resource', function () {
     expect(publishedResourceKeyTypes(ConstantResolverApiResource::class, Post::class))
         ->toMatchArray(['relationships?' => '{ author?: JsonApiToOneRelationship<string> }']);
 });
+
+test('a toArray() that spreads parent::toAttributes() with no $attributes ends, though Laravel never returns from it', function (string $resource, string $attributes) {
+    expect(publishedResourceKeyTypes($resource, Post::class))->toMatchArray(['attributes' => $attributes]);
+})->with([
+    'from toArray()' => [LoopingToArrayApiResource::class, '{ extra: number }'],
+    'from a toAttributes() override toArray() spreads' => [LoopingOverrideApiResource::class, '{ headline: string; more: number }'],
+]);

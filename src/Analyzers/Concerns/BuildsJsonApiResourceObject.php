@@ -196,6 +196,11 @@ trait BuildsJsonApiResourceObject
      */
     private function jsonApiToArrayAnalysis(): ResourceAnalysis
     {
+        // Reached from a toArray() body already being read: JsonApiResource's toAttributes() calls it again, forever.
+        if ($this->context !== null && $this->methodName === 'toArray') {
+            return new ResourceAnalysis;
+        }
+
         $declaring = $this->runtimeClass()->getMethod('toArray')->getDeclaringClass();
         $analyzer = $this->nestedAnalyzer($declaring, 'toArray', $this->scope->modelClass);
 
