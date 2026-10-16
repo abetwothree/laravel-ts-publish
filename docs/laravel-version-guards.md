@@ -79,7 +79,8 @@ that release more reliably than changelog prose:
   `v12.69.2`, present at `v13.0.0`. Recorded as `13.0.0`, the first tag proven to contain them, since no 12.x release
   was found to carry them.
 - **`Initialize`**: absent through `v12.21.0`, present from `v12.22.0`. An exact minimum.
-- **`JsonApiResource`**: absent at `v12.44.0`, present from `v12.45.0`, with `make:resource --json-api`. An exact minimum.
+- **`JsonApiResource`**: absent at `v12.44.0`, present from `v12.45.0`, with `make:resource --json-api`. An exact
+  minimum.
 - **`RouteKey`**: absent through `v13.20.0`, present from `v13.21.0`. An exact minimum.
 
 ## Scanner coverage and blind spots

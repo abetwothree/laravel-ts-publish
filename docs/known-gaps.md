@@ -148,14 +148,17 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
-### A multi-enum ternary in Inertia shared data emits both enum names with no imports
+### A multi-enum or mixed `EnumResource` ternary in an Inertia prop publishes the wrong enum shape
 
 With `enums.use_tolki_package` on, the default,
-`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` in `HandleInertiaRequests::share()`
-renders `RoleType | StatusType` and imports neither, which is TS2304 twice in a consumer's build.
-`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape, and `AnalysisImports`
-drops a multi-enum ternary's type imports, as the resource generator's own rewrite needs. No workbench fixture has
-this shape, so the token gate never sees it. Override the key with an import-aware `#[TsCasts]`, or use one enum.
+`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` as a page prop or in
+`HandleInertiaRequests::share()` publishes `RoleType | StatusType`, though Inertia sends each arm's resource object.
+`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape. In shared data neither name
+is imported either, which is TS2304 twice in a consumer's build: `AnalysisImports` drops a multi-enum ternary's type
+imports, as the resource generator's own rewrite needs. A ternary of an `EnumResource` and a bare case of its enum,
+`$cond ? EnumResource::make(Status::Draft) : Status::Published`, publishes `AsEnum<typeof Status>` for both arms,
+though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
+them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
 
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 
@@ -411,12 +414,13 @@ returns, such as `integer`, `float` or `decimal:2`, or declare it with an access
 publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
 the response hold one.
 
-### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible
+### A wrap set only for HTTP requests, or forced by `$forceWrapping`, is invisible
 
 The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
 `JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and every Inertia prop that wraps by
-it. A wrap set anywhere else, such as in middleware, a controller or behind `runningInConsole()`, is not seen, so the
-published types keep the key the booted app had. Set it unconditionally in a provider's `boot()`.
+it. `ts:publish` is a console command, so a wrap set only for HTTP requests, in middleware, a controller or behind
+`! $this->app->runningInConsole()`, is not seen, and the published types keep the key the booted app had. Set it in a
+provider's `boot()` for the console too.
 
 `JsonResource::$forceWrapping` (Laravel 12.45 and later) is not read. With it on, Laravel wraps a body that already
 holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
@@ -434,9 +438,9 @@ methods, not a collection pipeline on it, and not a member of the API resource `
 An Inertia prop or shared value reads its paginator's kind from a query chain rooted at a model, such as
 `Post::query()->simplePaginate()`, or a local variable assigned one. Over a query builder variable
 (`$query->paginate()`), a controller method (`$this->page()`) or an injected service's method, `new PostCollection(…)`
-publishes `PostCollection` and `PostResource::collection(…)` `AnonymousResourceCollection<PostResource>`, though Laravel
-sends `links` and `meta` too, and such a paginator passed bare publishes `unknown`. Build the paginator in the props, or
-type the prop with `#[TsCasts]`.
+publishes `PostCollection` and `PostResource::collection(…)` `AnonymousResourceCollection<PostResource>`, though
+Laravel sends `links` and `meta` too, and such a paginator passed bare publishes `unknown`. Build the paginator in the
+props, or type the prop with `#[TsCasts]`.
 
 ### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
