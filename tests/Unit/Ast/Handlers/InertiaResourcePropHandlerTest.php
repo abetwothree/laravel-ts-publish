@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeyedApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PagePropApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostResource;
@@ -239,6 +240,21 @@ it('types a JSON:API resource as its document, built, made, by toResource() or c
             'type' => 'JsonApiCursorPaginator<PagePropApiResource>',
             'customImports' => ['@tolki/types' => ['JsonApiCursorPaginator']],
         ]);
+})->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
+
+it('types a JSON:API collection under another wrap key, and over preserved keys, beside its document\'s other members', function () {
+    $keyed = new StaticCall(new Name(KeyedApiResource::class), 'collection', [new Arg(new Variable('posts'))]);
+    $listed = new StaticCall(new Name(PagePropApiResource::class), 'collection', [new Arg(new Variable('posts'))]);
+    $paged = new StaticCall(new Name(PagePropApiResource::class), 'collection', [paginatorArg()]);
+    $keyedType = inertiaResourcePropResult($keyed)['type'] ?? null;
+
+    JsonResource::wrap('items');
+
+    expect($keyedType)->toBe("Omit<JsonApiCollection<KeyedApiResource>, 'data'> & { data: Record<string, KeyedApiResource> }")
+        ->and(inertiaResourcePropResult($listed)['type'] ?? null)
+        ->toBe("Omit<JsonApiCollection<PagePropApiResource>, 'data'> & { items: PagePropApiResource[] }")
+        ->and(inertiaResourcePropResult($paged)['type'] ?? null)
+        ->toBe("Omit<JsonApiPaginator<PagePropApiResource>, 'data'> & { items: PagePropApiResource[] }");
 })->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
 
 it('reads the wrapped paginator by the constructor and collection() parameter name', function () {
