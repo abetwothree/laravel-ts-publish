@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -285,7 +284,7 @@ class ModelTransformer extends CoreTransformer
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->appendedAttributes = $this->modelInstance->getAppends();
-        $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
+        $this->modelInspect = resolve(ModelAttributeResolver::class)->inspect($this->findable);
         /** @var Collection<int, AttributeInfo> $attributes */
         $attributes = $this->modelInspect->attributes;
         $this->relationNullable = new RelationNullable($this->modelInstance, $attributes);

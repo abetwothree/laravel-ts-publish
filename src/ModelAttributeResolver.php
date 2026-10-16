@@ -82,6 +82,13 @@ class ModelAttributeResolver
     protected array $relationContexts = [];
 
     /**
+     * Per-FQCN Eloquent inspection, read once a run though the morph map and the model publisher each need it.
+     *
+     * @var array<class-string, ModelInfo<Model>>
+     */
+    protected array $inspections = [];
+
+    /**
      * Per-FQCN message of the exception a context read caught: the reason a related model is left out.
      *
      * @var array<class-string, string>
@@ -155,12 +162,26 @@ class ModelAttributeResolver
     public function reset(): void
     {
         $this->contexts = [];
+        $this->inspections = [];
         $this->relationContexts = [];
         $this->contextFailures = [];
         $this->morphTargetMap = [];
         $this->dbColumnNamesCache = [];
         $this->attributeClassCache = [];
         $this->attributeClassPaths = [];
+    }
+
+    /**
+     * A model's Eloquent inspection: its columns, relations and the classes it names, read once a run.
+     *
+     * @internal
+     *
+     * @param  class-string  $modelFqcn
+     * @return ModelInfo<Model>
+     */
+    public function inspect(string $modelFqcn): ModelInfo
+    {
+        return $this->inspections[$modelFqcn] ??= resolve(ModelInspector::class)->inspect($modelFqcn);
     }
 
     /**
@@ -1592,7 +1613,7 @@ class ModelAttributeResolver
             /** @var Model $instance */
             $instance = resolve($modelFqcn);
 
-            $data = resolve(ModelInspector::class)->inspect($modelFqcn);
+            $data = $this->inspect($modelFqcn);
 
             /** @var Collection<int, AttributeInfo> $attributes */
             $attributes = $data->attributes;
