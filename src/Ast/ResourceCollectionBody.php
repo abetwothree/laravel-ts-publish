@@ -97,7 +97,7 @@ final class ResourceCollectionBody
 
     /**
      * Whether a collection's toArray(), wherever it is declared, sends its collected list on every path: Laravel's own,
-     * or a body each of whose returns is that list or a variable holding it.
+     * or a body each of whose returns is that list or a variable holding it. Read once per class a run.
      *
      * @template T of object
      *
@@ -105,25 +105,27 @@ final class ResourceCollectionBody
      */
     public function sendsCollectedList(ReflectionClass $collection): bool
     {
-        if (ResourceCollections::runsFrameworkToArray($collection)) {
-            return true;
-        }
+        return resolve(AnalysisMemo::class)->remember('sends-collected-list:'.$collection->getName(), function () use ($collection): bool {
+            if (ResourceCollections::runsFrameworkToArray($collection)) {
+                return true;
+            }
 
-        if (! $collection->isSubclassOf(ResourceCollection::class)) {
-            return false;
-        }
+            if (! $collection->isSubclassOf(ResourceCollection::class)) {
+                return false;
+            }
 
-        $stmts = resolve(MethodLocator::class)->locate($collection->getName(), 'toArray')?->method->stmts ?? [];
-        $returns = $this->collectReturnExpressions($stmts);
-        $declaring = $collection->getMethod('toArray')->getDeclaringClass();
+            $stmts = resolve(MethodLocator::class)->locate($collection->getName(), 'toArray')?->method->stmts ?? [];
+            $returns = $this->collectReturnExpressions($stmts);
+            $declaring = $collection->getMethod('toArray')->getDeclaringClass();
 
-        return $returns !== [] && array_all(
-            $returns,
-            fn (Expr $returned): bool => $this->returnsCollectedList($returned, $declaring)
-                || ($returned instanceof Variable
-                    && is_string($returned->name)
-                    && $this->holdsCollectedList($stmts, $returned->name, $declaring)),
-        );
+            return $returns !== [] && array_all(
+                $returns,
+                fn (Expr $returned): bool => $this->returnsCollectedList($returned, $declaring)
+                    || ($returned instanceof Variable
+                        && is_string($returned->name)
+                        && $this->holdsCollectedList($stmts, $returned->name, $declaring)),
+            );
+        });
     }
 
     /**

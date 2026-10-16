@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -163,37 +164,53 @@ trait GuessesModelResources
 
     /**
      * Reproduce Model::toResource()'s guessResource(): the #[UseResource] attribute first, then
-     * the naming-convention candidates, Resource-suffixed candidate first.
+     * the naming-convention candidates, Resource-suffixed candidate first. Read once per model a run.
      *
      * @param  class-string<Model>  $modelFqcn
      * @return class-string|null
      */
     protected function resolveResourceForModel(string $modelFqcn): ?string
     {
-        $fromAttribute = $this->resolveUseResourceAttribute($modelFqcn);
+        return resolve(AnalysisMemo::class)->remember('model-resource:'.$modelFqcn, function () use ($modelFqcn): ?string {
+            $fromAttribute = $this->resolveUseResourceAttribute($modelFqcn);
 
-        if ($fromAttribute !== null) {
-            return $fromAttribute;
-        }
-
-        foreach ($this->guessResourceNames($modelFqcn) as $candidate) {
-            if ($this->isPublishedResourceClass($candidate)) {
-                return $candidate;
+            if ($fromAttribute !== null) {
+                return $fromAttribute;
             }
-        }
 
-        return null;
+            foreach ($this->guessResourceNames($modelFqcn) as $candidate) {
+                if ($this->isPublishedResourceClass($candidate)) {
+                    return $candidate;
+                }
+            }
+
+            return null;
+        });
     }
 
     /**
      * Reproduce Collection::toResourceCollection()'s guessResourceCollection() order, #[UseResourceCollection], then
      * #[UseResource], then the naming convention trying `{Guessed}Collection` before the bare guessed resources: the
-     * collection class Laravel builds, or the resource whose `::collection()` it calls.
+     * collection class Laravel builds, or the resource whose `::collection()` it calls. Read once per model a run.
      *
      * @param  class-string<Model>  $modelFqcn
      * @return GuessedCollection|null
      */
     protected function resolveResourceCollectionForModel(string $modelFqcn): ?array
+    {
+        return resolve(AnalysisMemo::class)->remember(
+            'model-resource-collection:'.$modelFqcn,
+            fn (): ?array => $this->guessResourceCollectionForModel($modelFqcn),
+        );
+    }
+
+    /**
+     * The guess resolveResourceCollectionForModel() stores for the run.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return GuessedCollection|null
+     */
+    private function guessResourceCollectionForModel(string $modelFqcn): ?array
     {
         // Vendor returns `new $useResourceCollection($this)` unconditionally once the attribute
         // names an existing class — it never falls through to #[UseResource] or the naming convention.

@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceResponseBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentListPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedPostSummary;
@@ -219,3 +224,78 @@ test('a resource in a spread cycle publishes one shape whichever resource of the
     // A key spread twice is published once, at its first position.
     expect(array_values(array_unique(array_column($properties, 'name'))))->toBe(['b_marker', 'a_marker']);
 })->with(['alone' => false, 'after the other resource' => true]);
+
+test('whether a collection sends its collected list is read once a run, and again after a reset', function () use ($countLookups) {
+    $lookups = $countLookups();
+    $body = resolve(ResourceCollectionBody::class);
+    $collection = new ReflectionClass(ItemsKeyPostCollection::class);
+
+    $answers = [$body->sendsCollectedList($collection), $body->sendsCollectedList($collection)];
+    $readOnce = $lookups['any:'.ItemsKeyPostCollection::class.'::toArray'] ?? 0;
+    resolve(AnalysisMemo::class)->reset();
+    $body->sendsCollectedList($collection);
+
+    expect($answers)->toBe([false, false])
+        ->and($readOnce)->toBe(1)
+        ->and($lookups['any:'.ItemsKeyPostCollection::class.'::toArray'] ?? 0)->toBe(2);
+});
+
+// The collection reader stands in for the walk, so a second read of the same resource and key reaches it no more.
+test('whether a resource body holds a wrap key is read once a run, and records the resource on each read', function () {
+    $reads = new ArrayObject;
+    $reader = resolve(ResourceCollectionBody::class);
+
+    app()->instance(ResourceCollectionBody::class, new readonly class($reader, $reads)
+    {
+        /** @param  ArrayObject<int, string>  $reads */
+        public function __construct(private ResourceCollectionBody $reader, private ArrayObject $reads) {}
+
+        /** @param  ReflectionClass<object>  $collection */
+        public function sendsCollectedList(ReflectionClass $collection): bool
+        {
+            $this->reads[] = $collection->getName();
+
+            return $this->reader->sendsCollectedList($collection);
+        }
+    });
+
+    $body = resolve(ResourceResponseBody::class);
+    $recorded = function () use ($body): array {
+        DependencyRecorder::start();
+
+        try {
+            expect($body->holdsWrapKey(DataKeyPostResource::class, 'data'))->toBeTrue();
+
+            return DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+    };
+
+    $first = $recorded();
+    $reused = $recorded();
+
+    expect($reads->getArrayCopy())->toBe([DataKeyPostResource::class])
+        ->and($first)->toContain((string) new ReflectionClass(DataKeyPostResource::class)->getFileName())
+        ->and($reused)->toEqualCanonicalizing($first);
+});
+
+test('a reused collected-list read records the files the first one read', function () {
+    $body = resolve(ResourceCollectionBody::class);
+    $recorded = function () use ($body): array {
+        DependencyRecorder::start();
+
+        try {
+            $body->sendsCollectedList(new ReflectionClass(ItemsKeyPostCollection::class));
+
+            return DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+    };
+
+    $first = $recorded();
+
+    expect($first)->toContain((string) new ReflectionClass(ItemsKeyPostCollection::class)->getFileName())
+        ->and($recorded())->toEqualCanonicalizing($first);
+});

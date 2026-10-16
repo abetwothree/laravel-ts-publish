@@ -117,6 +117,33 @@ final class JsonApiResources
      */
     public static function relationships(string $class, ?string $modelClass): array
     {
+        return resolve(AnalysisMemo::class)->remember(
+            'json-api-relationships:'.$class.'@'.$modelClass,
+            fn (): array => self::readRelationships($class, $modelClass),
+        );
+    }
+
+    /**
+     * Every resource object an include can add to a JSON:API resource's `included`, following its relationships to any
+     * depth: a JSON:API resource, or Laravel's bare JsonApiResource over a model that has none, by its `type`.
+     *
+     * @param  class-string  $class
+     * @return list<IncludedResource>
+     */
+    public static function includedResources(string $class): array
+    {
+        return resolve(AnalysisMemo::class)->remember('json-api-included:'.$class, fn (): array => self::readIncludedResources($class));
+    }
+
+    /**
+     * The relationships relationships() answers, read off the class and its model.
+     *
+     * @param  class-string  $class
+     * @param  class-string<Model>|null  $modelClass
+     * @return list<JsonApiRelationship>
+     */
+    private static function readRelationships(string $class, ?string $modelClass): array
+    {
         $relationships = [];
 
         foreach (self::declaredRelationships($class) as $declared) {
@@ -146,13 +173,12 @@ final class JsonApiResources
     }
 
     /**
-     * Every resource object an include can add to a JSON:API resource's `included`, following its relationships to any
-     * depth: a JSON:API resource, or Laravel's bare JsonApiResource over a model that has none, by its `type`.
+     * The resource objects includedResources() answers, walking the relationships from the class.
      *
      * @param  class-string  $class
      * @return list<IncludedResource>
      */
-    public static function includedResources(string $class): array
+    private static function readIncludedResources(string $class): array
     {
         $included = [];
         $read = [$class => true];

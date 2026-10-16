@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\JsonApiValueReadsResource;
@@ -29,6 +31,7 @@ use Workbench\App\Http\Resources\JsonApi\AttributesPostResource;
 use Workbench\App\Http\Resources\JsonApi\BarePostResource;
 use Workbench\App\Http\Resources\JsonApi\CastedAttributesPostResource;
 use Workbench\App\Http\Resources\JsonApi\ClosureRelationsPostResource;
+use Workbench\App\Http\Resources\JsonApi\CommentResource;
 use Workbench\App\Http\Resources\JsonApi\DefaultLinksPostResource;
 use Workbench\App\Http\Resources\JsonApi\IdentifiedPostResource;
 use Workbench\App\Http\Resources\JsonApi\KpiResource;
@@ -334,4 +337,42 @@ test('a spread of a JSON:API resource\'s resolve() adds its data key', function 
         'id' => 'number',
         'data' => 'PostResource',
     ]);
+});
+
+// A run reads the morph map as the app booted it, so an answer worked out before this change is the one a run reuses.
+test('a JSON:API resource\'s relationships and includes are read once a run, and again after a reset', function () {
+    buildReportMorphTargets();
+    $relationships = JsonApiResources::relationships(KpiResource::class, Kpi::class);
+    $included = JsonApiResources::includedResources(KpiResource::class);
+
+    Relation::morphMap(['marketing_report' => MarketingReport::class, 'sales_report' => SalesReport::class]);
+    $reused = [JsonApiResources::relationships(KpiResource::class, Kpi::class), JsonApiResources::includedResources(KpiResource::class)];
+    resolve(AnalysisMemo::class)->reset();
+
+    expect($included)->toBe([['type' => "'reports'", 'resource' => null]])
+        ->and($reused)->toBe([$relationships, $included])
+        ->and(JsonApiResources::includedResources(KpiResource::class))->toBe([
+            ['type' => "'marketing_reports'", 'resource' => null],
+            ['type' => "'sales_reports'", 'resource' => null],
+        ]);
+});
+
+test('a reused JSON:API include read records the file of every resource it reached', function () {
+    $recorded = function (Closure $read): array {
+        DependencyRecorder::start();
+
+        try {
+            $read();
+
+            return DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+    };
+
+    $first = $recorded(fn () => JsonApiResources::includedResources(PostResource::class));
+    $reused = $recorded(fn () => JsonApiResources::includedResources(PostResource::class));
+
+    expect($first)->toContain((string) new ReflectionClass(CommentResource::class)->getFileName())
+        ->and($reused)->toEqualCanonicalizing($first);
 });

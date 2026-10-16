@@ -418,7 +418,10 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 [`AnalysisMemo`] is a container singleton holding the engine's cycle guards and a per-run memo of four analyses:
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
-import mode, gains an `@importless` suffix for an analysis that carries no imports.
+import mode, gains an `@importless` suffix for an analysis that carries no imports. It also holds the per-class reads
+each resource prop repeats: `JsonApiResources::relationships()` and `includedResources()`,
+`ResourceCollectionBody::sendsCollectedList()`, `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in
+`GuessesModelResources`.
 
 `analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
 suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that

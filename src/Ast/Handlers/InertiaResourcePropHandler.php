@@ -211,18 +211,18 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $args = $this->resourceCallArguments($call, Collection::class, 'toResourceCollection');
         $explicitArg = $args->named('resourceClass') ?? $args->at(0);
-        $receiver = $engine->resolve($call->var);
-        $paginators = $this->paginatorsOf($receiver['type']);
 
         if ($explicitArg !== null) {
             $explicit = resolve(ValueResolver::class)->resolveClassConstArgument($explicitArg->value);
 
-            // Laravel calls `$explicit::collection($items)`.
+            // Laravel calls `$explicit::collection($items)`; the receiver is read only for a class this sends.
             return $explicit !== null && $this->collectsAnonymously($explicit)
-                ? $this->anonymousCollectionType($explicit, $paginators)
+                ? $this->anonymousCollectionType($explicit, $this->paginatorsOf($engine->resolve($call->var)['type']))
                 : null;
         }
 
+        $receiver = $engine->resolve($call->var);
+        $paginators = $this->paginatorsOf($receiver['type']);
         $guessed = $this->guessedCollection($call->var, $receiver, $scope);
 
         if ($guessed === null) {
