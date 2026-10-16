@@ -77,7 +77,8 @@ expression shape makes an inert pair disagree, the matrix fails. Pin the pair in
 `ControllerExpressionHandlers::make()` inserts `ModelFinderHandler` and `InertiaResourcePropHandler` into
 `withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
 a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
-element array. Placed later, the two additions would be unreachable for those shapes. `ControllerExpressionHandlersTest`
+element array. Placed later, the two additions would be unreachable for those shapes. `InertiaResourcePropHandler` also
+types a JSON:API resource's single and collection props as their `@tolki/types` documents. `ControllerExpressionHandlersTest`
 pins the structure and the five orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 

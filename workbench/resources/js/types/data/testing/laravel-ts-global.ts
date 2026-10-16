@@ -5832,6 +5832,16 @@ declare global {
             type: 'articles';
             attributes: { title: string };
         }
+        /**
+         * A JSON:API resource whose morph relationship reaches models with no API resource, so an include sends Laravel's
+         * bare JsonApiResource over each, typed by the model's name.
+         */
+        export interface KpiResource {
+            id: string;
+            type: 'kpis';
+            attributes: { value: number };
+            relationships?: { reportable?: JsonApiToOneRelationship<'reports'> };
+        }
         /** A JSON:API resource overriding toLinks() and toMeta(). */
         export interface LinkedPostResource {
             id: string;
@@ -5839,6 +5849,24 @@ declare global {
             attributes: { title: string };
             links?: { self: string };
             meta?: { readable: boolean; words: number | null };
+        }
+        /**
+         * A plain API resource nesting JSON:API resources as values. Laravel sends a single one as its resolve(), its
+         * resource object under `data`, the items of its collection() bare, and each item of a named collection under `data`.
+         */
+        export interface NestingPlainResource {
+            id: number;
+            author: { data: UserResource };
+            category: { data: CategoryResource } | null;
+            comments: CommentResource[];
+            siblings: { data: PostResource }[];
+        }
+        /**
+         * A named collection of JSON:API resources: ResourceCollection's toArray() sends each item's resolve(), its resource
+         * object under `data`.
+         */
+        export interface PostCollection {
+            data: { data: PostResource }[];
         }
         /** A body-less JSON:API resource: its attributes and relationships named by property. */
         export interface PostResource {
@@ -5862,6 +5890,12 @@ declare global {
             id: string;
             type: 'users';
             attributes: { name: string; email: string };
+        }
+        /** A JSON:API resource whose toAttributes() returns a variable: each keyless name in it reads the model attribute. */
+        export interface VariableAttributesPostResource {
+            id: string;
+            type: 'variable_attributes_posts';
+            attributes: { title: string; word_count: number | null; content?: string; is_long: boolean };
         }
     }
     export namespace workbench.app.http.resources.reportCards {

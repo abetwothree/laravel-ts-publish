@@ -2,37 +2,58 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\JsonApiValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingOverrideApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PlainRelationshipApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ResolveSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SerializingAttributesApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SummarizedPostApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Controllers\InertiaJsonApiController;
 use Workbench\App\Http\Resources\JsonApi\AttributesPostResource;
 use Workbench\App\Http\Resources\JsonApi\BarePostResource;
 use Workbench\App\Http\Resources\JsonApi\CastedAttributesPostResource;
 use Workbench\App\Http\Resources\JsonApi\ClosureRelationsPostResource;
 use Workbench\App\Http\Resources\JsonApi\DefaultLinksPostResource;
 use Workbench\App\Http\Resources\JsonApi\IdentifiedPostResource;
+use Workbench\App\Http\Resources\JsonApi\KpiResource;
 use Workbench\App\Http\Resources\JsonApi\LinkedPostResource;
+use Workbench\App\Http\Resources\JsonApi\NestingPlainResource;
+use Workbench\App\Http\Resources\JsonApi\PostCollection;
 use Workbench\App\Http\Resources\JsonApi\PostResource;
 use Workbench\App\Http\Resources\JsonApi\ToArrayPostResource;
 use Workbench\App\Http\Resources\JsonApi\ToAttributesOnlyPlainResource;
+use Workbench\App\Http\Resources\JsonApi\VariableAttributesPostResource;
+use Workbench\App\Models\Kpi;
+use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Sales\Report\Report as SalesReport;
 
 beforeEach(function () {
     // JsonApiResource and JsonResource::toAttributes() ship from Laravel 12.45; an older install cannot load these.
     if (! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource')) {
         $this->markTestSkipped('JsonApiResource ships from Laravel 12.45.');
     }
+});
+
+afterEach(function () {
+    JsonResource::flushState();
+    Relation::morphMap([], merge: false);
 });
 
 /** The `attributes` member PostResource publishes. */
@@ -45,6 +66,18 @@ function postResourceAttributes(): string
 function postResourceRelationships(): string
 {
     return "{ author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'>; categoryRel?: JsonApiToOneRelationship<'categories'> }";
+}
+
+/** Read each MorphTo's targets off the reports' inverse relations, as a publish run does. */
+function buildReportMorphTargets(): void
+{
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Kpi::class, MarketingReport::class, SalesReport::class]);
+}
+
+/** The props one InertiaJsonApiController action publishes. */
+function jsonApiPageType(string $action): string
+{
+    return new InertiaPageAnalyzer()->analyze(['uses' => InertiaJsonApiController::class.'@'.$action])['pageType'];
 }
 
 test('a body-less JsonApiResource publishes the resource object its $attributes and $relationships send', function () {
@@ -201,3 +234,104 @@ test('a toArray() that spreads parent::toAttributes() with no $attributes ends, 
     'from toArray()' => [LoopingToArrayApiResource::class, '{ extra: number }'],
     'from a toAttributes() override toArray() spreads' => [LoopingOverrideApiResource::class, '{ headline: string; more: number }'],
 ]);
+
+test('a JSON:API resource nested in a plain resource publishes { data: R }, and its collection() R[]', function () {
+    expect(publishedResourceKeyTypes(NestingPlainResource::class, Post::class))->toMatchArray([
+        'author' => '{ data: UserResource }',
+        'comments' => 'CommentResource[]',
+    ]);
+});
+
+test('toResource() of a JSON:API resource is { data: R }', function () {
+    expect(publishedResourceKeyTypes(NestingPlainResource::class, Post::class)['category'])->toBe('{ data: CategoryResource } | null');
+});
+
+test('a named collection of JSON:API resources publishes each item under data', function () {
+    expect(new ResourceTransformer(PostCollection::class)->data()->properties['data']['type'])
+        ->toBe('{ data: PostResource }[]')
+        ->and(publishedResourceKeyTypes(NestingPlainResource::class, Post::class)['siblings'])
+        ->toBe('{ data: PostResource }[]');
+});
+
+test('an Inertia prop publishes the JSON:API document, with every resource an include can add', function () {
+    $included = 'UserResource | CommentResource | CategoryResource';
+
+    expect(jsonApiPageType('show'))
+        ->toContain("post: JsonApiDocument<PostResource, {$included}>")
+        ->toContain('author: JsonApiDocument<UserResource>')
+        ->toContain('category: JsonApiDocument<CategoryResource> | null')
+        ->and(jsonApiPageType('index'))
+        ->toContain("posts: JsonApiCollection<PostResource, {$included}>")
+        ->toContain("paged: JsonApiPaginator<PostResource, {$included}>")
+        ->toContain("simple: JsonApiSimplePaginator<PostResource, {$included}>")
+        ->toContain("cursor: JsonApiCursorPaginator<PostResource, {$included}>")
+        ->toContain('comments: JsonApiCollection<CommentResource, UserResource>');
+});
+
+test('a relationship without a JSON:API resource adds JsonApiResourceObject to included', function () {
+    buildReportMorphTargets();
+
+    expect(jsonApiPageType('show'))->toContain("kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>>");
+});
+
+test('a JSON:API collection prop after withoutWrapping() is the bare list', function () {
+    JsonResource::withoutWrapping();
+
+    expect(jsonApiPageType('index'))
+        ->toContain('posts: PostResource[]')
+        ->toContain('paged: JsonApiPaginator<PostResource, UserResource | CommentResource | CategoryResource>');
+});
+
+test('keyless names in a toAttributes() that returns a variable read the model attributes', function () {
+    expect(publishedResourceKeyTypes(VariableAttributesPostResource::class, Post::class))
+        ->toMatchArray(['attributes' => '{ title: string; word_count: number | null; content?: string; is_long: boolean }']);
+});
+
+test('a morph relationship publishes each target\'s type literal', function () {
+    buildReportMorphTargets();
+    Relation::morphMap(['marketing_report' => MarketingReport::class, 'sales_report' => SalesReport::class]);
+
+    expect(publishedResourceKeyTypes(KpiResource::class, Kpi::class)['relationships?'])
+        ->toBe("{ reportable?: JsonApiToOneRelationship<'marketing_reports' | 'sales_reports'> }")
+        ->and(JsonApiResources::includedResources(KpiResource::class))->toBe([
+            ['type' => "'marketing_reports'", 'resource' => null],
+            ['type' => "'sales_reports'", 'resource' => null],
+        ]);
+});
+
+// Laravel throws building a plain resource's identifier, and builds a bare JsonApiResource over a model with none.
+test('a relationship to a plain resource or to a model with no resource publishes a type that compiles', function (string $resource, string $model, string $relationships, array $included) {
+    buildReportMorphTargets();
+
+    expect(publishedResourceKeyTypes($resource, $model)['relationships?'])->toBe($relationships)
+        ->and(JsonApiResources::includedResources($resource))->toBe($included);
+})->with([
+    'a plain resource' => [
+        PlainRelationshipApiResource::class,
+        Post::class,
+        '{ author?: JsonApiToOneRelationship<string>; comments?: JsonApiToManyRelationship<string> }',
+        [],
+    ],
+    'no resource' => [
+        KpiResource::class,
+        Kpi::class,
+        "{ reportable?: JsonApiToOneRelationship<'reports'> }",
+        [['type' => "'reports'", 'resource' => null]],
+    ],
+]);
+
+// D8: only the published subject is the resource object; a call reads what the method returns.
+test('a call to a JSON:API resource\'s toArray() reads the method, and its resolve() the resource object under data', function () {
+    expect(publishedResourceKeyTypes(JsonApiValueReadsResource::class, Post::class))->toBe([
+        'declared' => '{ title: string; rating: string | null }',
+        'made' => '{ data: PostResource }',
+        'built' => '{ data: PostResource }',
+    ]);
+});
+
+test('a spread of a JSON:API resource\'s resolve() adds its data key', function () {
+    expect(publishedResourceKeyTypes(ResolveSpreadResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'data' => 'PostResource',
+    ]);
+});

@@ -14,6 +14,7 @@ export { default as InertiaController } from './inertia-controller';
 export { default as InertiaEnumCaseController } from './inertia-enum-case-controller';
 export { default as InertiaFacilityController } from './inertia-facility-controller';
 export { default as InertiaFormRequestController } from './inertia-form-request-controller';
+export { default as InertiaJsonApiController } from './inertia-json-api-controller';
 export { default as InertiaKeyEdgesController } from './inertia-key-edges-controller';
 export { default as InertiaListPropsController } from './inertia-list-props-controller';
 export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';

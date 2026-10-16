@@ -7,11 +7,11 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -62,7 +62,8 @@ trait GuessesModelResources
 
     /**
      * Analyze `$model->toResource()` / `$model->toResource(SomeResource::class)`. An explicit
-     * argument wins outright; otherwise the receiver's model resolves via resolveResourceForModel().
+     * argument wins outright; otherwise the receiver's model resolves via resolveResourceForModel(). Each resource
+     * is typed as JsonApiResources::instanceType() sends it.
      *
      * @return ValueExpressionResult
      */
@@ -80,7 +81,7 @@ trait GuessesModelResources
             }
 
             /** @var class-string $explicit */
-            return [...$result, 'type' => TsNaming::resourceTypeName($explicit), 'optional' => false, 'resourceFqcn' => $explicit];
+            return [...$result, 'type' => JsonApiResources::instanceType($explicit), 'optional' => false, 'resourceFqcn' => $explicit];
         }
 
         $models = $this->resolveToResourceReceiverModels($call->var, $scope);
@@ -103,7 +104,7 @@ trait GuessesModelResources
 
             return [
                 ...$result,
-                'type' => implode(' | ', array_map(fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn), $resourceFqcns)),
+                'type' => implode(' | ', array_map(JsonApiResources::instanceType(...), $resourceFqcns)),
                 'optional' => false,
                 'embeddedResourceFqcns' => $resourceFqcns,
             ];
@@ -116,7 +117,7 @@ trait GuessesModelResources
             return $result;
         }
 
-        return [...$result, 'type' => TsNaming::resourceTypeName($resourceFqcn), 'optional' => false, 'resourceFqcn' => $resourceFqcn];
+        return [...$result, 'type' => JsonApiResources::instanceType($resourceFqcn), 'optional' => false, 'resourceFqcn' => $resourceFqcn];
     }
 
     /**

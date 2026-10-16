@@ -14,7 +14,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -101,10 +100,10 @@ final class NewResourceHandler implements ExpressionHandler
             return resolve(ValueResolver::class)->resolveSerializedNew($expr) ?? $result;
         }
 
-        $type = $this->resourceWrapType($expr, $className, TsNaming::resourceTypeName($className), $scope, $engine);
+        /** @var class-string $className */
+        $type = $this->resourceWrapType($expr, $className, $scope, $engine);
         $optional = $this->hasConditionalNewArgument($expr, $className);
 
-        /** @var class-string $className */
         return [
             ...$result,
             'type' => $type,

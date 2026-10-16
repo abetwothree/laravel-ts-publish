@@ -150,6 +150,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * @param  array<string, PassedBinding>  $passed  what a call passes the method's parameters, bound with its scope
      * @param  ReflectionClass<object>|null  $runtimeClass  the class `$this` is at run time when this reads an
      *                                                      ancestor's body for it; null when that is the subject
+     * @param  bool  $readsCall  whether this reads what a call to the method returns, as a value, rather than what
+     *                           the subject publishes: a JSON:API resource's toArray() is then its body
      */
     public function __construct(
         protected ReflectionClass $resourceReflection,
@@ -161,6 +163,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         bool $carriesImports = true,
         private readonly array $passed = [],
         private readonly ?ReflectionClass $runtimeClass = null,
+        private readonly bool $readsCall = false,
     ) {
         $this->scope = $scope ?? new AnalysisScope(
             self::genericReflection($this->resourceReflection->getName()),
@@ -243,7 +246,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * Whether this analysis reads the response of a plain resource that runs as itself and overrides toAttributes(),
-     * which resolve() sends in toArray()'s place once JsonResource declares it; a collection's items are no attributes.
+     * which resolve() sends in toArray()'s place once JsonResource declares it; a collection's items are no attributes,
+     * and a call to toArray() returns its own body.
      */
     private function sendsOwnToAttributes(): bool
     {
@@ -251,6 +255,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         return $this->methodName === 'toArray'
             && $this->context === null
+            && ! $this->readsCall
             && $runtime->getName() === $this->scope->subjectReflection->getName()
             && JsonApiResources::shipped()
             && $runtime->isSubclassOf(JsonResource::class)
@@ -559,6 +564,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * A JSON:API toAttributes() array's appended string names the model attribute Laravel reads for it, as a keyless
+     * string in its literal does.
+     *
+     * @return array{name: string, result: ValueExpressionResult}|null
+     */
+    protected function appendedKey(Expr $value): ?array
+    {
+        if (! $this->readsKeylessAttributeNames || ! $value instanceof String_) {
+            return null;
+        }
+
+        return ['name' => $value->value, 'result' => $this->analyzeValueExpression($this->modelAttributeRead($value->value))];
+    }
+
+    /**
      * Seed the scope from a method body: its parameters, by what each declares and what its call passes, the body's
      * own bindings, then the relation-typed foreach loop variables that only a model-backed scope can resolve.
      *
@@ -820,14 +840,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     /**
      * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
      * and flatten its shape into this resource's own properties. Null for anything the classifier
-     * declines, or takes only by its type, so the caller falls through to $this->merge()'s own handling.
+     * declines, or takes only by its type other than a JSON:API instance, so the caller falls through to
+     * $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {
         $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
 
-        if ($arm === null || isset($arm['type'])) {
+        if ($arm === null) {
             return null;
+        }
+
+        if (isset($arm['type'])) {
+            return $this->analyzeJsonApiInstanceSpreadArm($arm['type'], $arm['result']);
         }
 
         if (! $arm['isModel']) {
@@ -843,6 +868,26 @@ class ResourceAstAnalyzer implements ExpressionEngine
         return $arm['isCollection']
             ? $this->analyzeCollectionSpreadArm($modelFqcn)
             : $this->analyzeModelSpreadArm($modelFqcn);
+    }
+
+    /**
+     * A spread JSON:API resource instance, as its resolve() returns it: the one `data` key holding its resource object;
+     * null for any other value typed as one object.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function analyzeJsonApiInstanceSpreadArm(string $type, array $result): ?ResourceAnalysis
+    {
+        $resource = $result['resourceFqcn'] ?? null;
+
+        if ($resource === null || ! JsonApiResources::is($resource) || $type !== JsonApiResources::instanceType($resource)) {
+            return null;
+        }
+
+        $analysis = new ResourceAnalysis;
+        $analysis->addProperty('data', [...$result, 'type' => TsNaming::resourceTypeName($resource)]);
+
+        return $analysis;
     }
 
     /**

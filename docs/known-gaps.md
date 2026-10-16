@@ -497,6 +497,21 @@ through `JsonApiSparse<R>` from `@tolki/types`. A `toType()` that returns anythi
 later is not in it, and the generation cache cannot see either. Keys `additional()` adds beside `data`, and the outer
 key a subclass that redeclares `$wrap` adds, are not published.
 
+After `JsonResource::withoutWrapping()`, a JSON:API collection prop publishes the bare list Laravel then sends, though
+a request with `?include=`, or after `JsonApiResource::configure()`, still sends it under `data` beside `included`. A
+relationship whose resource is a plain API resource publishes `type: string` and adds nothing to `included`, since
+Laravel throws building it on an include. A `toRelationships()` resolver written `SomeResource::CONSTANT` or
+`self::class` is read as no resolver, so the related model's own resource names the relationship. On Laravel 12 a
+`toRelationships()` closure that returns a resource throws on an include, while the package publishes Laravel 13's
+shape.
+
+### On Laravel 12.45 and later, a plain API resource's `$attributes` and `parent::toAttributes()` are not read
+
+From 12.45, `JsonResource::toAttributes()` returns an `$attributes` property in `toArray()`'s place, so a plain
+resource with one sends those keys while the package publishes `toArray()`'s. A `...parent::toAttributes()` spread in
+a plain resource's own `toAttributes()` publishes no key. Rename the property, or return every key from
+`toAttributes()` itself.
+
 ### An overridden `resolve()` or `jsonSerialize()` changes what Laravel sends, and the package reads neither
 
 An API resource publishes the keys its `toArray()` returns. Laravel sends its `resolve()` as the response's `data` and

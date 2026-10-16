@@ -159,7 +159,14 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
   each optional, as only an `include` sends it (`JsonApiResources::relationships()`); `links` and `meta` read a
   `toLinks()` or `toMeta()` override, else the `$jsonApiLinks` or `$jsonApiMeta` default.
 - **`resolve()` and `jsonSerialize()`**: a read reaching JsonApiResource's own `resolve()` is the resource object
-  under `data`, declined inside a method that builds the object, where Laravel never returns.
+  under `data`, declined inside a method that builds the object, where Laravel never returns. A call to the
+  resource's `toArray()` read as a value (`MethodReturnTypeResolver`'s `readsCall`) is its body, never the object.
+- **Positions**: an instance read as a value, `new R`, `R::make()`, `toResource()` or `resolve()`, is
+  `{ data: R }` (`JsonApiResources::instanceType()`), `| null` where the payload can be; each item of a named
+  collection is that too, through `ResourceCollections::elementValue()`; `R::collection()` is `R[]`. An Inertia prop
+  is the `@tolki/types` document, `JsonApiDocument<R, I>`, `JsonApiCollection<R, I>` or each paginator kind's
+  (`TolkiTypes`), where `I` is every resource object an include can reach (`JsonApiResources::includedResources()`):
+  a published JSON:API resource, else `JsonApiResourceObject<'type'>`, and nothing for a plain resource, which throws.
 
 ## Attribute filters on any model receiver
 
@@ -599,7 +606,8 @@ its `toResponse()` data. A single resource and a body without the live wrap key 
 `EnumResource` declares `$wrap = ''`, so its `make()` stays bare. Over a paginator, a collection's own body sits beside
 the pagination blocks of the payload's kind, and an anonymous or flat one is that kind's paginator response, such as
 `JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A
-payload of several kinds, or sometimes none, publishes each.
+payload of several kinds, or sometimes none, publishes each. A JSON:API resource is its document
+([above](#jsonapi-resources)), and its collection the bare list once `withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 

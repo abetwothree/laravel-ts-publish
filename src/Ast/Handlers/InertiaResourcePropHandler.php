@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ResourceResponseBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -51,6 +52,7 @@ use ReflectionClass;
  * @phpstan-import-type GuessedCollection from GuessesModelResources
  *
  * @phpstan-type PayloadPaginators = non-empty-list<string|null>
+ * @phpstan-type JsonApiIncluded = array{arguments: string, resources: list<class-string>, imports: list<string>}
  *
  * @internal
  */
@@ -172,16 +174,30 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $value = $this->analyzeToResourceCall($call, $scope);
         $responses = [];
+        $included = [];
+        $imports = [];
 
         foreach (isset($value['resourceFqcn']) ? [$value['resourceFqcn']] : ($value['embeddedResourceFqcns'] ?? []) as $resource) {
             if (! $this->sendsResourceObject($resource)) {
                 return null;
             }
 
-            $responses[] = $this->instanceResponse($resource);
+            $response = $this->instanceResult($resource);
+            $responses[] = $response['type'];
+            $included = [...$included, ...$response['embeddedResourceFqcns'] ?? []];
+            $imports = [...$imports, ...$response['customImports']['@tolki/types'] ?? []];
         }
 
-        return $responses === [] ? null : [...$value, 'type' => implode(' | ', $responses)];
+        if ($responses === []) {
+            return null;
+        }
+
+        return [
+            ...$value,
+            'type' => implode(' | ', $responses),
+            ...($included === [] ? [] : ['embeddedResourceFqcns' => [...$value['embeddedResourceFqcns'] ?? [], ...$included]]),
+            ...($imports === [] ? [] : ['customImports' => ['@tolki/types' => array_values(array_unique($imports))]]),
+        ];
     }
 
     /**
@@ -363,6 +379,10 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      */
     private function anonymousCollectionType(string $className, array $paginators): array
     {
+        if (JsonApiResources::is($className)) {
+            return $this->jsonApiCollection($className, $paginators);
+        }
+
         $reflection = self::reflect($className);
         $name = TsNaming::resourceTypeName($className);
         // The anonymous collection wraps by its own `$wrap`, `JsonResource`'s shared slot, never the collected one's.
@@ -436,22 +456,134 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      */
     private function singleResource(StaticCall|New_ $call, string $className): array
     {
+        return [...$this->instanceResult($className), 'optional' => $this->payloadIsConditional($call, $className)];
+    }
+
+    /**
+     * What one resource object's response sends, with the classes it names: a JSON:API resource's document, else its
+     * own type inside its class's live wrap key.
+     *
+     * @param  class-string<JsonResource>  $resource
+     * @return ValueExpressionResult
+     */
+    private function instanceResult(string $resource): array
+    {
+        if (JsonApiResources::is($resource)) {
+            $document = TolkiTypes::JSON_API_DOCUMENTS['single'];
+            $included = $this->jsonApiIncluded($resource);
+
+            return $this->jsonApiResult($resource, $document.$included['arguments'], [$document], $included);
+        }
+
         return [
             ...ValueResult::unknown(),
-            'type' => $this->instanceResponse($className),
-            'optional' => $this->payloadIsConditional($call, $className),
-            'resourceFqcn' => $className,
+            'type' => $this->response($resource, TsNaming::resourceTypeName($resource), $resource),
+            'resourceFqcn' => $resource,
         ];
     }
 
     /**
-     * What one resource object's response sends: its own type, inside its class's live wrap key.
+     * A JSON:API resource's collection over each paginator kind its payload may hold, and unpaginated when it may hold
+     * none: each kind's `@tolki/types` document, the bare list where the anonymous collection's live wrap key is empty
+     * and nothing is paginated, and the list under any other key beside the document's other members.
      *
-     * @param  class-string<JsonResource>  $resource
+     * @param  class-string<JsonResource>  $className
+     * @param  PayloadPaginators  $paginators
+     * @return ValueExpressionResult
      */
-    private function instanceResponse(string $resource): string
+    private function jsonApiCollection(string $className, array $paginators): array
     {
-        return $this->response($resource, TsNaming::resourceTypeName($resource), $resource);
+        $reflection = self::reflect($className);
+        $list = ResourceCollections::listType(TsNaming::resourceTypeName($className), $reflection);
+        $keyed = ResourceCollections::preservesKeys($reflection);
+        // JSON:API's anonymous collection does not redeclare `$wrap`, so it shares JsonResource's slot.
+        $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
+        $keys = in_array(null, $paginators, true) ? [TolkiTypes::JSON_API_DOCUMENTS['collection'] => $wrapKey] : [];
+
+        // A paginated response nests its list under `data` even without a wrap key, as its members sit beside it.
+        foreach ($this->paginatorKinds($paginators) as $kind) {
+            $keys[TolkiTypes::RESOURCE_PAGINATION[$kind]['jsonApi']] = $wrapKey ?? 'data';
+        }
+
+        $included = $this->jsonApiIncluded($className);
+        $types = [];
+        $documents = [];
+
+        foreach ($keys as $document => $key) {
+            if ($key === null) {
+                $types[] = $list;
+
+                continue;
+            }
+
+            $generic = $document.$included['arguments'];
+            $types[] = $key === 'data' && ! $keyed ? $generic : "Omit<{$generic}, 'data'> & ".$this->nested($key, $list);
+            $documents[] = $document;
+        }
+
+        return $this->jsonApiResult($className, $this->union($types), $documents, $included);
+    }
+
+    /**
+     * The generic arguments of a JSON:API resource's `@tolki/types` documents, `<R, I>`, where `I` is the union of
+     * each resource object an include can add: a published JSON:API resource by its own type, any other by its `type`
+     * over the generic resource object.
+     *
+     * @param  class-string<JsonResource>  $className
+     * @return JsonApiIncluded
+     */
+    private function jsonApiIncluded(string $className): array
+    {
+        $members = [];
+        $resources = [];
+        $imports = [];
+
+        foreach (JsonApiResources::includedResources($className) as $included) {
+            if ($included['resource'] !== null && PublishedClasses::exports($included['resource'])) {
+                $members[] = TsNaming::resourceTypeName($included['resource']);
+                $resources[] = $included['resource'];
+
+                continue;
+            }
+
+            $object = TolkiTypes::JSON_API_DOCUMENTS['resourceObject'];
+            $members[] = $included['type'] === 'string' ? $object : "{$object}<{$included['type']}>";
+            $imports = [$object];
+        }
+
+        $name = TsNaming::resourceTypeName($className);
+
+        return [
+            'arguments' => $members === [] ? "<{$name}>" : "<{$name}, ".implode(' | ', array_values(array_unique($members))).'>',
+            'resources' => $resources,
+            'imports' => $imports,
+        ];
+    }
+
+    /**
+     * A JSON:API resource's prop type with the classes and `@tolki/types` names it spells; the included ones only
+     * where a document spells its generic arguments.
+     *
+     * @param  class-string<JsonResource>  $className
+     * @param  list<string>  $documents  the document names the type spells
+     * @param  JsonApiIncluded  $included
+     * @return ValueExpressionResult
+     */
+    private function jsonApiResult(string $className, string $type, array $documents, array $included): array
+    {
+        // The prop follows the relationships of the resource and of each one an include reaches, read off their files.
+        DependencyRecorder::recordClass($className);
+
+        $spelled = $documents === [] ? ['resources' => [], 'imports' => []] : $included;
+        $imports = [...$documents, ...$spelled['imports']];
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => $type,
+            'resourceFqcn' => $className,
+            ...($spelled['resources'] === [] ? [] : ['embeddedResourceFqcns' => $spelled['resources']]),
+            ...($imports === [] ? [] : ['customImports' => ['@tolki/types' => $imports]]),
+        ];
     }
 
     /**
@@ -522,15 +654,13 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
     /**
      * Whether Inertia sends a class as one resource object's response: an API resource, but not the EnumResource,
-     * whose own empty `$wrap` sends the enum bare, nor a JSON:API resource, whose response is a document.
+     * whose own empty `$wrap` sends the enum bare.
      *
      * @phpstan-assert-if-true class-string<JsonResource> $className
      */
     private function sendsResourceObject(string $className): bool
     {
-        return $this->isResourceClass($className)
-            && ! $this->isEnumResourceClass($className)
-            && ! JsonApiResources::is($className);
+        return $this->isResourceClass($className) && ! $this->isEnumResourceClass($className);
     }
 
     /**

@@ -14691,6 +14691,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\KpiResource": {
+            "name": "KpiResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'kpis'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ value: number }",
+                    "optional": false
+                },
+                {
+                    "name": "relationships",
+                    "type": "{ reportable?: JsonApiToOneRelationship<'reports'> }",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\JsonApi\\LinkedPostResource": {
             "name": "LinkedPostResource",
             "properties": [
@@ -14718,6 +14743,46 @@
                     "name": "meta",
                     "type": "{ readable: boolean; words: number | null }",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\NestingPlainResource": {
+            "name": "NestingPlainResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "author",
+                    "type": "{ data: UserResource }",
+                    "optional": false
+                },
+                {
+                    "name": "category",
+                    "type": "{ data: CategoryResource } | null",
+                    "optional": false
+                },
+                {
+                    "name": "comments",
+                    "type": "CommentResource[]",
+                    "optional": false
+                },
+                {
+                    "name": "siblings",
+                    "type": "{ data: PostResource }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\PostCollection": {
+            "name": "PostCollection",
+            "properties": [
+                {
+                    "name": "data",
+                    "type": "{ data: PostResource }[]",
+                    "optional": false
                 }
             ]
         },
@@ -14792,6 +14857,26 @@
                 {
                     "name": "attributes",
                     "type": "{ name: string; email: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\VariableAttributesPostResource": {
+            "name": "VariableAttributesPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'variable_attributes_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ title: string; word_count: number | null; content?: string; is_long: boolean }",
                     "optional": false
                 }
             ]

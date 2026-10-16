@@ -70,8 +70,8 @@ final class ResourceCollections
     }
 
     /**
-     * A collected element as the value one item publishes: its type and the import channel it travels on; `unknown`
-     * for none.
+     * A collected element as the value one item publishes: its type, a JSON:API resource's under `data` as its
+     * resolve() sends it, and the import channel it travels on; `unknown` for none.
      *
      * @param  CollectedElement|null  $element
      * @return ValueExpressionResult
@@ -84,7 +84,7 @@ final class ResourceCollections
 
         return [
             ...ValueResult::unknown(),
-            'type' => TsNaming::resourceTypeName($element['fqcn']),
+            'type' => $element['model'] ? TsNaming::resourceTypeName($element['fqcn']) : JsonApiResources::instanceType($element['fqcn']),
             ...($element['model'] ? ['modelFqcn' => $element['fqcn']] : ['resourceFqcn' => $element['fqcn']]),
         ];
     }

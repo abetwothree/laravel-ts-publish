@@ -219,14 +219,26 @@ it('declines EnumResource::make(), a static call that builds no resource, and an
         ->and(inertiaResourcePropResult($finder))->toBeNull();
 });
 
-it('leaves a JSON:API resource, whose response is a document, to the value its body publishes', function () {
+it('types a JSON:API resource as its document, built, made, by toResource() or collected', function () {
     $built = new New_(new Name(PagePropApiResource::class), [new Arg(new Variable('post'))]);
     $made = new StaticCall(new Name(PagePropApiResource::class), 'make', [new Arg(new Variable('post'))]);
     $explicit = new MethodCall(new Variable('post'), 'toResource', [new Arg(new ClassConstFetch(new Name(PagePropApiResource::class), 'class'))]);
+    $collected = new StaticCall(new Name(PagePropApiResource::class), 'collection', [paginatorKindArg('cursorPaginate')]);
+    $document = [
+        'type' => 'JsonApiDocument<PagePropApiResource>',
+        'optional' => false,
+        'resourceFqcn' => PagePropApiResource::class,
+        'customImports' => ['@tolki/types' => ['JsonApiDocument']],
+    ];
 
-    expect(inertiaResourcePropResult($built))->toBeNull()
-        ->and(inertiaResourcePropResult($made))->toBeNull()
-        ->and(inertiaResourcePropResult($explicit))->toBeNull();
+    expect(inertiaResourcePropResult($built))->toBe($document)
+        ->and(inertiaResourcePropResult($made))->toBe($document)
+        ->and(inertiaResourcePropResult($explicit))->toBe($document)
+        ->and(inertiaResourcePropResult($collected))->toBe([
+            ...$document,
+            'type' => 'JsonApiCursorPaginator<PagePropApiResource>',
+            'customImports' => ['@tolki/types' => ['JsonApiCursorPaginator']],
+        ]);
 })->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
 
 it('reads the wrapped paginator by the constructor and collection() parameter name', function () {

@@ -26,14 +26,28 @@ final class TolkiTypes
 
     /**
      * Maps each paginator's `@tolki/types` name to the names of what a resource collection over it sends: the `meta`
-     * and `links` blocks beside a collection's own body, and the whole response of an anonymous or flat one.
+     * and `links` blocks beside a collection's own body, the whole response of an anonymous or flat one, and the
+     * document a JSON:API resource's collection sends.
      *
-     * @var array<string, array{blocks: string, response: string}>
+     * @var array<string, array{blocks: string, response: string, jsonApi: string}>
      */
     public const RESOURCE_PAGINATION = [
-        'LengthAwarePaginator' => ['blocks' => 'ResourcePagination', 'response' => 'JsonResourcePaginator'],
-        'SimplePaginator' => ['blocks' => 'ResourceSimplePagination', 'response' => 'JsonResourceSimplePaginator'],
-        'CursorPaginator' => ['blocks' => 'ResourceCursorPagination', 'response' => 'JsonResourceCursorPaginator'],
+        'LengthAwarePaginator' => ['blocks' => 'ResourcePagination', 'response' => 'JsonResourcePaginator', 'jsonApi' => 'JsonApiPaginator'],
+        'SimplePaginator' => ['blocks' => 'ResourceSimplePagination', 'response' => 'JsonResourceSimplePaginator', 'jsonApi' => 'JsonApiSimplePaginator'],
+        'CursorPaginator' => ['blocks' => 'ResourceCursorPagination', 'response' => 'JsonResourceCursorPaginator', 'jsonApi' => 'JsonApiCursorPaginator'],
+    ];
+
+    /**
+     * Maps what a JSON:API resource sends to its `@tolki/types` name: the document over one resource object, the one
+     * over a collection that is not paginated, and the generic resource object in `included` that no published JSON:API
+     * resource types.
+     *
+     * @var array{single: string, collection: string, resourceObject: string}
+     */
+    public const JSON_API_DOCUMENTS = [
+        'single' => 'JsonApiDocument',
+        'collection' => 'JsonApiCollection',
+        'resourceObject' => 'JsonApiResourceObject',
     ];
 
     /**

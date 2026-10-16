@@ -37,12 +37,14 @@ trait BuildsJsonApiResourceObject
     protected bool $readsKeylessAttributeNames = false;
 
     /**
-     * Whether this analysis reads the response of a JSON:API resource that runs as itself, not a body a caller located.
+     * Whether this analysis reads the response of a JSON:API resource that runs as itself, not a body a caller located
+     * or the value a call to its toArray() returns.
      */
     protected function sendsJsonApiResourceObject(): bool
     {
         return $this->methodName === 'toArray'
             && $this->context === null
+            && ! $this->readsCall
             && $this->runtimeClass()->getName() === $this->scope->subjectReflection->getName()
             && JsonApiResources::is($this->scope->subjectReflection->getName());
     }

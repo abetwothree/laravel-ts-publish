@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
@@ -226,10 +227,10 @@ final class StaticCallHandler implements ExpressionHandler
 
         // SomeResource::make($this->prop) — nested resource
         if ($this->isResourceClass($className) && $methodName === 'make') {
-            $type = $this->resourceWrapType($call, $className, TsNaming::resourceTypeName($className), $scope, $engine);
+            /** @var class-string $className */
+            $type = $this->resourceWrapType($call, $className, $scope, $engine);
             $optional = $this->hasConditionalArgument($call, $className);
 
-            /** @var class-string $className */
             return [
                 ...$result,
                 'type' => $type,
@@ -379,16 +380,20 @@ final class StaticCallHandler implements ExpressionHandler
 
         return $nested !== null
             ? [...$nested, 'optional' => $receiver['optional']]
-            : [...$receiver, 'type' => TsNaming::resourceTypeName($resourceFqcn)];
+            : [...$receiver, 'type' => JsonApiResources::instanceType($resourceFqcn)];
     }
 
     /**
      * Whether a receiver holds one instance of the resource its result names: typed as that resource, or built as it
      * by `new`, `make()` or `toResource()` through any chain, which an Inertia prop types as the response it sends.
+     *
+     * @param  class-string  $resourceFqcn
      */
     private function holdsOneResource(Expr $receiver, string $type, string $resourceFqcn, AnalysisScope $scope): bool
     {
-        if (ValueResult::stripNullArm($type) === TsNaming::resourceTypeName($resourceFqcn)) {
+        $held = ValueResult::stripNullArm($type);
+
+        if ($held === TsNaming::resourceTypeName($resourceFqcn) || $held === JsonApiResources::instanceType($resourceFqcn)) {
             return true;
         }
 

@@ -21,6 +21,7 @@ use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
+use Workbench\App\Http\Controllers\InertiaJsonApiController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaListPropsController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
@@ -137,6 +138,12 @@ Route::get('/paginator-kinds/anonymous', [InertiaPaginatorKindsController::class
 Route::get('/paginator-kinds/flat', [InertiaPaginatorKindsController::class, 'flat'])->name('paginator-kinds.flat');
 Route::get('/paginator-kinds/guessed', [InertiaPaginatorKindsController::class, 'guessed'])->name('paginator-kinds.guessed');
 Route::get('/paginator-kinds/stub-page', [InertiaPaginatorKindsController::class, 'stubPage'])->name('paginator-kinds.stub-page');
+
+// JsonApiResource ships from Laravel 12.45; on an older one these pages' resources cannot load.
+if (class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource')) {
+    Route::get('/json-api/posts/{post}', [InertiaJsonApiController::class, 'show'])->name('json-api.show');
+    Route::get('/json-api/posts', [InertiaJsonApiController::class, 'index'])->name('json-api.index');
+}
 
 Route::get('/facilities/{facility}', [InertiaFacilityController::class, 'show'])->name('facilities.show');
 Route::get('/facilities/{facility}/callables', [InertiaCallablePropsController::class, 'show'])->name('facilities.callables');

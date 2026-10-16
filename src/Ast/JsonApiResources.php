@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -30,7 +31,9 @@ use ReflectionMethod;
  * What a class extending Laravel's `JsonApiResource` sends in its resource object beside the attributes: its `type`,
  * and the relationships an `include` can send. The class ships from Laravel 12.45, so it is named by string.
  *
- * @phpstan-type JsonApiRelationship = array{name: string, toMany: bool|null, type: string, resource: class-string|null}
+ * @phpstan-type IncludedResource = array{type: string, resource: class-string|null}
+ * @phpstan-type RelationshipTarget = array{type: string, included: IncludedResource|null}
+ * @phpstan-type JsonApiRelationship = array{name: string, toMany: bool|null, type: string, included: list<IncludedResource>}
  * @phpstan-type DeclaredRelationship = array{name: string, resource: class-string|null, toMany?: bool}
  *
  * @internal
@@ -53,6 +56,19 @@ final class JsonApiResources
     public static function is(string $class): bool
     {
         return self::shipped() && is_a($class, 'Illuminate\Http\Resources\JsonApi\JsonApiResource', true);
+    }
+
+    /**
+     * The type an instance of an API resource class is sent as wherever json_encode() writes it: its own type, under
+     * `data` for a JSON:API resource, whose resolve() nests its resource object there.
+     *
+     * @param  class-string  $class
+     */
+    public static function instanceType(string $class): string
+    {
+        $name = TsNaming::resourceTypeName($class);
+
+        return self::is($class) ? '{ data: '.$name.' }' : $name;
     }
 
     /**
@@ -92,7 +108,8 @@ final class JsonApiResources
 
     /**
      * Each relationship a JSON:API resource can include, from `$relationships` or a `toRelationships()` override's
-     * array literals, with the resource Laravel builds for it and whether it sends a list.
+     * array literals: whether it sends a list, the `type` of each resource object it names, and what an include of it
+     * adds to `included`.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass
@@ -104,28 +121,60 @@ final class JsonApiResources
 
         foreach (self::declaredRelationships($class) as $declared) {
             $relation = $modelClass === null ? null : resolve(ModelAttributeResolver::class)->resolveRelation($modelClass, $declared['name']);
-            $relatedModel = $relation['modelFqcn'] ?? null;
-            $resource = $declared['resource'] ?? self::guessedResource($relatedModel);
+            $relatedModels = match (true) {
+                $relation === null => [],
+                $relation['modelFqcn'] !== null => [$relation['modelFqcn']],
+                default => $relation['morphFqcns'],
+            };
 
-            if ($resource !== null) {
-                DependencyRecorder::recordClass($resource);
-            }
+            // Laravel builds the resolver's resource over every related model, else each model's own guess.
+            $targets = $declared['resource'] !== null
+                ? [self::target($declared['resource'], null)]
+                : array_map(fn (string $model): array => self::target(self::guessedResource($model), $model), $relatedModels);
 
             $relationships[] = [
                 'name' => $declared['name'],
                 'toMany' => $declared['toMany'] ?? self::sendsList($relation['type'] ?? 'unknown'),
-                // Laravel throws building the identifier of a resource that is no JSON:API resource, and falls back to
-                // a bare JsonApiResource over the model when it finds none.
-                'type' => match (true) {
-                    $resource !== null => self::is($resource) ? self::typeLiteral($resource) : 'string',
-                    $relatedModel !== null => self::modelTypeLiteral($relatedModel),
-                    default => 'string',
-                },
-                'resource' => $resource !== null && self::is($resource) ? $resource : null,
+                'type' => self::typeUnion($targets),
+                'included' => $targets === [] ? [['type' => 'string', 'resource' => null]] : array_values(array_filter(
+                    array_map(fn (array $target): ?array => $target['included'], $targets),
+                )),
             ];
         }
 
         return $relationships;
+    }
+
+    /**
+     * Every resource object an include can add to a JSON:API resource's `included`, following its relationships to any
+     * depth: a JSON:API resource, or Laravel's bare JsonApiResource over a model that has none, by its `type`.
+     *
+     * @param  class-string  $class
+     * @return list<IncludedResource>
+     */
+    public static function includedResources(string $class): array
+    {
+        $included = [];
+        $read = [$class => true];
+        $pending = [$class];
+
+        while ($pending !== []) {
+            $resource = array_shift($pending);
+            $model = resolve(ModelClassResolver::class)->resolve(new ReflectionClass($resource));
+
+            foreach (self::relationships($resource, $model) as $relationship) {
+                foreach ($relationship['included'] as $member) {
+                    $included[$member['resource'] ?? $member['type']] ??= $member;
+
+                    if ($member['resource'] !== null && ! isset($read[$member['resource']])) {
+                        $read[$member['resource']] = true;
+                        $pending[] = $member['resource'];
+                    }
+                }
+            }
+        }
+
+        return array_values($included);
     }
 
     /**
@@ -245,6 +294,46 @@ final class JsonApiResources
     }
 
     /**
+     * The resource object a relationship sends for one related model: its `type`, and what an include adds to
+     * `included`, which is nothing for a resource that is no JSON:API resource, as Laravel throws building it.
+     *
+     * @param  class-string|null  $resource  the resource Laravel builds, null when it finds none
+     * @param  class-string|null  $model  the related model, null when the relation names none
+     * @return RelationshipTarget
+     */
+    private static function target(?string $resource, ?string $model): array
+    {
+        if ($resource !== null) {
+            DependencyRecorder::recordClass($resource);
+
+            if (! self::is($resource)) {
+                return ['type' => 'string', 'included' => null];
+            }
+
+            $type = self::typeLiteral($resource);
+
+            return ['type' => $type, 'included' => ['type' => $type, 'resource' => $resource]];
+        }
+
+        // With no resource found Laravel sends a bare JsonApiResource over the model.
+        $type = $model !== null && is_a($model, Model::class, true) ? self::modelTypeLiteral($model) : 'string';
+
+        return ['type' => $type, 'included' => ['type' => $type, 'resource' => null]];
+    }
+
+    /**
+     * The `type` literals of a relationship's resource objects as one union; `string` when one is not a literal.
+     *
+     * @param  list<RelationshipTarget>  $targets
+     */
+    private static function typeUnion(array $targets): string
+    {
+        $types = array_values(array_unique(array_column($targets, 'type')));
+
+        return $types === [] || in_array('string', $types, true) ? 'string' : implode(' | ', $types);
+    }
+
+    /**
      * Whether a relation's published type is a list, so its relationship sends one; null for a relation nothing types.
      */
     private static function sendsList(string $relationType): ?bool
@@ -256,12 +345,12 @@ final class JsonApiResources
      * The resource `Model::toResource()` builds for a related model: the `#[UseResource]` class, else the first
      * candidate of the naming convention that exists.
      *
-     * @param  class-string<Model>|null  $modelFqcn
+     * @param  class-string  $modelFqcn
      * @return class-string|null
      */
-    private static function guessedResource(?string $modelFqcn): ?string
+    private static function guessedResource(string $modelFqcn): ?string
     {
-        if ($modelFqcn === null) {
+        if (! is_a($modelFqcn, Model::class, true)) {
             return null;
         }
 

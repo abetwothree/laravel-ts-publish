@@ -87,6 +87,14 @@ trait ReadsReturnedVariables
     abstract protected function newVariableAnalysis(): MethodAnalysis;
 
     /**
+     * The key and value an append `$var[] = value` writes where the host reads an appended item as a named key; null
+     * where an appended item is a position.
+     *
+     * @return array{name: string, result: ValueExpressionResult}|null
+     */
+    abstract protected function appendedKey(Expr $value): ?array;
+
+    /**
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
@@ -158,6 +166,15 @@ trait ReadsReturnedVariables
             if ($stmt instanceof TryCatch || $stmt instanceof Switch_
                 || $stmt instanceof Block || $stmt instanceof Do_) {
                 $this->collectNestedArrayAssignments($stmt, $varName, $isConditional, $into, $topLevel);
+
+                continue;
+            }
+
+            $appendedValue = $this->appendedValue($stmt, $varName);
+            $appended = $appendedValue === null ? null : $this->appendedKey($appendedValue);
+
+            if ($appended !== null) {
+                $this->writeKey($into, $appended['name'], $appended['result'], $isConditional);
 
                 continue;
             }
@@ -234,35 +251,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $existingIndex = null;
-
-                foreach ($into->properties as $index => $existing) {
-                    if ($existing['name'] === $keyName) {
-                        $existingIndex = $index;
-
-                        break;
-                    }
-                }
-
-                // A re-assigned key is the last write winning, in the first write's position: every stale channel
-                // goes before addProperty() routes this result's own, and the entry it appends is folded back over
-                // the earlier one.
-                $into->forgetChannels($keyName);
-
-                $appendedIndex = count($into->properties);
-
-                $into->addProperty($keyName, $result, $isConditional || $result['optional']);
-
-                // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one
-                // was absent.
-                if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
-                    $appended = $into->properties[$appendedIndex];
-                    $appended['optional'] = $result['optional']
-                        || ($isConditional && $into->properties[$existingIndex]['optional']);
-
-                    $into->properties[$existingIndex] = $appended;
-                    array_splice($into->properties, $appendedIndex, 1);
-                }
+                $this->writeKey($into, $keyName, $result, $isConditional);
 
                 continue;
             }
@@ -549,6 +538,58 @@ trait ReadsReturnedVariables
             $stmt,
             fn (Node $node): bool => $node instanceof Break_ || $node instanceof Continue_,
         ) !== null;
+    }
+
+    /**
+     * Write one named key into the variable's analysis. A re-assigned key is the last write winning, in the first
+     * write's position: every stale channel goes before addProperty() routes this result's own, and the entry it
+     * appends is folded back over the earlier one.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function writeKey(MethodAnalysis $into, string $keyName, array $result, bool $isConditional): void
+    {
+        $existingIndex = null;
+
+        foreach ($into->properties as $index => $existing) {
+            if ($existing['name'] === $keyName) {
+                $existingIndex = $index;
+
+                break;
+            }
+        }
+
+        $into->forgetChannels($keyName);
+
+        $appendedIndex = count($into->properties);
+
+        $into->addProperty($keyName, $result, $isConditional || $result['optional']);
+
+        // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one was
+        // absent.
+        if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
+            $appended = $into->properties[$appendedIndex];
+            $appended['optional'] = $result['optional']
+                || ($isConditional && $into->properties[$existingIndex]['optional']);
+
+            $into->properties[$existingIndex] = $appended;
+            array_splice($into->properties, $appendedIndex, 1);
+        }
+    }
+
+    /**
+     * The value a statement `$var[] = value` appends to the variable; null for any other statement.
+     */
+    private function appendedValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        $appends = $stmt instanceof ExpressionStmt
+            && $stmt->expr instanceof Assign
+            && $stmt->expr->var instanceof ArrayDimFetch
+            && $stmt->expr->var->dim === null
+            && $stmt->expr->var->var instanceof Variable
+            && $stmt->expr->var->var->name === $varName;
+
+        return $appends ? $stmt->expr->expr : null;
     }
 
     /**
