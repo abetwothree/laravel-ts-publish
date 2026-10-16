@@ -429,32 +429,43 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
-### A `& ResourcePagination` page prop over `simplePaginate()` or `cursorPaginate()` claims the length-aware `meta`
+### A resource collection prop over a paginator the engine does not type publishes no pagination
 
-An Inertia prop that passes a paginator to a resource collection, such as
-`new PostCollection(Post::query()->simplePaginate())`, publishes `PostCollection & ResourcePagination`, whose `meta` is
-the one `paginate()` sends; `SomeResource::collection()` over one publishes `JsonResourcePaginator<R>` with the same
-`meta`. A simple paginator's `meta` has no `last_page`, `links` or `total`, and a cursor paginator's also has no
-`current_page`, `from` or `to`, so a read of one compiles and gets `undefined`. Type the prop with `#[TsCasts]`, or use
-`paginate()`.
+An Inertia prop or shared value reads its paginator's kind from a query chain rooted at a model, such as
+`Post::query()->simplePaginate()`, or a local variable assigned one. Over a query builder variable
+(`$query->paginate()`), a controller method (`$this->page()`) or an injected service's method, `new PostCollection(…)`
+publishes `PostCollection` and `PostResource::collection(…)` `AnonymousResourceCollection<PostResource>`, though Laravel
+sends `links` and `meta` too, and such a paginator passed bare publishes `unknown`. Build the paginator in the props, or
+type the prop with `#[TsCasts]`.
 
 ### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
 A collection whose `toArray()` returns `$this->resource`, `$this->resource->toArray()` or
 `$this->resource->jsonSerialize()` publishes `{ data: R[] }`, as a body-less one does. Given a paginator,
 `$this->resource` is the paginator, so Laravel sends its own array, `current_page`, `data`, `first_page_url` and the
-rest, beside `meta` and a `links` merged with the paginator's numbered links. A page prop over it still publishes
-`& ResourcePagination`, or `JsonResourcePaginator<R>` under `$wrap = null`. Return `$this->collection`, which Laravel
-sends as `{ data, links, meta }`, or named keys such as `['data' => $this->collection]`.
+rest, beside `meta` and a `links` merged with the paginator's numbered links. A page prop over it still publishes its
+paginator's pagination type, such as `& ResourcePagination`, or `JsonResourcePaginator<R>` under `$wrap = null`.
+Return `$this->collection`, which Laravel sends as `{ data, links, meta }`, or named keys such as
+`['data' => $this->collection]`.
 
 ### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
 
-Over a paginator, a collection whose `toArray()` returns its wrap key, such as `data`, beside its own `meta` or `links`
-has those merged into Laravel's pagination block with `array_merge_recursive()`, so a key both name is sent as a list.
-A `total` you add to `meta` is sent as `[3, 3]`, while the package publishes `number`. Without the wrap key, Laravel
-nests the whole array under `data` and nothing merges. Name the key differently, or drop the duplicated key from
-`$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a block with other
-keys there: the package does not read `paginationInformation()`, so `& ResourcePagination` would no longer match.
+Over a paginator, Laravel merges the `meta` and `links` a collection's `toArray()` returns beside its wrap key, such as
+`data`, and those its `with()` and `additional()` add, into its pagination block with `array_merge_recursive()`. A key
+the block does not send, such as `meta.kind` or `links.self`, is typed from the collection's own body; a key both name
+is sent as a list, so a `total` you add to `meta` is sent as `[3, 3]` while the package publishes `number`. Without the
+wrap key, Laravel nests the whole body under `data` and nothing of it merges. Name the key differently, or drop the
+duplicated key from `$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a
+block with other keys there: the package does not read `paginationInformation()`, so the published pagination type would
+no longer match.
+
+### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
+
+The generation cache rebuilds a file when a file it read changes, but an argument-less `toResourceCollection()` can pick
+a collection class that did not exist when the file was cached. After adding a key-preserving `CategoryCollection`, a
+cached run keeps `siblings: CategoryResource[] | null`, where `--fresh` publishes
+`Record<string, CategoryResource> | null`; a page prop that calls the guess keeps its old type the same way. Run
+`ts:publish --fresh` after adding such a class.
 
 ### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
 

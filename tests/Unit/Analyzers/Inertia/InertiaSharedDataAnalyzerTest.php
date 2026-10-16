@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
@@ -361,6 +362,21 @@ test('a shared resource value publishes bare after JsonResource::withoutWrapping
     expect(analyzeSharedDataFor(MiddlewareWithResources::class)['sharedPageProps'] ?? null)->toBe('{ firstShelf: WarehouseResource, '
         .'shelfList: WarehouseResource[], named: PostCollection, statuses: AsEnum<typeof Status>[], role: AsEnum<typeof Role>, '
         .'user: UserResource | null }');
+});
+
+// Inertia resolves shared data as it does page props, so a shared paginator reaches the collection's response too.
+test('a shared resource collection publishes the response Inertia sends, with the pagination its paginator sends', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithResourceCollections::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe(
+        '{ anonymous: AnonymousResourceCollection<PostResource>, named: PostCollection, '
+        .'simple: PostCollection & ResourceSimplePagination, cursor: JsonResourceCursorPaginator<PostResource>, '
+        .'guessed: PostCollection & ResourcePagination }'
+    )
+        ->and($result['typeImports'] ?? null)->toBe([
+            './workbench/app/http/resources' => ['PostCollection', 'PostResource'],
+            '@tolki/types' => ['AnonymousResourceCollection', 'JsonResourceCursorPaginator', 'ResourcePagination', 'ResourceSimplePagination'],
+        ]);
 });
 
 test('an enum read both wrapped and bare keeps its type import alongside the value import', function () {

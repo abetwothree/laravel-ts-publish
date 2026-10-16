@@ -25,6 +25,7 @@ use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaListPropsController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaShirtSizeController;
@@ -131,6 +132,11 @@ Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => 
 Route::get('/pagination/length-aware', [InertiaPaginationsController::class, 'lengthAware'])->name('pagination.length-aware');
 Route::get('/pagination/simple', [InertiaPaginationsController::class, 'simple'])->name('pagination.simple');
 Route::get('/pagination/cursor', [InertiaPaginationsController::class, 'cursor'])->name('pagination.cursor');
+Route::get('/paginator-kinds/named', [InertiaPaginatorKindsController::class, 'named'])->name('paginator-kinds.named');
+Route::get('/paginator-kinds/anonymous', [InertiaPaginatorKindsController::class, 'anonymous'])->name('paginator-kinds.anonymous');
+Route::get('/paginator-kinds/flat', [InertiaPaginatorKindsController::class, 'flat'])->name('paginator-kinds.flat');
+Route::get('/paginator-kinds/guessed', [InertiaPaginatorKindsController::class, 'guessed'])->name('paginator-kinds.guessed');
+Route::get('/paginator-kinds/stub-page', [InertiaPaginatorKindsController::class, 'stubPage'])->name('paginator-kinds.stub-page');
 
 Route::get('/facilities/{facility}', [InertiaFacilityController::class, 'show'])->name('facilities.show');
 Route::get('/facilities/{facility}/callables', [InertiaCallablePropsController::class, 'show'])->name('facilities.callables');

@@ -18,6 +18,7 @@ export { default as InertiaKeyEdgesController } from './inertia-key-edges-contro
 export { default as InertiaListPropsController } from './inertia-list-props-controller';
 export { default as InertiaNamedCollectionsController } from './inertia-named-collections-controller';
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
+export { default as InertiaPaginatorKindsController } from './inertia-paginator-kinds-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
 export { default as InertiaShirtSizeController } from './inertia-shirt-size-controller';

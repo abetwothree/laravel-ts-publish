@@ -566,12 +566,14 @@ A `ResourceCollection` subclass nested by `new`, `make()` or a guessed `toResour
 list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
 its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.
 
-Inertia page props share `preservesKeys()` through `InertiaResourcePropHandler`, so a key-preserving paginated
-collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`. The handler types every
-resource a prop or a shared value holds, at any depth, as its `toResponse()` data: a single resource, a `toResource()`
-call, an `EnumResource::collection()` and a body without the live wrap key sit inside that key, such as
-`{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body already holds it.
-`EnumResource` declares `$wrap = ''`, so its `make()` stays bare.
+`InertiaResourcePropHandler` types `new` and `make()` of an API resource or collection, `R::collection()`,
+`EnumResource::collection()`, `toResource()` and `toResourceCollection()`, in a prop or a shared value at any depth, as
+its `toResponse()` data. A single resource and a body without the live wrap key sit inside that key, such as
+`{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body already holds it;
+`EnumResource` declares `$wrap = ''`, so its `make()` stays bare. Over a paginator, a collection's own body sits beside
+the pagination blocks of the payload's kind, and an anonymous or flat one is that kind's paginator response, such as
+`JsonResourceSimplePaginator<R>`, keyed by `preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A
+payload of several kinds, or sometimes none, publishes each.
 
 ### A method called on a new resource types its payload
 

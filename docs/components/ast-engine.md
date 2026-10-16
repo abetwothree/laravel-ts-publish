@@ -56,7 +56,8 @@ winner changes published types, so treat it as a behavior change, not a refactor
 `ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
 `forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. An Inertia
 middleware takes `forNonResourceSubjects()` through `invokingCallables()`, with `InertiaResourcePropHandler` before
-`ToResourceHandler`, since Inertia calls every callable it shares and sends a shared resource as it sends a page prop.
+`ToResourceHandler` and `ModelFinderHandler` before `StaticCallHandler`, since Inertia calls every callable it shares
+and sends a shared value as it sends a page prop.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -77,7 +78,7 @@ expression shape makes an inert pair disagree, the matrix fails. Pin the pair in
 `withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
 a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
 element array. Placed later, the two additions would be unreachable for those shapes. `ControllerExpressionHandlersTest`
-pins the structure and the four orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
+pins the structure and the five orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
 Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
@@ -127,9 +128,11 @@ attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()`
 relation there as `unknown` instead of declining, where `ReceiverPropertyFetchHandler` would type it. No fixture reads a
 relation that way.
 
-The controller profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants.
-`ControllerExpressionHandlersTest` pins those pairs, and the matrix does not run this profile.
+The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two
+claim disjoint method names. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler
+before `NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()`
+`unknown`, and the matrix does not run these profiles.
 
 ## AnalysisScope
 

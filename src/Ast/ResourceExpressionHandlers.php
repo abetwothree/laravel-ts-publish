@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -59,8 +60,8 @@ final class ResourceExpressionHandlers
 
     /**
      * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
-     * An Inertia middleware's goes through invokingCallables() and takes InertiaResourcePropHandler before
-     * ToResourceHandler, since Inertia calls every callable it shares and sends each resource as a page prop's.
+     * An Inertia middleware's goes through invokingCallables() and takes the page-prop handlers, since Inertia calls
+     * every callable it shares and sends each shared value as it sends a page prop.
      *
      * @return list<ExpressionHandler>
      */
@@ -71,7 +72,7 @@ final class ResourceExpressionHandlers
         }
 
         return is_subclass_of($subjectClass, 'Inertia\\Middleware')
-            ? self::invokingCallables(self::withInertiaResourceProps(self::forNonResourceSubjects()))
+            ? self::invokingCallables(self::withPagePropHandlers(self::forNonResourceSubjects()))
             : self::forNonResourceSubjects();
     }
 
@@ -139,19 +140,24 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The same handlers with InertiaResourcePropHandler before ToResourceHandler, the first of them that types a
-     * resource as the value a nested key flattens it to.
+     * The same handlers with the controller profile's two: InertiaResourcePropHandler before ToResourceHandler, the
+     * first that types a resource as the value a nested key flattens it to, and ModelFinderHandler before
+     * StaticCallHandler, whose last arm claims every static call, so a query chain types as the paginator it returns.
      *
      * @param  list<ExpressionHandler>  $handlers
      * @return list<ExpressionHandler>
      */
-    private static function withInertiaResourceProps(array $handlers): array
+    private static function withPagePropHandlers(array $handlers): array
     {
         $profile = [];
 
         foreach ($handlers as $handler) {
             if ($handler instanceof ToResourceHandler) {
                 $profile[] = new InertiaResourcePropHandler;
+            }
+
+            if ($handler instanceof StaticCallHandler) {
+                $profile[] = new ModelFinderHandler;
             }
 
             $profile[] = $handler;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
@@ -29,12 +30,14 @@ use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
+use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -472,6 +475,51 @@ test('analyze() emits the keyed record shape for a preserve-keys paginated colle
         ->and($anonymous['pageType'])->toBe(
             "Inertia.SharedData & { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } }"
         );
+});
+
+test('analyze() types a resource collection over each paginator kind with what that kind sends', function () {
+    $named = pageData(InertiaPaginatorKindsController::class.'@named');
+    $anonymous = pageData(InertiaPaginatorKindsController::class.'@anonymous');
+
+    expect($named['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: PostCollection & ResourceSimplePagination, cursor: PostCollection & ResourceCursorPagination, '
+        .'either: PostCollection & (ResourceSimplePagination | ResourcePagination), sometimes: PostCollection | (PostCollection & ResourcePagination) }'
+    )
+        ->and($named['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourceSimplePagination', 'ResourceCursorPagination', 'ResourcePagination']])
+        ->and($anonymous['pageType'] ?? null)->toBe(
+            'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+            .'sometimes: AnonymousResourceCollection<PostResource> | JsonResourceSimplePaginator<PostResource> }'
+        )
+        ->and($anonymous['externalImports'] ?? null)
+        ->toBe(['@tolki/types' => ['JsonResourceSimplePaginator', 'JsonResourceCursorPaginator', 'AnonymousResourceCollection']]);
+});
+
+test('analyze() types a flat collection over a simple or cursor paginator as that paginator\'s response, keyed when it keeps keys', function () {
+    $flat = pageData(InertiaPaginatorKindsController::class.'@flat');
+
+    expect($flat['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+        ."keyed: Omit<JsonResourceCursorPaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }"
+    );
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+test('analyze() types toResourceCollection() as the response of the collection Laravel guesses or is given', function () {
+    $guessed = pageData(InertiaPaginatorKindsController::class.'@guessed');
+
+    expect($guessed['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { named: PostCollection & ResourceSimplePagination, anonymous: JsonResourceCursorPaginator<WarehouseResource>, '
+        .'explicit: JsonResourcePaginator<WarehouseResource>, unpaged: PostCollection }'
+    );
+});
+
+// Review Focus 2: the intersection is what Laravel sends only while the stub's own interface carries the `data` key.
+test('the stub collection over simplePaginate() publishes its data beside the simple pagination block', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    expect(pageData(InertiaPaginatorKindsController::class.'@stubPage')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { posts: PostStubCollection & ResourceSimplePagination }')
+        ->and(resolve(ResourceGenerator::class, ['findable' => PostStubCollection::class])->content)
+        ->toContain('data: PostResource[];');
 });
 
 // ─── analyze() shared-template isolation ──────────────────────────

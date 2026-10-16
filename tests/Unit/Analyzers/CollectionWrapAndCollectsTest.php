@@ -92,7 +92,7 @@ describe('an Inertia collection prop reads the live $wrap', function () {
         expect(wrapPageType(InertiaResourceSharedTemplate::class.'@resourceAnonymousCollection'))
             ->toContain('warehouse_get: { items: WarehouseResource[] }')
             ->and(wrapPageType(InertiaResourceSharedTemplate::class.'@resourcePaginatedCollection'))
-            ->toContain("warehouses: Omit<JsonResourcePaginator<WarehouseResource>, 'data'> & { items: WarehouseResource[] }");
+            ->toContain('warehouses: { items: WarehouseResource[] } & ResourcePagination');
     });
 
     it('keeps a paginated anonymous collection\'s data key after JsonResource::withoutWrapping()', function () {

@@ -62,6 +62,7 @@
     "app\/Http\/Controllers\/InertiaListPropsController.php",
     "app\/Http\/Controllers\/InertiaNamedCollectionsController.php",
     "app\/Http\/Controllers\/InertiaPaginationsController.php",
+    "app\/Http\/Controllers\/InertiaPaginatorKindsController.php",
     "app\/Http\/Controllers\/InertiaPreserveKeysController.php",
     "app\/Http\/Controllers\/InertiaResourceSharedTemplate.php",
     "app\/Http\/Controllers\/InertiaShirtSizeController.php",
