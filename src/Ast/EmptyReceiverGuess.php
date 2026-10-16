@@ -12,9 +12,9 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
 /**
- * An argument-less `toResourceCollection()` over an empty receiver: Laravel's guess builds a plain ResourceCollection
- * before it reads any attribute or convention, so a guessed collection may be sent as that one instead, `[]` in a
- * resource key and that collection's response over the receiver as a whole one.
+ * Over an empty receiver, an argument-less `toResourceCollection()` builds a plain ResourceCollection before Laravel's
+ * guess reads any attribute or convention. So a guessed collection may be sent as that one instead: `[]` in a resource
+ * key, and that collection's response where the receiver is a whole prop or shared value.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
