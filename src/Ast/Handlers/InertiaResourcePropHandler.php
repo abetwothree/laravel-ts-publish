@@ -428,7 +428,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $item = ResourceCollections::elementValue($element);
         $list = ResourceCollections::listType($item['type'], $reflection);
-        $key = $wrapKey ?? 'data';
+        $key = $this->paginatedKey($wrapKey);
 
         if ($key !== 'data') {
             $blocks = $this->paginationNames($kinds, 'blocks');
@@ -439,9 +439,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $responses = $this->paginationNames($kinds, 'response');
         $keyed = ResourceCollections::preservesKeys($reflection);
         $types = array_map(
-            // The response's own `data: T[]` cannot stand beside a keyed list, so the list replaces it.
             fn (string $response): string => $keyed
-                ? "Omit<{$response}<{$item['type']}>, 'data'> & ".$this->nested('data', $list)
+                ? $this->replacingData("{$response}<{$item['type']}>", 'data', $list)
                 : "{$response}<{$item['type']}>",
             $responses,
         );
@@ -501,9 +500,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $wrapKey = ResourceWrapping::key(AnonymousResourceCollection::class);
         $keys = in_array(null, $paginators, true) ? [TolkiTypes::JSON_API_DOCUMENTS['collection'] => $wrapKey] : [];
 
-        // A paginated response nests its list under `data` even without a wrap key, as its members sit beside it.
         foreach ($this->paginatorKinds($paginators) as $kind) {
-            $keys[TolkiTypes::RESOURCE_PAGINATION[$kind]['jsonApi']] = $wrapKey ?? 'data';
+            $keys[TolkiTypes::RESOURCE_PAGINATION[$kind]['jsonApi']] = $this->paginatedKey($wrapKey);
         }
 
         $included = $this->jsonApiIncluded($className);
@@ -518,7 +516,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             }
 
             $generic = $document.$included['arguments'];
-            $types[] = $key === 'data' && ! $keyed ? $generic : "Omit<{$generic}, 'data'> & ".$this->nested($key, $list);
+            $types[] = $key === 'data' && ! $keyed ? $generic : $this->replacingData($generic, $key, $list);
             $documents[] = $document;
         }
 
@@ -600,7 +598,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $key = ResourceWrapping::key($wrapsBy);
 
         if ($key === null) {
-            return $paginated ? $this->nested('data', $body) : $body;
+            return $paginated ? $this->nested($this->paginatedKey(null), $body) : $body;
         }
 
         return match ($publishedBy === null ? false : resolve(ResourceResponseBody::class)->holdsWrapKey($publishedBy, $key)) {
@@ -616,6 +614,24 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function nested(string $key, string $body): string
     {
         return '{ '.JsEmitter::validJsObjectKey($key).': '.$body.' }';
+    }
+
+    /**
+     * The key a paginated response nests its list under: the live wrap key, else `data`, as its pagination members sit
+     * beside the list.
+     */
+    private function paginatedKey(?string $wrapKey): string
+    {
+        return $wrapKey ?? 'data';
+    }
+
+    /**
+     * A response type whose own `data: T[]` member a list under another key, or a keyed list, replaces: the member
+     * cannot stand beside either.
+     */
+    private function replacingData(string $response, string $key, string $list): string
+    {
+        return "Omit<{$response}, 'data'> & ".$this->nested($key, $list);
     }
 
     /**
