@@ -64,6 +64,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
 
+    /** Where a paginated response nests its list with no live wrap key, as its pagination members sit beside it. */
+    private const PAGINATED_LIST_KEY = 'data';
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -602,7 +605,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         $key = ResourceWrapping::key($wrapsBy);
 
         if ($key === null) {
-            return $paginated ? $this->nested($this->paginatedKey(null), $body) : $body;
+            return $paginated ? $this->nested(self::PAGINATED_LIST_KEY, $body) : $body;
         }
 
         return match ($publishedBy === null ? false : resolve(ResourceResponseBody::class)->holdsWrapKey($publishedBy, $key)) {
@@ -621,17 +624,16 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * The key a paginated response nests its list under: the live wrap key, else `data`, as its pagination members sit
-     * beside the list.
+     * The key a paginated response nests its list under: the live wrap key, else `data`.
      */
     private function paginatedKey(?string $wrapKey): string
     {
-        return $wrapKey ?? 'data';
+        return $wrapKey ?? self::PAGINATED_LIST_KEY;
     }
 
     /**
-     * A response type whose own `data: T[]` member a list under another key, or a keyed list, replaces: the member
-     * cannot stand beside either.
+     * A response type with its own `data` list replaced by the given list under the key: `Omit<T, 'data'> & { k: L }`.
+     * A list under another key, or a keyed list, cannot sit beside the `data: T[]` the type declares.
      */
     private function replacingData(string $response, string $key, string $list): string
     {
