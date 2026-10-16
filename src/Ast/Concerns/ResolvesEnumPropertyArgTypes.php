@@ -173,6 +173,32 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
+     * The list an `EnumResource::collection()` payload publishes: the one enum it holds, wrapped in a list unless the
+     * payload already is one; null when no single enum resolves.
+     *
+     * @return ValueExpressionResult|null
+     */
+    protected function enumCollectionValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine, allowsList: true);
+
+        if ($enumResult === null) {
+            return null;
+        }
+
+        // The resolved property may already be a collection type (an AsEnumCollection cast or a
+        // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
+        $type = $enumResult['type'];
+        $alreadyCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+
+        return [
+            ...$enumResult,
+            'type' => $alreadyCollection ? $type : ValueResult::arrayWrapType($type),
+        ];
+    }
+
+    /**
      * The one enum a payload those spellings cannot read resolves to, such as a helper's return or a coalesce: its
      * type, `| null` kept, and its optional flag, on the wrap's `enumFqcn`. A collection's payload may also be a list
      * of that enum.

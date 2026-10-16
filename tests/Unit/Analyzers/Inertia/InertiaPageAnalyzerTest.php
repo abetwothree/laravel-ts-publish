@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
@@ -22,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
@@ -43,6 +45,10 @@ function pageData(string $uses): ?array
 {
     return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
@@ -217,6 +223,39 @@ it('types a resource collection from what it wraps', function () {
         ->and($anonymous['pageType'])->toBe(
             'Inertia.SharedData & { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> }'
         );
+});
+
+// Inertia sends a resource prop as its toResponse() data, at any depth, so a single resource arrives in its wrap key.
+it('types a single resource page prop as what Inertia sends', function () {
+    $wrapped = pageData(InertiaSingleResourceController::class.'@resource');
+    $shared = pageData(InertiaResourceSharedTemplate::class.'@resource');
+
+    JsonResource::withoutWrapping();
+
+    expect($wrapped['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and($wrapped['classFqcns'] ?? null)->toBe([WarehouseResource::class])
+        ->and($shared['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and(pageData(InertiaSingleResourceController::class.'@resource')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }');
+});
+
+it('wraps a resource nested in a prop array, a toResource() call, an enum list and a body without its wrap key', function () {
+    $data = pageData(InertiaResourcePropsController::class.'@show');
+
+    expect($data['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'built: { data: WarehouseResource }, made: { data: WarehouseResource }, guessed: { data: WarehouseResource }, '
+        .'named: { data: WarehouseResource }, nested: { inner: { data: WarehouseResource } }, statuses: { data: StatusType[] }, '
+        .'custom: { data: ItemsKeyPostCollection }, custom_page: { data: ItemsKeyPostCollection } & ResourcePagination, '
+        .'held: DataKeyPostResource }')
+        ->and($data['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourcePagination']]);
+});
+
+it('keeps the body resolve() returns, and the response a fluent call on a resource hands back', function () {
+    expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource }, '
+        .'list: PostResource[], body: ItemsKeyPostCollection }');
 });
 
 it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {
@@ -542,7 +581,7 @@ describe('a docblock-filled index signature in page props merged from several br
 
     test('a resource-typed key from the other ternary arm puts the fill back', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternary')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: PostResource }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: { data: PostResource } }',
         );
     });
 

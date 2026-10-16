@@ -411,22 +411,16 @@ returns, such as `integer`, `float` or `decimal:2`, or declare it with an access
 publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
 the response hold one.
 
-### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible, and a single API resource page prop publishes bare
+### A wrap not set unconditionally in a provider's `boot()`, or forced by `$forceWrapping`, is invisible
 
 The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
-`JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and Inertia collection prop that wraps by
+`JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and every Inertia prop that wraps by
 it. A wrap set anywhere else, such as in middleware, a controller or behind `runningInConsole()`, is not seen, so the
 published types keep the key the booted app had. Set it unconditionally in a provider's `boot()`.
 
 `JsonResource::$forceWrapping` (Laravel 12.45 and later) is not read. With it on, Laravel wraps a body that already
 holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
 prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
-
-A single API resource as an Inertia page prop or in shared data, `new R($m)` or `R::make($m)`, publishes `R`, though
-Inertia sends it wrapped, `{ data: R }` by default; so does a collection whose own `toArray()` lacks its wrap key, which
-Laravel nests under `data`. After `withoutWrapping()` both are sent bare, as published, except that over a paginator
-Laravel still nests the collection's body under `data`, as the package publishes it. Type such a prop with
-`#[TsCasts]`.
 
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
 

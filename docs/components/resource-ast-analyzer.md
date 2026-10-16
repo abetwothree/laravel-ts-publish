@@ -567,7 +567,11 @@ list, it publishes its own type, the body Laravel sends; otherwise the list over
 its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.
 
 Inertia page props share `preservesKeys()` through `InertiaResourcePropHandler`, so a key-preserving paginated
-collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`.
+collection publishes `Omit<JsonResourcePaginator<R>, 'data'> & { data: Record<string, R> }`. The handler types every
+resource a prop or a shared value holds, at any depth, as its `toResponse()` data: a single resource, a `toResource()`
+call, an `EnumResource::collection()` and a body without the live wrap key sit inside that key, such as
+`{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body already holds it.
+`EnumResource` declares `$wrap = ''`, so its `make()` stays bare.
 
 ### A method called on a new resource types its payload
 

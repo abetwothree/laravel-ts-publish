@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
@@ -57,8 +58,9 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects(),
-     * with invokingCallables() for an Inertia middleware, since Inertia calls every callable it shares.
+     * The profile a subject runs when its caller names none: make() for a JsonResource, else forNonResourceSubjects().
+     * An Inertia middleware's goes through invokingCallables() and takes InertiaResourcePropHandler before
+     * ToResourceHandler, since Inertia calls every callable it shares and sends each resource as a page prop's.
      *
      * @return list<ExpressionHandler>
      */
@@ -69,7 +71,7 @@ final class ResourceExpressionHandlers
         }
 
         return is_subclass_of($subjectClass, 'Inertia\\Middleware')
-            ? self::invokingCallables(self::forNonResourceSubjects())
+            ? self::invokingCallables(self::withInertiaResourceProps(self::forNonResourceSubjects()))
             : self::forNonResourceSubjects();
     }
 
@@ -134,6 +136,28 @@ final class ResourceExpressionHandlers
                 : $handler,
             $handlers,
         );
+    }
+
+    /**
+     * The same handlers with InertiaResourcePropHandler before ToResourceHandler, the first of them that types a
+     * resource as the value a nested key flattens it to.
+     *
+     * @param  list<ExpressionHandler>  $handlers
+     * @return list<ExpressionHandler>
+     */
+    private static function withInertiaResourceProps(array $handlers): array
+    {
+        $profile = [];
+
+        foreach ($handlers as $handler) {
+            if ($handler instanceof ToResourceHandler) {
+                $profile[] = new InertiaResourcePropHandler;
+            }
+
+            $profile[] = $handler;
+        }
+
+        return $profile;
     }
 
     /**

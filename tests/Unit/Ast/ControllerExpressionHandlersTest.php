@@ -103,6 +103,20 @@ it('tries InertiaResourcePropHandler before NewResourceHandler for new PostColle
     ]);
 });
 
+// Ordering pin: NewResourceHandler and StaticCallHandler type a single resource as the value a nested key holds, while
+// Inertia sends a page prop as its response, inside the wrap key.
+it('tries InertiaResourcePropHandler before NewResourceHandler and StaticCallHandler for a single resource', function () {
+    $built = new New_(new Name(WarehouseResource::class), [new Arg(new Variable('row'))]);
+    $made = new StaticCall(new Name(WarehouseResource::class), 'make', [new Arg(new Variable('row'))]);
+
+    expect(controllerProfileAnalyzer()->resolve($built))->toBe([
+        'type' => '{ data: WarehouseResource }',
+        'optional' => false,
+        'resourceFqcn' => WarehouseResource::class,
+    ])
+        ->and(controllerProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
+});
+
 // Inertia calls every callable prop, at any depth, before it encodes it, so a first-class callable types its call.
 it('types a first-class-callable prop as the call it stands for', function () {
     $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;

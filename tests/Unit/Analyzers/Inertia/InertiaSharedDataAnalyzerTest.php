@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
@@ -41,6 +42,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Middleware\HandleInertiaRequests;
 
 /**
@@ -61,6 +63,10 @@ function analyzeSharedDataFor(string $middlewareClass): ?array
 
     return $analyzer->analyze();
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 // ─── discovery ───────────────────────────────────────────────────
 
@@ -334,6 +340,27 @@ test('an EnumResource shared prop is rewritten to AsEnum and imports the enum co
         )
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role', 'Status']])
         ->and($result['typeImports'])->toBe([]);
+});
+
+// Inertia runs shared data through the props resolver, so a shared resource is sent as a page prop's is.
+test('a shared resource value publishes what Inertia sends', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithResources::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe('{ firstShelf: { data: WarehouseResource }, '
+        .'shelfList: AnonymousResourceCollection<WarehouseResource>, named: PostCollection, '
+        .'statuses: { data: AsEnum<typeof Status>[] }, role: AsEnum<typeof Role>, user: { data: UserResource } | null }')
+        ->and($result['typeImports'] ?? null)->toBe([
+            './workbench/app/http/resources' => ['PostCollection', 'UserResource', 'WarehouseResource'],
+            '@tolki/types' => ['AnonymousResourceCollection'],
+        ]);
+});
+
+test('a shared resource value publishes bare after JsonResource::withoutWrapping()', function () {
+    JsonResource::withoutWrapping();
+
+    expect(analyzeSharedDataFor(MiddlewareWithResources::class)['sharedPageProps'] ?? null)->toBe('{ firstShelf: WarehouseResource, '
+        .'shelfList: WarehouseResource[], named: PostCollection, statuses: AsEnum<typeof Status>[], role: AsEnum<typeof Role>, '
+        .'user: UserResource | null }');
 });
 
 test('an enum read both wrapped and bare keeps its type import alongside the value import', function () {

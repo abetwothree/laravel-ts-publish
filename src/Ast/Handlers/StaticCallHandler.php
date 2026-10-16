@@ -100,7 +100,7 @@ final class StaticCallHandler implements ExpressionHandler
             $receiver = $engine->resolve($expr->var);
 
             if (isset($receiver['resourceFqcn'])) {
-                return [...$receiver, 'type' => ValueResult::stripNullArm($receiver['type'])];
+                return $this->resolvedBody($expr->var, $receiver, $receiver['resourceFqcn'], $scope);
             }
         }
 
@@ -283,7 +283,7 @@ final class StaticCallHandler implements ExpressionHandler
         // A collection receiver (e.g. ::collection()) resolves to an AnonymousResourceCollection
         // instance, not a $resourceFqcn instance — reflecting the method below would validate
         // against the wrong receiver, so exclude it rather than misfire on e.g. ->additional().
-        if ($resourceFqcn === null || ValueResult::stripNullArm($receiverResult['type']) !== TsNaming::resourceTypeName($resourceFqcn)) {
+        if ($resourceFqcn === null || ! $this->holdsOneResource($expr->var, $receiverResult['type'], $resourceFqcn, $scope)) {
             return null;
         }
 
@@ -363,6 +363,49 @@ final class StaticCallHandler implements ExpressionHandler
     }
 
     /**
+     * What `new X(...)->resolve()` returns: the value X nests as in a resource key, never the response an Inertia prop
+     * types for its receiver, so a collection's own type or list and a single resource's own type.
+     *
+     * @param  ValueExpressionResult  $receiver
+     * @param  class-string  $resourceFqcn  the receiver's resource channel
+     * @return ValueExpressionResult
+     */
+    private function resolvedBody(New_ $new, array $receiver, string $resourceFqcn, AnalysisScope $scope): array
+    {
+        $class = $new->class instanceof Name ? $this->subjectClassName($new->class, $scope->subjectReflection) : null;
+        $nested = $class !== null && is_a($class, ResourceCollection::class, true)
+            ? resolve(ResourceCollectionBody::class)->nestedValue($class)
+            : null;
+
+        return $nested !== null
+            ? [...$nested, 'optional' => $receiver['optional']]
+            : [...$receiver, 'type' => TsNaming::resourceTypeName($resourceFqcn)];
+    }
+
+    /**
+     * Whether a receiver holds one instance of the resource its result names: typed as that resource, or built as it
+     * by `new`, `make()` or `toResource()` through any chain, which an Inertia prop types as the response it sends.
+     */
+    private function holdsOneResource(Expr $receiver, string $type, string $resourceFqcn, AnalysisScope $scope): bool
+    {
+        if (ValueResult::stripNullArm($type) === TsNaming::resourceTypeName($resourceFqcn)) {
+            return true;
+        }
+
+        return match (true) {
+            $receiver instanceof New_ => $receiver->class instanceof Name
+                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+            $receiver instanceof StaticCall => $receiver->class instanceof Name
+                && $receiver->name instanceof Identifier
+                && $receiver->name->toString() === 'make'
+                && $this->subjectClassName($receiver->class, $scope->subjectReflection) === $resourceFqcn,
+            $receiver instanceof MethodCall => ($receiver->name instanceof Identifier && $receiver->name->toString() === 'toResource')
+                || $this->holdsOneResource($receiver->var, $type, $resourceFqcn, $scope),
+            default => false,
+        };
+    }
+
+    /**
      * Analyze EnumResource::make($this->prop) — resolve the enum class from the model property, else from the payload.
      *
      * @return ValueExpressionResult
@@ -391,29 +434,11 @@ final class StaticCallHandler implements ExpressionHandler
      */
     private function analyzeEnumResourceCollection(StaticCall $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $result = ValueResult::unknown();
         $payload = $this->resourcePayloadArguments($call, $className)->at(0)?->value;
 
-        if ($payload === null) {
-            return $result;
-        }
-
-        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine, allowsList: true);
-
-        if ($enumResult === null) {
-            return $result;
-        }
-
-        // The resolved property may already be a collection type (an AsEnumCollection cast or a
-        // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
-        $type = $enumResult['type'];
-        $alreadyCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
-
-        return [
-            ...$enumResult,
-            'type' => $alreadyCollection ? $type : ValueResult::arrayWrapType($type),
-        ];
+        return $payload === null
+            ? ValueResult::unknown()
+            : $this->enumCollectionValue($payload, $scope, $engine) ?? ValueResult::unknown();
     }
 
     /**

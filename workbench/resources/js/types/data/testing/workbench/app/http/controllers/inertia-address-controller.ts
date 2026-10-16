@@ -2,7 +2,7 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 
 import type { Address } from '../resources';
 
-export type ShowPageProps = Inertia.SharedData & { address: Address };
+export type ShowPageProps = Inertia.SharedData & { address: { data: Address } };
 
 export const show = annotatePageProps<ShowPageProps>()(defineRoute({
     name: 'addresses.show',
