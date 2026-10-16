@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -166,6 +167,12 @@ final class SubjectPropertyTypeResolver
             }
 
             $computedNames = ! str_starts_with($declaration->getName(), 'Illuminate\\');
+
+            // A framework body counts only a write that spells the name, so a source that never does is not walked.
+            if (! $computedNames && ! $this->spellsName($file, $name)) {
+                continue;
+            }
+
             $node = $finder->findFirst(
                 resolve(AstParser::class)->parseFile($file),
                 fn (Node $node): bool => $node instanceof ClassLike
@@ -185,6 +192,16 @@ final class SubjectPropertyTypeResolver
         }
 
         return false;
+    }
+
+    /**
+     * Whether a file's source spells a name, recorded as a dependency as AstParser::parseFile() records a file it reads.
+     */
+    private function spellsName(string $file, string $name): bool
+    {
+        DependencyRecorder::record($file);
+
+        return str_contains((string) file_get_contents($file), $name);
     }
 
     /**

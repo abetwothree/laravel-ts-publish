@@ -137,3 +137,14 @@ describe('SubjectPropertyTypeResolver::declaresOwnProperty()', function () {
             ->toBeTrue();
     });
 });
+
+describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
+    // A framework file is walked for writes only where its source spells the name, which a write it counts must.
+    test('a framework method that writes the property still counts, and one that only reads it does not', function () {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+
+        expect($resolver->holdsDefault($subject, 'additional'))->toBeFalse()
+            ->and($resolver->holdsDefault($subject, 'with'))->toBeTrue();
+    });
+});
