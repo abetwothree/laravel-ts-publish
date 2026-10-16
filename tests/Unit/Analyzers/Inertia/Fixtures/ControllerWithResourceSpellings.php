@@ -16,7 +16,10 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 
-/** Each resource spelling as a page prop, key for key as the two parity middlewares share it. */
+/**
+ * Each resource spelling as a page prop, key for key as the two parity middlewares share it, and inside Inertia's lazy
+ * prop wrappers.
+ */
 class ControllerWithResourceSpellings
 {
     public function index(): Response
@@ -29,6 +32,17 @@ class ControllerWithResourceSpellings
             'listed' => Warehouse::all()->toResourceCollection(),
             'role' => EnumResource::make(Role::Admin),
             'statuses' => EnumResource::collection(Status::cases()),
+        ]);
+    }
+
+    public function wrapped(): Response
+    {
+        return Inertia::render('Parity/Wrapped', [
+            'deferred' => Inertia::defer(fn () => WarehouseResource::collection(Warehouse::all())),
+            'optional' => Inertia::optional(fn () => WarehouseResource::make(Warehouse::query()->firstOrFail())),
+            'lazy' => Inertia::lazy(fn () => Warehouse::all()->toResourceCollection()),
+            'statuses' => Inertia::defer(fn () => EnumResource::collection(Status::cases())),
+            'role' => Inertia::optional(fn () => EnumResource::make(Role::Admin)),
         ]);
     }
 

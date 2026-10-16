@@ -54,6 +54,18 @@ test('each resource spelling publishes the same type as a page prop and as share
         ->and(parityPageData('index')['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props);
 });
 
+// Inertia calls a lazy wrapper's closure and sends its value as a bare prop, kept out of the first load.
+test('a resource inside a lazy Inertia wrapper publishes as the bare prop, optional', function () {
+    $page = parityPageData('wrapped');
+    $props = '{ deferred?: AnonymousResourceCollection<WarehouseResource>, optional?: { data: WarehouseResource }, '
+        .'lazy?: AnonymousResourceCollection<WarehouseResource>, statuses?: { data: AsEnum<typeof Status>[] }, '
+        .'role?: AsEnum<typeof Role> }';
+
+    expect($page['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
+        ->and($page['enumConstFqcns'] ?? null)->toBe([Status::class, Role::class])
+        ->and($page['externalImports'] ?? null)->toBe(['@tolki/types' => ['AnonymousResourceCollection']]);
+});
+
 test('a JSON:API resource publishes the same document as a page prop and as shared data', function () {
     $included = 'UserResource | CommentResource | CategoryResource';
     $props = "{ post: JsonApiDocument<PostResource, {$included}>, author: JsonApiDocument<UserResource, never>, "
