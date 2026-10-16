@@ -136,6 +136,25 @@ final class JsonApiResources
     }
 
     /**
+     * Whether a JSON:API resource declares no relationship on any request, so Laravel never sends it an `included`: it
+     * runs JsonApiResource's own toRelationships() over a `$relationships` that is absent, or empty and never written.
+     *
+     * @param  class-string  $class
+     */
+    public static function declaresNoRelationships(string $class): bool
+    {
+        $reflection = new ReflectionClass($class);
+
+        if (! self::declaredByFramework($reflection->getMethod('toRelationships')->getDeclaringClass()->getName())) {
+            return false;
+        }
+
+        return ! $reflection->hasProperty('relationships')
+            || ($reflection->getDefaultProperties()['relationships'] === []
+                && resolve(SubjectPropertyTypeResolver::class)->holdsDefault($reflection, 'relationships'));
+    }
+
+    /**
      * The relationships relationships() answers, read off the class and its model.
      *
      * @param  class-string  $class

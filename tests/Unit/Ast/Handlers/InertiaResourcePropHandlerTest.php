@@ -9,8 +9,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\EmptyRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeyedApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PagePropApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\UnreadRelationshipsApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WrittenRelationshipsApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFlatCollection;
@@ -226,7 +229,7 @@ it('types a JSON:API resource as its document, built, made, by toResource() or c
     $explicit = new MethodCall(new Variable('post'), 'toResource', [new Arg(new ClassConstFetch(new Name(PagePropApiResource::class), 'class'))]);
     $collected = new StaticCall(new Name(PagePropApiResource::class), 'collection', [paginatorKindArg('cursorPaginate')]);
     $document = [
-        'type' => 'JsonApiDocument<PagePropApiResource>',
+        'type' => 'JsonApiDocument<PagePropApiResource, never>',
         'optional' => false,
         'resourceFqcn' => PagePropApiResource::class,
         'customImports' => ['@tolki/types' => ['JsonApiDocument']],
@@ -237,7 +240,7 @@ it('types a JSON:API resource as its document, built, made, by toResource() or c
         ->and(inertiaResourcePropResult($explicit))->toBe($document)
         ->and(inertiaResourcePropResult($collected))->toBe([
             ...$document,
-            'type' => 'JsonApiCursorPaginator<PagePropApiResource>',
+            'type' => 'JsonApiCursorPaginator<PagePropApiResource, never>',
             'customImports' => ['@tolki/types' => ['JsonApiCursorPaginator']],
         ]);
 })->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
@@ -250,12 +253,24 @@ it('types a JSON:API collection under another wrap key, and over preserved keys,
 
     JsonResource::wrap('items');
 
-    expect($keyedType)->toBe("Omit<JsonApiCollection<KeyedApiResource>, 'data'> & { data: Record<string, KeyedApiResource> }")
+    expect($keyedType)->toBe("Omit<JsonApiCollection<KeyedApiResource, never>, 'data'> & { data: Record<string, KeyedApiResource> }")
         ->and(inertiaResourcePropResult($listed)['type'] ?? null)
-        ->toBe("Omit<JsonApiCollection<PagePropApiResource>, 'data'> & { items: PagePropApiResource[] }")
+        ->toBe("Omit<JsonApiCollection<PagePropApiResource, never>, 'data'> & { items: PagePropApiResource[] }")
         ->and(inertiaResourcePropResult($paged)['type'] ?? null)
-        ->toBe("Omit<JsonApiPaginator<PagePropApiResource>, 'data'> & { items: PagePropApiResource[] }");
+        ->toBe("Omit<JsonApiPaginator<PagePropApiResource, never>, 'data'> & { items: PagePropApiResource[] }");
 })->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
+
+// Laravel adds `included` only for a relationship an include reaches, which a class that declares none has not.
+it('types a JSON:API document over never only for a resource that provably declares no relationship', function (string $resource, string $document) {
+    $built = new New_(new Name($resource), [new Arg(new Variable('post'))]);
+
+    expect(inertiaResourcePropResult($built)['type'] ?? null)->toBe($document);
+})->with([
+    'no $relationships and no toRelationships()' => [PagePropApiResource::class, 'JsonApiDocument<PagePropApiResource, never>'],
+    'an empty $relationships' => [EmptyRelationshipsApiResource::class, 'JsonApiDocument<EmptyRelationshipsApiResource, never>'],
+    'an empty $relationships a method writes' => [WrittenRelationshipsApiResource::class, 'JsonApiDocument<WrittenRelationshipsApiResource>'],
+    'a toRelationships() returning a variable' => [UnreadRelationshipsApiResource::class, 'JsonApiDocument<UnreadRelationshipsApiResource>'],
+])->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
 
 it('reads the wrapped paginator by the constructor and collection() parameter name', function () {
     $named = new New_(new Name(PostCollection::class), [new Arg(paginatorArg()->value, name: new Identifier('resource'))]);

@@ -524,9 +524,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * The generic arguments of a JSON:API resource's `@tolki/types` documents, `<R, I>`, where `I` is the union of
-     * each resource object an include can add: a published JSON:API resource by its own type, any other by its `type`
-     * over the generic resource object.
+     * The generic arguments of a JSON:API resource's `@tolki/types` documents, `<R, I>`: `I` is each resource object an
+     * include can add, a published JSON:API resource by its own type and any other by its `type` over the generic one;
+     * `never` for a resource declaring no relationship, and left to its default where an include may add one unread.
      *
      * @param  class-string<JsonResource>  $className
      * @return JsonApiIncluded
@@ -547,7 +547,11 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
             $object = TolkiTypes::JSON_API_DOCUMENTS['resourceObject'];
             $members[] = $included['type'] === 'string' ? $object : "{$object}<{$included['type']}>";
-            $imports = [$object];
+            $imports[] = $object;
+        }
+
+        if ($members === [] && JsonApiResources::declaresNoRelationships($className)) {
+            $members[] = 'never';
         }
 
         $name = TsNaming::resourceTypeName($className);
@@ -555,7 +559,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         return [
             'arguments' => $members === [] ? "<{$name}>" : "<{$name}, ".implode(' | ', array_values(array_unique($members))).'>',
             'resources' => $resources,
-            'imports' => $imports,
+            'imports' => array_values(array_unique($imports)),
         ];
     }
 

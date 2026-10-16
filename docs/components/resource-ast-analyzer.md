@@ -167,6 +167,8 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
   is the `@tolki/types` document, `JsonApiDocument<R, I>`, `JsonApiCollection<R, I>` or each paginator kind's
   (`TolkiTypes`), where `I` is every resource object an include can reach (`JsonApiResources::includedResources()`):
   a published JSON:API resource, else `JsonApiResourceObject<'type'>`, and nothing for a plain resource, which throws.
+  `I` is `never` for a resource that declares no relationship (`JsonApiResources::declaresNoRelationships()`), and is
+  left to the generic's default where an include may add one the package cannot read.
 
 ## Attribute filters on any model receiver
 

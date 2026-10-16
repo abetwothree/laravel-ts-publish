@@ -261,8 +261,8 @@ test('an Inertia prop publishes the JSON:API document, with every resource an in
 
     expect(jsonApiPageType('show'))
         ->toContain("post: JsonApiDocument<PostResource, {$included}>")
-        ->toContain('author: JsonApiDocument<UserResource>')
-        ->toContain('category: JsonApiDocument<CategoryResource> | null')
+        ->toContain('author: JsonApiDocument<UserResource, never>')
+        ->toContain('category: JsonApiDocument<CategoryResource, never> | null')
         ->and(jsonApiPageType('index'))
         ->toContain("posts: JsonApiCollection<PostResource, {$included}>")
         ->toContain("paged: JsonApiPaginator<PostResource, {$included}>")

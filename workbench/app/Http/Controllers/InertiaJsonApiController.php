@@ -25,7 +25,7 @@ class InertiaJsonApiController
      * A single resource object's document, whose `included` holds every resource an include can reach.
      *
      * Result should be { post: JsonApiDocument<PostResource, UserResource | CommentResource | CategoryResource>,
-     * author: JsonApiDocument<UserResource>, category: JsonApiDocument<CategoryResource> | null,
+     * author: JsonApiDocument<UserResource, never>, category: JsonApiDocument<CategoryResource, never> | null,
      * kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>> }
      */
     public function show(Post $post): Response

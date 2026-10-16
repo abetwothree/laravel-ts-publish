@@ -3,13 +3,13 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 import type { JsonApiCollection, JsonApiCursorPaginator, JsonApiDocument, JsonApiPaginator, JsonApiResourceObject, JsonApiSimplePaginator } from '@tolki/types';
 import type { CategoryResource, CommentResource, KpiResource, PostResource, UserResource } from '../resources/json-api';
 
-export type ShowPageProps = Inertia.SharedData & { post: JsonApiDocument<PostResource, UserResource | CommentResource | CategoryResource>, author: JsonApiDocument<UserResource>, category: JsonApiDocument<CategoryResource> | null, kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>> };
+export type ShowPageProps = Inertia.SharedData & { post: JsonApiDocument<PostResource, UserResource | CommentResource | CategoryResource>, author: JsonApiDocument<UserResource, never>, category: JsonApiDocument<CategoryResource, never> | null, kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>> };
 
 /**
  * A single resource object's document, whose `included` holds every resource an include can reach.
  *
  * Result should be { post: JsonApiDocument<PostResource, UserResource | CommentResource | CategoryResource>,
- * author: JsonApiDocument<UserResource>, category: JsonApiDocument<CategoryResource> | null,
+ * author: JsonApiDocument<UserResource, never>, category: JsonApiDocument<CategoryResource, never> | null,
  * kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>> }
  */
 export const show = annotatePageProps<ShowPageProps>()(defineRoute({
