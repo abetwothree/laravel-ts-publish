@@ -150,6 +150,23 @@ describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
             ->and($resolver->holdsDefault($subject, 'with'))->toBeTrue();
     });
 
+    // A body's write sites are collected once and reused for every later name, so the order the names are asked in
+    // must not change an answer.
+    test('a class body read for one name answers the next from the same write sites', function (array $names) {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+        $answers = [];
+
+        foreach ($names as $name) {
+            $answers[$name] = $resolver->holdsDefault($subject, $name);
+        }
+
+        expect($answers)->toMatchArray(['additional' => false, 'with' => true]);
+    })->with([
+        'the written name first' => [['additional', 'with']],
+        'the read-only name first' => [['with', 'additional']],
+    ]);
+
     // The source is read once a run, so a later read must still record the file, or a cached publish misses an update.
     test('a framework file whose source a read skips is recorded as a dependency on every read', function () {
         $resolver = resolve(SubjectPropertyTypeResolver::class);

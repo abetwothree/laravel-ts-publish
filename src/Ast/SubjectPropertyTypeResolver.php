@@ -35,6 +35,7 @@ use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionProperty;
 use Throwable;
+use WeakMap;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
@@ -56,6 +57,9 @@ final class SubjectPropertyTypeResolver
 
     /** @var array<string, string> each framework file spellsName() read, by path; vendor code holds still in a run */
     private static array $frameworkSources = [];
+
+    /** @var WeakMap<ClassLike, list<Node>>|null each parsed class body's write sites, dropped with its AST */
+    private static ?WeakMap $writeSites = null;
 
     /**
      * Resolve a declared property's TypeScript type and FQCN channels, or null when no source
@@ -120,6 +124,31 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
+     * The nodes of a class body that writesTo() can count, in the order a walk meets them.
+     *
+     * Every property a class is asked about would otherwise walk the whole body again, and a framework base is asked
+     * about once per subject.
+     *
+     * @return list<Node>
+     */
+    private static function writeSites(ClassLike $class): array
+    {
+        self::$writeSites ??= new WeakMap;
+
+        if (! isset(self::$writeSites[$class])) {
+            self::$writeSites[$class] = array_values(new NodeFinder()->find(
+                $class->stmts,
+                fn (Node $node): bool => $node instanceof Assign || $node instanceof AssignOp
+                    || $node instanceof AssignRef || $node instanceof PreInc || $node instanceof PreDec
+                    || $node instanceof PostInc || $node instanceof PostDec || $node instanceof Foreach_
+                    || $node instanceof Unset_ || $node instanceof CallLike,
+            ));
+        }
+
+        return self::$writeSites[$class];
+    }
+
+    /**
      * The type of an untyped property's default, typed as a parameter default's value is, while no method the class
      * runs writes the property, so a read still holds the default.
      *
@@ -181,16 +210,16 @@ final class SubjectPropertyTypeResolver
                 fn (Node $node): bool => $node instanceof ClassLike
                     && $node->namespacedName?->toString() === $declaration->getName(),
             );
-            $writer = $node instanceof ClassLike
-                ? $finder->findFirst(
-                    $node->stmts,
-                    fn (Node $node): bool => $this->writesTo($node, $name, $computedNames, $class, $declaration),
-                )
-                : null;
 
             // A class whose declaration cannot be read may write anything.
-            if (! $node instanceof ClassLike || $writer !== null) {
+            if (! $node instanceof ClassLike) {
                 return true;
+            }
+
+            foreach (self::writeSites($node) as $site) {
+                if ($this->writesTo($site, $name, $computedNames, $class, $declaration)) {
+                    return true;
+                }
             }
         }
 
