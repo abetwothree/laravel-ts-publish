@@ -459,6 +459,27 @@ duplicated key from `$default` in `paginationInformation()`, such as `unset($def
 block with other keys there: the package does not read `paginationInformation()`, so the published pagination type would
 no longer match.
 
+### A resource prop's `additional()` and `with()` keys are not published
+
+Inertia sends a resource prop as its whole response, beside the keys `additional()` and the resource's `with()` add.
+`R::make($x)->additional(['meta' => …])` publishes `{ data: R }` and `(new XCollection($items))->additional(…)`
+`XCollection`, without `meta`, and `R::collection($items)->additional(…)` publishes `unknown`. Such keys also make
+Laravel nest the body under `data` after `JsonResource::withoutWrapping()`, where the package publishes it bare. Type
+the prop with `#[TsCasts]`.
+
+### A `->resolve()`d resource prop publishes the API resources its body holds bare
+
+`R::make($x)->resolve()` as an Inertia prop publishes `R`, the keys `resolve()` returns. Inertia then sends each API
+resource still inside them as its response, so a key such as `'author' => new UserResource($this->user)` arrives as
+`{ data: … }` while `R` types it `UserResource`. Pass the resource itself, or type the prop with `#[TsCasts]`.
+
+### Props a collaborator builds publish their API resources bare
+
+`Inertia::render('Page', $this->props->build())` types the props from what the collaborator's method returns, where an
+API resource is the value a nested resource key holds: `'warehouse' => new WarehouseResource($w)` publishes
+`WarehouseResource`, though Inertia sends `{ data: … }`. Build the props array in the action, or type the props with
+`#[TsCasts]`.
+
 ### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
 
 The generation cache rebuilds a file when a file it read changes, but an argument-less `toResourceCollection()` can pick
