@@ -62,7 +62,9 @@ a compile-time alias that loads nothing, and PHP never instantiates a class attr
 both. Extending a missing class is fatal when the class loads, so on a Laravel without `JsonApiResource`,
 `WorkbenchServiceProvider` adds `workbench/app/Http/Resources/JsonApi/` to `ts-publish.resources.excluded`, which a
 collector applies before it loads a class, and points the Inertia middleware lookup at `Http/Middleware`. A test that
-sets `resources.excluded` keeps the entries already there.
+sets `resources.excluded` keeps the entries already there. `workbench/routes/web.php` registers the
+`InertiaJsonApiController` routes only under `class_exists()` on the string FQCN, so the page analyzer never loads those
+resources.
 
 ## How each minimum version was established
 

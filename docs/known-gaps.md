@@ -508,9 +508,9 @@ shape.
 ### On Laravel 12.45 and later, a plain API resource's `$attributes` and `parent::toAttributes()` are not read
 
 From 12.45, `JsonResource::toAttributes()` returns an `$attributes` property in `toArray()`'s place, so a plain
-resource with one sends those keys while the package publishes `toArray()`'s. A `...parent::toAttributes()` spread in
-a plain resource's own `toAttributes()` publishes no key. Rename the property, or return every key from
-`toAttributes()` itself.
+resource with one sends that array as it is, a list staying a list, while the package publishes `toArray()`'s keys. A
+`...parent::toAttributes()` spread in a plain resource's own `toAttributes()` publishes no key. Rename the property, or
+return every key from `toAttributes()` itself.
 
 ### An overridden `resolve()` or `jsonSerialize()` changes what Laravel sends, and the package reads neither
 
