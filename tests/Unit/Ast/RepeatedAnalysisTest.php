@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CommentListPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedPostSummary;
@@ -36,9 +37,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use Workbench\App\Http\Resources\MutualSpreadAResource;
 use Workbench\App\Http\Resources\MutualSpreadBResource;
+use Workbench\App\Http\Resources\SupplierSummaryResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Supplier;
 use Workbench\App\Models\Warehouse;
 
 /**
@@ -379,4 +382,47 @@ test('the resource and the collection Laravel guesses for a model are each read 
         ->and($first)->toBeGreaterThan(0)
         ->and($afterReuse)->toBe($first)
         ->and(count($checks))->toBe(2 * $first);
+});
+
+// No class answers the collection's naming convention, so each check of it reaches the autoloader and counts one read.
+test('a runtime class\'s collection facts are read once a run, replay what they record, and are read again after a reset', function () {
+    $runtime = new ReflectionClass(StackedUnnamedCollection::class);
+    $convention = substr(StackedUnnamedCollection::class, 0, -strlen('Collection'));
+    $reads = new ArrayObject;
+    $countReads = function (string $class) use ($convention, $reads): void {
+        if ($class === $convention) {
+            $reads[] = $class;
+        }
+    };
+    $seed = function () use ($runtime): array {
+        DependencyRecorder::start();
+
+        try {
+            $scope = new AnalysisScope($runtime);
+            $scope->seedCollectionFacts($runtime);
+
+            return [[$scope->collectedElement, $scope->reindexesNumericKeys], DependencyRecorder::paths()];
+        } finally {
+            DependencyRecorder::stop();
+        }
+    };
+
+    spl_autoload_register($countReads, prepend: true);
+
+    try {
+        [$facts, $recorded] = $seed();
+        $reused = $seed();
+        $readOnce = count($reads);
+        resolve(AnalysisMemo::class)->reset();
+        $seed();
+    } finally {
+        spl_autoload_unregister($countReads);
+    }
+
+    expect($facts)->toBe([['fqcn' => Supplier::class, 'model' => true], true])
+        ->and($recorded)->toContain((string) new ReflectionClass(SupplierSummaryResource::class)->getFileName())
+        ->and($reused[0])->toBe($facts)
+        ->and($reused[1])->toEqualCanonicalizing($recorded)
+        ->and($readOnce)->toBe(1)
+        ->and(count($reads))->toBe(2);
 });

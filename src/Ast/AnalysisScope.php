@@ -392,16 +392,19 @@ final class AnalysisScope
 
     /**
      * Derive the collection facts from the runtime class, which an ancestor's body runs as: `reindexesNumericKeys` and
-     * `collectedElement`, from ResourceCollections.
+     * `collectedElement`, from ResourceCollections, once a run per class.
      *
      * @param  ReflectionClass<object>  $runtime
      */
     public function seedCollectionFacts(ReflectionClass $runtime): void
     {
-        $this->reindexesNumericKeys = ResourceCollections::reindexesNumericKeys($runtime);
-        $this->collectedElement = $runtime->isSubclassOf(ResourceCollection::class)
-            ? ResourceCollections::collectedElement($runtime)
-            : null;
+        [$this->reindexesNumericKeys, $this->collectedElement] = resolve(AnalysisMemo::class)->remember(
+            'collection-facts:'.$runtime->getName(),
+            static fn (): array => [
+                ResourceCollections::reindexesNumericKeys($runtime),
+                $runtime->isSubclassOf(ResourceCollection::class) ? ResourceCollections::collectedElement($runtime) : null,
+            ],
+        );
     }
 
     /**
