@@ -451,13 +451,13 @@ Return `$this->collection`, which Laravel sends as `{ data, links, meta }`, or n
 ### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
 
 Over a paginator, Laravel merges the `meta` and `links` a collection's `toArray()` returns beside its wrap key, such as
-`data`, and those its `with()` and `additional()` add, into its pagination block with `array_merge_recursive()`. A key
-the block does not send, such as `meta.kind` or `links.self`, is typed from the collection's own body; a key both name
-is sent as a list, so a `total` you add to `meta` is sent as `[3, 3]` while the package publishes `number`. Without the
-wrap key, Laravel nests the whole body under `data` and nothing of it merges. Name the key differently, or drop the
-duplicated key from `$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a
-block with other keys there: the package does not read `paginationInformation()`, so the published pagination type would
-no longer match.
+`data`, and those its `with()` and `additional()` add, into its pagination block with `array_merge_recursive()`. A
+`toArray()` key the block does not send, such as `meta.kind` or `links.self`, is typed from the collection's own body; a
+key both name is sent as a list, so a `total` you add to `meta` is sent as `[3, 3]` while the package publishes
+`number`. Without the wrap key, Laravel nests the whole body under `data` and nothing of it merges. Name the key
+differently, or drop the duplicated key from `$default` in `paginationInformation()`, such as
+`unset($default['meta']['total'])`. Do not build a block with other keys there: the package does not read
+`paginationInformation()`, so the published pagination type would no longer match.
 
 ### A resource prop's `additional()` and `with()` keys are not published
 

@@ -129,10 +129,11 @@ relation there as `unknown` instead of declining, where `ReceiverPropertyFetchHa
 relation that way.
 
 The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two
-claim disjoint method names. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler
-before `NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()`
-`unknown`, and the matrix does not run these profiles.
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
+disjoint method names on a `MethodCall`, and on a `StaticCall` disjoint classes, a model and an API resource, since both
+claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler before
+`NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()` `unknown`, and
+the matrix does not run these profiles.
 
 ## AnalysisScope
 
