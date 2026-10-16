@@ -1226,11 +1226,13 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $this->runtimeClassAnalysis('resolve', $whole);
         }
 
-        // From 12.45 resolve() reaches toArray() through toAttributes(), which an override or `$attributes` replaces.
-        if ($this->replacesJsonResource($runtime, 'resolveResourceData')
+        // From 12.45 resolve() reaches toArray() through toAttributes(), which an override or `$attributes` replaces;
+        // before 12.45 resolve() calls toArray() itself, and those are a method and a property like any other.
+        if (JsonApiResources::shipped() && (
+            $this->replacesJsonResource($runtime, 'resolveResourceData')
             || $this->replacesJsonResource($runtime, 'toAttributes')
             || $runtime->hasProperty('attributes')
-        ) {
+        )) {
             return null;
         }
 

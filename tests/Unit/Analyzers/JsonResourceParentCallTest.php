@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializeLoopResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentAttributesResolveResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParentFrameworkCallsChildResource;
@@ -18,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ResolveLoopResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ToArraySpreadsWithResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Http\Resources\TagResource;
+use Workbench\App\Models\Post;
 
 /**
  * The members the engine reads off one method, one `name: type` or `name?: type` per key in order, or the flat type
@@ -100,10 +103,21 @@ test('a parent:: call whose answer the analyzer cannot read leaves the method it
 })->with([
     'a $with a method writes' => [ParentWithWrittenResource::class, 'with', 'extra: string'],
     'a $with default with int keys' => [ParentListWithResource::class, 'with', 'extra: string'],
-    'an $attributes property, which resolve() sends in place of toArray()' => [
-        ParentAttributesResolveResource::class, 'resolve', 'resolved: boolean',
-    ],
 ]);
+
+test('a parent::resolve() beside an $attributes property, which resolve() sends in place of toArray(), adds no key', function () {
+    expect(parentCallMembers(ParentAttributesResolveResource::class, 'resolve'))->toBe('resolved: boolean');
+})->skip(fn (): bool => ! JsonApiResources::shipped(), 'JsonResource::toAttributes() ships from Laravel 12.45.');
+
+// Before 12.45, JsonResource declares no toAttributes(), so resolve() calls toArray() whatever the subclass declares.
+test('before Laravel 12.45 a parent::resolve() reads toArray() beside an $attributes property', function () {
+    expect(parentCallMembers(ParentAttributesResolveResource::class, 'resolve'))->toBe('id: number; name: string; resolved: boolean');
+})->skip(fn (): bool => JsonApiResources::shipped(), 'Laravel 12.45 and later send toAttributes().');
+
+test('before Laravel 12.45 a plain resource declaring toAttributes() beside toArray() publishes toArray()', function () {
+    expect(publishedResourceKeyTypes(ToAttributesBesideToArrayResource::class, Post::class))
+        ->toBe(['title' => 'string', 'content' => 'string']);
+})->skip(fn (): bool => JsonApiResources::shipped(), 'Laravel 12.45 and later send toAttributes().');
 
 test('a toArray() that reads its own jsonSerialize() ends, though Laravel never returns from it', function () {
     expect(parentCallMembers(JsonSerializeLoopResource::class, 'toArray'))->toBe('id: number')
