@@ -153,7 +153,7 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
 With `enums.use_tolki_package` on, the default,
 `$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` in `HandleInertiaRequests::share()`
 renders `RoleType | StatusType` and imports neither, which is TS2304 twice in a consumer's build.
-`InertiaSharedDataAnalyzer::rewriteEnumResourceTypes()` handles only the single-enum shape, and `AnalysisImports`
+`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape, and `AnalysisImports`
 drops a multi-enum ternary's type imports, as the resource generator's own rewrite needs. No workbench fixture has
 this shape, so the token gate never sees it. Override the key with an import-aware `#[TsCasts]`, or use one enum.
 

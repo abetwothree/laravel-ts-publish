@@ -249,7 +249,7 @@ it('wraps a resource nested in a prop array, a toResource() call, an enum list a
 
     expect($data['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'built: { data: WarehouseResource }, made: { data: WarehouseResource }, guessed: { data: WarehouseResource }, '
-        .'named: { data: WarehouseResource }, nested: { inner: { data: WarehouseResource } }, statuses: { data: StatusType[] }, '
+        .'named: { data: WarehouseResource }, nested: { inner: { data: WarehouseResource } }, statuses: { data: AsEnum<typeof Status>[] }, '
         .'custom: { data: ItemsKeyPostCollection }, custom_page: { data: ItemsKeyPostCollection } & ResourcePagination, '
         .'held: DataKeyPostResource }')
         ->and($data['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourcePagination']]);
@@ -289,7 +289,7 @@ it('flattens a top-level resource spread inside the render props array', functio
 
     expect($data['component'])->toBe('Dashboard/Spread')
         ->and($data['pageType'])->toBe(
-            'Inertia.SharedData & { id: number, name: string, email: string, role: RoleType | null, '.
+            'Inertia.SharedData & { id: number, name: string, email: string, role: AsEnum<typeof Role> | null, '.
             'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
             'posts_count?: number, comments_count?: number, flag: boolean }'
         );

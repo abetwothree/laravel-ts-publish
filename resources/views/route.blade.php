@@ -14,6 +14,11 @@ if ($data->hasRequestTypes) {
     $importParts[] = 'annotateRequestPayload';
 }
 
+// A RouteWriter subclass predating the flag renders the template without it.
+if ($usesTolkiPackage ?? false) {
+    $importParts[] = 'type AsEnum';
+}
+
 $imports = implode(', ', $importParts);
 @endphp
 import { {!! $imports !!} } from '@tolki/ts';

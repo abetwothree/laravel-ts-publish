@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
@@ -18,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
-use Illuminate\Support\Facades\Config;
 use ReflectionClass;
 
 /**
@@ -41,6 +41,8 @@ use ReflectionClass;
  */
 class InertiaSharedDataAnalyzer
 {
+    use RewritesEnumResourceProps;
+
     /**
      * Inertia sets `page.props.errors` itself and `@inertiajs/core` types it, so an inferred entry
      * for it can only weaken that; `errorValueType` is this package's channel for errors instead.
@@ -184,38 +186,6 @@ class InertiaSharedDataAnalyzer
 
         foreach (self::FRAMEWORK_OWNED_PROPS as $name) {
             unset($props[$name]);
-        }
-
-        return $props;
-    }
-
-    /**
-     * Rewrite each EnumResource-wrapped prop to `AsEnum<typeof Const>`, as resource generation does.
-     *
-     * Applied per property rather than to the whole rendered type, so an enum some other prop still
-     * reads bare keeps that prop's plain type name — and with it its type import.
-     *
-     * @param  SharedPropMap  $props
-     * @return SharedPropMap
-     */
-    protected function rewriteEnumResourceTypes(array $props, MethodAnalysis $analysis): array
-    {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
-            return $props;
-        }
-
-        foreach ($analysis->enumResources as $name => $fqcn) {
-            if (! isset($props[$name])) {
-                continue;
-            }
-
-            $tsInfo = LaravelTsPublish::toTsType($fqcn);
-
-            $props[$name]['type'] = TsTypeString::substituteEnumType(
-                $props[$name]['type'],
-                $tsInfo['enumTypes'][0] ?? class_basename($fqcn).'Type',
-                'AsEnum<typeof '.($tsInfo['enums'][0] ?? class_basename($fqcn)).'>',
-            );
         }
 
         return $props;

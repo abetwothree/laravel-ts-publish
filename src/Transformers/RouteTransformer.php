@@ -53,6 +53,9 @@ class RouteTransformer extends CoreTransformer
     /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
     protected array $actionPageTypeFqcns = [];
 
+    /** @var array<int, list<class-string>> Action index => enums whose const a page type reads through `typeof` */
+    protected array $actionPageEnumConstFqcns = [];
+
     /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
     protected array $actionExternalImports = [];
 
@@ -311,6 +314,10 @@ class RouteTransformer extends CoreTransformer
 
                 if ($inertiaData['classFqcns'] !== []) {
                     $this->actionPageTypeFqcns[] = $inertiaData['classFqcns'];
+                }
+
+                if (($inertiaData['enumConstFqcns'] ?? []) !== []) {
+                    $this->actionPageEnumConstFqcns[] = $inertiaData['enumConstFqcns'];
                 }
 
                 $externalImports = $inertiaData['externalImports'] ?? [];
@@ -649,7 +656,7 @@ class RouteTransformer extends CoreTransformer
      */
     private function resolvePageTypeImports(): array
     {
-        if ($this->actionPageTypeFqcns === [] && $this->actionExternalImports === []) {
+        if ($this->actionPageTypeFqcns === [] && $this->actionPageEnumConstFqcns === [] && $this->actionExternalImports === []) {
             return [];
         }
 
@@ -675,6 +682,12 @@ class RouteTransformer extends CoreTransformer
             $imports[$importPath][] = enum_exists($fqcn)
                 ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
                 : TsNaming::resourceTypeName($fqcn);
+        }
+
+        // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.
+        foreach (array_unique(array_merge(...$this->actionPageEnumConstFqcns)) as $fqcn) {
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
+            $imports[$importPath][] = LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {
