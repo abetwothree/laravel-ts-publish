@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ConstantResolverApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
@@ -184,4 +185,10 @@ test('a keyless name an own toArray() returns reads the model attribute', functi
 
 test('a plain resource declaring toAttributes() beside toArray() publishes toAttributes()', function () {
     expect(publishedResourceKeyTypes(ToAttributesBesideToArrayResource::class, Post::class))->toBe(['headline' => 'string']);
+});
+
+// Only `X::class` names a resource; a constant's value is not read, so the related model's guess stands.
+test('a class constant resolver names no resource', function () {
+    expect(publishedResourceKeyTypes(ConstantResolverApiResource::class, Post::class))
+        ->toMatchArray(['relationships?' => '{ author?: JsonApiToOneRelationship<string> }']);
 });

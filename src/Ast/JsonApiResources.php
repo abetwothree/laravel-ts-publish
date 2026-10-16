@@ -205,10 +205,11 @@ final class JsonApiResources
      */
     private static function resolverResource(Expr $value): array
     {
-        if ($value instanceof ClassConstFetch && $value->class instanceof Name) {
-            $class = $value->class->toString();
+        if ($value instanceof ClassConstFetch) {
+            $class = $value->class instanceof Name ? $value->class->toString() : null;
+            $namesClass = $value->name instanceof Identifier && $value->name->toLowerString() === 'class';
 
-            return ['resource' => class_exists($class) ? $class : null];
+            return ['resource' => $namesClass && $class !== null && class_exists($class) ? $class : null];
         }
 
         $returned = match (true) {
