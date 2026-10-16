@@ -220,22 +220,33 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * The collection Laravel's guess builds for the items of a `toResourceCollection()` receiver, from their model: a
-     * list or paginator of it, or an Eloquent collection of it the receiver resolver names.
+     * The collection Laravel's guess builds for the items of a `toResourceCollection()` receiver, from their model: the
+     * one the receiver's type lists or paginates, else the element of an Eloquent collection the resolver names.
      *
      * @param  ValueExpressionResult  $receiver  the receiver as the engine resolves it
      * @return GuessedCollection|null
      */
     private function guessedCollection(Expr $var, array $receiver, AnalysisScope $scope): ?array
     {
-        $listsModel = isset($receiver['modelFqcn']) && array_all(
-            TsTypeString::splitTopLevelUnion($receiver['type']),
-            fn (string $arm): bool => str_ends_with($arm, '[]') || $this->paginatorName($arm) !== null,
-        );
+        $embedded = $receiver['embeddedModelFqcns'] ?? [];
+        $model = $receiver['modelFqcn'] ?? (count($embedded) === 1 ? $embedded[0] : null);
 
-        $model = $listsModel ? $receiver['modelFqcn'] : resolve(ReceiverClassResolver::class)->resolve($var, $scope)?->elementModel;
+        if ($model === null || ! $this->listsItemsOf($receiver['type'], class_basename($model))) {
+            $model = resolve(ReceiverClassResolver::class)->resolve($var, $scope)?->elementModel;
+        }
 
         return $model !== null && is_a($model, Model::class, true) ? $this->resolveResourceCollectionForModel($model) : null;
+    }
+
+    /**
+     * Whether each arm of a type is a list or a paginator of one model, a null arm aside, as `->` on null throws.
+     */
+    private function listsItemsOf(string $type, string $model): bool
+    {
+        return array_all(
+            TsTypeString::splitTopLevelUnion(ValueResult::stripNullArm($type)),
+            fn (string $arm): bool => $arm === $model.'[]' || $arm === $this->paginatorName($arm).'<'.$model.'>',
+        );
     }
 
     /**
@@ -550,13 +561,15 @@ final class InertiaResourcePropHandler implements ExpressionHandler
      * The `@tolki/types` paginator each arm of a type names, in order and once each, with `null` once for any arm that
      * is no paginator, so a value that is paginated only sometimes publishes both responses.
      *
+     * A `null` arm is no unpaginated one: a collection given null throws, and a `?->` adds its `| null` itself.
+     *
      * @return PayloadPaginators
      */
     private function paginatorsOf(string $type): array
     {
         $paginators = [];
 
-        foreach (TsTypeString::splitTopLevelUnion($type) as $arm) {
+        foreach (TsTypeString::splitTopLevelUnion(ValueResult::stripNullArm($type)) as $arm) {
             $paginator = $this->paginatorName($arm);
             $paginators[$paginator ?? ''] = $paginator;
         }

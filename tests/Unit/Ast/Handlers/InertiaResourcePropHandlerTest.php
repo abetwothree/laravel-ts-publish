@@ -16,6 +16,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -349,4 +350,19 @@ it('parenthesises a body that holds its wrap key on some paths beside each pagin
         ->toBe('(SometimesDataKeyPostCollection | { data: SometimesDataKeyPostCollection }) & ResourcePagination')
         ->and(inertiaResourcePropResult($either)['type'] ?? null)
         ->toBe('(SometimesDataKeyPostCollection | { data: SometimesDataKeyPostCollection }) & (ResourceSimplePagination | ResourcePagination)');
+});
+
+// A collection given null throws, so a null arm sends no unpaginated response; a `?->` adds its own `| null`.
+it('reads a nullable paginator payload\'s kinds without its null arm', function () {
+    $null = new ConstFetch(new Name('null'));
+    $nullable = new Ternary(new Variable('flag'), paginatorArg()->value, $null);
+
+    expect(inertiaResourcePropResult(new New_(new Name(PostCollection::class), [new Arg($nullable)]))['type'] ?? null)
+        ->toBe('PostCollection & ResourcePagination')
+        ->and(inertiaResourcePropResult(new StaticCall(new Name(PostResource::class), 'collection', [new Arg($nullable)]))['type'] ?? null)
+        ->toBe('JsonResourcePaginator<PostResource>')
+        ->and(inertiaResourcePropResult(new MethodCall($nullable, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('PostCollection & ResourcePagination')
+        ->and(inertiaResourcePropResult(new New_(new Name(PostCollection::class), [new Arg($null)]))['type'] ?? null)
+        ->toBe('PostCollection');
 });
