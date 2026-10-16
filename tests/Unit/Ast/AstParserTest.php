@@ -106,20 +106,35 @@ it('walks a cached file for its methods once, and again from the AST that replac
         $parser = new AstParser;
         [$stmts, $methods] = $parser->parseFileMethods($subject);
         [$cached, $again] = $parser->parseFileMethods($subject);
+        $seeded = new class extends AstParser
+        {
+            /** Plants an index entry so a lookup that rebuilds instead of reusing shows. */
+            public function plant(string $path, array $stmts): void
+            {
+                $this->fileMethods[$path] = [$stmts, ['planted' => []]];
+            }
+        };
+        $seeded->plant($subject, $seeded->parseFile($subject));
 
         foreach ($fillers as $path) {
             $parser->parseFile($path);
         }
+
+        // An index kept from an evicted AST must not be served beside the AST that replaced it.
+        $stale = clone $seeded;
+        $stale->plant($subject, [new Node\Stmt\Nop]);
 
         [$reparsed, $fresh] = $parser->parseFileMethods($subject);
 
         expect($names($methods['read']))->toBe(['read', 'Read', 'read'])
             ->and(array_keys($methods))->toBe(['read', 'other'])
             ->and($cached)->toBe($stmts)
+            ->and(array_keys($seeded->parseFileMethods($subject)[1]))->toBe(['planted'])
             ->and($again['read'][0])->toBe($methods['read'][0])
             ->and($reparsed)->not->toBe($stmts)
             ->and($owns($reparsed, $fresh['read'][0]))->toBeTrue()
-            ->and($owns($reparsed, $methods['read'][0]))->toBeFalse();
+            ->and($owns($reparsed, $methods['read'][0]))->toBeFalse()
+            ->and(array_keys($stale->parseFileMethods($subject)[1]))->toBe(['read', 'other']);
     } finally {
         array_map(unlink(...), [$subject, ...$fillers]);
         rmdir($dir);

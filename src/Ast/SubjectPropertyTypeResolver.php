@@ -55,6 +55,12 @@ final class SubjectPropertyTypeResolver
      */
     private const array FRAMEWORK_BASES = [JsonResource::class, ResourceCollection::class, Model::class];
 
+    /** The node kinds writesTo() counts; a kind added to its match is added here too, or its writes are never seen. */
+    private const array WRITE_SITE_KINDS = [
+        Assign::class, AssignOp::class, AssignRef::class, PreInc::class, PreDec::class, PostInc::class, PostDec::class,
+        Foreach_::class, Unset_::class, CallLike::class,
+    ];
+
     /** @var array<string, string> each framework file spellsName() read, by path; vendor code holds still in a run */
     private static array $frameworkSources = [];
 
@@ -138,10 +144,7 @@ final class SubjectPropertyTypeResolver
         if (! isset(self::$writeSites[$class])) {
             self::$writeSites[$class] = array_values(new NodeFinder()->find(
                 $class->stmts,
-                fn (Node $node): bool => $node instanceof Assign || $node instanceof AssignOp
-                    || $node instanceof AssignRef || $node instanceof PreInc || $node instanceof PreDec
-                    || $node instanceof PostInc || $node instanceof PostDec || $node instanceof Foreach_
-                    || $node instanceof Unset_ || $node instanceof CallLike,
+                fn (Node $node): bool => array_any(self::WRITE_SITE_KINDS, fn (string $kind): bool => $node instanceof $kind),
             ));
         }
 

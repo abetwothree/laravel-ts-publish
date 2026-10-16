@@ -29,7 +29,7 @@ class AstParser
     /** @var array<string, array<Node>> */
     protected array $fileAsts = [];
 
-    /** @var array<string, MethodsByName> each cached file's methods by lowercased name, evicted with its AST */
+    /** @var array<string, array{array<Node>, MethodsByName}> each file's AST with its methods by lowercased name */
     protected array $fileMethods = [];
 
     /** Built once and reused: a run parses hundreds of files, and a fresh parser for each one adds up. */
@@ -71,8 +71,7 @@ class AstParser
     }
 
     /**
-     * A file's AST, as parseFile() returns it, with the methods it declares by lowercased name, in the order a walk
-     * meets them. A file is walked for its methods once while it stays cached, however many of them are looked up.
+     * A file's AST with the methods it declares by lowercased name, walked once while the AST stays cached.
      *
      * @return array{array<Node>, MethodsByName}
      */
@@ -80,17 +79,17 @@ class AstParser
     {
         $stmts = $this->parseFile($path);
 
-        if (! isset($this->fileMethods[$path])) {
+        if (! isset($this->fileMethods[$path]) || $this->fileMethods[$path][0] !== $stmts) {
             $methods = [];
 
             foreach (new NodeFinder()->findInstanceOf($stmts, ClassMethod::class) as $method) {
                 $methods[$method->name->toLowerString()][] = $method;
             }
 
-            $this->fileMethods[$path] = $methods;
+            $this->fileMethods[$path] = [$stmts, $methods];
         }
 
-        return [$stmts, $this->fileMethods[$path]];
+        return $this->fileMethods[$path];
     }
 
     /**

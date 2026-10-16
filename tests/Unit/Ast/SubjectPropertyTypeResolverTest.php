@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReassignedDefaultsSubje
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SortedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnloadableDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedDefaultsSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\WriteKindsSubject;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
@@ -149,6 +150,26 @@ describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
         expect($resolver->holdsDefault($subject, 'additional'))->toBeFalse()
             ->and($resolver->holdsDefault($subject, 'with'))->toBeTrue();
     });
+
+    // The write-site filter and the check on each site share one list of node kinds, so each kind must count.
+    test('each kind of node that writes a property stops a read holding its default', function (string $property, bool $holds) {
+        expect(resolve(SubjectPropertyTypeResolver::class)->holdsDefault(new ReflectionClass(WriteKindsSubject::class), $property))
+            ->toBe($holds);
+    })->with([
+        'no write' => ['untouched', true],
+        'Assign' => ['assigned', false],
+        'AssignOp' => ['compound', false],
+        'AssignRef' => ['referenced', false],
+        'PreInc' => ['preIncremented', false],
+        'PreDec' => ['preDecremented', false],
+        'PostInc' => ['postIncremented', false],
+        'PostDec' => ['postDecremented', false],
+        'Foreach_ key' => ['foreachKey', false],
+        'Foreach_ value' => ['foreachValue', false],
+        'Foreach_ by reference' => ['foreachReference', false],
+        'Unset_' => ['unsetOne', false],
+        'CallLike' => ['pushed', false],
+    ]);
 
     // A body's write sites are collected once and reused for every later name, so the order the names are asked in
     // must not change an answer.
