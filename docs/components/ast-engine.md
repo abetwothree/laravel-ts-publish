@@ -404,8 +404,9 @@ such a read records before its lookup, or replays what it recorded, as `resolveA
 `LaravelTsPublish::resolvePhpstanTypeAlias()`, which reads each class an alias import names, do. Recording never
 deduplicates, because a memo frame keeps the paths recorded after its mark.
 
-`MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
-is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
+`MethodLocator` records nothing itself: it hands a method's file to `parseFileMethods()`, which reads it through
+`parseFile()` and walks it for its methods once while it stays cached. `locate()` finds a method wherever it is
+declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
 method inherited from another file is a deliberate miss, the signal callers use to detect delegation, while a parent
 declared in the same file is a hit. Both memoize misses. `locateDeclared()` searches the class's own file, then a trait
 the class itself uses, composed of those two memoized lookups.
