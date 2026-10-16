@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Str;
@@ -29,6 +30,7 @@ use ReflectionMethod;
  * builds, from the model its receiver holds.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
  *
  * @phpstan-type GuessedCollection = array{collection: class-string<ResourceCollection>, resource: null}|array{collection: null, resource: class-string}
  *
@@ -54,7 +56,7 @@ trait GuessesModelResources
     /**
      * Resolve a `$this->{name}` property as a relation on the scope's backing model.
      *
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     abstract protected function resolveModelRelationTypeInfo(string $name, AnalysisScope $scope): array;
 

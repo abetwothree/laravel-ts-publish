@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 
 /**
@@ -16,6 +15,8 @@ use Illuminate\Support\Facades\Config;
  * before this trait. Any other trait the consuming class uses must not declare these names — PHP
  * collides on method name alone and PHPStan compiles the resulting fatal cleanly.
  *
+ * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
+ *
  * @internal
  */
 trait ResolvesModelRelationTypes
@@ -24,7 +25,7 @@ trait ResolvesModelRelationTypes
      * Resolve a `$this->{name}` property as a model relation, in ModelAttributeResolver::resolveRelation()'s
      * {type, modelFqcn, morphFqcns} shape — a to-many relation's type ends in '[]'.
      *
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     protected function resolveModelRelationTypeInfo(string $name, AnalysisScope $scope): array
     {
