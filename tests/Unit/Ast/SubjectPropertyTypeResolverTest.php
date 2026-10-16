@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedDefaultsSubject;
@@ -12,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReassignedDefaultsSubje
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SortedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnloadableDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedDefaultsSubject;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\PostStatsResource;
@@ -146,5 +148,25 @@ describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
 
         expect($resolver->holdsDefault($subject, 'additional'))->toBeFalse()
             ->and($resolver->holdsDefault($subject, 'with'))->toBeTrue();
+    });
+
+    // The source is read once a run, so a later read must still record the file, or a cached publish misses an update.
+    test('a framework file whose source a read skips is recorded as a dependency on every read', function () {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+        $file = (string) new ReflectionClass(JsonResource::class)->getFileName();
+
+        DependencyRecorder::start();
+
+        try {
+            $resolver->holdsDefault($subject, 'untypedChannels');
+            $mark = DependencyRecorder::mark();
+            $resolver->holdsDefault($subject, 'untypedChannels');
+            $recorded = DependencyRecorder::since($mark);
+        } finally {
+            DependencyRecorder::stop();
+        }
+
+        expect($recorded)->toContain($file);
     });
 });

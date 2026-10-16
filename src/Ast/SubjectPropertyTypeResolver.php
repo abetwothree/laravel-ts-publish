@@ -54,6 +54,9 @@ final class SubjectPropertyTypeResolver
      */
     private const array FRAMEWORK_BASES = [JsonResource::class, ResourceCollection::class, Model::class];
 
+    /** @var array<string, string> each framework file spellsName() read, by path; vendor code holds still in a run */
+    private static array $frameworkSources = [];
+
     /**
      * Resolve a declared property's TypeScript type and FQCN channels, or null when no source
      * yields a type whose tokens can be imported.
@@ -195,13 +198,14 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * Whether a file's source spells a name, recorded as a dependency as AstParser::parseFile() records a file it reads.
+     * Whether a framework file's source spells a name; the file is recorded as a dependency on every read, as
+     * AstParser::parseFile() records one it serves from its cache.
      */
     private function spellsName(string $file, string $name): bool
     {
         DependencyRecorder::record($file);
 
-        return str_contains((string) file_get_contents($file), $name);
+        return str_contains(self::$frameworkSources[$file] ??= (string) file_get_contents($file), $name);
     }
 
     /**
