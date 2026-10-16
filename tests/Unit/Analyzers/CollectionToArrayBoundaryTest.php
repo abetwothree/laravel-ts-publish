@@ -220,11 +220,13 @@ describe('a stacked collection collects by its own class, as Laravel does', func
     ]);
 
     test('a $wrap = null leaf naming no resource lists the raw models, and over a paginator is their paginator', function () {
-        $pageType = new InertiaPageAnalyzer()->analyze(['uses' => InertiaStackedCollectionController::class.'@flatPaginated'])['pageType'] ?? null;
+        $page = new InertiaPageAnalyzer()->analyze(['uses' => InertiaStackedCollectionController::class.'@flatPaginated']);
 
         expect(publishedCollectionBody(F38FlatNamedLeafCollection::class))->toBe('export type F38FlatNamedLeafCollection = Supplier[];')
             ->and(publishedImportLines(F38FlatNamedLeafCollection::class))->toBe(["import type { Supplier } from '../../../../../../workbench/app/models';"])
-            ->and($pageType)->toBe('Inertia.SharedData & { suppliers: JsonResourcePaginator<Supplier> }');
+            ->and($page['pageType'] ?? null)->toBe('Inertia.SharedData & { suppliers: JsonResourcePaginator<Supplier> }')
+            ->and($page['classFqcns'] ?? null)->toBe([Supplier::class])
+            ->and($page['externalImports'] ?? null)->toBe(['@tolki/types' => ['JsonResourcePaginator']]);
     });
 
     // Laravel throws for the leaf's own pick, so the parent's element would type a response that never comes.

@@ -461,13 +461,17 @@ test('JsonResource::withoutWrapping() between two runs rebuilds the page whose p
 
     try {
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
-            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: PostCollection & ResourcePagination };');
+            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: PostCollection & ResourcePagination };')
+            ->and($page())->toContain("import type { AnonymousResourceCollection, JsonResourcePaginator, ResourcePagination } from '@tolki/types';");
 
         // The page's own recorded files are unchanged, so only the header can rebuild it.
         JsonResource::withoutWrapping();
 
+        // The imports follow the props, so the names no prop spells any more leave the rebuilt page.
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
-            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> };');
+            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> };')
+            ->and($page())->toContain("import type { JsonResourcePaginator } from '@tolki/types';")
+            ->and($page())->toContain("import type { PostCollection, PostFlatCollection, PostResource } from '../resources';");
     } finally {
         JsonResource::flushState();
     }
