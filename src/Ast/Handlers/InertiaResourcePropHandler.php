@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -47,7 +46,6 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use GuessesModelResources;
     use InspectsAstNodes;
     use InspectsResourceCalls;
-    use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
 
@@ -88,7 +86,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return $this->namedCollection($expr, $className, $engine);
         }
 
-        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine) : null;
+        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className) : null;
     }
 
     /**
@@ -118,7 +116,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             return $this->namedCollection($expr, $className, $engine);
         }
 
-        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className, $scope, $engine) : null;
+        return $this->sendsResourceObject($className) ? $this->singleResource($expr, $className) : null;
     }
 
     /**
@@ -264,26 +262,17 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
-     * One resource object, as `new X()` or `X::make()` builds it: its response, `| null` where the payload makes it so.
+     * One resource object, as `new X()` or `X::make()` builds it: its response, an object even over a null payload.
      *
      * @param  class-string<JsonResource>  $className
      * @return ValueExpressionResult
      */
-    private function singleResource(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): array
+    private function singleResource(StaticCall|New_ $call, string $className): array
     {
-        $value = $this->resourceWrapType($call, $className, TsNaming::resourceTypeName($className), $scope, $engine);
-        $optional = $this->payloadIsConditional($call, $className);
-
-        if ($value === 'null') {
-            return [...ValueResult::unknown(), 'type' => 'null', 'optional' => $optional];
-        }
-
-        $response = $this->instanceResponse($className);
-
         return [
             ...ValueResult::unknown(),
-            'type' => ValueResult::hasNullArm($value) ? ValueResult::withNullArm($response) : $response,
-            'optional' => $optional,
+            'type' => $this->instanceResponse($className),
+            'optional' => $this->payloadIsConditional($call, $className),
             'resourceFqcn' => $className,
         ];
     }

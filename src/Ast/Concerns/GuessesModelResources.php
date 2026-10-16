@@ -26,8 +26,7 @@ use ReflectionMethod;
 
 /**
  * Laravel's guess of the API resource a model's `toResource()` builds, and of the collection a `toResourceCollection()`
- * builds, from the model its receiver holds. Requires the host to also use `InspectsAstNodes` and
- * `ResolvesModelRelationTypes`.
+ * builds, from the model its receiver holds.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -46,6 +45,18 @@ trait GuessesModelResources
      * Whether a class is an API resource this run will also emit a file for.
      */
     abstract protected function isPublishedResourceClass(string $fqcn): bool;
+
+    /**
+     * Whether an expression is a `$this->prop` property fetch, whichever property it names.
+     */
+    abstract protected function isThisPropertyFetch(Expr $expr): bool;
+
+    /**
+     * Resolve a `$this->{name}` property as a relation on the scope's backing model.
+     *
+     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     */
+    abstract protected function resolveModelRelationTypeInfo(string $name, AnalysisScope $scope): array;
 
     /**
      * Analyze `$model->toResource()` / `$model->toResource(SomeResource::class)`. An explicit
