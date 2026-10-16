@@ -140,15 +140,25 @@ final class ResourceCollectionBody
         // The nesting class's type follows this body, and a memoized method lookup records nothing on a later build.
         DependencyRecorder::recordClass($collection);
 
-        $reflection = new ReflectionClass($collection);
-
-        if (PublishedClasses::exports($collection) && ! $this->sendsCollectedList($reflection)) {
+        if ($this->nestsOwnType($collection)) {
             return [...ValueResult::unknown(), 'type' => TsNaming::resourceTypeName($collection), 'resourceFqcn' => $collection];
         }
 
+        $reflection = new ReflectionClass($collection);
         $element = ResourceCollections::collectedElement($reflection);
 
         return $element === null ? null : ResourceCollections::listValue($element, ResourceCollections::preservesKeys($reflection));
+    }
+
+    /**
+     * Whether a collection Laravel builds in a resource key publishes its own type there, as nestedValue() reads it:
+     * the run publishes it and its toArray() sends other keys than the collected list.
+     *
+     * @param  class-string<ResourceCollection>  $collection
+     */
+    public function nestsOwnType(string $collection): bool
+    {
+        return PublishedClasses::exports($collection) && ! $this->sendsCollectedList(new ReflectionClass($collection));
     }
 
     /**

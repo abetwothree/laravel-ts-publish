@@ -11,8 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\EmptyReceiverGuess;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
@@ -69,7 +69,7 @@ final class ToResourceHandler implements ExpressionHandler
     /**
      * Analyze `$collection->toResourceCollection()` / `->toResourceCollection(SomeResource::class)`.
      * An explicit argument wins outright; otherwise the receiver's model, else the element model the receiver resolver
-     * reads, resolves via resolveResourceCollectionForModel().
+     * reads, resolves via resolveResourceCollectionForModel(), beside what EmptyReceiverGuess nests for no items.
      *
      * @return ValueExpressionResult
      */
@@ -104,7 +104,7 @@ final class ToResourceHandler implements ExpressionHandler
         }
 
         if ($resolved['collection'] !== null) {
-            $nested = resolve(ResourceCollectionBody::class)->nestedValue($resolved['collection']);
+            $nested = resolve(EmptyReceiverGuess::class)->nestedValue($resolved['collection']);
 
             return $nested === null ? $result : [...$nested, 'optional' => false];
         }

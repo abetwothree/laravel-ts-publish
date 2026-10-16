@@ -46,6 +46,16 @@ class ControllerWithResourceSpellings
         ]);
     }
 
+    public function guessed(): Response
+    {
+        return Inertia::render('Parity/Guessed', [
+            'users' => User::all()->toResourceCollection(),
+            'paged_users' => User::query()->paginate(10)->toResourceCollection(),
+            'posts' => Post::all()->toResourceCollection(),
+            'paged_posts' => Post::query()->simplePaginate(10)->toResourceCollection(),
+        ]);
+    }
+
     public function jsonApi(): Response
     {
         return Inertia::render('Parity/JsonApi', [

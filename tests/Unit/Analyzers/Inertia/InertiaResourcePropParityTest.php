@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithResourceSpellings;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithGuessedCollections;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithJsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceSpellings;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -64,6 +65,19 @@ test('a resource inside a lazy Inertia wrapper publishes as the bare prop, optio
     expect($page['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
         ->and($page['enumConstFqcns'] ?? null)->toBe([Status::class, Role::class])
         ->and($page['externalImports'] ?? null)->toBe(['@tolki/types' => ['AnonymousResourceCollection']]);
+});
+
+// Over an empty receiver Laravel's guess sends a plain ResourceCollection, which UserCollection's keys do not admit.
+test('a guessed collection publishes the empty receiver\'s response beside its own as a page prop and as shared data', function () {
+    $page = parityPageData('guessed');
+    $props = '{ users: UserCollection | { data: never[] }, '
+        .'paged_users: (UserCollection & ResourcePagination) | JsonResourcePaginator<never>, '
+        .'posts: PostCollection, paged_posts: PostCollection & ResourceSimplePagination }';
+
+    expect(parityShareType(MiddlewareWithGuessedCollections::class))->toBe($props)
+        ->and($page['pageType'] ?? null)->toBe('Inertia.SharedData & '.$props)
+        ->and($page['externalImports'] ?? null)
+        ->toBe(['@tolki/types' => ['ResourcePagination', 'JsonResourcePaginator', 'ResourceSimplePagination']]);
 });
 
 test('a JSON:API resource publishes the same document as a page prop and as shared data', function () {

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\EmptyReceiverGuess;
 use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
@@ -48,7 +49,6 @@ use ReflectionClass;
  * key, and for a collection the pagination members of each paginator kind its payload may hold.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type CollectedElement from ResourceCollections
  * @phpstan-import-type GuessedCollection from GuessesModelResources
  *
  * @phpstan-type PayloadPaginators = non-empty-list<string|null>
@@ -206,7 +206,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     /**
      * `$items->toResourceCollection()`, the collection Laravel guesses from the items' model, or
      * `->toResourceCollection(SomeResource::class)`, that resource's anonymous collection; each over the paginator the
-     * receiver may be.
+     * receiver may be. A guessed named collection also takes what an empty receiver sends, unless its own admits it.
      *
      * @return ValueExpressionResult|null null for a receiver whose model, or a class, it cannot read
      */
@@ -233,7 +233,11 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         if ($guessed['collection'] !== null) {
-            return $this->namedCollectionType($guessed['collection'], $paginators);
+            $named = $this->namedCollectionType($guessed['collection'], $paginators);
+
+            return $named === null || resolve(EmptyReceiverGuess::class)->responseAdmitsEmpty($guessed['collection'])
+                ? $named
+                : $this->besideEmptyReceiver($named, $paginators);
         }
 
         return $this->collectsAnonymously($guessed['resource']) ? $this->anonymousCollectionType($guessed['resource'], $paginators) : null;
@@ -353,7 +357,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
                 return null;
             }
 
-            $paginated = $this->paginatedResourceType($element, $reflection, null, $kinds);
+            $paginated = $this->paginatedResourceType(ResourceCollections::elementValue($element), $reflection, null, $kinds);
 
             return $unpaginated === [] ? $paginated : [
                 ...$paginated,
@@ -405,7 +409,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         }
 
         if ($kinds !== []) {
-            $paginated = $this->paginatedResourceType(['fqcn' => $className, 'model' => false], $reflection, $wrapKey, $kinds);
+            $item = ResourceCollections::elementValue(['fqcn' => $className, 'model' => false]);
+            $paginated = $this->paginatedResourceType($item, $reflection, $wrapKey, $kinds);
             $types[] = $paginated['type'];
             $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
         }
@@ -419,17 +424,45 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     }
 
     /**
+     * A guessed collection's response beside the one an empty receiver sends instead: the plain collection's, its empty
+     * list inside that collection's live wrap key, or each paginator kind's response over no items.
+     *
+     * @param  ValueExpressionResult  $named
+     * @param  PayloadPaginators  $paginators
+     * @return ValueExpressionResult
+     */
+    private function besideEmptyReceiver(array $named, array $paginators): array
+    {
+        $collection = EmptyReceiverGuess::COLLECTION;
+        $kinds = $this->paginatorKinds($paginators);
+        $types = in_array(null, $paginators, true) ? [$this->response($collection, EmptyReceiverGuess::listType())] : [];
+        $imports = $named['customImports'][TolkiTypes::MODULE] ?? [];
+
+        if ($kinds !== []) {
+            $item = [...ValueResult::unknown(), 'type' => EmptyReceiverGuess::ELEMENT];
+            $paginated = $this->paginatedResourceType($item, self::reflect($collection), ResourceWrapping::key($collection), $kinds);
+            $types[] = $paginated['type'];
+            $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
+        }
+
+        return [
+            ...$named,
+            'type' => $this->union([$named['type'], ...$types]),
+            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => array_values(array_unique($imports))]]),
+        ];
+    }
+
+    /**
      * The paginator response of an anonymous or flat collection over each kind it may wrap: its items under the
      * response's wrap key, `data` without one, keyed when the reflected class preserves keys.
      *
-     * @param  CollectedElement  $element
+     * @param  ValueExpressionResult  $item  what one collected item publishes as
      * @param  ReflectionClass<object>  $reflection  the class whose preserve-keys state applies
      * @param  non-empty-list<string>  $kinds
      * @return ValueExpressionResult
      */
-    private function paginatedResourceType(array $element, ReflectionClass $reflection, ?string $wrapKey, array $kinds): array
+    private function paginatedResourceType(array $item, ReflectionClass $reflection, ?string $wrapKey, array $kinds): array
     {
-        $item = ResourceCollections::elementValue($element);
         $list = ResourceCollections::listType($item['type'], $reflection);
         $key = $this->paginatedKey($wrapKey);
 

@@ -568,7 +568,10 @@ call shape would notice.
 A `ResourceCollection` subclass nested by `new`, `make()` or a guessed `toResourceCollection()` is
 `ResourceCollectionBody::nestedValue()`. While the run publishes it and its `toArray()` does not send the collected
 list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
-its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file.
+its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file. Over an empty receiver
+the guess builds a plain `ResourceCollection` first, so [`EmptyReceiverGuess`](../../src/Ast/EmptyReceiverGuess.php)
+adds `never[]` beside a guessed collection's own type, and in a prop or shared value that plain collection's response,
+unless the guessed one's response is the plain list under the same wrap key.
 
 `InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
 lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that

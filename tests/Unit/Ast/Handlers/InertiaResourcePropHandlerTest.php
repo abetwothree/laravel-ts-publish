@@ -43,9 +43,12 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
 use Workbench\App\Http\Resources\PreserveKeysTeamResource;
 use Workbench\App\Http\Resources\TeamResource;
+use Workbench\App\Http\Resources\UserCollection;
+use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
+use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
 
 /** An expression holding `Post::query()->paginate()`, which ModelFinderHandler types as a paginator. */
@@ -348,6 +351,67 @@ it('types toResourceCollection() as the response of the collection Laravel guess
         ->and(inertiaResourcePropResult($explicit)['type'] ?? null)->toBe('JsonResourceCursorPaginator<PostResource>')
         ->and(inertiaResourcePropResult($nullsafe)['type'] ?? null)->toBe('PostCollection | null')
         ->and(inertiaResourcePropResult($unread))->toBeNull();
+});
+
+/** `User::query()->{$terminal}(10)`, a paginator of users, whose guess is UserCollection. */
+function userPaginatorExpr(string $terminal): Expr
+{
+    return new MethodCall(new StaticCall(new Name(User::class), 'query'), $terminal, [new Arg(new Int_(10))]);
+}
+
+// Over an empty receiver Laravel's guess sends a plain ResourceCollection's response, which other keys do not admit.
+it('adds the empty receiver\'s response beside a guessed collection\'s own, over a list and each paginator kind', function () {
+    $users = new StaticCall(new Name(User::class), 'all');
+    $sometimes = new Ternary(new Variable('flag'), $users, userPaginatorExpr('simplePaginate'));
+
+    expect(inertiaResourcePropResult(new MethodCall($users, 'toResourceCollection')))->toBe([
+        'type' => 'UserCollection | { data: never[] }',
+        'optional' => false,
+        'resourceFqcn' => UserCollection::class,
+    ])
+        ->and(inertiaResourcePropResult(new MethodCall(userPaginatorExpr('paginate'), 'toResourceCollection')))->toBe([
+            'type' => '(UserCollection & ResourcePagination) | JsonResourcePaginator<never>',
+            'optional' => false,
+            'resourceFqcn' => UserCollection::class,
+            'customImports' => ['@tolki/types' => ['ResourcePagination', 'JsonResourcePaginator']],
+        ])
+        ->and(inertiaResourcePropResult(new MethodCall($sometimes, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('UserCollection | (UserCollection & ResourceSimplePagination) | { data: never[] } | JsonResourceSimplePaginator<never>')
+        ->and(inertiaResourcePropResult(new NullsafeMethodCall($users, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('UserCollection | { data: never[] } | null');
+});
+
+it('spells the empty receiver\'s response by the plain collection\'s live wrap key', function (?string $wrap, string $listed, string $paged) {
+    $wrap === null ? JsonResource::withoutWrapping() : JsonResource::wrap($wrap);
+
+    expect(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(User::class), 'all'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe($listed)
+        ->and(inertiaResourcePropResult(new MethodCall(userPaginatorExpr('cursorPaginate'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe($paged);
+})->with([
+    'a key of its own' => [
+        'items',
+        '{ items: UserCollection } | { items: never[] }',
+        '({ items: UserCollection } & ResourceCursorPagination) | ({ items: never[] } & ResourceCursorPagination)',
+    ],
+    'no key' => [
+        null,
+        'UserCollection | never[]',
+        '({ data: UserCollection } & ResourceCursorPagination) | JsonResourceCursorPaginator<never>',
+    ],
+]);
+
+// A body-less collection's response is the plain list under the same key, so it already admits the empty receiver's.
+it('adds no empty receiver\'s response where the guessed collection\'s own admits it, or where no collection is guessed', function () {
+    $posts = new StaticCall(new Name(Post::class), 'all');
+    $explicit = new MethodCall(new StaticCall(new Name(User::class), 'all'), 'toResourceCollection', [
+        new Arg(new ClassConstFetch(new Name(UserResource::class), 'class')),
+    ]);
+
+    expect(inertiaResourcePropResult(new MethodCall($posts, 'toResourceCollection'))['type'] ?? null)->toBe('PostCollection')
+        ->and(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(Warehouse::class), 'all'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe('AnonymousResourceCollection<WarehouseResource>')
+        ->and(inertiaResourcePropResult($explicit)['type'] ?? null)->toBe('AnonymousResourceCollection<UserResource>');
 });
 
 // Wrap report: the anonymous collection keeps R's keys whether or not a paginator is beside them.

@@ -15351,7 +15351,7 @@
                 },
                 {
                     "name": "staff_via_closure",
-                    "type": "UserCollection",
+                    "type": "UserCollection | never[]",
                     "optional": true
                 },
                 {
@@ -15381,12 +15381,12 @@
                 },
                 {
                     "name": "registrars",
-                    "type": "RegistrarGroupCollection",
+                    "type": "RegistrarGroupCollection | never[]",
                     "optional": true
                 },
                 {
                     "name": "suppliers",
-                    "type": "SupplierCollection",
+                    "type": "SupplierCollection | never[]",
                     "optional": true
                 },
                 {

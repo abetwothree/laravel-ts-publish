@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38NamedLeafColle
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38PropKeyedLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38SpreadLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\F38ValueLeafCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuessedCollectionKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyLeafCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InheritedBodyParentCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyedSortedTagsResource;
@@ -80,6 +81,7 @@ use Illuminate\Database\Eloquent\Model;
 use Workbench\App\Http\Resources\SupplierCollection;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Supplier;
+use Workbench\App\Models\Warehouse;
 
 /** The whole file a class publishes. */
 function publishedResourceFile(string $class): string
@@ -308,13 +310,32 @@ test('a resource key holding a collection sends its own toArray() keys unless th
     ]));
 });
 
-// Laravel builds a guessed collection; `#[UseResource]` runs `::collection()`, a list of the class it names.
+// Laravel builds a guessed collection; `#[UseResource]` runs `::collection()`, a list of the class it names. Over an
+// empty receiver it builds a plain ResourceCollection first, nested as `[]`, which only a list already admits.
 test('an argument-less toResourceCollection() publishes the collection Laravel guesses', function (string $model, string $type) {
     expect(guessedResourceCollectionType($model))->toBe($type);
 })->with([
-    'its own body, naming no resource' => [Ratchet::class, 'RatchetCollection'],
+    'its own body, naming no resource' => [Ratchet::class, 'RatchetCollection | never[]'],
     'body-less, naming no resource over an ancestor pick' => [Sprocket::class, 'Supplier[]'],
+    'body-less, collecting a resource' => [Post::class, 'PostResource[]'],
+    'an anonymous collection of the guessed resource' => [Warehouse::class, 'WarehouseResource[]'],
 ]);
+
+test('an argument-less toResourceCollection() adds never[] beside a guessed collection\'s own type in each nested position', function () {
+    expect(publishedCollectionBody(GuessedCollectionKeysResource::class))->toBe(implode("\n", [
+        'export interface GuessedCollectionKeysResource',
+        '    direct: UserCollection | never[];',
+        '    loaded?: UserCollection | never[];',
+        '    loaded_or_empty: SupplierCollection | never[];',
+        '    nullsafe: OrderCollection | never[] | null;',
+        '    conditional?: SupplierCollection | never[];',
+        '    ternary: UserCollection | never[] | null;',
+        '    explicit: UserResource[];',
+        '    anonymous: TeamResource[];',
+        '    collected_list: PostResource[];',
+    ]))
+        ->and(publishedImportLines(GuessedCollectionKeysResource::class))->each->not->toContain('never');
+});
 
 test('an argument-less toResourceCollection() lists the resource collection #[UseResource] names', function () {
     expect(guessedResourceCollectionType(Cog::class))->toBe('InheritedBodyParentCollection[]');

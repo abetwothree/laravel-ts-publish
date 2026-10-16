@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\EmptyReceiverGuess;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
@@ -39,6 +40,7 @@ use Workbench\App\Http\Resources\MutualSpreadAResource;
 use Workbench\App\Http\Resources\MutualSpreadBResource;
 use Workbench\App\Http\Resources\SupplierSummaryResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
+use Workbench\App\Http\Resources\UserCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Supplier;
@@ -287,6 +289,32 @@ test('whether a resource body holds a wrap key is read once a run, and records t
 
     expect($reads->getArrayCopy())->toBe([DataKeyPostResource::class])
         ->and($first)->toContain((string) new ReflectionClass(DataKeyPostResource::class)->getFileName())
+        ->and($reused)->toEqualCanonicalizing($first);
+});
+
+// A guessed collection's response follows its body, so a reused admission still records the collection's file.
+test('whether a guessed collection\'s response admits the empty receiver\'s is read once a run, and records the collection on each read', function () use ($countLookups) {
+    $lookups = $countLookups();
+    $guess = resolve(EmptyReceiverGuess::class);
+    $recorded = function () use ($guess): array {
+        DependencyRecorder::start();
+
+        try {
+            expect($guess->responseAdmitsEmpty(UserCollection::class))->toBeFalse();
+
+            return DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+    };
+
+    $first = $recorded();
+    $lookupsAfterFirst = $lookups->getArrayCopy();
+    $reused = $recorded();
+
+    expect($lookupsAfterFirst)->toHaveKey('any:'.UserCollection::class.'::toArray')
+        ->and($lookups->getArrayCopy())->toBe($lookupsAfterFirst)
+        ->and($first)->toContain((string) new ReflectionClass(UserCollection::class)->getFileName())
         ->and($reused)->toEqualCanonicalizing($first);
 });
 

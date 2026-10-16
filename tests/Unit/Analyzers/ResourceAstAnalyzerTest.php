@@ -6098,8 +6098,9 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResourceCollection() resolves the element model by convention', function () {
-        // UserCollection declares a toArray() of its own, whose keys Laravel sends for the guessed collection.
-        expect($this->props['staff_via_closure']['type'])->toBe('UserCollection')
+        // UserCollection declares a toArray() of its own, whose keys Laravel sends for the guessed collection; over no
+        // rows the guess builds a plain ResourceCollection instead, nested as `[]`.
+        expect($this->props['staff_via_closure']['type'])->toBe('UserCollection | never[]')
             ->and($this->props['staff_via_closure']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('staff_via_closure', UserCollection::class);
     });
@@ -6158,7 +6159,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // element than SupplierCollection does, so the two possible orderings are distinguishable.
         expect(class_exists(SupplierResource::class))->toBeTrue();
 
-        expect($this->props['suppliers']['type'])->toBe('SupplierCollection')
+        expect($this->props['suppliers']['type'])->toBe('SupplierCollection | never[]')
             ->and($this->props['suppliers']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('suppliers', SupplierCollection::class);
     });
@@ -6168,7 +6169,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // #[UseResourceCollection] attribute fell through instead of stopping hard.
         expect(class_exists(RegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrars']['type'])->toBe('RegistrarGroupCollection')
+        expect($this->props['registrars']['type'])->toBe('RegistrarGroupCollection | never[]')
             ->and($this->nested)->toHaveKey('registrars', RegistrarGroupCollection::class);
     })->skip(
         ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResourceCollection'),
@@ -6202,7 +6203,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
 
         expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource | null')
             ->and($this->nested)->toHaveKey('unpublished_guess', AttachmentResource::class)
-            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentCollection')
+            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentCollection | never[]')
             ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentCollection::class);
     });
 
