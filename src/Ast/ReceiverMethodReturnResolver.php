@@ -183,7 +183,7 @@ final class ReceiverMethodReturnResolver
 
         $result = [...$list, 'type' => implode(' | ', $arms)];
 
-        return $paginators === [] ? $result : [...$result, 'customImports' => ['@tolki/types' => $paginators]];
+        return $paginators === [] ? $result : [...$result, 'customImports' => [TolkiTypes::MODULE => $paginators]];
     }
 
     /**

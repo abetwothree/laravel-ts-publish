@@ -9,6 +9,9 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
  */
 final class TolkiTypes
 {
+    /** The module specifier a published file imports every name below from. */
+    public const MODULE = '@tolki/types';
+
     /**
      * Maps PHP FQCNs to their TypeScript names in the `@tolki/types` package.
      *

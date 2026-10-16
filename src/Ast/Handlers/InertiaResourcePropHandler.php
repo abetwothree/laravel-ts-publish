@@ -185,7 +185,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $response = $this->instanceResult($resource);
             $responses[] = $response['type'];
             $included = [...$included, ...$response['embeddedResourceFqcns'] ?? []];
-            $imports = [...$imports, ...$response['customImports']['@tolki/types'] ?? []];
+            $imports = [...$imports, ...$response['customImports'][TolkiTypes::MODULE] ?? []];
         }
 
         if ($responses === []) {
@@ -196,7 +196,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             ...$value,
             'type' => implode(' | ', $responses),
             ...($included === [] ? [] : ['embeddedResourceFqcns' => [...$value['embeddedResourceFqcns'] ?? [], ...$included]]),
-            ...($imports === [] ? [] : ['customImports' => ['@tolki/types' => array_values(array_unique($imports))]]),
+            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => array_values(array_unique($imports))]]),
         ];
     }
 
@@ -365,7 +365,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             ...ValueResult::unknown(),
             'type' => $this->union([...$unpaginated, $this->beside($this->response($className, $name, $className, paginated: true), $blocks)]),
             'resourceFqcn' => $className,
-            'customImports' => ['@tolki/types' => $blocks],
+            'customImports' => [TolkiTypes::MODULE => $blocks],
         ];
     }
 
@@ -393,8 +393,9 @@ final class InertiaResourcePropHandler implements ExpressionHandler
 
         if (in_array(null, $paginators, true)) {
             if ($wrapKey === 'data' && ! ResourceCollections::preservesKeys($reflection)) {
-                $types[] = "AnonymousResourceCollection<{$name}>";
-                $imports[] = 'AnonymousResourceCollection';
+                $anonymous = TolkiTypes::MAP[AnonymousResourceCollection::class];
+                $types[] = "{$anonymous}<{$name}>";
+                $imports[] = $anonymous;
             } else {
                 $types[] = $this->response(AnonymousResourceCollection::class, ResourceCollections::listType($name, $reflection));
             }
@@ -403,14 +404,14 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         if ($kinds !== []) {
             $paginated = $this->paginatedResourceType(['fqcn' => $className, 'model' => false], $reflection, $wrapKey, $kinds);
             $types[] = $paginated['type'];
-            $imports = [...$imports, ...$paginated['customImports']['@tolki/types'] ?? []];
+            $imports = [...$imports, ...$paginated['customImports'][TolkiTypes::MODULE] ?? []];
         }
 
         return [
             ...ValueResult::unknown(),
             'type' => $this->union($types),
             'resourceFqcn' => $className,
-            ...($imports === [] ? [] : ['customImports' => ['@tolki/types' => $imports]]),
+            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => $imports]]),
         ];
     }
 
@@ -432,7 +433,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
         if ($key !== 'data') {
             $blocks = $this->paginationNames($kinds, 'blocks');
 
-            return [...$item, 'type' => $this->beside($this->nested($key, $list), $blocks), 'customImports' => ['@tolki/types' => $blocks]];
+            return [...$item, 'type' => $this->beside($this->nested($key, $list), $blocks), 'customImports' => [TolkiTypes::MODULE => $blocks]];
         }
 
         $responses = $this->paginationNames($kinds, 'response');
@@ -445,7 +446,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             $responses,
         );
 
-        return [...$item, 'type' => $this->union($types), 'customImports' => ['@tolki/types' => $responses]];
+        return [...$item, 'type' => $this->union($types), 'customImports' => [TolkiTypes::MODULE => $responses]];
     }
 
     /**
@@ -582,7 +583,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
             'type' => $type,
             'resourceFqcn' => $className,
             ...($spelled['resources'] === [] ? [] : ['embeddedResourceFqcns' => $spelled['resources']]),
-            ...($imports === [] ? [] : ['customImports' => ['@tolki/types' => $imports]]),
+            ...($imports === [] ? [] : ['customImports' => [TolkiTypes::MODULE => $imports]]),
         ];
     }
 

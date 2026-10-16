@@ -664,7 +664,7 @@ class RouteTransformer extends CoreTransformer
         foreach ($allFqcns as $fqcn) {
             // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
             if (isset(TolkiTypes::MAP[$fqcn])) {
-                $imports['@tolki/types'][] = TolkiTypes::MAP[$fqcn];
+                $imports[TolkiTypes::MODULE][] = TolkiTypes::MAP[$fqcn];
 
                 continue;
             }
