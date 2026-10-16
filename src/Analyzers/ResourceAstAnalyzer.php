@@ -242,14 +242,19 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Whether this analysis reads a plain resource's toArray() while Laravel sends its toAttributes() override instead,
-     * as resolve() does once JsonResource declares toAttributes(); a collection's items are not its attributes.
+     * Whether this analysis reads the response of a plain resource that runs as itself and overrides toAttributes(),
+     * which resolve() sends in toArray()'s place once JsonResource declares it; a collection's items are no attributes.
      */
     private function sendsOwnToAttributes(): bool
     {
+        $runtime = $this->runtimeClass();
+
         return $this->methodName === 'toArray'
+            && $this->context === null
+            && $runtime->getName() === $this->scope->subjectReflection->getName()
             && JsonApiResources::shipped()
-            && $this->replacesJsonResource($this->runtimeClass(), 'toAttributes')
+            && $runtime->isSubclassOf(JsonResource::class)
+            && ! JsonApiResources::declaredByFramework($runtime->getMethod('toAttributes')->getDeclaringClass()->getName())
             && ! $this->isResourceCollection($this->scope);
     }
 
@@ -298,6 +303,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return $this->buildJsonApiResourceObject();
         }
 
+        if ($this->sendsOwnToAttributes()) {
+            return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
+        }
+
         $context = $this->context ?? $this->locateSubjectMethod();
         $toArrayMethod = $context?->method;
 
@@ -310,10 +319,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
-            if ($this->sendsOwnToAttributes()) {
-                return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
-            }
-
             $inherited = $this->analyzeParentCall($this->methodName, $this->returnedWhole);
 
             // An empty result means no ancestor declared the method either, so keep delegating.
@@ -622,8 +627,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze the items of an array literal analyzeReturnArray() reads; with $readsAttributeNames a keyless string reads
-     * the model attribute it names, `$this->resource->{name}`.
+     * Analyze the items of an array literal analyzeReturnArray() reads. With $readsAttributeNames, a keyless string
+     * reads the model attribute it names, `$this->resource->{name}`, and `...parent::toAttributes()` what it returns.
      */
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames): ResourceAnalysis
     {
@@ -633,6 +638,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
                 $analysis->forgetChannels($item->value->value);
                 $analysis->addProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
+
+                continue;
+            }
+
+            if ($readsAttributeNames && $this->spreadsFrameworkToAttributes($item)) {
+                $analysis->merge($this->jsonApiFrameworkAttributesAnalysis());
 
                 continue;
             }

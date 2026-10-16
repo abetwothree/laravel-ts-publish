@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SerializingAttributesApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SummarizedPostApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -153,4 +158,30 @@ test('a parent::jsonSerialize() that builds the resource object it is read for a
         'type' => "'serializing_attributes_apis'",
         'attributes' => '{ headline: string }',
     ]);
+});
+
+// JsonApiResource declares no toArray(), so parent::toArray() is JsonResource's, which sends the model's own array.
+test('a toArray() that builds on parent::toArray() sends the whole model under attributes', function (string $resource, string $added) {
+    $model = publishedResourceKeyTypes(BarePostResource::class, Post::class)['attributes'];
+
+    expect(publishedResourceKeyTypes($resource, Post::class))->toMatchArray([
+        'attributes' => substr($model, 0, -2).$added.' }',
+    ]);
+})->with([
+    'a spread beside a key' => [ParentToArraySpreadApiResource::class, '; extra: number'],
+    'a whole return' => [ParentToArrayReturnApiResource::class, ''],
+]);
+
+test('a parent::toAttributes() spread reads the $attributes names JsonApiResource returns', function () {
+    expect(publishedResourceKeyTypes(ParentToAttributesSpreadApiResource::class, Post::class))
+        ->toMatchArray(['attributes' => '{ title: string; extra: number }']);
+});
+
+test('a keyless name an own toArray() returns reads the model attribute', function () {
+    expect(publishedResourceKeyTypes(KeylessToArrayApiResource::class, Post::class))
+        ->toMatchArray(['attributes' => '{ title: string; content: string }']);
+});
+
+test('a plain resource declaring toAttributes() beside toArray() publishes toAttributes()', function () {
+    expect(publishedResourceKeyTypes(ToAttributesBesideToArrayResource::class, Post::class))->toBe(['headline' => 'string']);
 });

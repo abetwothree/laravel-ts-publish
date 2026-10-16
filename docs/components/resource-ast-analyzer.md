@@ -46,8 +46,7 @@ every profile, the order handlers run in decides which one answers; see
 
 - **A JSON:API resource's `toArray()` is never its response**: `analyze()` publishes the resource object
   ([below](#jsonapi-resources)), unless a caller located the body or the read is an ancestor's for a subclass. A plain
-  resource that overrides `toAttributes()` and declares no `toArray()` publishes `toAttributes()`, which Laravel sends
-  from 12.45.
+  resource that overrides `toAttributes()` publishes it, whatever its `toArray()`, since Laravel sends it from 12.45.
 - **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
   bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) says which bodies
   send it. The subject then publishes `buildCollectionDelegatedAnalysis()` under its own method's `@return` and casts,
@@ -149,12 +148,13 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
 - **`id` and `type`**: `id` is `string`, as Laravel casts `toId()`. `type` is Laravel's own expression over the class
   name, run when `ts:publish` runs, or the one literal a `toType()` override returns
   (`JsonApiResources::typeLiteral()`), else `string`.
-- **`attributes`**: the first source `toAttributes()` reads: an override or an own `toArray()`, each through
-  `analyzeThisMethodSpread()`, the `$attributes` names as `$this->resource->{name}` reads, then whole-model delegation.
-  A keyless name in an override's returned array reads the model attribute too (`$readsKeylessAttributeNames`). The
-  model's `#[TsCasts]`, then the resource's, lay over its members and never over `id` or `type`, so
-  `ResourceTransformer` lays neither at the top level. It is optional unless one member is always sent, since Laravel
-  drops an empty one.
+- **`attributes`**: the first source `toAttributes()` reads: an override, through `analyzeThisMethodSpread()`, then
+  JsonApiResource's own sources, which a `...parent::toAttributes()` in the override reads too: the `$attributes`
+  names as `$this->resource->{name}` reads, an own `toArray()` read as `analyze()` reads a body, so a whole or spread
+  `parent::toArray()` is the model's own array, then whole-model delegation. A keyless name in the array an override
+  or an own `toArray()` returns reads the model attribute too (`$readsKeylessAttributeNames`). The model's
+  `#[TsCasts]`, then the resource's, lay over its members and never over `id` or `type`, so `ResourceTransformer`
+  lays neither at the top level. It is optional unless one member is always sent, since Laravel drops an empty one.
 - **`relationships`, `links`, `meta`**: every relationship `$relationships` or a `toRelationships()` literal declares,
   each optional, as only an `include` sends it (`JsonApiResources::relationships()`); `links` and `meta` read a
   `toLinks()` or `toMeta()` override, else the `$jsonApiLinks` or `$jsonApiMeta` default.

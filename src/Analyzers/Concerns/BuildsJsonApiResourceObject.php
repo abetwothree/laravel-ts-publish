@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -111,6 +112,35 @@ trait BuildsJsonApiResourceObject
     }
 
     /**
+     * Whether an array item a JSON:API toAttributes() returns spreads JsonApiResource's own toAttributes().
+     */
+    protected function spreadsFrameworkToAttributes(ArrayItem $item): bool
+    {
+        $parent = $this->scope->subjectReflection->getParentClass();
+
+        return $item->key === null
+            && $item->unpack
+            && $this->isParentCallTo($item->value, 'toAttributes')
+            && $parent !== false
+            && JsonApiResources::declaredByFramework($parent->getMethod('toAttributes')->getDeclaringClass()->getName());
+    }
+
+    /**
+     * What JsonApiResource's own toAttributes() returns for the runtime class: the `$attributes` names, else what
+     * toArray() returns, whose keyless names Laravel maps the same way.
+     */
+    protected function jsonApiFrameworkAttributesAnalysis(): ResourceAnalysis
+    {
+        if ($this->runtimeClass()->hasProperty('attributes')) {
+            return $this->jsonApiAttributeNamesAnalysis();
+        }
+
+        return $this->runsFrameworkJsonApiMethod('toArray')
+            ? $this->buildModelSerializedAnalysis() ?? new ResourceAnalysis
+            : $this->jsonApiToArrayAnalysis();
+    }
+
+    /**
      * Whether an analysis holds a member every response sends.
      */
     private static function sendsMemberAlways(MethodAnalysis $analysis): bool
@@ -150,24 +180,37 @@ trait BuildsJsonApiResourceObject
     }
 
     /**
-     * The analysis the `attributes` object publishes, from the first source Laravel's toAttributes() reads: an
-     * override, the `$attributes` names, an own toArray(), then the model's own toArray().
+     * The analysis the `attributes` object publishes: a toAttributes() override, else what JsonApiResource's own
+     * toAttributes() returns.
      */
     private function jsonApiAttributesAnalysis(): ResourceAnalysis
     {
-        if (! $this->runsFrameworkJsonApiMethod('toAttributes')) {
-            return $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
+        return $this->runsFrameworkJsonApiMethod('toAttributes')
+            ? $this->jsonApiFrameworkAttributesAnalysis()
+            : $this->analyzeThisMethodSpread('toAttributes') ?? new ResourceAnalysis;
+    }
+
+    /**
+     * What an own toArray() returns, read as analyze() reads a body, so a whole `parent::toArray()` return reaches
+     * JsonResource's, the model's own array.
+     */
+    private function jsonApiToArrayAnalysis(): ResourceAnalysis
+    {
+        $declaring = $this->runtimeClass()->getMethod('toArray')->getDeclaringClass();
+        $analyzer = $this->nestedAnalyzer($declaring, 'toArray', $this->scope->modelClass);
+
+        // A located body is read as it is; without one, analyze() would answer with the resource object itself.
+        $analyzer->context = $analyzer->locateSubjectMethod();
+        $analyzer->readsKeylessAttributeNames = true;
+
+        if ($analyzer->context === null) {
+            return new ResourceAnalysis;
         }
 
-        if ($this->runtimeClass()->hasProperty('attributes')) {
-            return $this->jsonApiAttributeNamesAnalysis();
-        }
+        $analysis = $analyzer->analyze();
+        $this->lenientReads += $analyzer->lenientReads;
 
-        if (! $this->runsFrameworkJsonApiMethod('toArray')) {
-            return $this->analyzeThisMethodSpread('toArray') ?? new ResourceAnalysis;
-        }
-
-        return $this->buildModelSerializedAnalysis() ?? new ResourceAnalysis;
+        return $analysis;
     }
 
     /**
