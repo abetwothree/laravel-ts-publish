@@ -20,10 +20,13 @@ use Attribute;
  *     'deleted_at' => ['type' => 'string | null', 'optional' => true],
  * ])]
  * ```
+ *
+ * @phpstan-type TsCastEntry = array{type: string, import?: string, optional?: bool}
+ * @phpstan-type TsCastMap = array<string, string|TsCastEntry>
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_PROPERTY | Attribute::TARGET_METHOD)]
 class TsCasts
 {
-    /** @param array<string, string|array{type: string, import?: string, optional?: bool}> $types */
+    /** @param TsCastMap $types */
     public function __construct(public array $types) {}
 }

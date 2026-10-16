@@ -34,6 +34,7 @@ use ReflectionClass;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type JsonApiRelationship from JsonApiResources
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TsCastMap from TsCasts
  *
  * @internal
  */
@@ -119,7 +120,7 @@ trait BuildsJsonApiResourceObject
     /**
      * Lay one #[TsCasts] map over an analysis.
      *
-     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  TsCastMap  $types
      * @param  CastMap|null  $keptCasts  the casts a model's map never replaces
      */
     abstract private function layTsCasts(array $types, ResourceAnalysis $analysis, ?array $keptCasts = null): void;

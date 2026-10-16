@@ -90,6 +90,7 @@ use ReflectionMethod;
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type PassedBinding from ParameterBinder
+ * @phpstan-import-type TsCastMap from TsCasts
  *
  * @internal
  */
@@ -1557,7 +1558,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      * Lay one #[TsCasts] map over an analysis, updating every entry of a key it names and adding a key the analysis
      * lacks; with $keptCasts, a model's map retypes only the keys the analysis has and none of those it holds.
      *
-     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  TsCastMap  $types
      * @param  CastMap|null  $keptCasts  the casts a model's map never replaces
      */
     private function layTsCasts(array $types, ResourceAnalysis $analysis, ?array $keptCasts = null): void
