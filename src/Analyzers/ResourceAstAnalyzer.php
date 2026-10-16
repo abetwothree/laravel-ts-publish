@@ -838,10 +838,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Classify a top-level spread's value expression via InlineArrayHandler::classifySpreadArm()
-     * and flatten its shape into this resource's own properties. Null for anything the classifier
-     * declines, or takes only by its type other than a JSON:API instance, so the caller falls through to
-     * $this->merge()'s own handling.
+     * Classify a top-level spread's value via InlineArrayHandler::classifySpreadArm() and flatten its shape into this
+     * resource's own properties. Null for anything the classifier declines, or takes only by its type other than a
+     * JSON:API instance, so the caller falls through to $this->merge()'s own handling.
      */
     private function analyzeSpreadArm(Expr $expr): ?MethodAnalysis
     {

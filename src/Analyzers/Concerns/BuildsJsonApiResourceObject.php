@@ -10,12 +10,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\ArrayItem;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -25,8 +29,13 @@ use ReflectionClass;
  * The resource object a `JsonApiResource` sends as `data`, composed from the analyzer's own reads of the runtime class:
  * `id`, `type`, `attributes`, and the `relationships`, `links` and `meta` Laravel sends only when they hold a key.
  *
+ * The host also holds `$methodName`, `$context`, `$readsCall`, `$scope`, `$methodsOnStack` and `$lenientReads`.
+ *
+ * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type JsonApiRelationship from JsonApiResources
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @internal
  */
 trait BuildsJsonApiResourceObject
 {
@@ -35,6 +44,85 @@ trait BuildsJsonApiResourceObject
 
     /** Whether analyzeReturnArray() reads a keyless string item as the model attribute it names, as Laravel does. */
     protected bool $readsKeylessAttributeNames = false;
+
+    /**
+     * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless it preserves keys.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $resource
+     */
+    abstract public static function reindexNumericKeyedArrays(MethodAnalysis $analysis, ReflectionClass $resource): void;
+
+    /**
+     * Analyze the subject's analyzed method body.
+     */
+    abstract public function analyze(): ResourceAnalysis;
+
+    /**
+     * Resolve a single expression to its TypeScript type.
+     *
+     * @return ValueExpressionResult
+     */
+    abstract public function resolve(Expr $expr): array;
+
+    /**
+     * Resolve and analyze a $this->method() spread.
+     */
+    abstract protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis;
+
+    /**
+     * The model's own serialized array as an analysis; null with no model behind the subject.
+     */
+    abstract protected function buildModelSerializedAnalysis(): ?ResourceAnalysis;
+
+    /**
+     * Check if an expression is a `parent::{$methodName}()` call, or any parent:: call when null.
+     */
+    abstract protected function isParentCallTo(Expr $expr, ?string $methodName = null): bool;
+
+    /**
+     * The class's #[TsCasts] instances in precedence order.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @return list<TsCasts>
+     */
+    abstract protected function tsCastsAttributes(ReflectionClass $reflection): array;
+
+    /**
+     * The runtime class: the class `$this` is when the body runs.
+     *
+     * @return ReflectionClass<object>
+     */
+    abstract private function runtimeClass(): ReflectionClass;
+
+    /**
+     * Locate the subject's own declaration of the analyzed method, a trait's included.
+     */
+    abstract private function locateSubjectMethod(): ?MethodContext;
+
+    /**
+     * The analysis of one of the runtime class's own methods, null where a read of it encloses this one.
+     */
+    abstract private function runtimeClassAnalysis(string $method, bool $whole): ?ResourceAnalysis;
+
+    /**
+     * The one place a nested analyzer is built, reading a body as the runtime class runs it.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  class-string<Model>|null  $modelClass
+     */
+    abstract private function nestedAnalyzer(ReflectionClass $class, string $method, ?string $modelClass): self;
+
+    /**
+     * Lay one #[TsCasts] map over an analysis.
+     *
+     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  CastMap|null  $keptCasts  the casts a model's map never replaces
+     */
+    abstract private function layTsCasts(array $types, ResourceAnalysis $analysis, ?array $keptCasts = null): void;
 
     /**
      * Whether this analysis reads the response of a JSON:API resource that runs as itself, not a body a caller located
