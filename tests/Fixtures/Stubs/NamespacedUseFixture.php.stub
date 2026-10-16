@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Fixture for parseFileUseStatements(): imports in two braced namespaces, beside a trait use and a closure use that
+ * are not imports. A `.php.stub` file so Pint's import fixers never touch the unreferenced imports.
+ */
+
+namespace NamespacedUseFixture {
+    use App\Models\Post;
+    use App\Support\{Widget as Gadget};
+
+    trait SharedSteps
+    {
+    }
+
+    class First
+    {
+        use SharedSteps;
+
+        public function steps(): \Closure
+        {
+            $step = 1;
+
+            return function () use ($step): int {
+                return $step;
+            };
+        }
+    }
+}
+
+namespace NamespacedUseFixture\Other {
+    use App\Models\User;
+
+    class Second
+    {
+    }
+}

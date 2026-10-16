@@ -41,6 +41,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\GroupUse;
+use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
@@ -2487,15 +2488,16 @@ class LaravelTsPublish
             return $this->useStatementsCache[$fileName];
         }
 
-        $stmts = resolve(AstParser::class)->parseFile($fileName);
-        $finder = new NodeFinder;
         $map = [];
 
-        foreach ($finder->find($stmts, fn (Node $n) => $n instanceof Use_ || $n instanceof GroupUse) as $node) {
-            if ($node instanceof GroupUse) {
-                $this->addGroupUseClassImports($node, $map);
-            } elseif ($node instanceof Use_) {
-                $this->addUseClassImports($node, $map);
+        // PHP takes an import only at the top level or directly in a namespace, so no deeper node is walked for one.
+        foreach (resolve(AstParser::class)->parseFile($fileName) as $stmt) {
+            foreach ($stmt instanceof Namespace_ ? $stmt->stmts : [$stmt] as $node) {
+                if ($node instanceof GroupUse) {
+                    $this->addGroupUseClassImports($node, $map);
+                } elseif ($node instanceof Use_) {
+                    $this->addUseClassImports($node, $map);
+                }
             }
         }
 
