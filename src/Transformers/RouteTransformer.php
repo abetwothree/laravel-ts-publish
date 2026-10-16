@@ -191,7 +191,7 @@ class RouteTransformer extends CoreTransformer
 
         // Held here rather than in a template flag, so a custom template that loops over the imports still has it.
         if ($this->pageTypesReadAsEnum()) {
-            $merged['@tolki/ts'] = ['AsEnum'];
+            $merged['@tolki/ts'] = array_values(array_unique([...($merged['@tolki/ts'] ?? []), 'AsEnum']));
         }
 
         $this->typeImports = TsNaming::sortImportPaths($merged);

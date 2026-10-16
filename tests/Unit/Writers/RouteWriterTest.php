@@ -558,6 +558,35 @@ test('route output imports AsEnum and the enum const a page prop wrapped in an E
         ->not->toContain("import type { AsEnum } from '@tolki/ts';");
 });
 
+// A `#[TsCasts]` import from @tolki/ts reaches the page's imports, so AsEnum joins it rather than replacing it.
+test('route output imports AsEnum beside another @tolki/ts type a page prop\'s override imports', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { role: AsEnum<typeof Role>, status: CaseValue<typeof Status> }',
+                    'classFqcns' => [],
+                    'enumConstFqcns' => [Role::class, Status::class],
+                    'externalImports' => ['@tolki/ts' => ['CaseValue']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import { defineRoute, annotatePageProps, type CaseValue, type AsEnum } from '@tolki/ts';")
+        ->toContain("import type { Role, Status } from '../../enums';");
+});
+
 // A template customised before AsEnum reached page types still imports it, through the type imports it loops over.
 test('a custom route template that keeps the type imports loop imports AsEnum from @tolki/ts', function () {
     config()->set('ts-publish.inertia.enabled', true);
