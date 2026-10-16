@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
@@ -50,6 +51,7 @@ use Throwable;
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
+ *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
  * @phpstan-type PagePropEntry = array{type: string, optional: bool}
@@ -58,6 +60,7 @@ use Throwable;
 class InertiaPageAnalyzer
 {
     use InspectsAstNodes;
+    use RewritesEnumResourceProps;
 
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
@@ -359,6 +362,8 @@ class InertiaPageAnalyzer
         $pageTypes = [];
         /** @var list<class-string> $allFqcns */
         $allFqcns = [];
+        /** @var list<class-string> $constFqcns */
+        $constFqcns = [];
         /** @var array<string, list<string>> $externalImports */
         $externalImports = [];
 
@@ -383,7 +388,7 @@ class InertiaPageAnalyzer
 
             $this->forgetOverriddenChannels($analysis, $casts);
 
-            $props = $this->collectProps($analysis);
+            $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $renumbered = $this->renumberTopLevel($props, $casts, $subject);
             $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
@@ -401,6 +406,12 @@ class InertiaPageAnalyzer
                 }
             }
 
+            foreach ($this->spelledEnumConsts($analysis, $pageType) as $fqcn) {
+                if (! in_array($fqcn, $constFqcns, true)) {
+                    $constFqcns[] = $fqcn;
+                }
+            }
+
             foreach ($analysis->customImports as $path => $types) {
                 foreach ($types as $type) {
                     if (! in_array($type, $externalImports[$path] ?? [], true)) {
@@ -414,6 +425,7 @@ class InertiaPageAnalyzer
             'component' => count($components) === 1 ? $components[0] : $components,
             'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
+            'enumConstFqcns' => $constFqcns,
             'externalImports' => $externalImports,
         ];
     }
@@ -517,10 +529,34 @@ class InertiaPageAnalyzer
 
         return array_values(array_filter(
             array_unique($candidates),
-            // An enum's TypeScript name follows #[TsEnum(name:)], which neither of the first two spell.
-            fn (string $fqcn): bool => $this->typeSpells($pageType, class_basename($fqcn))
-                || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn))
-                || (enum_exists($fqcn) && $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])),
+            // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
+            fn (string $fqcn): bool => enum_exists($fqcn)
+                ? $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])
+                : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
+        ));
+    }
+
+    /**
+     * Every enum whose const the rendered type reads through `typeof`, as an `AsEnum<typeof Status>` prop does.
+     *
+     * @return list<class-string>
+     */
+    protected function spelledEnumConsts(MethodAnalysis $analysis, string $pageType): array
+    {
+        $candidates = array_values($analysis->enumResources);
+
+        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
+            foreach ($map as $fqcns) {
+                $candidates = [...$candidates, ...$fqcns];
+            }
+        }
+
+        return array_values(array_filter(
+            array_unique($candidates),
+            fn (string $fqcn): bool => preg_match(
+                TsTypeString::queuedTokenPattern([LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn)], 'typeof\s+\K'),
+                $pageType,
+            ) === 1,
         ));
     }
 

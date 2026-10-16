@@ -15,11 +15,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
@@ -197,9 +199,33 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
     'a resource' => [CommentResource::class, true],
     'a resource collection' => [PostCollection::class, true],
     'a broadcast event' => [PayloadDiffersEvent::class, false],
-    'a shared-data middleware' => [HandleInertiaRequests::class, false],
     'a model' => [Comment::class, false],
 ]);
+
+// Inertia sends shared data as it sends page props: ToResourceHandler would type a shared resource as a nested key's
+// value, and without ModelFinderHandler no shared paginator is seen.
+it('gives a shared-data middleware the page-prop handlers, InertiaResourcePropHandler before ToResourceHandler', function () {
+    $classes = array_map(
+        fn (ExpressionHandler $handler): string => $handler::class,
+        ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, resourceExpressionHandlersTestEngine()),
+    );
+
+    $expected = [];
+
+    foreach (array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])) as $class) {
+        if ($class === ToResourceHandler::class) {
+            $expected[] = InertiaResourcePropHandler::class;
+        }
+
+        if ($class === StaticCallHandler::class) {
+            $expected[] = ModelFinderHandler::class;
+        }
+
+        $expected[] = $class;
+    }
+
+    expect($classes)->toBe($expected);
+});
 
 // Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
 // the event warns.

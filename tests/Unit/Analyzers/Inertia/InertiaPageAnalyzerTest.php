@@ -5,9 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
@@ -22,17 +24,20 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Controlle
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
+use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -43,6 +48,10 @@ function pageData(string $uses): ?array
 {
     return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
@@ -219,6 +228,39 @@ it('types a resource collection from what it wraps', function () {
         );
 });
 
+// Inertia sends a resource prop as its toResponse() data, at any depth, so a single resource arrives in its wrap key.
+it('types a single resource page prop as what Inertia sends', function () {
+    $wrapped = pageData(InertiaSingleResourceController::class.'@resource');
+    $shared = pageData(InertiaResourceSharedTemplate::class.'@resource');
+
+    JsonResource::withoutWrapping();
+
+    expect($wrapped['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and($wrapped['classFqcns'] ?? null)->toBe([WarehouseResource::class])
+        ->and($shared['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and(pageData(InertiaSingleResourceController::class.'@resource')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }');
+});
+
+it('wraps a resource nested in a prop array, a toResource() call, an enum list and a body without its wrap key', function () {
+    $data = pageData(InertiaResourcePropsController::class.'@show');
+
+    expect($data['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'built: { data: WarehouseResource }, made: { data: WarehouseResource }, guessed: { data: WarehouseResource }, '
+        .'named: { data: WarehouseResource }, nested: { inner: { data: WarehouseResource } }, statuses: { data: AsEnum<typeof Status>[] }, '
+        .'custom: { data: ItemsKeyPostCollection }, custom_page: { data: ItemsKeyPostCollection } & ResourcePagination, '
+        .'held: DataKeyPostResource }')
+        ->and($data['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourcePagination']]);
+});
+
+it('keeps the body resolve() returns, and the response a fluent call on a resource hands back', function () {
+    expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource }, '
+        .'list: PostResource[], body: ItemsKeyPostCollection }');
+});
+
 it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {
     $delegated = pageData(ControllerWithDelegatedProps::class.'@index');
     $helper = pageData(ControllerWithDelegatedProps::class.'@helper');
@@ -247,7 +289,7 @@ it('flattens a top-level resource spread inside the render props array', functio
 
     expect($data['component'])->toBe('Dashboard/Spread')
         ->and($data['pageType'])->toBe(
-            'Inertia.SharedData & { id: number, name: string, email: string, role: RoleType | null, '.
+            'Inertia.SharedData & { id: number, name: string, email: string, role: AsEnum<typeof Role> | null, '.
             'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
             'posts_count?: number, comments_count?: number, flag: boolean }'
         );
@@ -435,6 +477,51 @@ test('analyze() emits the keyed record shape for a preserve-keys paginated colle
         );
 });
 
+test('analyze() types a resource collection over each paginator kind with what that kind sends', function () {
+    $named = pageData(InertiaPaginatorKindsController::class.'@named');
+    $anonymous = pageData(InertiaPaginatorKindsController::class.'@anonymous');
+
+    expect($named['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: PostCollection & ResourceSimplePagination, cursor: PostCollection & ResourceCursorPagination, '
+        .'either: PostCollection & (ResourceSimplePagination | ResourcePagination), sometimes: PostCollection | (PostCollection & ResourcePagination) }'
+    )
+        ->and($named['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourceSimplePagination', 'ResourceCursorPagination', 'ResourcePagination']])
+        ->and($anonymous['pageType'] ?? null)->toBe(
+            'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+            .'sometimes: AnonymousResourceCollection<PostResource> | JsonResourceSimplePaginator<PostResource> }'
+        )
+        ->and($anonymous['externalImports'] ?? null)
+        ->toBe(['@tolki/types' => ['JsonResourceSimplePaginator', 'JsonResourceCursorPaginator', 'AnonymousResourceCollection']]);
+});
+
+test('analyze() types a flat collection over a simple or cursor paginator as that paginator\'s response, keyed when it keeps keys', function () {
+    $flat = pageData(InertiaPaginatorKindsController::class.'@flat');
+
+    expect($flat['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+        ."keyed: Omit<JsonResourceCursorPaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }"
+    );
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+test('analyze() types toResourceCollection() as the response of the collection Laravel guesses or is given', function () {
+    $guessed = pageData(InertiaPaginatorKindsController::class.'@guessed');
+
+    expect($guessed['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { named: PostCollection & ResourceSimplePagination, anonymous: JsonResourceCursorPaginator<WarehouseResource>, '
+        .'explicit: JsonResourcePaginator<WarehouseResource>, unpaged: PostCollection }'
+    );
+});
+
+// Review Focus 2: the intersection is what Laravel sends only while the stub's own interface carries the `data` key.
+test('the stub collection over simplePaginate() publishes its data beside the simple pagination block', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    expect(pageData(InertiaPaginatorKindsController::class.'@stubPage')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { posts: PostStubCollection & ResourceSimplePagination }')
+        ->and(resolve(ResourceGenerator::class, ['findable' => PostStubCollection::class])->content)
+        ->toContain('data: PostResource[];');
+});
+
 // ─── analyze() shared-template isolation ──────────────────────────
 
 test('analyze() isolates props when different methods share the same component name - paginated collection method', function () {
@@ -542,7 +629,7 @@ describe('a docblock-filled index signature in page props merged from several br
 
     test('a resource-typed key from the other ternary arm puts the fill back', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternary')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: PostResource }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: { data: PostResource } }',
         );
     });
 

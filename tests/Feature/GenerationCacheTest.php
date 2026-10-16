@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Controllers\CacheBustController;
+use Workbench\App\Http\Resources\HandoverCollection;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\User;
 
@@ -46,6 +47,20 @@ function storedCacheEntries(): array
 function cacheEntryKey(string $generatorClass, string $fqcn): string
 {
     return 'class:'.hash('xxh128', $generatorClass.'::'.$fqcn);
+}
+
+/**
+ * The contents of the first published file of that name under a directory, or an empty string when there is none.
+ */
+function publishedFileNamed(string $directory, string $name): string
+{
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if ($file->getFilename() === $name) {
+            return (string) file_get_contents($file->getPathname());
+        }
+    }
+
+    return '';
 }
 
 beforeEach(function () {
@@ -405,6 +420,61 @@ test('a resource macro re-pointed at another invokable between two runs rebuilds
 
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
         ->and($published())->toContain('ticket: string;');
+});
+
+test('a runtime wrap set between two runs rebuilds the collection that wraps by it', function (callable $rewrap, string $expected) {
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(publishedFileNamed($this->out, 'handover-digest-collection.ts'))->toContain('handovers: HandoverSummaryResource[];');
+
+        // No file changes between the runs: only the static a service provider would set.
+        $rewrap();
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(publishedFileNamed($this->out, 'handover-digest-collection.ts'))->toContain($expected);
+    } finally {
+        JsonResource::flushState();
+        HandoverCollection::wrap('handovers');
+    }
+})->with([
+    'the redeclaring parent re-wrapped' => [fn () => HandoverCollection::wrap('crew'), 'crew: HandoverSummaryResource[];'],
+    'the redeclaring parent unwrapped' => [fn () => HandoverCollection::withoutWrapping(), 'export type HandoverDigestCollection = HandoverSummaryResource[];'],
+]);
+
+test('JsonResource::withoutWrapping() between two runs rebuilds a collection on the shared slot', function () {
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(publishedFileNamed($this->out, 'supplier-summary-collection.ts'))->toContain('data: SupplierSummaryResource[];');
+
+        JsonResource::withoutWrapping();
+
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and(publishedFileNamed($this->out, 'supplier-summary-collection.ts'))
+            ->toContain('export type SupplierSummaryCollection = SupplierSummaryResource[];');
+    } finally {
+        JsonResource::flushState();
+    }
+});
+
+test('JsonResource::withoutWrapping() between two runs rebuilds the page whose prop names that collection', function () {
+    $page = fn (): string => publishedFileNamed($this->out, 'inertia-named-collections-controller.ts');
+
+    try {
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: PostCollection & ResourcePagination };')
+            ->and($page())->toContain("import type { AnonymousResourceCollection, JsonResourcePaginator, ResourcePagination } from '@tolki/types';");
+
+        // The page's own recorded files are unchanged, so only the header can rebuild it.
+        JsonResource::withoutWrapping();
+
+        // The imports follow the props, so the names no prop spells any more leave the rebuilt page.
+        expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
+            ->and($page())->toContain('NamedCollectionPaginatedPageProps = Inertia.SharedData & { posts: JsonResourcePaginator<PostResource> };')
+            ->and($page())->toContain("import type { JsonResourcePaginator } from '@tolki/types';")
+            ->and($page())->toContain("import type { PostCollection, PostFlatCollection, PostResource } from '../resources';");
+    } finally {
+        JsonResource::flushState();
+    }
 });
 
 test('editing a class a resource reaches only by reflection rebuilds the resource', function () {

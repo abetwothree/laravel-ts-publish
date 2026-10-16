@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -78,7 +79,12 @@ test('the workbench corpus drops no union arm beyond the pinned baseline', funct
         foreach (glob(workbench_path('app/Http/Resources/{,*/}*.php'), GLOB_BRACE) ?: [] as $file) {
             $class = LaravelTsPublish::resolveClassFromFile($file);
 
-            if ($class === null || ! is_a($class, JsonResource::class, true) || (new ReflectionClass($class))->isAbstract()) {
+            // An excluded class may extend one this Laravel lacks, so it is left out before is_a() loads it.
+            if ($class === null
+                || ! resolve(ResourcesCollector::class)->allows($class)
+                || ! is_a($class, JsonResource::class, true)
+                || (new ReflectionClass($class))->isAbstract()
+            ) {
                 continue;
             }
 

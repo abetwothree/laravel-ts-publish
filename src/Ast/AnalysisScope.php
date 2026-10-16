@@ -41,6 +41,7 @@ use ReflectionClass;
  * whenLoaded relations, and recursive spreads resolve correctly as traversal descends.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type CollectedElement from ResourceCollections
  *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
@@ -127,8 +128,8 @@ final class AnalysisScope
 
     /**
      * The backing class `$this->resource` holds, or null; null on a resource collection, see proxyReceiver().
-     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor and
-     * rebase(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
+     * ReceiverClassResolver::proxyHeld() weighs it against a redeclared `$resource`. Derived by the constructor,
+     * rebase() and setBackingModel(); ResourceAstAnalyzer re-derives it and TernaryHandler narrows it.
      *
      * @var class-string|null
      */
@@ -143,12 +144,13 @@ final class AnalysisScope
     public ?array $provenProxy = null;
 
     /**
-     * The API resource a ResourceCollection subject maps each item into, as `$this->collection` publishes it; null when
-     * it collects none. Set by ResourceAstAnalyzer for any scope, its own or one a caller supplies.
+     * What each item the runtime class, a ResourceCollection, collects publishes as: the element `$this->collection`
+     * lists and `$this->resource` holds; see ResourceCollections::collectedElement(). Set by seedCollectionFacts(), on
+     * rebase() and for any scope ResourceAstAnalyzer reads.
      *
-     * @var class-string<JsonResource>|null
+     * @var CollectedElement|null
      */
-    public ?string $collectedResource = null;
+    public ?array $collectedElement = null;
 
     /**
      * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
@@ -158,9 +160,9 @@ final class AnalysisScope
     public bool $carriesImports = true;
 
     /**
-     * Whether the response the subject's analysis feeds re-indexes a numeric-keyed array into a list, as an API
+     * Whether the response the runtime class's analysis feeds re-indexes a numeric-keyed array into a list, as an API
      * resource that does not preserve keys does: a list a key-keeping sort reorders is still sent as one. Set by
-     * ResourceAstAnalyzer for any scope, its own or one a caller supplies.
+     * seedCollectionFacts(), on rebase() and for any scope ResourceAstAnalyzer reads.
      */
     public bool $reindexesNumericKeys = false;
 
@@ -364,8 +366,8 @@ final class AnalysisScope
     }
 
     /**
-     * Move the scope to another subject and backing model, re-deriving the proxy target from them: the one way a
-     * builder rebases a scope after construction. ResourceAstAnalyzer then seeds the subject's collection facts.
+     * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
+     * them: the one way a builder rebases a scope after construction.
      *
      * @param  ReflectionClass<object>  $subject
      * @param  class-string<Model>|null  $modelClass
@@ -373,8 +375,36 @@ final class AnalysisScope
     public function rebase(ReflectionClass $subject, ?string $modelClass): void
     {
         $this->subjectReflection = $subject;
+        $this->setBackingModel($modelClass);
+        $this->seedCollectionFacts($subject);
+    }
+
+    /**
+     * Back the subject by another model, re-deriving the proxy target; the collection facts stay the runtime class's.
+     *
+     * @param  class-string<Model>|null  $modelClass
+     */
+    public function setBackingModel(?string $modelClass): void
+    {
         $this->modelClass = $modelClass;
-        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subject, $modelClass);
+        $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($this->subjectReflection, $modelClass);
+    }
+
+    /**
+     * Derive the collection facts from the runtime class, which an ancestor's body runs as: `reindexesNumericKeys` and
+     * `collectedElement`, from ResourceCollections, once a run per class.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     */
+    public function seedCollectionFacts(ReflectionClass $runtime): void
+    {
+        [$this->reindexesNumericKeys, $this->collectedElement] = resolve(AnalysisMemo::class)->remember(
+            'collection-facts:'.$runtime->getName(),
+            static fn (): array => [
+                ResourceCollections::reindexesNumericKeys($runtime),
+                $runtime->isSubclassOf(ResourceCollection::class) ? ResourceCollections::collectedElement($runtime) : null,
+            ],
+        );
     }
 
     /**
@@ -396,7 +426,7 @@ final class AnalysisScope
             return new ReceiverType(
                 [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
                 collectedItems: true,
-                elementResource: $this->collectedResource,
+                collectedElement: $this->collectedElement,
             );
         }
 

@@ -49,6 +49,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use NamespacedUseFixture\First;
 use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Casts\MenuSettings;
 use Workbench\App\Enums\Role;
@@ -1887,6 +1888,17 @@ describe('parseFileUseStatements', function () {
         expect($map)->not->toHaveKey('warning')
             ->and($map)->not->toHaveKey('helperFunction')
             ->and($map)->not->toContain('Laravel\Prompts\warning');
+    });
+
+    // Imports sit at the top level or directly in a namespace, so a trait use or a closure use is never one.
+    test('reads the imports of every braced namespace in the file, and nothing else', function () {
+        require_once __DIR__.'/../Fixtures/Stubs/NamespacedUseFixture.php.stub';
+
+        expect($this->service->parseFileUseStatements(new ReflectionClass(First::class)))->toBe([
+            'Post' => 'App\\Models\\Post',
+            'Gadget' => 'App\\Support\\Widget',
+            'User' => 'App\\Models\\User',
+        ]);
     });
 
     test('records the file as a cache dependency even on a cache hit', function () {

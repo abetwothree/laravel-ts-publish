@@ -21,7 +21,7 @@ export const resourceAnonymousCollection = annotatePageProps<ResourceAnonymousCo
     component: 'Resource/SharedTemplate',
 }));
 
-export type ResourcePageProps = Inertia.SharedData & { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource };
+export type ResourcePageProps = Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } };
 
 export const resource = annotatePageProps<ResourcePageProps>()(defineRoute({
     name: 'same-template.resource',

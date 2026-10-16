@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\TsCastsReader;
@@ -276,7 +277,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function parseModelTsCastsOverrides(): self
     {
-        if ($this->modelClass === null || ! class_exists($this->modelClass)) {
+        if ($this->modelClass === null || ! class_exists($this->modelClass) || $this->castsRetypeAttributes()) {
             return $this;
         }
 
@@ -294,6 +295,10 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function parseResourceTsCastsOverrides(): self
     {
+        if ($this->castsRetypeAttributes()) {
+            return $this;
+        }
+
         $result = $this->parseTsCastsFromReflection($this->reflectionResource);
 
         foreach ($result['overrides'] as $property => $type) {
@@ -307,6 +312,15 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * Whether the class and model #[TsCasts] retype a JSON:API resource's `attributes` members, which its analysis lays
+     * them over, so none of them retypes a top-level key such as `id` or `type`.
+     */
+    protected function castsRetypeAttributes(): bool
+    {
+        return JsonApiResources::is($this->findable);
     }
 
     /**
@@ -335,7 +349,7 @@ class ResourceTransformer extends CoreTransformer
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
 
-        // ResourceCollection subclasses with $wrap = null emit an alias, not an interface.
+        // A body-less collection whose live wrap key is null or empty emits an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
             $this->typeAlias = $analysis->flatTypeAlias;
 

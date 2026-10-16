@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Symfony\Component\Finder\Finder;
@@ -66,6 +67,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         IndexSignatureKey::class,
         PhpArrayKey::class,
         ResourceReindexing::class,
+        ResourceWrapping::class,
         StringSerialization::class,
         TopLevelRenumbering::class,
     ];

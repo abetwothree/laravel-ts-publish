@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Closure;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -72,7 +73,7 @@ class MethodAnalysis
      * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: kept apart from
      *                               every queue, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
-     * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
+     * @param  class-string<JsonResource|Model>|null  $flatTypeAliasFqcn  FQCN of the element the flat type alias lists
      */
     public function __construct(
         public array $properties = [],

@@ -1,5 +1,5 @@
 import type { RoleType } from '../../enums';
-import type { EventLogResource, RegistrarResource, SupplierSummaryResource, UserResource } from '.';
+import type { EventLogResource, RegistrarGroupCollection, RegistrarResource, SupplierCollection, UserCollection, UserResource } from '.';
 
 /**
  * Exercises Model::toResource() / Collection::toResourceCollection() resolution: naming
@@ -24,14 +24,14 @@ export interface MerchantResource
     owner_explicit?: UserResource | null;
     owner_variant_constant?: unknown;
     owner_direct: UserResource;
-    staff_via_closure?: UserResource[];
+    staff_via_closure?: UserCollection | never[];
     staff_explicit?: UserResource[];
     history_event?: EventLogResource | null;
     filing?: unknown;
     alert?: unknown;
     registrar?: RegistrarResource | null;
-    registrars?: unknown;
-    suppliers?: SupplierSummaryResource[];
+    registrars?: RegistrarGroupCollection | never[];
+    suppliers?: SupplierCollection | never[];
     unpublished_guess?: unknown;
     unpublished_guess_collection?: unknown;
     staff_map_only?: ({ id: number; name: string; role: RoleType | null; last_login_at: string | null })[];

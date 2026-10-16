@@ -14,12 +14,18 @@ if ($data->hasRequestTypes) {
     $importParts[] = 'annotateRequestPayload';
 }
 
+// A type from @tolki/ts joins defineRoute's import, so the file imports that module once.
+foreach ($data->typeImports['@tolki/ts'] ?? [] as $tolkiType) {
+    $importParts[] = 'type '.$tolkiType;
+}
+
 $imports = implode(', ', $importParts);
+$typeImports = array_diff_key($data->typeImports, ['@tolki/ts' => true]);
 @endphp
 import { {!! $imports !!} } from '@tolki/ts';
-@if(count($data->typeImports) > 0)
+@if(count($typeImports) > 0)
 
-@foreach($data->typeImports as $importPath => $typeNames)
+@foreach($typeImports as $importPath => $typeNames)
 import type { {!! implode(', ', $typeNames) !!} } from '{!! $importPath !!}';
 @endforeach
 @endif

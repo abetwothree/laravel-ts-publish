@@ -40,6 +40,9 @@ class ConfigFingerprint
      * features render and what each API resource macro runs, so the cache busts when any changes: an aggregate
      * publishes as its driver returns it, a hit never renders its template again, and a macro types what it answers.
      *
+     * It also holds each `$wrap` set at runtime, which reshapes every collection and page prop wrapping by it while no
+     * recorded file changes.
+     *
      * The `cache` sub-array is excluded: toggling the cache must not bust outputs.
      */
     public static function compute(): string
@@ -56,6 +59,7 @@ class ConfigFingerprint
                 'database.drivers' => array_map(self::connectionDriver(...), Config::array('database.connections', [])),
                 'templates' => self::templateFiles(),
                 'resource-macros' => self::resourceMacros(),
+                'resource-wrap' => ResourceWrapping::runtimeOverrides(),
             ];
 
             self::ksortRecursive($config);

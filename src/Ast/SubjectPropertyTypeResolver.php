@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,10 +35,12 @@ use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionProperty;
 use Throwable;
+use WeakMap;
 
 /**
  * Resolve one of a class's own properties to a value result — `@var` docblock first, native declared
- * type second, an untyped default no method rewrites third — and answer whether the class declares it at all.
+ * type second, an untyped default no method rewrites third — and answer whether the class declares it at all, and
+ * whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -51,6 +54,12 @@ final class SubjectPropertyTypeResolver
      * the two resource bases because `declaresOwnProperty()` is the one caller consulting all three.
      */
     private const array FRAMEWORK_BASES = [JsonResource::class, ResourceCollection::class, Model::class];
+
+    /** @var array<string, string> each framework file spellsName() read, by path; vendor code holds still in a run */
+    private static array $frameworkSources = [];
+
+    /** @var WeakMap<ClassLike, list<array{Node, list<Expr|Arg>}>>|null each parsed class body's write sites */
+    private static ?WeakMap $writeSites = null;
 
     /**
      * Resolve a declared property's TypeScript type and FQCN channels, or null when no source
@@ -99,6 +108,50 @@ final class SubjectPropertyTypeResolver
         }
 
         return true;
+    }
+
+    /**
+     * Whether a read of the property still holds its declared default: it has one, and no method the class runs
+     * writes it.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    public function holdsDefault(ReflectionClass $subject, string $name): bool
+    {
+        return $subject->hasProperty($name)
+            && $subject->getProperty($name)->hasDefaultValue()
+            && ! $this->writesProperty($subject, $name);
+    }
+
+    /**
+     * The nodes of a class body that write something, each with the targets it writes, in the order a walk meets them.
+     *
+     * Every property a class is asked about would otherwise walk the whole body again, and a framework base is asked
+     * about once per subject.
+     *
+     * @return list<array{Node, list<Expr|Arg>}>
+     */
+    private static function writeSites(ClassLike $class): array
+    {
+        self::$writeSites ??= new WeakMap;
+
+        if (! isset(self::$writeSites[$class])) {
+            $sites = [];
+
+            new NodeFinder()->find($class->stmts, function (Node $node) use (&$sites): bool {
+                $targets = self::writeTargets($node);
+
+                if ($targets !== []) {
+                    $sites[] = [$node, $targets];
+                }
+
+                return false;
+            });
+
+            self::$writeSites[$class] = $sites;
+        }
+
+        return self::$writeSites[$class];
     }
 
     /**
@@ -152,25 +205,42 @@ final class SubjectPropertyTypeResolver
             }
 
             $computedNames = ! str_starts_with($declaration->getName(), 'Illuminate\\');
+
+            // A framework body counts only a write that spells the name, so a source that never does is not walked.
+            if (! $computedNames && ! $this->spellsName($file, $name)) {
+                continue;
+            }
+
             $node = $finder->findFirst(
                 resolve(AstParser::class)->parseFile($file),
                 fn (Node $node): bool => $node instanceof ClassLike
                     && $node->namespacedName?->toString() === $declaration->getName(),
             );
-            $writer = $node instanceof ClassLike
-                ? $finder->findFirst(
-                    $node->stmts,
-                    fn (Node $node): bool => $this->writesTo($node, $name, $computedNames, $class, $declaration),
-                )
-                : null;
 
             // A class whose declaration cannot be read may write anything.
-            if (! $node instanceof ClassLike || $writer !== null) {
+            if (! $node instanceof ClassLike) {
                 return true;
+            }
+
+            foreach (self::writeSites($node) as [$site, $targets]) {
+                if ($this->writesTo($site, $targets, $name, $computedNames, $class, $declaration)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a framework file's source spells a name; the file is recorded as a dependency on every read, as
+     * AstParser::parseFile() records one it serves from its cache.
+     */
+    private function spellsName(string $file, string $name): bool
+    {
+        DependencyRecorder::record($file);
+
+        return str_contains(self::$frameworkSources[$file] ??= (string) file_get_contents($file), $name);
     }
 
     /**
@@ -195,56 +265,53 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
-     * Whether one node writes `$this->{$name}`, or with $computedNames any `$this->{$expr}`: assigns, mutates, unsets,
-     * iterates into, takes a reference to or passes it to a by-reference parameter.
+     * The expressions a node writes, or for a call the arguments it might pass by reference; empty for any other node.
      *
-     * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the node
+     * @return list<Expr|Arg>
      */
-    private function writesTo(
-        Node $node,
-        string $name,
-        bool $computedNames,
-        ReflectionClass $subject,
-        ReflectionClass $declaration,
-    ): bool {
+    private static function writeTargets(Node $node): array
+    {
         $targets = match (true) {
             $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PreDec,
             $node instanceof PostInc, $node instanceof PostDec => [$node->var],
             $node instanceof AssignRef => [$node->var, $node->expr],
             $node instanceof Foreach_ => [$node->valueVar, $node->keyVar, $node->byRef ? $node->expr : null],
             $node instanceof Unset_ => $node->vars,
-            $node instanceof CallLike => $this->referenceArguments($node, $name, $computedNames, $subject, $declaration),
+            $node instanceof CallLike => $node->isFirstClassCallable() ? [] : $node->getArgs(),
             default => [],
         };
 
-        return array_any(
-            $targets,
-            fn (?Expr $target): bool => $target !== null && $this->targetsProperty($target, $name, $computedNames),
-        );
+        return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
     }
 
     /**
-     * The arguments naming the property that a call passes to a by-reference parameter of a callee it names.
+     * Whether one write site writes `$this->{$name}`, or with $computedNames any `$this->{$expr}`: assigns, mutates,
+     * unsets, iterates into, takes a reference to or passes it to a by-reference parameter.
      *
+     * @param  list<Expr|Arg>  $targets  what writeTargets() returned for the node
      * @param  ReflectionClass<object>  $subject
-     * @param  ReflectionClass<object>  $declaration
-     * @return list<Expr>
+     * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the node
      */
-    private function referenceArguments(
-        CallLike $call,
+    private function writesTo(
+        Node $node,
+        array $targets,
         string $name,
         bool $computedNames,
         ReflectionClass $subject,
         ReflectionClass $declaration,
-    ): array {
-        // A first-class callable passes nothing; only a call passing the property pays for reflecting its callee.
-        $passed = $call->isFirstClassCallable() ? [] : array_filter(
-            $call->getArgs(),
-            fn (Arg $arg): bool => $this->targetsProperty($arg->value, $name, $computedNames),
+    ): bool {
+        $hits = array_filter(
+            $targets,
+            fn (Expr|Arg $target): bool => $this->targetsProperty($target instanceof Arg ? $target->value : $target, $name, $computedNames),
         );
 
-        return $passed === [] ? [] : resolve(ByReferenceArguments::class)->of($call, $passed, $subject, $declaration);
+        if ($hits === [] || ! $node instanceof CallLike) {
+            return $hits !== [];
+        }
+
+        // Only a call passing the property pays for reflecting its callee.
+        /** @var list<Arg> $hits */
+        return resolve(ByReferenceArguments::class)->of($node, $hits, $subject, $declaration) !== [];
     }
 
     /**

@@ -19,7 +19,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverCon
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
@@ -28,6 +30,7 @@ use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Warehouse;
 
 /** An analyzer over the controller profile with no backing model, as the page analyzer builds it. */
 function controllerProfileAnalyzer(): ResourceAstAnalyzer
@@ -101,6 +104,45 @@ it('tries InertiaResourcePropHandler before NewResourceHandler for new PostColle
         'optional' => false,
         'resourceFqcn' => PostCollection::class,
     ]);
+});
+
+// Ordering pin: NewResourceHandler and StaticCallHandler type a single resource as the value a nested key holds, while
+// Inertia sends a page prop as its response, inside the wrap key.
+it('tries InertiaResourcePropHandler before NewResourceHandler and StaticCallHandler for a single resource', function () {
+    $built = new New_(new Name(WarehouseResource::class), [new Arg(new Variable('row'))]);
+    $made = new StaticCall(new Name(WarehouseResource::class), 'make', [new Arg(new Variable('row'))]);
+
+    expect(controllerProfileAnalyzer()->resolve($built))->toBe([
+        'type' => '{ data: WarehouseResource }',
+        'optional' => false,
+        'resourceFqcn' => WarehouseResource::class,
+    ])
+        ->and(controllerProfileAnalyzer()->resolve($made)['type'])->toBe('{ data: WarehouseResource }');
+});
+
+// The method-call claimants after it leave these calls `unknown`, where Inertia sends the response.
+it('tries InertiaResourcePropHandler before the receiver handlers for a toResource() or toResourceCollection() call', function () {
+    $reflection = new ReflectionClass(InertiaController::class);
+    $scope = new AnalysisScope($reflection);
+    $scope->varModelBindings['warehouse'] = Warehouse::class;
+    $analyzer = new ResourceAstAnalyzer($reflection, null, 'dashboard', ControllerExpressionHandlers::make(), $scope);
+    $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
+
+    expect($analyzer->resolve(new MethodCall(new Variable('warehouse'), 'toResource'))['type'])->toBe('{ data: WarehouseResource }')
+        ->and($analyzer->resolve(new NullsafeMethodCall(new Variable('warehouse'), 'toResource'))['type'])->toBe('{ data: WarehouseResource } | null')
+        ->and($analyzer->resolve(new MethodCall($paginator, 'toResourceCollection'))['type'])->toBe('PostCollection & ResourcePagination');
+});
+
+// Both claim a MethodCall, but by disjoint names, so each declines the other's and their order is free.
+test('ModelFinderHandler and InertiaResourcePropHandler decline each other\'s method calls', function () {
+    $reflection = new ReflectionClass(InertiaController::class);
+    $paginator = new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]);
+    $collection = new MethodCall($paginator, 'toResourceCollection');
+
+    expect(new ModelFinderHandler()->resolve($collection, new AnalysisScope($reflection), controllerProfileAnalyzer()))->toBeNull()
+        ->and(new InertiaResourcePropHandler()->resolve($paginator, new AnalysisScope($reflection), controllerProfileAnalyzer()))->toBeNull()
+        ->and(new ModelFinderHandler()->resolve($paginator, new AnalysisScope($reflection), controllerProfileAnalyzer())['type'] ?? null)
+        ->toBe('LengthAwarePaginator<Post>');
 });
 
 // Inertia calls every callable prop, at any depth, before it encodes it, so a first-class callable types its call.

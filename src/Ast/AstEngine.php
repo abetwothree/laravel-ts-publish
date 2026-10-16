@@ -42,6 +42,8 @@ final class AstEngine
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
      * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
+     *                           resource's toArray() is its body, never the resource object it publishes
      *
      * @internal
      */
@@ -51,6 +53,7 @@ final class AstEngine
         ?string $modelClass = null,
         bool $carriesImports = true,
         array $passed = [],
+        bool $readsCall = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -59,11 +62,11 @@ final class AstEngine
         }
 
         $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .CallSite::signature($passed);
+            .($readsCall ? '@call' : '').CallSite::signature($passed);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed),
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed, $readsCall),
         );
 
         return clone $analysis;
@@ -98,8 +101,8 @@ final class AstEngine
     }
 
     /**
-     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
-     * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
+     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs, except for
+     * a collection whose live wrap key is null or empty, whose whole answer is MethodAnalysis::$flatTypeAlias.
      *
      * The three fields agree with each other: same-basename imports are aliased apart and the
      * property types spell the aliases, an `EnumResource::make()` property is already wrapped as
@@ -322,6 +325,7 @@ final class AstEngine
         bool $carriesImports,
         string $key,
         array $passed,
+        bool $readsCall,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -332,7 +336,14 @@ final class AstEngine
         }
 
         try {
-            $analyzer = new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports, passed: $passed);
+            $analyzer = new ResourceAstAnalyzer(
+                $reflection,
+                $modelClass,
+                $method,
+                carriesImports: $carriesImports,
+                passed: $passed,
+                readsCall: $readsCall,
+            );
 
             return $analyzer->analyze();
         } finally {

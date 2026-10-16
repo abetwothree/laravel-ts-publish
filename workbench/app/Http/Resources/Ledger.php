@@ -9,8 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * The bare naming-convention fallback for LedgerCollection, also held out of the published set
- * with #[TsExclude] — proves the gate rejects the second candidate too, not just the first.
+ * The bare naming-convention candidate for LedgerCollection, which Laravel takes before LedgerResource, held out
+ * of the published set with #[TsExclude] so the gate must reject it.
  */
 #[TsExclude]
 class Ledger extends JsonResource

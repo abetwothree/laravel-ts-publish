@@ -57,6 +57,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -1415,4 +1416,35 @@ describe('authIdentifierTsType()', function () {
         'a configured identifier column' => [ConfiguredIdentifierUser::class],
         'an enum-cast identifier column' => [EnumIdentifierUser::class],
     ]);
+});
+
+describe('ModelAttributeResolver::inspect()', function () {
+    // The morph map reads every model's context before the model publisher reads the same inspection.
+    test('a model is inspected once a run, by the context and by the model publisher alike', function () {
+        $inspector = new class(app()) extends ModelInspector
+        {
+            public int $reads = 0;
+
+            public function inspect($model, $connection = null): Arrayable
+            {
+                $this->reads++;
+
+                return parent::inspect($model, $connection);
+            }
+        };
+        app()->instance(ModelInspector::class, $inspector);
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->getAttributes(Post::class);
+        $inspection = $resolver->inspect(Post::class);
+        $published = new ModelTransformer(Post::class);
+
+        expect($inspector->reads)->toBe(1)
+            ->and($published->modelInspect)->toBe($inspection);
+
+        $resolver->reset();
+        $resolver->inspect(Post::class);
+
+        expect($inspector->reads)->toBe(2);
+    });
 });

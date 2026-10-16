@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use PhpParser\Node;
 use PhpParser\Node\Stmt\ClassMethod;
-use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -110,14 +108,11 @@ class MethodLocator
             return null;
         }
 
-        $stmts = $this->parser->parseFile($file);
-
-        /** @var list<ClassMethod> $candidates */
-        $candidates = (new NodeFinder)->find($stmts, function (Node $node) use ($method, $caseSensitive): bool {
-            return $node instanceof ClassMethod && ($caseSensitive
-                ? $node->name->toString() === $method
-                : strcasecmp($node->name->toString(), $method) === 0);
-        });
+        [$stmts, $methods] = $this->parser->parseFileMethods($file);
+        $candidates = array_values(array_filter(
+            $methods[strtolower($method)] ?? [],
+            fn (ClassMethod $node): bool => ! $caseSensitive || $node->name->toString() === $method,
+        ));
 
         $node = $this->matchingDeclaration($candidates, $declaration) ?? $candidates[0] ?? null;
 
