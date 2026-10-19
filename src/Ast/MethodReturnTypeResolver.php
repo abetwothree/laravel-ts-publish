@@ -185,7 +185,7 @@ final class MethodReturnTypeResolver
         $subject = new ReflectionClass($class);
 
         // A caller's keys reach a returned parameter the body only writes keys into unseen, so the shape stays open.
-        if ($context !== null && $this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection)) {
+        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection)) {
             $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
 
             if ($signature === false) {
