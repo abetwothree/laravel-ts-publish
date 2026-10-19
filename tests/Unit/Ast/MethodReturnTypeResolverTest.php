@@ -23,6 +23,7 @@ use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Release;
+use Workbench\App\Services\PayloadDecoratorService;
 use Workbench\App\Services\PostStatsService;
 
 test('a vague array signature falls back to the literal body', function () {
@@ -236,3 +237,19 @@ test('a spread model reads its appended filtering accessor without imports', fun
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAsSpreadAppend')['type'] ?? null)
         ->toContain('; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }');
 });
+
+// The caller's keys reach the return unseen, so the written keys publish beside a signature that admits them.
+test('a returned parameter the body only writes keys into publishes an open shape', function (string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(PayloadDecoratorService::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'a key write' => ['decorate', '{ seen: boolean; [key: string]: unknown }'],
+    'a key write inside an if' => ['decorateWhen', '{ flag?: string; [key: string]: unknown }'],
+    'a ??= and an unset() beside a key write' => ['fillDefaults', '{ seen: boolean; [key: string]: unknown }'],
+    'a static method' => ['decorateStatic', '{ seen: boolean; [key: string]: unknown }'],
+    'an untyped parameter' => ['untyped', '{ seen: boolean; [key: string]: unknown }'],
+    'a whole write replacing the parameter first' => ['rebuilt', '{ id: number; seen: boolean }'],
+    'no key write' => ['passThrough', 'unknown[]'],
+    'a += of the parameter' => ['merged', '{ seen: boolean }'],
+    'a precise @return' => ['declared', '{ seen: boolean }'],
+]);
