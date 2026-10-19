@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\EnumResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HookedPropertiesEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\ReindexedValueEnum;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
 use Workbench\App\Enums\FreightClass;
@@ -206,9 +209,37 @@ describe('EnumResource sends what the published enum holds', function () {
         );
     });
 
-    it('still sends a list for an array whose integer keys a resource re-indexes', function () {
+    it('sends an array keyed out of order as the published enum holds it', function () {
         expect((new EnumResource(Priority::High))->response()->getContent())
-            ->toContain('"filterByMinimum":[1,2,3]');
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
+    });
+
+    it('sends every numeric-keyed value with its keys, at any depth', function () {
+        expect((new EnumResource(ReindexedValueEnum::Monthly))->response()->getContent())
+            ->toContain('"nestedTiers":{"tiers":{"2":"silver","5":"gold"}}')
+            ->toContain('"months":{"01":"Jan","02":"Feb"}')
+            ->toContain('"objectCodes":{"10":"Ten","20":{"2":"silver"}}')
+            ->toContain('"nestedObjectCodes":{"codes":{"10":"Ten","20":{"2":"silver"}}}')
+            ->toContain('"mixedKeys":{"1":"one","two":"two"}')
+            ->toContain('"sparse":{"3":"three","7":"seven"}');
+    });
+
+    it('lists a collection\'s items, each with its own keys', function () {
+        $raised = array_filter(Priority::cases(), fn (Priority $case): bool => $case->value >= 1);
+        $collection = EnumResource::collection($raised);
+        $content = (string) $collection->response()->getContent();
+
+        expect($collection)->toBeInstanceOf(EnumResourceCollection::class)
+            ->and($content)->toStartWith('{"data":[{"name":"Medium"')
+            ->and(substr_count($content, '"filterByMinimum":{"1":1,"2":2,"3":3}'))->toBe(3);
+    });
+
+    it('keeps each item\'s keys in a paginated collection', function () {
+        $page = new LengthAwarePaginator(Priority::cases(), 4, 2, 1);
+        $content = (string) EnumResource::collection($page)->response()->getContent();
+
+        expect(substr_count($content, '"filterByMinimum":{"1":1,"2":2,"3":3}'))->toBe(4)
+            ->and($content)->toContain('"meta":{');
     });
 });
 
@@ -257,6 +288,10 @@ describe('Integration of EnumResource in PostResource class', function () {
             ->toHaveKey('backed', true)
             ->toHaveKey('label', 'High Priority')
             ->toHaveKey('icon', 'arrow-up');
+
+        // The post's filter never walks into the EnumResource object, so the enum's own keys reach the response.
+        expect((new PostResource($post))->response()->getContent())
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
     });
 
     it('returns null for nullable enum properties when they are null', function () {

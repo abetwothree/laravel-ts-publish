@@ -25,7 +25,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
@@ -380,42 +379,5 @@ abstract class BaseRunner
         } catch (Throwable) {
             return false;
         }
-    }
-
-    /**
-     * Warn of an enum method value a resource response re-indexes: the published enum writes it as an object.
-     */
-    protected function warnOfReindexedEnumValues(EnumGenerator $generator): void
-    {
-        $transformer = $generator->transformer;
-
-        foreach ($transformer->methods as $methodName => $method) {
-            foreach ($method['returns'] as $value) {
-                if (is_array($value) && ResourceReindexing::reindexesAsList($value)) {
-                    $this->warnOfReindexedEnumValue($transformer->fqcn(), $methodName);
-
-                    break;
-                }
-            }
-        }
-
-        foreach ($transformer->staticMethods as $methodName => $method) {
-            if (is_array($method['return']) && ResourceReindexing::reindexesAsList($method['return'])) {
-                $this->warnOfReindexedEnumValue($transformer->fqcn(), $methodName);
-            }
-        }
-    }
-
-    /**
-     * Warn once that one enum method's value is an array an EnumResource response re-indexes into a list.
-     */
-    private function warnOfReindexedEnumValue(string $subject, string $methodName): void
-    {
-        AnalysisWarnings::addOnce($subject, sprintf(
-            'Method [%s] returns an array whose numeric keys are not 0 to n-1 in order, so the published enum '
-            .'writes it as an object while an EnumResource response re-indexes it into a list. Wrap it in '
-            .'array_values() for a list, or use non-numeric keys for an object.',
-            $methodName,
-        ));
     }
 }

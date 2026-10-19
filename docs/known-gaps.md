@@ -165,6 +165,13 @@ imports, as the resource generator's own rewrite needs. A ternary of an `EnumRes
 though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
 them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
 
+### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
+
+`'priority' => EnumResource::make($this->priority)->resolve()` publishes `AsEnum<typeof Priority>`, but the outer
+resource's filter walks into the array `resolve()` returns and re-indexes every value whose keys are all numeric, so a
+method value the published enum holds as `{ "1": 1, "2": 2 }` arrives as `[1, 2]`. The filter never walks into a
+resource object, so return `EnumResource::make(…)` itself and the keys arrive as the type says.
+
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 
 Each tree's `laravel-ts-global.ts` carries `app.enums.StatusType[] | app.enums.StatusType[]` twice, from

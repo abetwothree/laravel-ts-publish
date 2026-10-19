@@ -38,4 +38,26 @@ class EnumResource extends JsonResource
             $this->resource,
         ))->data();
     }
+
+    /**
+     * Collect enums into a collection that sends each item as this resource does.
+     *
+     * @param  mixed  $resource
+     */
+    protected static function newCollection($resource): EnumResourceCollection
+    {
+        return new EnumResourceCollection($resource, static::class);
+    }
+
+    /**
+     * Send the payload as built: Laravel's filter would re-index an array whose keys are all numeric, which the
+     * published enum keeps.
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    protected function filter($data): array
+    {
+        return $data;
+    }
 }
