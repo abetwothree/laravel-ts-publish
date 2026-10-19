@@ -108,6 +108,11 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
+A method read as a value that returns a parameter it only writes keys into publishes those keys plus
+`[key: string]: unknown`, for the keys its caller passed. A closed array the call passes, or a declared `array{…}`
+parameter, therefore loses its own keys to that signature, and a `+=` on the parameter still publishes only the keys it
+adds. Declare `@return array{…}` on the method to publish the exact shape.
+
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type.
 

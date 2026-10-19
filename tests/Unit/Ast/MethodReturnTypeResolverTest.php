@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Illuminate\Support\Str;
+use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
@@ -253,3 +254,17 @@ test('a returned parameter the body only writes keys into publishes an open shap
     'a += of the parameter' => ['merged', '{ seen: boolean }'],
     'a precise @return' => ['declared', '{ seen: boolean }'],
 ]);
+
+test('every call path publishes a returned key-written parameter open', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DecoratedPayloadResource::class), Post::class)->analyze()->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+    expect($props->all())->toBe([
+        'decorated' => '{ seen: boolean; [key: string]: unknown }',
+        'conditional' => '{ flag?: string; [key: string]: unknown }',
+        'static' => '{ seen: boolean; [key: string]: unknown }',
+        'helper' => '{ seen: boolean; [key: string]: unknown }',
+        'passed_through' => 'Record<string, string> | never[]',
+        'rebuilt' => '{ id: number; seen: boolean }',
+    ]);
+});
