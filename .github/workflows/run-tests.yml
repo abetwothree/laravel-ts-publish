@@ -10,7 +10,9 @@ on:
       - "phpunit.xml.dist"
       - "composer.json"
       - "composer.lock"
+      - "package.json"
       - "package-lock.json"
+      - "patches/**"
       - "testbench.yaml"
       - "tsconfig*.json"
 
