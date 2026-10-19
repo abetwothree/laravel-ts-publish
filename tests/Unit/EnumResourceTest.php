@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\EnumResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HookedPropertiesEnum;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\ReindexedValueEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalEnumResource;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
@@ -232,6 +233,25 @@ describe('EnumResource sends what the published enum holds', function () {
         expect($collection)->toBeInstanceOf(EnumResourceCollection::class)
             ->and($content)->toStartWith('{"data":[{"name":"Medium"')
             ->and(substr_count($content, '"filterByMinimum":{"1":1,"2":2,"3":3}'))->toBe(3);
+    });
+
+    it('drops and merges a subclass\'s conditional attributes as Laravel does, keeping the enum\'s keys', function () {
+        $content = (string) (new ConditionalEnumResource(Priority::High))->response()->getContent();
+
+        expect($content)->not->toContain('"hidden"')
+            ->toContain('"shown":"sent"')
+            ->toContain('"merged":1')
+            ->not->toContain('"data"')
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
+    });
+
+    it('drops a subclass\'s conditional attributes in each item of its collection', function () {
+        $content = (string) ConditionalEnumResource::collection([Priority::High])->response()->getContent();
+
+        expect($content)->not->toContain('"hidden"')
+            ->toContain('"shown":"sent"')
+            ->toContain('"merged":1')
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
     });
 
     it('keeps each item\'s keys in a paginated collection', function () {

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use BackedEnum;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\PotentiallyMissing;
 use UnitEnum;
 
 /**
@@ -50,14 +51,21 @@ class EnumResource extends JsonResource
     }
 
     /**
-     * Send the payload as built: Laravel's filter would re-index an array whose keys are all numeric, which the
-     * published enum keeps.
+     * Drop the values a resource leaves out, as Laravel does, but never re-index: Laravel lists an array whose keys are
+     * all numeric, which the published enum keeps as an object.
      *
      * @param  array<array-key, mixed>  $data
      * @return array<array-key, mixed>
      */
-    protected function filter($data): array
+    protected function removeMissingValues($data): array
     {
+        foreach ($data as $key => $value) {
+            if (($value instanceof PotentiallyMissing && $value->isMissing())
+                || ($value instanceof JsonResource && $value->resource instanceof PotentiallyMissing && $value->resource->isMissing())) {
+                unset($data[$key]);
+            }
+        }
+
         return $data;
     }
 }
