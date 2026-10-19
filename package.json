@@ -15,14 +15,14 @@
         "postinstall": "patch-package"
     },
     "dependencies": {
-        "@inertiajs/vue3": "^3.8.0",
-        "@laravel/echo-vue": "^2.5.0",
-        "@tolki/ts": "^1.0.2",
-        "@tolki/types": "^1.8.0",
-        "laravel-echo": "^2.5.0",
+        "@inertiajs/vue3": "^3.9.1",
+        "@laravel/echo-vue": "^2.6.1",
+        "@tolki/ts": "^1.0.3",
+        "@tolki/types": "^1.9.0",
+        "laravel-echo": "^2.6.1",
         "pusher-js": "^8.6.0",
         "typescript": "^7.0.2",
-        "vite": "^8.3.3"
+        "vite": "^8.3.4"
     },
     "devDependencies": {
         "patch-package": "^8.0.1"
