@@ -157,6 +157,7 @@
     "app\/Http\/Resources\/DeclaredConditionalResource.php",
     "app\/Http\/Resources\/DeclaredPrecedenceResource.php",
     "app\/Http\/Resources\/DeclaredReadingResource.php",
+    "app\/Http\/Resources\/DecoratedPayloadResource.php",
     "app\/Http\/Resources\/DelegatingResource.php",
     "app\/Http\/Resources\/DelegatingWithMixinResource.php",
     "app\/Http\/Resources\/DepotDefaultsResource.php",

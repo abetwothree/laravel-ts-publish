@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use BackedEnum;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\PotentiallyMissing;
 use UnitEnum;
 
 /**
@@ -37,5 +38,34 @@ class EnumResource extends JsonResource
             new EnumTransformer($enumClass)->data(),
             $this->resource,
         ))->data();
+    }
+
+    /**
+     * Collect enums into a collection that sends each item as this resource does.
+     *
+     * @param  mixed  $resource
+     */
+    protected static function newCollection($resource): EnumResourceCollection
+    {
+        return new EnumResourceCollection($resource, static::class);
+    }
+
+    /**
+     * Drop the values a resource leaves out, as Laravel does, but never re-index: Laravel lists an array whose keys are
+     * all numeric, which the published enum keeps as an object.
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    protected function removeMissingValues($data): array
+    {
+        foreach ($data as $key => $value) {
+            if (($value instanceof PotentiallyMissing && $value->isMissing())
+                || ($value instanceof JsonResource && $value->resource instanceof PotentiallyMissing && $value->resource->isMissing())) {
+                unset($data[$key]);
+            }
+        }
+
+        return $data;
     }
 }

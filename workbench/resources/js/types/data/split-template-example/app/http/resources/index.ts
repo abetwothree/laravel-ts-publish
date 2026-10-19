@@ -52,6 +52,7 @@ export * from './custom-import-channel-resource';
 export * from './declared-conditional-resource';
 export * from './declared-precedence-resource';
 export * from './declared-reading-resource';
+export * from './decorated-payload-resource';
 export * from './delegating-resource';
 export * from './delegating-with-mixin-resource';
 export * from './depot-defaults-resource';

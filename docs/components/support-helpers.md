@@ -93,10 +93,10 @@ and shared data's docblock-and-cast merge go through `castsByKey()`. What a matc
 
 `jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
 a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
-never prints as `[]`. An array whose numeric keys are out of order keeps them, and the runner warns because an
-`EnumResource` response re-indexes it into a list. A pure enum keeps its name, where `json_encode()` fails. A value
-`json_encode()` cannot write throws `JsonException`, which `EnumTransformer` publishes as `null` for that case. Model
-metadata keeps `normalizeMetadataValue()`.
+never prints as `[]`. An array whose numeric keys are out of order keeps them, and an `EnumResource` response sends it
+the same way, since `EnumResource` and its collection skip Laravel's re-indexing filter. A pure enum keeps its name,
+where `json_encode()` fails. A value `json_encode()` cannot write throws `JsonException`, which `EnumTransformer`
+publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue()`.
 
 ### `TsTypeString`
 

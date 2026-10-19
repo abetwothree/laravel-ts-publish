@@ -19,10 +19,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedFilterRelease;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostMetaService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RecursiveVagueFixture;
 use Illuminate\Support\Str;
+use Workbench\App\Http\Resources\DecoratedPayloadResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Release;
+use Workbench\App\Services\PayloadDecoratorService;
 use Workbench\App\Services\PostStatsService;
 
 test('a vague array signature falls back to the literal body', function () {
@@ -235,4 +237,34 @@ test('a vague spelling without imports gives way to a fallback that is not unkno
 test('a spread model reads its appended filtering accessor without imports', function () {
     expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAsSpreadAppend')['type'] ?? null)
         ->toContain('; author_picks: { v: { id: number; role: unknown } | null; id: number }; x: number }');
+});
+
+// The caller's keys reach the return unseen, so the written keys publish beside a signature that admits them.
+test('a returned parameter the body only writes keys into publishes an open shape', function (string $method, string $expected) {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(PayloadDecoratorService::class, $method)['type'] ?? null)
+        ->toBe($expected);
+})->with([
+    'a key write' => ['decorate', '{ seen: boolean; [key: string]: unknown }'],
+    'a key write inside an if' => ['decorateWhen', '{ flag?: string; [key: string]: unknown }'],
+    'a ??= and an unset() beside a key write' => ['fillDefaults', '{ seen: boolean; [key: string]: unknown }'],
+    'a static method' => ['decorateStatic', '{ seen: boolean; [key: string]: unknown }'],
+    'an untyped parameter' => ['untyped', '{ seen: boolean; [key: string]: unknown }'],
+    'a whole write replacing the parameter first' => ['rebuilt', '{ id: number; seen: boolean }'],
+    'no key write' => ['passThrough', 'unknown[]'],
+    'a += of the parameter' => ['merged', '{ seen: boolean }'],
+    'a precise @return' => ['declared', '{ seen: boolean }'],
+]);
+
+test('every call path publishes a returned key-written parameter open', function () {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DecoratedPayloadResource::class), Post::class)->analyze()->properties)
+        ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+    expect($props->all())->toBe([
+        'decorated' => '{ seen: boolean; [key: string]: unknown }',
+        'conditional' => '{ flag?: string; [key: string]: unknown }',
+        'static' => '{ seen: boolean; [key: string]: unknown }',
+        'helper' => '{ seen: boolean; [key: string]: unknown }',
+        'passed_through' => 'Record<string, string> | never[]',
+        'rebuilt' => '{ id: number; seen: boolean }',
+    ]);
 });

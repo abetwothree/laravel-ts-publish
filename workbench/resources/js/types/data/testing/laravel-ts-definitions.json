@@ -13143,6 +13143,41 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DecoratedPayloadResource": {
+            "name": "DecoratedPayloadResource",
+            "properties": [
+                {
+                    "name": "decorated",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "conditional",
+                    "type": "{ flag?: string; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "static",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "helper",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "passed_through",
+                    "type": "Record<string, string> | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "rebuilt",
+                    "type": "{ id: number; seen: boolean }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DelegatingResource": {
             "name": "DelegatingResource",
             "properties": []

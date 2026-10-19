@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 /**
- * Answers whether an API resource response re-indexes an array into a list, for a PHP value or a published type.
+ * The type an API resource response sends a published type as, where it re-indexes an array into a list.
  *
  * `ConditionallyLoadsAttributes::filter()` recurses into arrays only, never into an object, and
  * `removeMissingValues()` re-indexes an array whose keys all pass `is_numeric()`, unless the resource preserves keys.
@@ -17,30 +17,6 @@ final class ResourceReindexing
     private const string NUMBER_RECORD = 'Record<number, ';
 
     private const string STRING_RECORD = 'Record<string, ';
-
-    /**
-     * Whether a resource re-indexes an array holding exactly these keys into a list.
-     *
-     * @param  list<array-key>  $keys
-     */
-    public static function reindexesKeys(array $keys): bool
-    {
-        return $keys !== [] && array_all($keys, static fn (int|string $key): bool => is_numeric($key));
-    }
-
-    /**
-     * Whether the array, or one an array holds at any depth, has only numeric keys yet is not a list.
-     *
-     * @param  array<array-key, mixed>  $value
-     */
-    public static function reindexesAsList(array $value): bool
-    {
-        if (! array_is_list($value) && self::reindexesKeys(array_keys($value))) {
-            return true;
-        }
-
-        return array_any($value, fn (mixed $item): bool => is_array($item) && self::reindexesAsList($item));
-    }
 
     /**
      * The type a resource sends a value of this type as: an object literal, or an intersection of them and

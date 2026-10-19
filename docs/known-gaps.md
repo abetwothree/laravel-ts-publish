@@ -108,6 +108,11 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
+A method read as a value that returns a parameter it only writes keys into publishes those keys plus
+`[key: string]: unknown`, for the keys its caller passed. A closed array the call passes, or a declared `array{…}`
+parameter, therefore loses its own keys to that signature, and a `+=` on the parameter still publishes only the keys it
+adds. Declare `@return array{…}` on the method to publish the exact shape.
+
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
 `$validator->normalize($data)`, or through `extract()`, keeps its earlier type.
 
@@ -159,6 +164,13 @@ imports, as the resource generator's own rewrite needs. A ternary of an `EnumRes
 `$cond ? EnumResource::make(Status::Draft) : Status::Published`, publishes `AsEnum<typeof Status>` for both arms,
 though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
 them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
+
+### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
+
+`'priority' => EnumResource::make($this->priority)->resolve()` publishes `AsEnum<typeof Priority>`, but the outer
+resource's filter walks into the array `resolve()` returns and re-indexes every value whose keys are all numeric, so a
+method value the published enum holds as `{ "1": 1, "2": 2 }` arrives as `[1, 2]`. The filter never walks into a
+resource object, so return `EnumResource::make(…)` itself and the keys arrive as the type says.
 
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 

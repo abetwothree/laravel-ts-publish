@@ -47,8 +47,6 @@ use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Workbench\App\Enums\FreightClass;
-use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
@@ -1324,43 +1322,17 @@ describe('enum names that collide inside one namespace', function () {
     });
 });
 
-describe('enum method values an EnumResource response re-indexes', function () {
-    $reindexWarning = fn (string $method): string => 'Method ['.$method.'] returns an array whose numeric keys are not '
-        .'0 to n-1 in order, so the published enum writes it as an object while an EnumResource response re-indexes it '
-        .'into a list. Wrap it in array_values() for a list, or use non-numeric keys for an object.';
+// An EnumResource response keeps every key the published enum keeps, so no enum method value is worth a warning.
+test('never warns of an enum method value\'s keys, since an EnumResource response keeps them', function () {
+    config()->set('ts-publish.enums.additional_directories', [ReindexedValueEnum::class]);
+    config()->set('ts-publish.enums.included', [ReindexedValueEnum::class]);
 
-    test('warns of an enum method value whose integer keys an EnumResource response re-indexes', function () use ($reindexWarning) {
-        (new Runner)->run();
+    (new Runner)->run();
 
-        $warning = ['subject' => Priority::class, 'message' => $reindexWarning('filterByMinimum')];
-
-        expect(array_keys(AnalysisWarnings::all(), $warning, true))->toHaveCount(1);
-    });
-
-    test('never warns of an associative array or a list', function () {
-        (new Runner)->run();
-
-        expect(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(FreightClass::class);
-    });
-
-    // ConditionallyLoadsAttributes::filter() recurses into arrays only, and re-indexes one whose keys are all numeric.
-    test('warns of each value the response re-indexes, and of no other', function () use ($reindexWarning) {
-        config()->set('ts-publish.enums.additional_directories', [ReindexedValueEnum::class]);
-        config()->set('ts-publish.enums.included', [ReindexedValueEnum::class]);
-
-        (new Runner)->run();
-
-        $messages = array_column(array_filter(
-            AnalysisWarnings::all(),
-            fn (array $warning): bool => $warning['subject'] === ReindexedValueEnum::class,
-        ), 'message');
-
-        expect($messages)->toEqualCanonicalizing([
-            $reindexWarning('nestedTiers'),
-            $reindexWarning('months'),
-            $reindexWarning('sparse'),
-        ]);
-    });
+    expect(array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'EnumResource response re-indexes'),
+    ))->toBe([]);
 });
 
 // ─── CoreCollector class map run boundary ────────────────────────

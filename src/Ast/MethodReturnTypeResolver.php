@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -14,13 +15,16 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Scalar\Float_;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Declare_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
@@ -47,6 +51,7 @@ use ReflectionMethod;
 final class MethodReturnTypeResolver
 {
     use BuildsInlineObjectTypes;
+    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /**
@@ -139,7 +144,8 @@ final class MethodReturnTypeResolver
     {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
-        $body = resolve(MethodLocator::class)->locate($class, $methodName)?->method->stmts;
+        $context = resolve(MethodLocator::class)->locate($class, $methodName);
+        $body = $context?->method->stmts;
         $memo = resolve(AnalysisMemo::class);
 
         // Defence in depth: analyzeMethod() cuts the same cycle, and this stops one before it reaches the engine. It
@@ -173,6 +179,19 @@ final class MethodReturnTypeResolver
         foreach ($analysis->properties as $index => $property) {
             if (TsTypeString::shapeValueHasUnimportableToken($property['type'])) {
                 $analysis->properties[$index]['type'] = 'unknown';
+            }
+        }
+
+        $subject = new ReflectionClass($class);
+
+        // A caller's keys reach a returned parameter the body only writes keys into unseen, so the shape stays open.
+        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection)) {
+            $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
+
+            if ($signature === false) {
+                $analysis->properties[] = ['name' => '[key: string]', 'type' => 'unknown', 'optional' => false, 'description' => ''];
+            } else {
+                $analysis->properties[$signature]['type'] = 'unknown';
             }
         }
 
@@ -269,6 +288,47 @@ final class MethodReturnTypeResolver
         }
 
         return $readsAny;
+    }
+
+    /**
+     * Whether the method returns a parameter its body writes only through its keys, so whatever the caller passed in it
+     * reaches the return without the body seeing it.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>  $declaration
+     */
+    private function returnsKeyWrittenParameter(ClassMethod $method, ReflectionClass $subject, ReflectionClass $declaration): bool
+    {
+        $stmts = $method->stmts ?? [];
+        $parameters = [];
+        $returned = [];
+
+        foreach ($method->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $parameters[] = $param->var->name;
+            }
+        }
+
+        foreach ($this->ownReturns($stmts) ?? [] as [$return]) {
+            if ($return->expr instanceof Variable && in_array($return->expr->name, $parameters, true)) {
+                $returned[$return->expr->name] = false;
+            }
+        }
+
+        foreach ($returned === [] ? [] : $this->collectVariableWrites($stmts, $subject, $declaration) as [$name, , $target]) {
+            if (! isset($returned[$name])) {
+                continue;
+            }
+
+            if (! $target instanceof ArrayDimFetch) {
+                // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
+                unset($returned[$name]);
+            } elseif ($this->rootVariable($target) === $name) {
+                $returned[$name] = true;
+            }
+        }
+
+        return in_array(true, $returned, true);
     }
 
     /**

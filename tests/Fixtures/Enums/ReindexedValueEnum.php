@@ -8,13 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
 use stdClass;
 
-/** An enum whose method values an EnumResource response re-indexes into a list, or sends as they are. */
+/** An enum whose method values hold numeric keys, which an EnumResource response sends as json_encode() writes them. */
 enum ReindexedValueEnum: string
 {
     case Monthly = 'monthly';
 
     /**
-     * Tiers keyed out of order inside an array, which the response re-indexes too.
+     * Tiers keyed out of order inside an array, which the response keeps too.
      *
      * @return array{tiers: array<int, string>}
      */
@@ -25,7 +25,7 @@ enum ReindexedValueEnum: string
     }
 
     /**
-     * Months keyed by numeric strings, which the response re-indexes as it does integer keys.
+     * Months keyed by numeric strings, which the response keeps as it does integer keys.
      *
      * @return array<string, string>
      */
@@ -35,7 +35,7 @@ enum ReindexedValueEnum: string
         return ['01' => 'Jan', '02' => 'Feb'];
     }
 
-    /** An object with only numeric keys, holding an array keyed out of order, which the response never walks into. */
+    /** An object with only numeric keys, holding an array keyed out of order. */
     #[TsEnumMethod]
     public function objectCodes(): stdClass
     {
@@ -43,7 +43,7 @@ enum ReindexedValueEnum: string
     }
 
     /**
-     * The same object inside an array, which the response walks into only as far as the object.
+     * The same object inside an array.
      *
      * @return array{codes: stdClass}
      */
