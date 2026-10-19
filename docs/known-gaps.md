@@ -66,8 +66,17 @@ publishes an empty interface instead of `PostResource[]`. An empty interface acc
 `undefined`, so it looks specific and checks almost nothing. Laravel's own `collects()` cannot read the attribute on
 12 either, and the package mirrors the framework rather than guessing. Set `public $collects = PostResource::class;`,
 which works on both versions. The `FooCollection` to `FooResource` convention also works while the run publishes
-`FooResource` ([`InspectsResourceCalls`](../src/Analyzers/Concerns/InspectsResourceCalls.php)), and
+`FooResource` and no class `Foo` sits beside the collection, since Laravel takes `Foo` first
+([`ResourceCollections`](../src/Ast/ResourceCollections.php)), and
 [Laravel version guards](./laravel-version-guards.md) records the version floor.
+
+### A collection that collects through an overridden `collects()` or a `$collects` set in its constructor publishes an empty interface
+
+Laravel reads the API resource a collection collects from its `collects()` method at runtime. The package reads the
+`#[Collects]` attribute, the `$collects` property's declared default and the naming convention, so a collection whose
+own `collects()` returns `PostResource::class`, or whose constructor assigns `$this->collects`, publishes an empty
+interface, or what its name or parent implies, though Laravel sends `{ data: PostResource[] }`. Declare
+`public $collects = PostResource::class;` instead.
 
 ### A non-promoted property a constructor always assigns still renders optional
 
@@ -92,10 +101,10 @@ A method that builds an array in a variable and returns it publishes the keys it
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk cannot read, and
-  one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `unset($data['key'])`,
-  `sort($data)` or any other by-reference call, or a `??=` to a key it does not hold. When no branch read completely
-  has a key and every `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it
-  publishes the writes the walk reads instead; with a `return` of another kind, the first `return` is read.
+  one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `sort($data)` or any other
+  by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
+  `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the
+  walk reads instead; with a `return` of another kind, the first `return` is read.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -139,14 +148,17 @@ exceptions ([`KnownMethodRuleHandler::validatedKeyRule()`](../src/Ast/Handlers/K
   `validated('options.default')` still publishes the `string` the override replaced. The handler cannot index into a
   hand-written TypeScript type, and declining would trade the disagreement for `unknown`.
 
-### A multi-enum ternary in Inertia shared data emits both enum names with no imports
+### A multi-enum or mixed `EnumResource` ternary in an Inertia prop publishes the wrong enum shape
 
 With `enums.use_tolki_package` on, the default,
-`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` in `HandleInertiaRequests::share()`
-renders `RoleType | StatusType` and imports neither, which is TS2304 twice in a consumer's build.
-`InertiaSharedDataAnalyzer::rewriteEnumResourceTypes()` handles only the single-enum shape, and `AnalysisImports`
-drops a multi-enum ternary's type imports, as the resource generator's own rewrite needs. No workbench fixture has
-this shape, so the token gate never sees it. Override the key with an import-aware `#[TsCasts]`, or use one enum.
+`$cond ? EnumResource::make(Role::Admin) : EnumResource::make(Status::Draft)` as a page prop or in
+`HandleInertiaRequests::share()` publishes `RoleType | StatusType`, though Inertia sends each arm's resource object.
+`RewritesEnumResourceProps::rewriteEnumResourceTypes()` handles only the single-enum shape. In shared data neither name
+is imported either, which is TS2304 twice in a consumer's build: `AnalysisImports` drops a multi-enum ternary's type
+imports, as the resource generator's own rewrite needs. A ternary of an `EnumResource` and a bare case of its enum,
+`$cond ? EnumResource::make(Status::Draft) : Status::Published`, publishes `AsEnum<typeof Status>` for both arms,
+though Inertia sends the bare arm as its value. No workbench fixture has these shapes, so the token gate never sees
+them. Override the key with an import-aware `#[TsCasts]`, or wrap every arm in one enum's `EnumResource`.
 
 ### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
 
@@ -402,33 +414,17 @@ returns, such as `integer`, `float` or `decimal:2`, or declare it with an access
 publishes on every driver; a count publishes `number` whatever its declaration, so an `integer` cast on its alias makes
 the response hold one.
 
-### A stacked collection that names no resource itself publishes its parent's, though Laravel collects raw models
+### A wrap set only for HTTP requests, or forced by `$forceWrapping`, is invisible
 
-A collection that neither declares nor inherits a custom `toArray()` and is stacked on another collects what its own
-class names: its own `#[Collects]`, the `$collects` it inherits, then the naming convention on its own name. When none
-names a resource, as with `StackedUnnamedCollection` over `SupplierSummaryCollection`, Laravel collects the raw models,
-but the package publishes the parent's `SupplierSummaryResource[]` rather than an empty interface, which would drop the
-`data` key the response carries. That holds only for a parent that wraps: over a `$wrap = null` parent that names its
-API resource by attribute or by name, the stacked class still publishes an empty interface. Name the resource on the
-stacked class with `public $collects = SupplierSummaryResource::class;`, which works on both Laravel versions, and the
-published type and the response agree.
+The package reads the live `$wrap` the app's service providers leave by the time `ts:publish` runs, so a provider's
+`JsonResource::withoutWrapping()` or `wrap('items')` reaches every collection and every Inertia prop that wraps by
+it. `ts:publish` is a console command, so a wrap set only for HTTP requests, in middleware, a controller or behind
+`! $this->app->runningInConsole()`, is not seen, and the published types keep the key the booted app had. Set it in a
+provider's `boot()` for the console too.
 
-### A collection that keeps the `make:resource` stub `toArray()` publishes an empty interface, or its parent's API resource
-
-`make:resource` writes `return parent::toArray($request);` into a new collection. A collection that keeps it and extends
-`ResourceCollection` publishes an empty interface, though Laravel sends `{ data: R[] }` of the API resource it collects.
-Stacked on another collection it publishes that parent's collected type, not the API resource its own `$collects` names,
-because `ResourceAstAnalyzer::analyzeParentToArray()` analyzes the parent as its own subject. Delete the stub
-`toArray()`: it only repeats the inherited one, and the collection then resolves from its own class, as a body-less one
-does.
-
-### A runtime `withoutWrapping()` is invisible, so a collection publishes `{ data: R[] }` for a bare list
-
-The package reads each collection's declared `$wrap` default, never a value the app sets at runtime. After
-`JsonResource::withoutWrapping()`, often called in a service provider, every body-less collection that does not
-redeclare `$wrap` sends a bare list, while its published interface still has the `data` key. A runtime `wrap('items')`
-is missed the same way. Declare `public static $wrap = null;` on the collection, or on a base collection the others
-extend, as `UnwrappedCollection` does, and the package publishes the bare list. For `wrap('items')`, declare that key.
+`JsonResource::$forceWrapping` (Laravel 12.45 and later) is not read. With it on, Laravel wraps a body that already
+holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
+prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
 
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource`, and a read on the item `first()` returns, publish `unknown`
 
@@ -437,41 +433,95 @@ given. The package types its value, `first()`, `last()`, `count()`, `only()`, `e
 methods, not a collection pipeline on it, and not a member of the API resource `first()` returns, such as
 `$this->resource->first()?->title`. Type such a key with `#[TsCasts]`.
 
-### A `& ResourcePagination` page prop over `simplePaginate()` or `cursorPaginate()` claims the length-aware `meta`
+### A resource collection prop over a paginator the engine does not type publishes no pagination
 
-An Inertia prop that passes a paginator to a resource collection, such as
-`new PostCollection(Post::query()->simplePaginate())`, publishes `PostCollection & ResourcePagination`, whose `meta` is
-the one `paginate()` sends; `SomeResource::collection()` over one publishes `JsonResourcePaginator<R>` with the same
-`meta`. A simple paginator's `meta` has no `last_page`, `links` or `total`, and a cursor paginator's also has no
-`current_page`, `from` or `to`, so a read of one compiles and gets `undefined`. Type the prop with `#[TsCasts]`, or use
-`paginate()`.
+An Inertia prop or shared value reads its paginator's kind from a query chain rooted at a model, such as
+`Post::query()->simplePaginate()`, or a local variable assigned one. Over a query builder variable
+(`$query->paginate()`), a controller method (`$this->page()`) or an injected service's method, `new PostCollection(…)`
+publishes `PostCollection` and `PostResource::collection(…)` `AnonymousResourceCollection<PostResource>`, though
+Laravel sends `links` and `meta` too, and such a paginator passed bare publishes `unknown`. Build the paginator in the
+props, or type the prop with `#[TsCasts]`.
 
-### A resource collection whose `toArray()` returns `$this->resource` publishes an empty interface
+### Over a paginator, a resource collection whose `toArray()` returns `$this->resource` sends the paginator's own array
 
 A collection whose `toArray()` returns `$this->resource`, `$this->resource->toArray()` or
-`$this->resource->jsonSerialize()` publishes an empty interface, though Laravel sends the collected items. The package
-reads a collection's response from the keys its `toArray()` returns. Return an array with named keys, such as
-`['data' => $this->collection]`, or type the response with `#[TsCasts]`.
+`$this->resource->jsonSerialize()` publishes `{ data: R[] }`, as a body-less one does. Given a paginator,
+`$this->resource` is the paginator, so Laravel sends its own array, `current_page`, `data`, `first_page_url` and the
+rest, beside `meta` and a `links` merged with the paginator's numbered links. A page prop over it still publishes its
+paginator's pagination type, such as `& ResourcePagination`, or `JsonResourcePaginator<R>` under `$wrap = null`.
+Return `$this->collection`, which Laravel sends as `{ data, links, meta }`, or named keys such as
+`['data' => $this->collection]`.
 
 ### A paginated resource collection's own `meta` or `links` key is merged into Laravel's pagination block
 
-Over a paginator, a collection whose `toArray()` returns its wrap key, such as `data`, beside its own `meta` or `links`
-has those merged into Laravel's pagination block with `array_merge_recursive()`, so a key both name is sent as a list.
-A `total` you add to `meta` is sent as `[3, 3]`, while the package publishes `number`. Without the wrap key, Laravel
-nests the whole array under `data` and nothing merges. Name the key differently, or drop the duplicated key from
-`$default` in `paginationInformation()`, such as `unset($default['meta']['total'])`. Do not build a block with other
-keys there: the package does not read `paginationInformation()`, so `& ResourcePagination` would no longer match.
+Over a paginator, Laravel merges the `meta` and `links` a collection's `toArray()` returns beside its wrap key, such as
+`data`, and those its `with()` and `additional()` add, into its pagination block with `array_merge_recursive()`. A
+`toArray()` key the block does not send, such as `meta.kind` or `links.self`, is typed from the collection's own body; a
+key both name is sent as a list, so a `total` you add to `meta` is sent as `[3, 3]` while the package publishes
+`number`. Without the wrap key, Laravel nests the whole body under `data` and nothing of it merges. Name the key
+differently, or drop the duplicated key from `$default` in `paginationInformation()`, such as
+`unset($default['meta']['total'])`. Do not build a block with other keys there: the package does not read
+`paginationInformation()`, so the published pagination type would no longer match.
 
-### A body-less `JsonApiResource` subclass publishes the model's properties, not the JSON:API document
+### A resource prop's `additional()` and `with()` keys are not published
 
-Laravel's `JsonApiResource` (13, and 12 from 12.45) declares no `toArray()`, so a subclass without one walks
-`ResourceAstAnalyzer::analyzeParentToArray()` up to `JsonResource` and publishes whole-model delegation: the model's
-columns, appended accessors and relations. Laravel sends a JSON:API document instead,
-`{ data: { id, type, attributes?, relationships?, links?, meta? }, included?, jsonapi? }`, with `attributes` from
-`toAttributes()`. Declaring `toArray()` does not help: `toAttributes()` falls back to it, so its keys become
-`data.attributes`, while the package publishes them as the whole response. No attribute replaces the whole type, since
-`#[TsCasts]` only overrides or adds keys and `#[TsType]` targets cast classes. Leave the resource out with
-`#[TsExclude]` or `resources.excluded`, and type the document by hand.
+Inertia sends a resource prop as its whole response, beside the keys `additional()` and the resource's `with()` add.
+`R::make($x)->additional(['meta' => …])` publishes `{ data: R }` and `(new XCollection($items))->additional(…)`
+`XCollection`, without `meta`, and `R::collection($items)->additional(…)` publishes `unknown`. Such keys also make
+Laravel nest the body under `data` after `JsonResource::withoutWrapping()`, where the package publishes it bare. Type
+the prop with `#[TsCasts]`.
+
+### A `->resolve()`d resource prop publishes the API resources its body holds bare
+
+`R::make($x)->resolve()` as an Inertia prop publishes `R`, the keys `resolve()` returns. Inertia then sends each API
+resource still inside them as its response, so a key such as `'author' => new UserResource($this->user)` arrives as
+`{ data: … }` while `R` types it `UserResource`. Pass the resource itself, or type the prop with `#[TsCasts]`.
+
+### Props a collaborator builds publish their API resources bare
+
+`Inertia::render('Page', $this->props->build())` types the props from what the collaborator's method returns, where an
+API resource is the value a nested resource key holds: `'warehouse' => new WarehouseResource($w)` publishes
+`WarehouseResource`, though Inertia sends `{ data: … }`. Build the props array in the action, or type the props with
+`#[TsCasts]`.
+
+### Adding a resource collection that a `toResourceCollection()` guess picks needs a `--fresh` publish
+
+The generation cache rebuilds a file when a file it read changes, but an argument-less `toResourceCollection()` can pick
+a collection class that did not exist when the file was cached. After adding a key-preserving `CategoryCollection`, a
+cached run keeps `siblings: CategoryResource[] | null`, where `--fresh` publishes
+`Record<string, CategoryResource> | null`; a page prop that calls the guess keeps its old type the same way. Run
+`ts:publish --fresh` after adding such a class.
+
+### A JSON:API resource's sparse fieldsets, dynamic `toType()` and runtime type literal are not typed
+
+A JSON:API resource publishes the resource object Laravel sends with no `?fields[…]` in the request, so every
+attribute it always sends is required, though a sparse fieldset sends only the ones it names; read such a response
+through `JsonApiSparse<R>` from `@tolki/types`. A `toType()` that returns anything but one string literal publishes
+`type: string`. The literal is computed when `ts:publish` runs, so a morph map or `Pluralizer::useLanguage()` set only
+later is not in it, and the generation cache cannot see either. Keys `additional()` adds beside `data`, and the outer
+key a subclass that redeclares `$wrap` adds, are not published.
+
+After `JsonResource::withoutWrapping()`, a JSON:API collection prop publishes the bare list Laravel then sends, though
+a request with `?include=`, or after `JsonApiResource::configure()`, still sends it under `data` beside `included`. A
+relationship whose resource is a plain API resource publishes `type: string` and adds nothing to `included`, since
+Laravel throws building it on an include. A `toRelationships()` resolver written `SomeResource::CONSTANT` or
+`self::class` is read as no resolver, so the related model's own resource names the relationship. On Laravel 12 a
+`toRelationships()` closure that returns a resource throws on an include, while the package publishes Laravel 13's
+shape.
+
+### On Laravel 12.45 and later, a plain API resource's `$attributes` and `parent::toAttributes()` are not read
+
+From 12.45, `JsonResource::toAttributes()` returns an `$attributes` property in `toArray()`'s place, so a plain
+resource with one sends that array as it is, a list staying a list, while the package publishes `toArray()`'s keys. A
+`...parent::toAttributes()` spread in a plain resource's own `toAttributes()` publishes no key. Rename the property, or
+return every key from `toAttributes()` itself.
+
+### An overridden `resolve()` or `jsonSerialize()` changes what Laravel sends, and the package reads neither
+
+An API resource publishes the keys its `toArray()` returns. Laravel sends its `resolve()` as the response's `data` and
+as each item of a resource collection, and its `jsonSerialize()` where another API resource nests it as a single value,
+so a key either override adds, such as `[...parent::resolve($request), 'resolved' => true]`, is sent there and missing
+from the published type. Put the keys in `toArray()`.
 
 ### A `__toString()` class with no public property publishes `Record<string, never>`; three others publish `unknown`
 
@@ -563,6 +613,16 @@ be named: a `get(): mixed` cast documented `@return Rota`, a native union of suc
 `AsCollection::using(Collection::class, Rota::class)` keeps the numeric keys, as earlier releases did. Declare the
 cast's native return type, or type the key with `#[TsCasts]`.
 
+### A resource collection's items publish as a list or a record by `#[PreserveKeys]`, not by the keys they arrive with
+
+A resource collection publishes `R[]`, or `Record<string, R>` when it preserves keys through `#[PreserveKeys]` or
+`$preserveKeys`. Laravel sends the items as an array or an object by the keys the caller passed in, which the package
+never sees. Given items keyed by `keyBy()`, a collection that does not preserve keys sends an object while publishing
+`R[]`. Given a list, one that preserves keys sends an array while publishing `Record<string, R>`. In a custom
+`toArray()`, `$this->collection` and `$this->resource` keep their input's keys whatever the class preserves, so items a
+`filter()` left sparse are sent as an object too. Give `#[PreserveKeys]` (or `$preserveKeys`) to a collection that
+receives keyed items, call `values()` on filtered items before passing them in, or type the key with `#[TsCasts]`.
+
 ### A collection that does not preserve keys lists the arrays of an element that does
 
 A named `ResourceCollection` without `$preserveKeys` runs its own filter over the elements it resolves, so it
@@ -580,13 +640,14 @@ an object, while the type stays `string[]`. Use `sort()`, or `array_values()` be
 
 `toArray()` returning `[42 => …]` publishes `{ "42": … }`, though Laravel sends the resource as a list.
 
-### A `$wrap = null` API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
+### An unwrapped API resource keeps its top-level int keys, which Laravel renumbers only when it is the response
 
-`toArray()` returning `['id' => 1, 42 => 'a']` on a resource with `public static $wrap = null` publishes
-`{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or `additional` data;
-otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is `array_merge_recursive()`d
-and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two a resource is cannot be
-known statically. Use a string key.
+`toArray()` returning `['id' => 1, 42 => 'a']` on a resource sent without a wrap key, one with
+`public static $wrap = null` or, after a runtime `JsonResource::withoutWrapping()`, every one that does not redeclare
+`$wrap`, publishes `{ id: number; "42": string }`. Returned unwrapped as the response (a resource with no `with()` or
+`additional` data; otherwise `ResourceResponse::wrap()` nests it under `data`, where keys keep theirs), it is
+`array_merge_recursive()`d and sends `{"id":1,"0":"a"}`; nested in another resource it keeps `"42"`. Which of the two
+a resource is cannot be known statically. Use a string key.
 
 ### A `broadcastWith()` payload whose top-level keys are all int publishes an object
 

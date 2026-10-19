@@ -7,23 +7,49 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\EmptyRelationshipsApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeyedApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PagePropApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\TypedRelationshipsApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\UnreadRelationshipsApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WrittenRelationshipsApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SometimesDataKeyPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubFlatCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StubGadgetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Cog;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use Workbench\App\Enums\Role;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Resources\OrderCollection;
 use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PreserveKeysFlatCollection;
 use Workbench\App\Http\Resources\PreserveKeysTeamResource;
 use Workbench\App\Http\Resources\TeamResource;
+use Workbench\App\Http\Resources\UserCollection;
+use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Team;
+use Workbench\App\Models\User;
+use Workbench\App\Models\Warehouse;
 
 /** An expression holding `Post::query()->paginate()`, which ModelFinderHandler types as a paginator. */
 function paginatorArg(): Arg
@@ -31,17 +57,28 @@ function paginatorArg(): Arg
     return new Arg(new MethodCall(new StaticCall(new Name(Post::class), 'query'), 'paginate', [new Arg(new Int_(10))]));
 }
 
-/** Resolve one expression through the handler under test, over the controller profile. */
-function inertiaResourcePropResult(Expr $expr): ?array
+/** An expression holding `Post::query()->{$terminal}(10)`, a simple or cursor paginator. */
+function paginatorKindArg(string $terminal): Arg
+{
+    return new Arg(new MethodCall(new StaticCall(new Name(Post::class), 'query'), $terminal, [new Arg(new Int_(10))]));
+}
+
+/** Resolve one expression through the handler under test, over the controller profile and the given scope. */
+function inertiaResourcePropResult(Expr $expr, ?AnalysisScope $scope = null): ?array
 {
     $reflection = new ReflectionClass(InertiaController::class);
+    $scope ??= new AnalysisScope($reflection);
 
     return new InertiaResourcePropHandler()->resolve(
         $expr,
-        new AnalysisScope($reflection),
-        new ResourceAstAnalyzer($reflection, null, 'dashboard', ControllerExpressionHandlers::make()),
+        $scope,
+        new ResourceAstAnalyzer($reflection, null, 'dashboard', ControllerExpressionHandlers::make(), $scope),
     );
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 it('types a wrapping collection over a paginator beside the pagination members', function () {
     $expr = new New_(new Name(PostCollection::class), [paginatorArg()]);
@@ -97,15 +134,148 @@ it('types Resource::collection() as an anonymous collection, or a paginator when
         ->toBe("Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> }");
 });
 
-it('declines a singular resource, an enum resource, and a non-collection static call', function () {
-    $singular = new New_(new Name(PostResource::class), [new Arg(new Variable('post'))]);
-    $enumCollection = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg(new Variable('roles'))]);
-    $make = new StaticCall(new Name(PostResource::class), 'make', [new Arg(new Variable('post'))]);
+it('types a single resource as its response inside the live wrap key, bare without one', function () {
+    $built = new New_(new Name(WarehouseResource::class), [new Arg(new Variable('warehouse'))]);
+    $made = new StaticCall(new Name(WarehouseResource::class), 'make', [new Arg(new Variable('warehouse'))]);
+    $wrapped = inertiaResourcePropResult($built);
 
-    expect(inertiaResourcePropResult($singular))->toBeNull()
-        ->and(inertiaResourcePropResult($enumCollection))->toBeNull()
-        ->and(inertiaResourcePropResult($make))->toBeNull();
+    JsonResource::wrap('items');
+    $itemsKey = inertiaResourcePropResult($made)['type'] ?? null;
+    JsonResource::withoutWrapping();
+
+    expect($wrapped)->toBe([
+        'type' => '{ data: WarehouseResource }',
+        'optional' => false,
+        'resourceFqcn' => WarehouseResource::class,
+    ])
+        ->and($itemsKey)->toBe('{ items: WarehouseResource }')
+        ->and(inertiaResourcePropResult($built)['type'] ?? null)->toBe('WarehouseResource')
+        ->and(inertiaResourcePropResult($made)['type'] ?? null)->toBe('WarehouseResource');
 });
+
+it('types toResource() as the response of the resource Laravel guesses or is given', function () {
+    $scope = new AnalysisScope(new ReflectionClass(InertiaController::class));
+    $scope->varModelBindings['warehouse'] = Warehouse::class;
+    $guessed = new MethodCall(new Variable('warehouse'), 'toResource');
+    $nullsafe = new NullsafeMethodCall(new Variable('warehouse'), 'toResource');
+    $named = new MethodCall(new Variable('row'), 'toResource', [new Arg(new ClassConstFetch(new Name(PostResource::class), 'class'))]);
+
+    expect(inertiaResourcePropResult($guessed, $scope))->toBe([
+        'type' => '{ data: WarehouseResource }',
+        'optional' => false,
+        'resourceFqcn' => WarehouseResource::class,
+    ])
+        ->and(inertiaResourcePropResult($nullsafe, $scope)['type'] ?? null)->toBe('{ data: WarehouseResource } | null')
+        ->and(inertiaResourcePropResult($named)['type'] ?? null)->toBe('{ data: PostResource }')
+        ->and(inertiaResourcePropResult(new MethodCall(new Variable('row'), 'toResource')))->toBeNull()
+        ->and(inertiaResourcePropResult(new MethodCall(new Variable('warehouse'), 'toResourceCollection'), $scope))->toBeNull();
+});
+
+// Laravel's ResourceResponse nests a body only when it lacks the wrap key, so a key sent on some paths sends both.
+it('sends a body that holds its wrap key as it stands, and one that holds it on some paths both ways', function () {
+    $held = new New_(new Name(DataKeyPostResource::class), [new Arg(new Variable('post'))]);
+    $sometimes = new New_(new Name(SometimesDataKeyPostResource::class), [new Arg(new Variable('post'))]);
+
+    expect(inertiaResourcePropResult($held)['type'] ?? null)->toBe('DataKeyPostResource')
+        ->and(inertiaResourcePropResult($sometimes)['type'] ?? null)
+        ->toBe('SometimesDataKeyPostResource | { data: SometimesDataKeyPostResource }');
+});
+
+it('nests a collection body that lacks its wrap key under it, beside a paginator\'s members', function () {
+    $plain = new New_(new Name(ItemsKeyPostCollection::class), [new Arg(new Variable('rows'))]);
+    $made = new StaticCall(new Name(ItemsKeyPostCollection::class), 'make', [new Arg(new Variable('rows'))]);
+    $paginated = new New_(new Name(ItemsKeyPostCollection::class), [paginatorArg()]);
+    $held = new New_(new Name(OrderCollection::class), [paginatorArg()]);
+    $wrapped = [inertiaResourcePropResult($plain), inertiaResourcePropResult($made)['type'] ?? null];
+
+    JsonResource::withoutWrapping();
+
+    expect($wrapped)->toBe([
+        [
+            'type' => '{ data: ItemsKeyPostCollection }',
+            'optional' => false,
+            'resourceFqcn' => ItemsKeyPostCollection::class,
+        ],
+        '{ data: ItemsKeyPostCollection }',
+    ])
+        ->and(inertiaResourcePropResult($plain)['type'] ?? null)->toBe('ItemsKeyPostCollection')
+        ->and(inertiaResourcePropResult($paginated)['type'] ?? null)->toBe('{ data: ItemsKeyPostCollection } & ResourcePagination');
+
+    JsonResource::flushState();
+
+    expect(inertiaResourcePropResult($paginated)['type'] ?? null)->toBe('{ data: ItemsKeyPostCollection } & ResourcePagination')
+        ->and(inertiaResourcePropResult($held)['type'] ?? null)->toBe('OrderCollection & ResourcePagination');
+});
+
+it('types EnumResource::collection() as the enum list inside the anonymous collection\'s wrap key', function () {
+    $cases = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg(new StaticCall(new Name(Role::class), 'cases'))]);
+    $wrapped = inertiaResourcePropResult($cases);
+
+    JsonResource::withoutWrapping();
+
+    expect($wrapped)->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
+        ->and(inertiaResourcePropResult($cases)['type'] ?? null)->toBe('RoleType[]');
+});
+
+it('declines EnumResource::make(), a static call that builds no resource, and an enum list it cannot name', function () {
+    $enum = new StaticCall(new Name(EnumResource::class), 'make', [new Arg(new Variable('role'))]);
+    $enumCollection = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg(new Variable('roles'))]);
+    $finder = new StaticCall(new Name(Post::class), 'make', [new Arg(new Variable('attributes'))]);
+
+    expect(inertiaResourcePropResult($enum))->toBeNull()
+        ->and(inertiaResourcePropResult($enumCollection))->toBeNull()
+        ->and(inertiaResourcePropResult($finder))->toBeNull();
+});
+
+it('types a JSON:API resource as its document, built, made, by toResource() or collected', function () {
+    $built = new New_(new Name(PagePropApiResource::class), [new Arg(new Variable('post'))]);
+    $made = new StaticCall(new Name(PagePropApiResource::class), 'make', [new Arg(new Variable('post'))]);
+    $explicit = new MethodCall(new Variable('post'), 'toResource', [new Arg(new ClassConstFetch(new Name(PagePropApiResource::class), 'class'))]);
+    $collected = new StaticCall(new Name(PagePropApiResource::class), 'collection', [paginatorKindArg('cursorPaginate')]);
+    $document = [
+        'type' => 'JsonApiDocument<PagePropApiResource, never>',
+        'optional' => false,
+        'resourceFqcn' => PagePropApiResource::class,
+        'customImports' => ['@tolki/types' => ['JsonApiDocument']],
+    ];
+
+    expect(inertiaResourcePropResult($built))->toBe($document)
+        ->and(inertiaResourcePropResult($made))->toBe($document)
+        ->and(inertiaResourcePropResult($explicit))->toBe($document)
+        ->and(inertiaResourcePropResult($collected))->toBe([
+            ...$document,
+            'type' => 'JsonApiCursorPaginator<PagePropApiResource, never>',
+            'customImports' => ['@tolki/types' => ['JsonApiCursorPaginator']],
+        ]);
+})->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
+
+it('types a JSON:API collection under another wrap key, and over preserved keys, beside its document\'s other members', function () {
+    $keyed = new StaticCall(new Name(KeyedApiResource::class), 'collection', [new Arg(new Variable('posts'))]);
+    $listed = new StaticCall(new Name(PagePropApiResource::class), 'collection', [new Arg(new Variable('posts'))]);
+    $paged = new StaticCall(new Name(PagePropApiResource::class), 'collection', [paginatorArg()]);
+    $keyedType = inertiaResourcePropResult($keyed)['type'] ?? null;
+
+    JsonResource::wrap('items');
+
+    expect($keyedType)->toBe("Omit<JsonApiCollection<KeyedApiResource, never>, 'data'> & { data: Record<string, KeyedApiResource> }")
+        ->and(inertiaResourcePropResult($listed)['type'] ?? null)
+        ->toBe("Omit<JsonApiCollection<PagePropApiResource, never>, 'data'> & { items: PagePropApiResource[] }")
+        ->and(inertiaResourcePropResult($paged)['type'] ?? null)
+        ->toBe("Omit<JsonApiPaginator<PagePropApiResource, never>, 'data'> & { items: PagePropApiResource[] }");
+})->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
+
+// Laravel adds `included` only for a relationship an include reaches, which a class that declares none has not.
+it('types a JSON:API document over never only for a resource that provably declares no relationship', function (string $resource, string $document) {
+    $built = new New_(new Name($resource), [new Arg(new Variable('post'))]);
+
+    expect(inertiaResourcePropResult($built)['type'] ?? null)->toBe($document);
+})->with([
+    'no $relationships and no toRelationships()' => [PagePropApiResource::class, 'JsonApiDocument<PagePropApiResource, never>'],
+    'an empty $relationships' => [EmptyRelationshipsApiResource::class, 'JsonApiDocument<EmptyRelationshipsApiResource, never>'],
+    'an empty $relationships a method writes' => [WrittenRelationshipsApiResource::class, 'JsonApiDocument<WrittenRelationshipsApiResource>'],
+    'a toRelationships() returning a variable' => [UnreadRelationshipsApiResource::class, 'JsonApiDocument<UnreadRelationshipsApiResource>'],
+    'a typed $relationships without a default' => [TypedRelationshipsApiResource::class, 'JsonApiDocument<TypedRelationshipsApiResource>'],
+])->skip(fn () => ! class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource'));
 
 it('reads the wrapped paginator by the constructor and collection() parameter name', function () {
     $named = new New_(new Name(PostCollection::class), [new Arg(paginatorArg()->value, name: new Identifier('resource'))]);
@@ -114,3 +284,231 @@ it('reads the wrapped paginator by the constructor and collection() parameter na
     expect(inertiaResourcePropResult($named)['type'])->toBe('PostCollection & ResourcePagination')
         ->and(inertiaResourcePropResult($collection)['type'])->toBe('JsonResourcePaginator<PostResource>');
 });
+
+it('types a wrapping collection over a simple or cursor paginator beside that paginator\'s pagination members', function () {
+    $simple = new New_(new Name(PostCollection::class), [paginatorKindArg('simplePaginate')]);
+    $cursor = new New_(new Name(PostCollection::class), [paginatorKindArg('cursorPaginate')]);
+
+    expect(inertiaResourcePropResult($simple))->toBe([
+        'type' => 'PostCollection & ResourceSimplePagination',
+        'optional' => false,
+        'resourceFqcn' => PostCollection::class,
+        'customImports' => ['@tolki/types' => ['ResourceSimplePagination']],
+    ])
+        ->and(inertiaResourcePropResult($cursor)['type'] ?? null)->toBe('PostCollection & ResourceCursorPagination')
+        ->and(inertiaResourcePropResult($cursor)['customImports'] ?? null)->toBe(['@tolki/types' => ['ResourceCursorPagination']]);
+});
+
+it('types Resource::collection() and a flat collection over a simple or cursor paginator as that paginator\'s response', function () {
+    $anonymous = new StaticCall(new Name(PostResource::class), 'collection', [paginatorKindArg('simplePaginate')]);
+    $flat = new New_(new Name(PostFlatCollection::class), [paginatorKindArg('cursorPaginate')]);
+    $keyed = new New_(new Name(PreserveKeysFlatCollection::class), [paginatorKindArg('cursorPaginate')]);
+
+    expect(inertiaResourcePropResult($anonymous))->toBe([
+        'type' => 'JsonResourceSimplePaginator<PostResource>',
+        'optional' => false,
+        'resourceFqcn' => PostResource::class,
+        'customImports' => ['@tolki/types' => ['JsonResourceSimplePaginator']],
+    ])
+        ->and(inertiaResourcePropResult($flat)['type'] ?? null)->toBe('JsonResourceCursorPaginator<PostResource>')
+        ->and(inertiaResourcePropResult($keyed)['type'] ?? null)
+        ->toBe("Omit<JsonResourceCursorPaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> }");
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+it('publishes each paginator a payload may hold, and the unpaginated shape beside them when it may hold none', function () {
+    $either = new Arg(new Ternary(new Variable('flag'), paginatorKindArg('simplePaginate')->value, paginatorArg()->value));
+    $sometimes = new Arg(new Ternary(
+        new Variable('flag'),
+        new StaticCall(new Name(Post::class), 'all'),
+        paginatorKindArg('cursorPaginate')->value,
+    ));
+
+    $named = inertiaResourcePropResult(new New_(new Name(PostCollection::class), [$either]));
+    $namedSometimes = inertiaResourcePropResult(new New_(new Name(PostCollection::class), [$sometimes]));
+    $anonymousSometimes = inertiaResourcePropResult(new StaticCall(new Name(PostResource::class), 'collection', [$sometimes]));
+
+    expect($named['type'] ?? null)->toBe('PostCollection & (ResourceSimplePagination | ResourcePagination)')
+        ->and($named['customImports'] ?? null)->toBe(['@tolki/types' => ['ResourceSimplePagination', 'ResourcePagination']])
+        ->and($namedSometimes['type'] ?? null)->toBe('PostCollection | (PostCollection & ResourceCursorPagination)')
+        ->and($anonymousSometimes['type'] ?? null)->toBe('AnonymousResourceCollection<PostResource> | JsonResourceCursorPaginator<PostResource>')
+        ->and($anonymousSometimes['customImports'] ?? null)->toBe(['@tolki/types' => ['AnonymousResourceCollection', 'JsonResourceCursorPaginator']]);
+});
+
+it('types toResourceCollection() as the response of the collection Laravel guesses or is given, and declines a receiver it cannot read', function () {
+    $guessed = new MethodCall(paginatorKindArg('simplePaginate')->value, 'toResourceCollection');
+    $explicit = new MethodCall(paginatorKindArg('cursorPaginate')->value, 'toResourceCollection', [
+        new Arg(new ClassConstFetch(new Name(PostResource::class), 'class')),
+    ]);
+    $nullsafe = new NullsafeMethodCall(new StaticCall(new Name(Post::class), 'all'), 'toResourceCollection');
+    $unread = new MethodCall(new Variable('rows'), 'toResourceCollection');
+
+    expect(inertiaResourcePropResult($guessed))->toBe([
+        'type' => 'PostCollection & ResourceSimplePagination',
+        'optional' => false,
+        'resourceFqcn' => PostCollection::class,
+        'customImports' => ['@tolki/types' => ['ResourceSimplePagination']],
+    ])
+        ->and(inertiaResourcePropResult($explicit)['type'] ?? null)->toBe('JsonResourceCursorPaginator<PostResource>')
+        ->and(inertiaResourcePropResult($nullsafe)['type'] ?? null)->toBe('PostCollection | null')
+        ->and(inertiaResourcePropResult($unread))->toBeNull();
+});
+
+/** `User::query()->{$terminal}(10)`, a paginator of users, whose guess is UserCollection. */
+function userPaginatorExpr(string $terminal): Expr
+{
+    return new MethodCall(new StaticCall(new Name(User::class), 'query'), $terminal, [new Arg(new Int_(10))]);
+}
+
+// Over an empty receiver Laravel's guess sends a plain ResourceCollection's response, which other keys do not admit.
+it('adds the empty receiver\'s response beside a guessed collection\'s own, over a list and each paginator kind', function () {
+    $users = new StaticCall(new Name(User::class), 'all');
+    $sometimes = new Ternary(new Variable('flag'), $users, userPaginatorExpr('simplePaginate'));
+
+    expect(inertiaResourcePropResult(new MethodCall($users, 'toResourceCollection')))->toBe([
+        'type' => 'UserCollection | { data: never[] }',
+        'optional' => false,
+        'resourceFqcn' => UserCollection::class,
+    ])
+        ->and(inertiaResourcePropResult(new MethodCall(userPaginatorExpr('paginate'), 'toResourceCollection')))->toBe([
+            'type' => '(UserCollection & ResourcePagination) | JsonResourcePaginator<never>',
+            'optional' => false,
+            'resourceFqcn' => UserCollection::class,
+            'customImports' => ['@tolki/types' => ['ResourcePagination', 'JsonResourcePaginator']],
+        ])
+        ->and(inertiaResourcePropResult(new MethodCall($sometimes, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('UserCollection | (UserCollection & ResourceSimplePagination) | { data: never[] } | JsonResourceSimplePaginator<never>')
+        ->and(inertiaResourcePropResult(new NullsafeMethodCall($users, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('UserCollection | { data: never[] } | null');
+});
+
+it('spells the empty receiver\'s response by the plain collection\'s live wrap key', function (?string $wrap, string $listed, string $paged) {
+    $wrap === null ? JsonResource::withoutWrapping() : JsonResource::wrap($wrap);
+
+    expect(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(User::class), 'all'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe($listed)
+        ->and(inertiaResourcePropResult(new MethodCall(userPaginatorExpr('cursorPaginate'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe($paged);
+})->with([
+    'a key of its own' => [
+        'items',
+        '{ items: UserCollection } | { items: never[] }',
+        '({ items: UserCollection } & ResourceCursorPagination) | ({ items: never[] } & ResourceCursorPagination)',
+    ],
+    'no key' => [
+        null,
+        'UserCollection | never[]',
+        '({ data: UserCollection } & ResourceCursorPagination) | JsonResourceCursorPaginator<never>',
+    ],
+]);
+
+// A body-less collection's response is the plain list under the same key, so it already admits the empty receiver's.
+it('adds no empty receiver\'s response where the guessed collection\'s own admits it, or where no collection is guessed', function () {
+    $posts = new StaticCall(new Name(Post::class), 'all');
+    $explicit = new MethodCall(new StaticCall(new Name(User::class), 'all'), 'toResourceCollection', [
+        new Arg(new ClassConstFetch(new Name(UserResource::class), 'class')),
+    ]);
+
+    expect(inertiaResourcePropResult(new MethodCall($posts, 'toResourceCollection'))['type'] ?? null)->toBe('PostCollection')
+        ->and(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(Warehouse::class), 'all'), 'toResourceCollection'))['type'] ?? null)
+        ->toBe('AnonymousResourceCollection<WarehouseResource>')
+        ->and(inertiaResourcePropResult($explicit)['type'] ?? null)->toBe('AnonymousResourceCollection<UserResource>');
+});
+
+// Wrap report: the anonymous collection keeps R's keys whether or not a paginator is beside them.
+test('an unpaginated anonymous prop over a key-preserving resource publishes the record', function () {
+    $keyed = new StaticCall(new Name(PreserveKeysTeamResource::class), 'collection', [new Arg(new StaticCall(new Name(Team::class), 'all'))]);
+
+    expect(inertiaResourcePropResult($keyed))->toBe([
+        'type' => '{ data: Record<string, PreserveKeysTeamResource> }',
+        'optional' => false,
+        'resourceFqcn' => PreserveKeysTeamResource::class,
+    ]);
+});
+
+it('nests an anonymous collection\'s items under the live wrap key beside its paginator\'s members', function () {
+    $simple = new StaticCall(new Name(PostResource::class), 'collection', [paginatorKindArg('simplePaginate')]);
+    $keyed = new StaticCall(new Name(PreserveKeysTeamResource::class), 'collection', [paginatorArg()]);
+
+    JsonResource::wrap('items');
+
+    expect(inertiaResourcePropResult($simple))->toBe([
+        'type' => '{ items: PostResource[] } & ResourceSimplePagination',
+        'optional' => false,
+        'resourceFqcn' => PostResource::class,
+        'customImports' => ['@tolki/types' => ['ResourceSimplePagination']],
+    ])
+        ->and(inertiaResourcePropResult($keyed)['type'] ?? null)
+        ->toBe('{ items: Record<string, PreserveKeysTeamResource> } & ResourcePagination');
+});
+
+it('types toResource() over a receiver holding several models as the union of their responses', function () {
+    $scope = new AnalysisScope(new ReflectionClass(InertiaController::class));
+    $scope->varClassBindings['row'] = [Warehouse::class, Post::class];
+
+    expect(inertiaResourcePropResult(new MethodCall(new Variable('row'), 'toResource'), $scope))->toBe([
+        'type' => '{ data: WarehouseResource } | { data: PostResource }',
+        'optional' => false,
+        'embeddedResourceFqcns' => [WarehouseResource::class, PostResource::class],
+    ]);
+});
+
+it('parenthesises a body that holds its wrap key on some paths beside each paginator\'s members', function () {
+    $paginated = new New_(new Name(SometimesDataKeyPostCollection::class), [paginatorArg()]);
+    $either = new New_(new Name(SometimesDataKeyPostCollection::class), [
+        new Arg(new Ternary(new Variable('flag'), paginatorKindArg('simplePaginate')->value, paginatorArg()->value)),
+    ]);
+
+    expect(inertiaResourcePropResult($paginated)['type'] ?? null)
+        ->toBe('(SometimesDataKeyPostCollection | { data: SometimesDataKeyPostCollection }) & ResourcePagination')
+        ->and(inertiaResourcePropResult($either)['type'] ?? null)
+        ->toBe('(SometimesDataKeyPostCollection | { data: SometimesDataKeyPostCollection }) & (ResourceSimplePagination | ResourcePagination)');
+});
+
+// A collection given null throws, so a null arm sends no unpaginated response; a `?->` adds its own `| null`.
+it('reads a nullable paginator payload\'s kinds without its null arm', function () {
+    $null = new ConstFetch(new Name('null'));
+    $nullable = new Ternary(new Variable('flag'), paginatorArg()->value, $null);
+
+    expect(inertiaResourcePropResult(new New_(new Name(PostCollection::class), [new Arg($nullable)]))['type'] ?? null)
+        ->toBe('PostCollection & ResourcePagination')
+        ->and(inertiaResourcePropResult(new StaticCall(new Name(PostResource::class), 'collection', [new Arg($nullable)]))['type'] ?? null)
+        ->toBe('JsonResourcePaginator<PostResource>')
+        ->and(inertiaResourcePropResult(new MethodCall($nullable, 'toResourceCollection'))['type'] ?? null)
+        ->toBe('PostCollection & ResourcePagination')
+        ->and(inertiaResourcePropResult(new New_(new Name(PostCollection::class), [new Arg($null)]))['type'] ?? null)
+        ->toBe('PostCollection');
+});
+
+it('types a $wrap = null collection whose body sends the collected list as its paginator\'s response, and beside its unpaginated self', function () {
+    $sometimes = new Arg(new Ternary(new Variable('flag'), new StaticCall(new Name(Post::class), 'all'), paginatorArg()->value));
+
+    expect(inertiaResourcePropResult(new New_(new Name(StubFlatCollection::class), [paginatorArg()])))->toBe([
+        'type' => 'JsonResourcePaginator<StubGadgetResource>',
+        'optional' => false,
+        'resourceFqcn' => StubGadgetResource::class,
+        'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
+    ])
+        ->and(inertiaResourcePropResult(new New_(new Name(StubFlatCollection::class), [$sometimes])))->toBe([
+            'type' => 'StubFlatCollection | JsonResourcePaginator<StubGadgetResource>',
+            'optional' => false,
+            'resourceFqcn' => StubGadgetResource::class,
+            'customImports' => ['@tolki/types' => ['JsonResourcePaginator']],
+            'embeddedResourceFqcns' => [StubFlatCollection::class],
+        ]);
+});
+
+// Laravel calls `X::collection($items)`, which for a collection or the EnumResource builds no anonymous resource list.
+it('declines toResourceCollection() of a collection or the EnumResource, given or named by #[UseResource]', function () {
+    $posts = new StaticCall(new Name(Post::class), 'all');
+    $given = fn (string $class): MethodCall => new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name($class), 'class'))]);
+
+    expect(inertiaResourcePropResult($given(PostCollection::class)))->toBeNull()
+        ->and(inertiaResourcePropResult($given(EnumResource::class)))->toBeNull();
+});
+
+it('declines a guessed toResourceCollection() whose #[UseResource] names a collection', function () {
+    expect(inertiaResourcePropResult(new MethodCall(new StaticCall(new Name(Cog::class), 'all'), 'toResourceCollection')))->toBeNull();
+})->skip(
+    ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResource'),
+    'UseResource attribute requires Laravel 12.29+',
+);

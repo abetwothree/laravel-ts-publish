@@ -294,16 +294,15 @@ on any diagnostic under `tests/types/`. The same check runs locally:
 npx tsc --noEmit -p tsconfig.json 2>&1 | grep "^tests/types/"   # must print nothing
 ```
 
-`patches/@tolki+ts+1.0.1.patch`, applied by `patch-package` from the `postinstall` hook, rewrote both imports to
-`@tolki/types`. `@tolki/ts` 1.0.2, the locked version, ships that fix, so the patch changes nothing. `patch-package`
-finds the change already present and only warns about the version mismatch. If the guard step fails, suspect the
-installed `@tolki/ts` release, whatever its failure message says about the patch. Keep `@tolki/types` as a direct
-dependency whether or not the patch stays, because the trees import its paginator and collection types. To check
-whether a release carries the broken import, read its pristine tarball in a temporary directory, not `node_modules`,
-where `postinstall` has already run:
+A `patch-package` patch once rewrote those imports. `@tolki/ts` 1.0.2 and later ship working ones, and the patch stopped
+applying to 1.0.3, so it was removed. The `postinstall` hook still runs `patch-package` for any future patch under
+`patches/`. If the guard step fails, suspect the installed `@tolki/ts` release, whatever its failure message says about
+the patch. Keep `@tolki/types` as a direct dependency, because the trees import its paginator and collection types. To
+check whether a release carries a broken import, read its pristine tarball in a temporary directory, not `node_modules`,
+where `postinstall` may have run:
 
 ```bash
-cd "$(mktemp -d)" && npm pack @tolki/ts@1.0.2 && tar xzf tolki-ts-1.0.2.tgz && head -1 package/dist/enums.d.ts
+cd "$(mktemp -d)" && npm pack @tolki/ts@1.0.3 && tar xzf tolki-ts-1.0.3.tgz && head -1 package/dist/enums.d.ts
 ```
 
 ## What the gates do not cover

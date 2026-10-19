@@ -302,7 +302,7 @@ final class ReceiverClassResolver
         if ($proxy !== null && $proxy->collectedItems) {
             return $classes === null
                 ? $proxy
-                : new ReceiverType($classes, collectedItems: true, elementResource: $proxy->elementResource);
+                : new ReceiverType($classes, collectedItems: true, collectedElement: $proxy->collectedElement);
         }
 
         $backingNarrowsAll = $declared === null
@@ -1481,7 +1481,7 @@ final class ReceiverClassResolver
         $classes = [];
         $elementModels = [];
         $relatedModels = [];
-        $elementResources = [];
+        $collectedElements = [];
         $collectedItems = true;
         $unsaved = false;
 
@@ -1493,7 +1493,7 @@ final class ReceiverClassResolver
             $classes = [...$classes, ...$type->classes];
             $elementModels[$type->elementModel ?? ''] = $type->elementModel;
             $relatedModels[$type->relatedModel ?? ''] = $type->relatedModel;
-            $elementResources[$type->elementResource ?? ''] = $type->elementResource;
+            $collectedElements[$type->collectedElement['fqcn'] ?? ''] = $type->collectedElement;
             $collectedItems = $collectedItems && $type->collectedItems;
             $unsaved = $unsaved || $type->unsaved;
         }
@@ -1509,7 +1509,7 @@ final class ReceiverClassResolver
             relatedModel: count($relatedModels) === 1 ? reset($relatedModels) : null,
             unsaved: $unsaved,
             collectedItems: $collectedItems,
-            elementResource: count($elementResources) === 1 ? reset($elementResources) : null,
+            collectedElement: count($collectedElements) === 1 ? reset($collectedElements) : null,
         );
     }
 

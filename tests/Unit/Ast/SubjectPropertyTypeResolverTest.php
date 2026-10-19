@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\InheritedDefaultsSubject;
@@ -12,6 +13,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReassignedDefaultsSubje
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SortedDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnloadableDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedDefaultsSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\WriteKindsSubject;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\PostStatsResource;
@@ -135,5 +138,73 @@ describe('SubjectPropertyTypeResolver::declaresOwnProperty()', function () {
     test('preserveKeys is the subject own, because no framework base declares it', function () {
         expect(resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty(new ReflectionClass(PreserveKeysFlatCollection::class), 'preserveKeys'))
             ->toBeTrue();
+    });
+});
+
+describe('SubjectPropertyTypeResolver::holdsDefault()', function () {
+    // A framework file is walked for writes only where its source spells the name, which a write it counts must.
+    test('a framework method that writes the property still counts, and one that only reads it does not', function () {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+
+        expect($resolver->holdsDefault($subject, 'additional'))->toBeFalse()
+            ->and($resolver->holdsDefault($subject, 'with'))->toBeTrue();
+    });
+
+    // The write-site filter and the check on each site share one list of node kinds, so each kind must count.
+    test('each kind of node that writes a property stops a read holding its default', function (string $property, bool $holds) {
+        expect(resolve(SubjectPropertyTypeResolver::class)->holdsDefault(new ReflectionClass(WriteKindsSubject::class), $property))
+            ->toBe($holds);
+    })->with([
+        'no write' => ['untouched', true],
+        'Assign' => ['assigned', false],
+        'AssignOp' => ['compound', false],
+        'AssignRef' => ['referenced', false],
+        'PreInc' => ['preIncremented', false],
+        'PreDec' => ['preDecremented', false],
+        'PostInc' => ['postIncremented', false],
+        'PostDec' => ['postDecremented', false],
+        'Foreach_ key' => ['foreachKey', false],
+        'Foreach_ value' => ['foreachValue', false],
+        'Foreach_ by reference' => ['foreachReference', false],
+        'Unset_' => ['unsetOne', false],
+        'CallLike' => ['pushed', false],
+    ]);
+
+    // A body's write sites are collected once and reused for every later name, so the order the names are asked in
+    // must not change an answer.
+    test('a class body read for one name answers the next from the same write sites', function (array $names) {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+        $answers = [];
+
+        foreach ($names as $name) {
+            $answers[$name] = $resolver->holdsDefault($subject, $name);
+        }
+
+        expect($answers)->toMatchArray(['additional' => false, 'with' => true]);
+    })->with([
+        'the written name first' => [['additional', 'with']],
+        'the read-only name first' => [['with', 'additional']],
+    ]);
+
+    // The source is read once a run, so a later read must still record the file, or a cached publish misses an update.
+    test('a framework file whose source a read skips is recorded as a dependency on every read', function () {
+        $resolver = resolve(SubjectPropertyTypeResolver::class);
+        $subject = new ReflectionClass(PostStatsResource::class);
+        $file = (string) new ReflectionClass(JsonResource::class)->getFileName();
+
+        DependencyRecorder::start();
+
+        try {
+            $resolver->holdsDefault($subject, 'untypedChannels');
+            $mark = DependencyRecorder::mark();
+            $resolver->holdsDefault($subject, 'untypedChannels');
+            $recorded = DependencyRecorder::since($mark);
+        } finally {
+            DependencyRecorder::stop();
+        }
+
+        expect($recorded)->toContain($file);
     });
 });

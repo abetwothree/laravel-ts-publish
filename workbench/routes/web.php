@@ -19,12 +19,15 @@ use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaCallablePropsController;
 use Workbench\App\Http\Controllers\InertiaController;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
+use Workbench\App\Http\Controllers\InertiaEnumResourceController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
 use Workbench\App\Http\Controllers\InertiaFormRequestController;
+use Workbench\App\Http\Controllers\InertiaJsonApiController;
 use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaListPropsController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaShirtSizeController;
@@ -123,6 +126,7 @@ Route::get('/inertia/post/{post}', [InertiaController::class, 'post'])->name('in
 Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->name('addresses.show');
 Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 Route::get('/posts/{post}/enum-case', [InertiaEnumCaseController::class, 'show'])->name('posts.enum-case');
+Route::get('/enum-resources/statuses', [InertiaEnumResourceController::class, 'index'])->name('enum-resources.statuses');
 Route::get('/key-edges', [InertiaKeyEdgesController::class, 'show'])->name('key-edges.show');
 Route::get('/list-props', [InertiaListPropsController::class, 'show'])->name('list-props.show');
 
@@ -131,6 +135,17 @@ Route::resource('posts-inertia', PostInertiaController::class, ['parameters' => 
 Route::get('/pagination/length-aware', [InertiaPaginationsController::class, 'lengthAware'])->name('pagination.length-aware');
 Route::get('/pagination/simple', [InertiaPaginationsController::class, 'simple'])->name('pagination.simple');
 Route::get('/pagination/cursor', [InertiaPaginationsController::class, 'cursor'])->name('pagination.cursor');
+Route::get('/paginator-kinds/named', [InertiaPaginatorKindsController::class, 'named'])->name('paginator-kinds.named');
+Route::get('/paginator-kinds/anonymous', [InertiaPaginatorKindsController::class, 'anonymous'])->name('paginator-kinds.anonymous');
+Route::get('/paginator-kinds/flat', [InertiaPaginatorKindsController::class, 'flat'])->name('paginator-kinds.flat');
+Route::get('/paginator-kinds/guessed', [InertiaPaginatorKindsController::class, 'guessed'])->name('paginator-kinds.guessed');
+Route::get('/paginator-kinds/stub-page', [InertiaPaginatorKindsController::class, 'stubPage'])->name('paginator-kinds.stub-page');
+
+// JsonApiResource ships from Laravel 12.45; on an older one these pages' resources cannot load.
+if (class_exists('Illuminate\Http\Resources\JsonApi\JsonApiResource')) {
+    Route::get('/json-api/posts/{post}', [InertiaJsonApiController::class, 'show'])->name('json-api.show');
+    Route::get('/json-api/posts', [InertiaJsonApiController::class, 'index'])->name('json-api.index');
+}
 
 Route::get('/facilities/{facility}', [InertiaFacilityController::class, 'show'])->name('facilities.show');
 Route::get('/facilities/{facility}/callables', [InertiaCallablePropsController::class, 'show'])->name('facilities.callables');

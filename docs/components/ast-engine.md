@@ -55,7 +55,9 @@ winner changes published types, so treat it as a behavior change, not a refactor
 
 `ResourceExpressionHandlers::forSubject()` gives a `JsonResource` subject `make()` and any other subject
 `forNonResourceSubjects()`, and `ResourceAstAnalyzer::handlers()` calls it when no profile is injected. An Inertia
-middleware takes `forNonResourceSubjects()` through `invokingCallables()`, since Inertia calls every callable it shares.
+middleware takes `forNonResourceSubjects()` through `invokingCallables()`, with `InertiaResourcePropHandler` before
+`ToResourceHandler` and `ModelFinderHandler` before `StaticCallHandler`, since Inertia calls every callable it shares
+and sends a shared value as it sends a page prop.
 Only `JsonResource::resolve()` drops the `MissingValue` the `when*()` family returns, so on any other subject
 `$this->when()` is that class's own method and publishes `unknown`. Dropping `ToResourceHandler` and
 `RelationFilterHandler` too was measured to lose typed keys (`Comment::relationSummary()`'s filters) and to turn an
@@ -75,9 +77,11 @@ expression shape makes an inert pair disagree, the matrix fails. Pin the pair in
 `ControllerExpressionHandlers::make()` inserts `ModelFinderHandler` and `InertiaResourcePropHandler` into
 `withoutResourceHandlers()` immediately before `StaticCallHandler`. That handler's last arm claims every static call on
 a named class and never declines one. `NewResourceHandler`, right after it, resolves a `ResourceCollection` to its
-element array. Placed later, the two additions would be unreachable for those shapes. `ControllerExpressionHandlersTest`
-pins the structure and the three orderings. `invokingCallables()` swaps in `FirstClassCallableHandler(invoked: true)`:
-Inertia calls every callable prop, at any depth, so a first-class callable there types as the call it stands for.
+element array. Placed later, the two additions would be unreachable for those shapes. `InertiaResourcePropHandler` also
+types a JSON:API resource's single and collection props as their `@tolki/types` documents.
+`ControllerExpressionHandlersTest` pins the structure and the five orderings. `invokingCallables()` swaps in
+`FirstClassCallableHandler(invoked: true)`: Inertia calls every callable prop, at any depth, so a first-class callable
+there types as the call it stands for.
 
 `InertiaPageAnalyzer` runs this profile over `AstEngine::bindingsFor()`'s scope, seeded from the action's locals and its
 parameters, which bind through `ParameterBinder::bindCall()` as a helper's do: a route-bound model, a `Request` and
@@ -126,9 +130,12 @@ attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()`
 relation there as `unknown` instead of declining, where `ReceiverPropertyFetchHandler` would type it. No fixture reads a
 relation that way.
 
-The controller profile adds `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
-`InertiaResourcePropHandler` to the `StaticCall` and `New_` claimants. `ControllerExpressionHandlersTest` pins those
-pairs, and the matrix does not run this profile.
+The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
+`InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
+disjoint method names on a `MethodCall`, and on a `StaticCall` disjoint classes, a model and an API resource, since both
+claim `::make()`. `ControllerExpressionHandlersTest` pins both before `StaticCallHandler`, the prop handler before
+`NewResourceHandler` and the method-call claimants that leave `toResource()` and `toResourceCollection()` `unknown`, and
+the matrix does not run these profiles.
 
 ## AnalysisScope
 
@@ -144,9 +151,11 @@ docblocks say what each binding table holds. These six facts span other classes:
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
   `InspectsAstNodes::isProxyFetch()` and `isModelMemberFetch()`.
 - **`rebase()` moves a scope to another subject**: a builder calls it rather than writing `subjectReflection` or
-  `modelClass`, so the proxy target follows, as `AstEngine::analyzeModelClosure()` and the narrowing do.
-  `ResourceAstAnalyzer` seeds the subject's collection facts, `reindexesNumericKeys` and `collectedResource`, on any
-  scope, so a supplied scope reads a collection's items as an owned one does.
+  `modelClass`, so the proxy target and the subject's collection facts, `reindexesNumericKeys` and
+  `collectedElement`, follow, as `AstEngine::analyzeModelClosure()` does. The narrowing changes only the backing,
+  through `setBackingModel()`, since those facts are the runtime class's. `ResourceAstAnalyzer` seeds them from its
+  runtime class on any scope, through `seedCollectionFacts()`, so a supplied scope or an ancestor's body reads a
+  collection's items as the class Laravel builds does.
 - **`requestVarNames` skips a resource's `Request` parameter**: `ParameterBinder::bindCall()` seeds it for any subject
   but a `JsonResource`. Typing the calls on a resource's `toArray(Request $request)` would move committed resource
   output.
@@ -395,8 +404,9 @@ such a read records before its lookup, or replays what it recorded, as `resolveA
 `LaravelTsPublish::resolvePhpstanTypeAlias()`, which reads each class an alias import names, do. Recording never
 deduplicates, because a memo frame keeps the paths recorded after its mark.
 
-`MethodLocator` hands a method's file to `parseFile()` and records nothing itself. `locate()` finds a method wherever it
-is declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
+`MethodLocator` records nothing itself: it hands a method's file to `parseFileMethods()`, which reads it through
+`parseFile()` and walks it for its methods once while it stays cached. `locate()` finds a method wherever it is
+declared, matching the name case-insensitively as PHP dispatches. `locateOwn()` searches the class's own file only. A
 method inherited from another file is a deliberate miss, the signal callers use to detect delegation, while a parent
 declared in the same file is a hit. Both memoize misses. `locateDeclared()` searches the class's own file, then a trait
 the class itself uses, composed of those two memoized lookups.
@@ -410,7 +420,10 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 [`AnalysisMemo`] is a container singleton holding the engine's cycle guards and a per-run memo of four analyses:
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. Every key but `method-return:`, whose answer does not depend on the
-import mode, gains an `@importless` suffix for an analysis that carries no imports.
+import mode, gains an `@importless` suffix for an analysis that carries no imports. It also holds the per-class reads
+each resource prop repeats: `JsonApiResources::relationships()` and `includedResources()`,
+`ResourceCollectionBody::sendsCollectedList()`, `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in
+`GuessesModelResources`.
 
 `analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
 suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that
@@ -538,9 +551,9 @@ Three consumers rewrite a `MethodAnalysis`'s channels before importing, so they 
 spell two same-named tokens runs `ImportNameRegistry` over the result. See
 [ImportNameRegistry](import-name-registry.md).
 
-A `$wrap = null` collection comes back from `analyze()` with all three fields empty, its singular resource's import
-included. Its whole answer lives in `MethodAnalysis::$flatTypeAlias` and `$flatTypeAliasFqcn`, which neither
-`AnalysisImports` nor `AnalysisComposer` reads.
+A body-less collection whose live wrap key is null or empty comes back from `analyze()` with all three fields empty,
+its singular resource's import included. Its whole answer lives in `MethodAnalysis::$flatTypeAlias` and
+`$flatTypeAliasFqcn`, which neither `AnalysisImports` nor `AnalysisComposer` reads.
 
 `tests/Feature/AnalyzeApiProbeTest.php` renders `analyze()` results into
 `workbench/resources/js/types/data/testing/analysis-probe/`, so the

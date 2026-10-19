@@ -44,8 +44,12 @@ The list of collected PHP files that file watchers, such as the Vite plugin, rea
 ### Feature output
 
 **API resource**:
-A Laravel `JsonResource` class, published as an interface for the JSON it returns.
+A Laravel `JsonResource` class, published as an interface for the JSON it returns. A JSON:API resource publishes the resource object it sends as `data`.
 _Avoid_: resource
+
+**Resource object**:
+The `{ id, type, attributes, relationships?, links?, meta? }` member a JSON:API resource sends as `data`, and as each `included` entry.
+_Avoid_: document
 
 **Enum-resolved interface**:
 A parallel model interface, such as `{Model}Resource`, that types each enum column as a resolved `AsEnum<>` instance instead of a raw value.
@@ -101,6 +105,10 @@ _Avoid_: signature key, pattern key
 
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
+
+**Runtime class**:
+The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
+_Avoid_: leaf, publishing collection, called class
 
 **Resource proxy**:
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.

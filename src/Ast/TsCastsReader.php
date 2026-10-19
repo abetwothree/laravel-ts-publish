@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 
 /**
+ * @phpstan-import-type TsCastEntry from TsCasts
+ *
  * @phpstan-type TsCastsUnpacked = array{
  *     overrides: array<string, string>,
  *     importPaths: array<string, string>,
@@ -52,7 +54,7 @@ class TsCastsReader
 
         foreach ($merged as $key => $value) {
             if (is_array($value)) {
-                /** @var array{type: string, import?: string, optional?: bool} $value */
+                /** @var TsCastEntry $value */
                 $overrides[$key] = $value['type'];
 
                 if (isset($value['import'])) {

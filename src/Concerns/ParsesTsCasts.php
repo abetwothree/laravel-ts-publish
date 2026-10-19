@@ -12,6 +12,7 @@ use ReflectionClass;
  * Parses #[TsCasts] attributes from a class, $casts property, and casts() method,
  * merging them with Laravel's own cast resolution priority: class < property < method.
  *
+ * @phpstan-import-type TsCastMap from TsCasts
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  *
  * @phpstan-type TsCastsResult = array{
@@ -79,7 +80,7 @@ trait ParsesTsCasts
     /**
      * Normalize TsCasts definitions into types, imports, and optional flags.
      *
-     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  TsCastMap  $types
      * @return TsCastsResult
      */
     protected function normalizeTsCasts(array $types): array

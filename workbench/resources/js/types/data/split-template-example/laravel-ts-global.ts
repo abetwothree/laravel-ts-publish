@@ -13,7 +13,7 @@ import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
-import type { CursorPaginator, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
+import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { BroadcastableEvent } from '@/types/broadcast';
@@ -3779,7 +3779,7 @@ declare global {
         }
         /** A collection of ledger entries. */
         export interface LedgerCollection {
-            data: unknown;
+            data: unknown[];
         }
         /**
          * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
@@ -3959,14 +3959,14 @@ declare global {
             owner_explicit?: UserResource | null;
             owner_variant_constant?: unknown;
             owner_direct: UserResource;
-            staff_via_closure?: UserResource[];
+            staff_via_closure?: UserCollection | never[];
             staff_explicit?: UserResource[];
             history_event?: EventLogResource | null;
             filing?: unknown;
             alert?: unknown;
             registrar?: RegistrarResource | null;
-            registrars?: unknown;
-            suppliers?: SupplierSummaryResource[];
+            registrars?: RegistrarGroupCollection | never[];
+            suppliers?: SupplierCollection | never[];
             unpublished_guess?: unknown;
             unpublished_guess_collection?: unknown;
             staff_map_only?: ({ id: number; name: string; role: app.enums.RoleType | null; last_login_at: string | null })[];
@@ -4052,7 +4052,7 @@ declare global {
             products?: app.models.Product[];
         }
         export interface MiscCollection {
-            data: unknown;
+            data: unknown[];
         }
         /** A MissingValue passed on through `??`, a `when()` default and a ternary keeps its key optional. */
         export interface MissingValueOperatorsResource {
@@ -4548,6 +4548,13 @@ declare global {
             category_table_name?: string | null;
         }
         /**
+         * Returns `$this->resource`, the items it collects. Laravel sends them as it sends a body-less
+         * collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostResourceReturnCollection {
+            data: PostResource[];
+        }
+        /**
          * Lays a cast that spells an enum's own type over each key that holds an enum resource: each key publishes its cast
          * and imports the enum types it spells, never the `AsEnum` wrap.
          */
@@ -4606,6 +4613,13 @@ declare global {
             status_from_helper: app.enums.StatusType;
             visibility_from_helper: app.enums.VisibilityType | null;
             status_from_method: app.enums.StatusType;
+        }
+        /**
+         * Keeps the `make:resource --collection` stub over `$collects`. Laravel sends the list it collects
+         * as it sends a body-less collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostStubCollection {
+            data: PostResource[];
         }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];
@@ -4889,11 +4903,11 @@ declare global {
         }
         /**
          * The #[UseResourceCollection] target for Registrar. Deliberately declares no $collects and has
-         * no matching RegistrarGroupResource/RegistrarGroup class, so its element type is undeterminable —
-         * this must degrade to unknown rather than silently falling through to RegistrarResource.
+         * no matching RegistrarGroupResource/RegistrarGroup class, so its element type is undeterminable:
+         * its items list as unknown, and Registrar's toResourceCollection() never falls through to RegistrarResource.
          */
         export interface RegistrarGroupCollection {
-            data: unknown;
+            data: unknown[];
         }
         /**
          * The Resource-suffixed naming candidate for Registrar — must win over the bare Registrar
@@ -5760,6 +5774,128 @@ declare global {
         /** A collection of admin stores. */
         export interface StoreCollection {
             data: Store[];
+        }
+    }
+    export namespace app.http.resources.jsonApi {
+        /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
+        export interface AttributesPostResource {
+            id: string;
+            type: 'attributes_posts';
+            attributes: { title: string; word_count: number | null; is_long: boolean; secret?: string };
+        }
+        /** A JSON:API resource naming no attributes, so toAttributes() falls back to the model's own toArray(). */
+        export interface BarePostResource {
+            id: string;
+            type: 'bare_posts';
+            attributes: { id: number; title: string; content: string; user_id: number; status: app.enums.StatusType; published_at: string | null; metadata: Record<string, {title: string, content: string}>; rating: string | null; category: string; options: Record<string, string> | null; deleted_at: string | null; created_at: string | null; updated_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; author?: app.models.User; category_rel?: app.models.Category | null; comments?: app.models.Comment[]; tags?: app.models.Tag[]; images?: app.models.Image[]; attachment?: app.models.Attachment | null };
+        }
+        /** A JSON:API resource naming an attribute the model's #[TsCasts] types, and casting another one itself. */
+        export interface CastedAttributesPostResource {
+            id: string;
+            type: 'casted_attributes_posts';
+            attributes: { metadata: Record<string, {title: string, content: string}>; rating: `${number}` | null; status: app.enums.StatusType };
+        }
+        /** A JSON:API resource a nullable to-one relationship names. */
+        export interface CategoryResource {
+            id: string;
+            type: 'categories';
+            attributes: { name: string; slug: string };
+        }
+        /**
+         * A JSON:API resource whose toAttributes() mixes attribute names with a closure Laravel calls, and whose
+         * toRelationships() resolves each relationship through a closure.
+         */
+        export interface ClosureRelationsPostResource {
+            id: string;
+            type: 'closure_relations_posts';
+            attributes: { title: string; published_at: string | null; excerpt: string | null; is_published: boolean };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'> };
+        }
+        /** A JSON:API resource with a to-one relationship of its own, which a nested include follows. */
+        export interface CommentResource {
+            id: string;
+            type: 'comments';
+            attributes: { content: string; is_flagged: boolean };
+            relationships?: { user?: JsonApiToOneRelationship<'users'> };
+        }
+        /** A JSON:API resource sending links and meta through the defaults toLinks() and toMeta() return. */
+        export interface DefaultLinksPostResource {
+            id: string;
+            type: 'default_links_posts';
+            attributes: { title: string };
+            links?: { describedby: string };
+            meta?: { version: number; stable: boolean };
+        }
+        /** A JSON:API resource overriding toId() with an int, which Laravel sends as a string, and toType() with a literal. */
+        export interface IdentifiedPostResource {
+            id: string;
+            type: 'articles';
+            attributes: { title: string };
+        }
+        /**
+         * A JSON:API resource whose morph relationship reaches models with no API resource, so an include sends Laravel's
+         * bare JsonApiResource over each, typed by the model's name.
+         */
+        export interface KpiResource {
+            id: string;
+            type: 'kpis';
+            attributes: { value: number };
+            relationships?: { reportable?: JsonApiToOneRelationship<'reports'> };
+        }
+        /** A JSON:API resource overriding toLinks() and toMeta(). */
+        export interface LinkedPostResource {
+            id: string;
+            type: 'linked_posts';
+            attributes: { title: string };
+            links?: { self: string };
+            meta?: { readable: boolean; words: number | null };
+        }
+        /**
+         * A plain API resource nesting JSON:API resources as values. Laravel sends a single one as its resolve(), its
+         * resource object under `data`, the items of its collection() bare, and each item of a named collection under `data`.
+         */
+        export interface NestingPlainResource {
+            id: number;
+            author: { data: UserResource };
+            category: { data: CategoryResource } | null;
+            comments: CommentResource[];
+            siblings: { data: PostResource }[];
+        }
+        /**
+         * A named collection of JSON:API resources: ResourceCollection's toArray() sends each item's resolve(), its resource
+         * object under `data`.
+         */
+        export interface PostCollection {
+            data: { data: PostResource }[];
+        }
+        /** A body-less JSON:API resource: its attributes and relationships named by property. */
+        export interface PostResource {
+            id: string;
+            type: 'posts';
+            attributes: { title: string; content: string; word_count: number | null; published_at: string | null };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'>; categoryRel?: JsonApiToOneRelationship<'categories'> };
+        }
+        /** A JSON:API resource declaring toArray(), which toAttributes() falls back to, so its keys are the attributes. */
+        export interface ToArrayPostResource {
+            id: string;
+            type: 'to_array_posts';
+            attributes: { title: string; rating: string | null };
+        }
+        /** A plain API resource declaring toAttributes() and no toArray(), which Laravel 12.45 and later sends. */
+        export interface ToAttributesOnlyPlainResource {
+            headline: string;
+        }
+        /** A JSON:API resource naming its attributes only. */
+        export interface UserResource {
+            id: string;
+            type: 'users';
+            attributes: { name: string; email: string };
+        }
+        /** A JSON:API resource whose toAttributes() returns a variable: each keyless name in it reads the model attribute. */
+        export interface VariableAttributesPostResource {
+            id: string;
+            type: 'variable_attributes_posts';
+            attributes: { title: string; word_count: number | null; content?: string; is_long: boolean };
         }
     }
     export namespace app.http.resources.reportCards {

@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
+ *
+ * @phpstan-import-type CollectedElement from ResourceCollections
  *
  * @internal
  */
@@ -22,7 +23,7 @@ final readonly class ReceiverType
      * @param  bool  $unsaved  the model may be one no row backs yet: `new`, a `replicate()` copy, or a `make()` result
      * @param  bool  $collectedItems  a resource collection's `$this->resource`: its items in a Support\Collection,
      *                                or the paginator it was given, so a method an arm cannot run throws, not answers
-     * @param  class-string<JsonResource>|null  $elementResource  set with $collectedItems: each item's API resource
+     * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
      */
     public function __construct(
         public array $classes,
@@ -31,7 +32,7 @@ final readonly class ReceiverType
         public ?string $relatedModel = null,
         public bool $unsaved = false,
         public bool $collectedItems = false,
-        public ?string $elementResource = null,
+        public ?array $collectedElement = null,
     ) {}
 
     /**
@@ -110,7 +111,7 @@ final readonly class ReceiverType
             relatedModel: $this->relatedModel,
             unsaved: $unsaved ?? $this->unsaved,
             collectedItems: $this->collectedItems,
-            elementResource: $this->elementResource,
+            collectedElement: $this->collectedElement,
         );
     }
 }

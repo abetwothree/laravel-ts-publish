@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -37,14 +38,18 @@ trait ReadsNullablePayloads
 
     /**
      * The type `new X(…)` or `X::make(…)` publishes: `null` for a payload that is only ever null in a JsonResource
-     * subject, the resource or null for one that can be null, else the resource.
+     * subject, the instance or null for one that can be null, else the instance, as JsonApiResources::instanceType().
+     *
+     * @param  class-string  $className
      */
-    protected function resourceWrapType(StaticCall|New_ $call, string $className, string $resourceName, AnalysisScope $scope, ExpressionEngine $engine): string
+    protected function resourceWrapType(StaticCall|New_ $call, string $className, AnalysisScope $scope, ExpressionEngine $engine): string
     {
+        $instance = JsonApiResources::instanceType($className);
+
         return match ($this->nullablePayloadType($call, $className, $scope, $engine)) {
-            null => $resourceName,
+            null => $instance,
             'null' => 'null',
-            default => ValueResult::withNullArm($resourceName),
+            default => ValueResult::withNullArm($instance),
         };
     }
 

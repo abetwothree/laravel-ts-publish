@@ -214,6 +214,7 @@ use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
+use Workbench\App\Http\Resources\RegistrarGroupCollection;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ReleaseColumnsResource;
@@ -225,6 +226,7 @@ use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\StaticCallResource;
+use Workbench\App\Http\Resources\SupplierCollection;
 use Workbench\App\Http\Resources\SupplierResource;
 use Workbench\App\Http\Resources\SupplierSummaryCollection;
 use Workbench\App\Http\Resources\SupplierSummaryResource;
@@ -258,6 +260,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Release;
+use Workbench\App\Models\Supplier;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -2857,14 +2860,14 @@ describe('ResourceAstAnalyzer with OrderCollection (explicit $collects)', functi
 });
 
 describe('ResourceAstAnalyzer with MiscCollection (unresolvable singular)', function () {
-    test('falls back to unknown when singular resource cannot be resolved', function () {
+    test('lists unknown items when singular resource cannot be resolved', function () {
         $reflection = new ReflectionClass(MiscCollection::class);
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
 
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
     });
 });
@@ -4434,11 +4437,12 @@ it('collects a stacked collection\'s own #[Collects] over the $collects it inher
     expect($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]');
 })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 
-// Laravel collects raw models here, which no resource type describes, so the parent's type stays rather than none.
-it('keeps the parent\'s collected type when a stacked collection names none itself', function () {
+// Laravel collects raw models here, so the element is the model the parent's resource is backed by.
+it('publishes the raw models of the parent\'s resource when a stacked collection names none itself', function () {
     $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnnamedCollection::class)))->analyze();
 
-    expect($analysis->properties[0]['type'])->toBe('SupplierSummaryResource[]');
+    expect($analysis->properties[0]['type'])->toBe('Supplier[]')
+        ->and($analysis->modelFqcns)->toBe(['data' => Supplier::class]);
 });
 
 it('honours a stacked collection\'s own $wrap = null over the wrap it inherits', function () {
@@ -6094,9 +6098,11 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResourceCollection() resolves the element model by convention', function () {
-        expect($this->props['staff_via_closure']['type'])->toBe('UserResource[]')
+        // UserCollection declares a toArray() of its own, whose keys Laravel sends for the guessed collection; over no
+        // rows the guess builds a plain ResourceCollection instead, nested as `[]`.
+        expect($this->props['staff_via_closure']['type'])->toBe('UserCollection | never[]')
             ->and($this->props['staff_via_closure']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('staff_via_closure', UserResource::class);
+            ->and($this->nested)->toHaveKey('staff_via_closure', UserCollection::class);
     });
 
     test('whenLoaded closure toResourceCollection(SomeResource::class) honours the explicit argument', function () {
@@ -6153,18 +6159,18 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // element than SupplierCollection does, so the two possible orderings are distinguishable.
         expect(class_exists(SupplierResource::class))->toBeTrue();
 
-        expect($this->props['suppliers']['type'])->toBe('SupplierSummaryResource[]')
+        expect($this->props['suppliers']['type'])->toBe('SupplierCollection | never[]')
             ->and($this->props['suppliers']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('suppliers', SupplierSummaryResource::class);
+            ->and($this->nested)->toHaveKey('suppliers', SupplierCollection::class);
     });
 
-    test('toResourceCollection() degrades to unknown when #[UseResourceCollection]\'s element is undeterminable, without falling through', function () {
+    test('toResourceCollection() publishes the body of the #[UseResourceCollection] class naming no resource, without falling through', function () {
         // RegistrarResource exists and would be the WRONG fallback element type if the matched
         // #[UseResourceCollection] attribute fell through instead of stopping hard.
         expect(class_exists(RegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrars']['type'])->toBe('unknown')
-            ->and($this->nested)->not->toHaveKey('registrars');
+        expect($this->props['registrars']['type'])->toBe('RegistrarGroupCollection | never[]')
+            ->and($this->nested)->toHaveKey('registrars', RegistrarGroupCollection::class);
     })->skip(
         ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResourceCollection'),
         'UseResourceCollection attribute requires Laravel 12.29+',
@@ -6197,8 +6203,8 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
 
         expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource | null')
             ->and($this->nested)->toHaveKey('unpublished_guess', AttachmentResource::class)
-            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentResource[]')
-            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentResource::class);
+            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentCollection | never[]')
+            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentCollection::class);
     });
 
     test('a convention-guessed resource outside the published set is not resolved', function () {
@@ -6236,12 +6242,13 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
+        // Laravel's collects() takes the bare Ledger before LedgerResource whenever the bare class exists.
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('LedgerResource[]')
-            ->and($analysis->nestedResources)->toHaveKey('data', LedgerResource::class);
+            ->and($data['type'])->toBe('Ledger[]')
+            ->and($analysis->nestedResources)->toHaveKey('data', Ledger::class);
     });
 
-    test('the naming convention resolves its first, Resource-suffixed candidate when published', function () {
+    test('the naming convention resolves its Resource-suffixed candidate when published', function () {
         PublishedResourceRegistry::register([SupplierSummaryResource::class]);
 
         $reflection = new ReflectionClass(SupplierSummaryCollection::class);
@@ -6255,7 +6262,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('the naming convention falls through to its bare, unsuffixed candidate when published', function () {
+    test('the naming convention resolves its bare, unsuffixed candidate when published', function () {
         // Non-vacuous: Admin\StoreResource does not exist, so only the bare candidate can resolve.
         expect(class_exists('Workbench\App\Http\Resources\Admin\StoreResource'))->toBeFalse();
 
@@ -6272,8 +6279,8 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('both naming-convention candidates are rejected when neither is published', function () {
-        // Non-vacuous: both losing candidates genuinely exist — only #[TsExclude] keeps them
+    test('the bare candidate decides, so neither is collected while it is unpublished', function () {
+        // Non-vacuous: both candidates genuinely exist — only #[TsExclude] keeps them
         // out of the published set, so class_exists() alone would accept either.
         expect(class_exists(LedgerResource::class))->toBeTrue()
             ->and(class_exists(Ledger::class))->toBeTrue();
@@ -6285,7 +6292,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
 
         PublishedResourceRegistry::reset();

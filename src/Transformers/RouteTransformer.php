@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use BackedEnum;
@@ -52,6 +53,9 @@ class RouteTransformer extends CoreTransformer
 
     /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
     protected array $actionPageTypeFqcns = [];
+
+    /** @var array<int, list<class-string>> Action index => enums whose const a page type reads through `typeof` */
+    protected array $actionPageEnumConstFqcns = [];
 
     /** @var array<int, array<string, list<string>>> Action index => external imports (e.g. @tolki/types) */
     protected array $actionExternalImports = [];
@@ -168,7 +172,7 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Merge page-type and request-type import maps and store the sorted result.
+     * Merge page-type and request-type import maps, and `AsEnum` when a page type reads it; store the sorted result.
      */
     protected function buildTypeImports(): self
     {
@@ -185,9 +189,33 @@ class RouteTransformer extends CoreTransformer
             }
         }
 
+        // Held here rather than in a template flag, so a custom template that loops over the imports still has it.
+        if ($this->pageTypesReadAsEnum()) {
+            $tolkiTypes = array_values(array_unique([...($merged['@tolki/ts'] ?? []), 'AsEnum']));
+            sort($tolkiTypes);
+            $merged['@tolki/ts'] = $tolkiTypes;
+        }
+
         $this->typeImports = TsNaming::sortImportPaths($merged);
 
         return $this;
+    }
+
+    /**
+     * Whether a page type reads `AsEnum`, which an EnumResource prop publishes as under `enums.use_tolki_package`.
+     */
+    protected function pageTypesReadAsEnum(): bool
+    {
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+            return false;
+        }
+
+        $pageTypes = array_merge(...array_map(
+            static fn (array $action): array => array_values((array) ($action['pageType'] ?? [])),
+            $this->actions,
+        ));
+
+        return TsTypeString::typeNameOccursIn('AsEnum', ...$pageTypes);
     }
 
     /**
@@ -311,6 +339,10 @@ class RouteTransformer extends CoreTransformer
 
                 if ($inertiaData['classFqcns'] !== []) {
                     $this->actionPageTypeFqcns[] = $inertiaData['classFqcns'];
+                }
+
+                if (($inertiaData['enumConstFqcns'] ?? []) !== []) {
+                    $this->actionPageEnumConstFqcns[] = $inertiaData['enumConstFqcns'];
                 }
 
                 $externalImports = $inertiaData['externalImports'] ?? [];
@@ -649,7 +681,7 @@ class RouteTransformer extends CoreTransformer
      */
     private function resolvePageTypeImports(): array
     {
-        if ($this->actionPageTypeFqcns === [] && $this->actionExternalImports === []) {
+        if ($this->actionPageTypeFqcns === [] && $this->actionPageEnumConstFqcns === [] && $this->actionExternalImports === []) {
             return [];
         }
 
@@ -664,7 +696,7 @@ class RouteTransformer extends CoreTransformer
         foreach ($allFqcns as $fqcn) {
             // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
             if (isset(TolkiTypes::MAP[$fqcn])) {
-                $imports['@tolki/types'][] = TolkiTypes::MAP[$fqcn];
+                $imports[TolkiTypes::MODULE][] = TolkiTypes::MAP[$fqcn];
 
                 continue;
             }
@@ -675,6 +707,12 @@ class RouteTransformer extends CoreTransformer
             $imports[$importPath][] = enum_exists($fqcn)
                 ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
                 : TsNaming::resourceTypeName($fqcn);
+        }
+
+        // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.
+        foreach (array_unique(array_merge(...$this->actionPageEnumConstFqcns)) as $fqcn) {
+            $importPath = TsNaming::relativeImportPath($this->namespacePath, TsNaming::namespaceToPath($fqcn));
+            $imports[$importPath][] = LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn);
         }
 
         foreach ($this->actionExternalImports as $externalImports) {

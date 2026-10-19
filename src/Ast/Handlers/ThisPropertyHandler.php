@@ -4,24 +4,21 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -39,13 +36,10 @@ use ReflectionClass;
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
-    use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
-    use ResolvesSingularResourceClass;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -215,24 +209,13 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->collection in a ResourceCollection: the singular resource type as an array,
-     * or a keyed record when the collection preserves keys.
+     * Analyze $this->collection in a ResourceCollection: the runtime class's collected list, keyed as that class keeps
+     * keys, since an inherited body runs as the class Laravel builds.
      *
      * @return ValueExpressionResult
      */
     private function analyzeCollectionProperty(AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
-        $singular = $this->resolveSingularResourceClass($scope);
-
-        if ($singular === null) {
-            return $result;
-        }
-
-        return [
-            ...$result,
-            'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
-            'resourceFqcn' => $singular,
-        ];
+        return ResourceCollections::listValue($scope->collectedElement, ! $scope->reindexesNumericKeys);
     }
 }

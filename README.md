@@ -260,6 +260,8 @@ Key capabilities include:
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
 - **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
+- **Resource collections**: a collection publishes the body Laravel sends under the wrap key your app sets, over items or a length-aware, simple, or cursor paginator.
+- **JSON:API resources**: a `JsonApiResource` publishes the resource object it sends, with typed `attributes` and `relationships`.
 - **Computed values**: method calls, local variables, `instanceof` narrowing, and collection chains keep their types.
 - **Spreads and inheritance**: `merge()`, `mergeWhen()` and its default, parent `toArray()` and trait method spreads, and a trait's own `toArray()` add their keys.
 - **Base delegation**: a resource with no `toArray()` publishes the model's columns, appended accessors, and relations, each relation an optional key.
@@ -461,6 +463,8 @@ Key capabilities include:
 - **Typed user**: `$request->user()` and `Auth::user()` publish your auth provider's model as `User | null`.
 - **Live config values**: a literal `config('some.key')` is typed from its value in your booted app.
 - **Prop wrappers**: `Inertia::defer()`, `optional()`, `merge()`, and the other v2 wrappers type as the value they wrap.
+- **API resource props**: resources and collections type as the response Laravel sends, under your app's wrap key, with each paginator kind's `links` and `meta`.
+- **JSON:API props**: a `JsonApiResource` types as the JSON:API document Inertia sends, its `included` resources too.
 - **Overrides**: `#[TsCasts]` or a `@return array{...}` docblock on `share()` types a key the package can't infer.
 - **Validation errors**: `errors` is left to `@inertiajs/core`, and `$withAllErrors` adds an `errorValueType`.
 

@@ -87,6 +87,14 @@ trait ReadsReturnedVariables
     abstract protected function newVariableAnalysis(): MethodAnalysis;
 
     /**
+     * The key and value an append `$var[] = value` writes where the host reads an appended item as a named key; null
+     * where an appended item is a position.
+     *
+     * @return array{name: string, result: ValueExpressionResult}|null
+     */
+    abstract protected function appendedKey(Expr $value): ?array;
+
+    /**
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
@@ -162,8 +170,23 @@ trait ReadsReturnedVariables
                 continue;
             }
 
+            $appendedValue = $this->appendedValue($stmt, $varName);
+            $appended = $appendedValue === null ? null : $this->appendedKey($appendedValue);
+
+            if ($appended !== null) {
+                $this->writeKey($into, $appended['name'], $appended['result'], $isConditional);
+
+                continue;
+            }
+
             if ($this->writesUnreadKey($stmt, $varName, $into)) {
                 $this->lenientReads++;
+
+                continue;
+            }
+
+            if ($stmt instanceof Unset_) {
+                $this->removeUnsetKeys($stmt, $varName, $isConditional, $into);
 
                 continue;
             }
@@ -228,35 +251,7 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $existingIndex = null;
-
-                foreach ($into->properties as $index => $existing) {
-                    if ($existing['name'] === $keyName) {
-                        $existingIndex = $index;
-
-                        break;
-                    }
-                }
-
-                // A re-assigned key is the last write winning, in the first write's position: every stale channel
-                // goes before addProperty() routes this result's own, and the entry it appends is folded back over
-                // the earlier one.
-                $into->forgetChannels($keyName);
-
-                $appendedIndex = count($into->properties);
-
-                $into->addProperty($keyName, $result, $isConditional || $result['optional']);
-
-                // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one
-                // was absent.
-                if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
-                    $appended = $into->properties[$appendedIndex];
-                    $appended['optional'] = $result['optional']
-                        || ($isConditional && $into->properties[$existingIndex]['optional']);
-
-                    $into->properties[$existingIndex] = $appended;
-                    array_splice($into->properties, $appendedIndex, 1);
-                }
+                $this->writeKey($into, $keyName, $result, $isConditional);
 
                 continue;
             }
@@ -546,13 +541,70 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Write one named key into the variable's analysis. A re-assigned key is the last write winning, in the first
+     * write's position: every stale channel goes before addProperty() routes this result's own, and the entry it
+     * appends is folded back over the earlier one.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function writeKey(MethodAnalysis $into, string $keyName, array $result, bool $isConditional): void
+    {
+        $existingIndex = null;
+
+        foreach ($into->properties as $index => $existing) {
+            if ($existing['name'] === $keyName) {
+                $existingIndex = $index;
+
+                break;
+            }
+        }
+
+        $into->forgetChannels($keyName);
+
+        $appendedIndex = count($into->properties);
+
+        $into->addProperty($keyName, $result, $isConditional || $result['optional']);
+
+        // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one was
+        // absent.
+        if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
+            $appended = $into->properties[$appendedIndex];
+            $appended['optional'] = $result['optional']
+                || ($isConditional && $into->properties[$existingIndex]['optional']);
+
+            $into->properties[$existingIndex] = $appended;
+            array_splice($into->properties, $appendedIndex, 1);
+        }
+    }
+
+    /**
+     * The value a statement `$var[] = value` appends to the variable; null for any other statement.
+     */
+    private function appendedValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        $appends = $stmt instanceof ExpressionStmt
+            && $stmt->expr instanceof Assign
+            && $stmt->expr->var instanceof ArrayDimFetch
+            && $stmt->expr->var->dim === null
+            && $stmt->expr->var->var instanceof Variable
+            && $stmt->expr->var->var->name === $varName;
+
+        return $appends ? $stmt->expr->expr : null;
+    }
+
+    /**
      * Whether a statement writes the variable through a key the walk does not read: a dynamic, appended or nested key,
-     * an unset() of the variable or a key of it, or a compound write or an increment of a key the walk does not hold.
+     * an unset() of the variable or of a key namedUnsetKey() cannot name, or a compound write or an increment of a key
+     * the walk does not hold.
      */
     private function writesUnreadKey(Node\Stmt $stmt, string $varName, MethodAnalysis $into): bool
     {
         if ($stmt instanceof Unset_) {
-            return array_any($stmt->vars, fn (Expr $unset): bool => $this->keyRoot($unset) === $varName);
+            return array_any(
+                $stmt->vars,
+                fn (Expr $unset): bool => $this->keyRoot($unset) === $varName
+                    && $this->namedUnsetKey($unset, $varName) === null,
+            );
         }
 
         $write = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
@@ -567,6 +619,54 @@ trait ReadsReturnedVariables
         // The key-write arm reads an assignment to a named key; anything else keeps only a key the walk already holds.
         return $key === null
             || (! $write instanceof Assign && ! in_array($key, array_column($into->properties, 'name'), true));
+    }
+
+    /**
+     * Remove each named key an unset() takes from the variable, with its import channels and cast, or make it optional
+     * where the unset() may not run.
+     */
+    private function removeUnsetKeys(Unset_ $stmt, string $varName, bool $isConditional, MethodAnalysis $into): void
+    {
+        foreach ($stmt->vars as $unset) {
+            $key = $this->namedUnsetKey($unset, $varName);
+
+            if ($key === null) {
+                continue;
+            }
+
+            if ($isConditional) {
+                $into->properties = array_map(
+                    fn (array $property): array => $property['name'] === $key
+                        ? [...$property, 'optional' => true]
+                        : $property,
+                    $into->properties,
+                );
+
+                continue;
+            }
+
+            $into->forgetChannels($key);
+            $into->properties = array_values(array_filter(
+                $into->properties,
+                fn (array $property): bool => $property['name'] !== $key,
+            ));
+        }
+    }
+
+    /**
+     * The key an unset() takes from the variable itself, named as a key write's is; null for any other unset(), and for
+     * a signature key, which stands for many runtime keys.
+     */
+    private function namedUnsetKey(Expr $unset, string $varName): ?string
+    {
+        if (! $unset instanceof ArrayDimFetch || $unset->dim === null
+            || ! $unset->var instanceof Variable || $unset->var->name !== $varName) {
+            return null;
+        }
+
+        $key = $this->namedKey($unset->dim);
+
+        return $key === null || JsEmitter::isIndexSignatureKey($key) ? null : $key;
     }
 
     /**

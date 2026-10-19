@@ -875,7 +875,7 @@ describe('PublishedResourceRegistry run boundary', function () {
 
         expect(PublishedResourceRegistry::isPublished(RegistrarResource::class))->toBeTrue();
 
-        config()->set('ts-publish.resources.excluded', [RegistrarResource::class]);
+        config()->set('ts-publish.resources.excluded', [...config()->array('ts-publish.resources.excluded'), RegistrarResource::class]);
 
         $secondRunner = new Runner;
         $secondRunner->run();
@@ -902,7 +902,11 @@ describe('PublishedResourceRegistry run boundary', function () {
 
         // Both naming candidates for the Registrar model, so the convention loop has nothing
         // left to fall through to and the property degrades to unknown rather than to Registrar.
-        config()->set('ts-publish.resources.excluded', [RegistrarResource::class, BareRegistrarResource::class]);
+        config()->set('ts-publish.resources.excluded', [
+            ...config()->array('ts-publish.resources.excluded'),
+            RegistrarResource::class,
+            BareRegistrarResource::class,
+        ]);
 
         $secondRunner = new Runner;
         $secondRunner->run();

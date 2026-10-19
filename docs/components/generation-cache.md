@@ -20,7 +20,9 @@ entry per class and a header; a hit rehydrates the class's transformer from its 
 The header busts the whole cache when the package version or the `ConfigFingerprint` changes. The fingerprint includes
 each macro registered on `JsonResource`, by name and by what it runs: an invokable's class, a function, or a class and
 method. A closure counts as `Closure`, since its file is already a recorded dependency. Adding, removing or re-pointing
-a macro changes what a bare `$this->m()` in any resource publishes. An entry hits when the fingerprint of its recorded
+a macro changes what a bare `$this->m()` in any resource publishes. It also holds each `$wrap` slot the booted app
+changed from its declared default (`ResourceWrapping::runtimeOverrides()`), since a provider's `withoutWrapping()` or
+`wrap()` reshapes every collection and page prop that wraps by it. An entry hits when the fingerprint of its recorded
 dependencies, plus the class's signature and the published-model signature, matches the stored one and every output
 file it wrote still exists.
 

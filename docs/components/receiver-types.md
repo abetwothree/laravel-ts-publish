@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries or the `relatedModel` a relation, query or factory builds, and `collectedItems` with `elementResource` for a resource collection's items |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries or the `relatedModel` a relation, query or factory builds, and `collectedItems` with `collectedElement` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
@@ -30,7 +30,7 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the arm it proves (`AnalysisScope::$provenProxy`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `elementResource` the API resource `$this->collection` collects. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration |
+| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the arm it proves (`AnalysisScope::$provenProxy`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `collectedElement` the element `$this->collection` lists. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
@@ -261,11 +261,12 @@ One more rule reads no model, and runs before the eight on a resource collection
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
-  `Record<string, R>` when the collection preserves keys, by `ValueResult::collectionListType()`, and the `@tolki/types`
+  `Record<string, R>` when the collection preserves keys, by `ResourceCollections::listValue()`, and the `@tolki/types`
   paginator over `R` for each paginator. `only()` and `except()` publish `R[] | Record<string, R>`, since the items
   they keep come back under their own keys. `first()` and `last()` publish `R | null`, unless the call passes a
   `$default`, which Laravel sends when no item matches. A paginator's `items()` and `getCollection()` publish the list.
-  With no collected API resource, `R` is `unknown` and the item and list rules decline.
+  `R` is the collected element, an API resource or the raw models' model; with none it is `unknown` and the item and
+  list rules decline.
 
 ### The order for one class
 

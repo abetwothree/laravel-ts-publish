@@ -55,6 +55,7 @@ use Throwable;
  * @phpstan-import-type RelationInfo from ModelInfo
  *
  * @phpstan-type RelationContext = array{instance: Model, relations: Collection<int, RelationInfo>}
+ * @phpstan-type RelationTypeInfo = array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
  */
 class ModelAttributeResolver
 {
@@ -79,6 +80,13 @@ class ModelAttributeResolver
      * @var array<class-string, RelationContext>
      */
     protected array $relationContexts = [];
+
+    /**
+     * Per-FQCN Eloquent inspection, read once a run though the morph map and the model publisher each need it.
+     *
+     * @var array<class-string, ModelInfo<Model>>
+     */
+    protected array $inspections = [];
 
     /**
      * Per-FQCN message of the exception a context read caught: the reason a related model is left out.
@@ -154,12 +162,26 @@ class ModelAttributeResolver
     public function reset(): void
     {
         $this->contexts = [];
+        $this->inspections = [];
         $this->relationContexts = [];
         $this->contextFailures = [];
         $this->morphTargetMap = [];
         $this->dbColumnNamesCache = [];
         $this->attributeClassCache = [];
         $this->attributeClassPaths = [];
+    }
+
+    /**
+     * A model's Eloquent inspection: its columns, relations and the classes it names, read once a run.
+     *
+     * @internal
+     *
+     * @param  class-string  $modelFqcn
+     * @return ModelInfo<Model>
+     */
+    public function inspect(string $modelFqcn): ModelInfo
+    {
+        return $this->inspections[$modelFqcn] ??= resolve(ModelInspector::class)->inspect($modelFqcn);
     }
 
     /**
@@ -725,7 +747,7 @@ class ModelAttributeResolver
      * and every token in the emitted union still needs an import.
      *
      * @param  class-string  $modelFqcn
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     public function resolveRelation(string $modelFqcn, string $relationName): array
     {
@@ -1503,7 +1525,7 @@ class ModelAttributeResolver
      * @param  list<class-string>  $targets
      * @param  RelationInfo  $relation
      * @param  array{relationNullable: RelationNullable, ...}  $ctx
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     protected function buildMorphUnionInfo(array $targets, array $relation, array $ctx): array
     {
@@ -1591,7 +1613,7 @@ class ModelAttributeResolver
             /** @var Model $instance */
             $instance = resolve($modelFqcn);
 
-            $data = resolve(ModelInspector::class)->inspect($modelFqcn);
+            $data = $this->inspect($modelFqcn);
 
             /** @var Collection<int, AttributeInfo> $attributes */
             $attributes = $data->attributes;

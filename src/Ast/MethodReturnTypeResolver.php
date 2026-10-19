@@ -159,6 +159,7 @@ final class MethodReturnTypeResolver
                 is_a($class, Model::class, true) ? $class : null,
                 carriesImports: false,
                 passed: $passed,
+                readsCall: true,
             );
         } finally {
             $memo->leave($key);

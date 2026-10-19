@@ -11,10 +11,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessP
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyAloneResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumKeyResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThenAppendedResource;
@@ -22,8 +24,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpolatedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNumericKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueBesideReadableResource;
@@ -50,6 +54,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnionAssi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnmodeledOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnmodeledParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetLiteralKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetParentKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetWithKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedVanishingKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedVanishingSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\ReturnedVariableLinesService;
@@ -182,9 +189,42 @@ test('a variable write to an int or int-constant key publishes that key', functi
         ->toBe(['id' => 'number', 42 => 'string', 3 => 'boolean']);
 });
 
-test('a variable with an unset() key keeps the literal\'s keys required, and adds a key only it sets optional', function () {
-    expect(returnedVariableMembers(ReturnedUnsetKeyResource::class))->toBe('id: number; name: string; slug?: string');
+test('a variable with an unset() key is a branch beside the literal, so a key either one lacks publishes optional', function () {
+    expect(returnedVariableMembers(ReturnedUnsetKeyResource::class))->toBe('id: number; name?: string; slug?: string');
 });
+
+test('an unset() on a parent::toArray() base drops the key and its import channel', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(ReturnedUnsetParentKeyResource::class), Tag::class))->analyze();
+
+    expect(returnedVariableMembers(ReturnedUnsetParentKeyResource::class))
+        ->toBe('id: number; name: string; slug: string; created_at: string | null; updated_at: string | null; products?: Product[]')
+        ->and($analysis->hasFqcnChannel('posts'))->toBeFalse();
+});
+
+test('an unset() on a literal base drops the key', function () {
+    expect(returnedVariableMembers(ReturnedUnsetLiteralKeyResource::class))->toBe('id: number; name: string');
+});
+
+test('an unset() on a parent::with() base drops the key', function () {
+    $published = array_map(
+        fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
+        resolve(AstEngine::class)->analyze(ReturnedUnsetWithKeyResource::class, 'with')->properties,
+    );
+
+    expect($published)->toBe(['version: string']);
+});
+
+test('an unset() inside an if makes the key optional', function () {
+    expect(returnedVariableMembers(ReturnedConditionalUnsetKeyResource::class))->toBe('id: number; name?: string');
+});
+
+test('an unset() of a dynamic or nested key keeps the variable skipped', function (string $class, string $expected) {
+    expect(returnedVariableMembers($class))->toBe($expected);
+})->with([
+    'a dynamic key' => [ReturnedDynamicUnsetKeyResource::class, 'id: number; name: string; slug?: string'],
+    'an interpolated key, which can name any key' => [ReturnedInterpolatedUnsetKeyResource::class, 'id: number; name: string; slug?: string'],
+    'a nested key' => [ReturnedNestedUnsetKeyResource::class, 'id: number; meta: { name: string }'],
+]);
 
 test('a variable with a write the walk cannot name still publishes what the walk reads when returned alone', function () {
     expect(returnedVariableMembers(ReturnedDynamicKeyAloneResource::class))->toBe('id: number');
@@ -233,7 +273,7 @@ test('a parent delegating to no model makes a child variable built on it skip', 
     expect(returnedVariableMembers(ReturnedBodylessParentChildResource::class))->toBe('id: number; name: string; extra?: boolean');
 });
 
-// At a JsonResource, parent::with() is `[]` and parent::jsonSerialize() is the subject's toArray(), never the model.
+// At a JsonResource, parent::with() is the `$with` default and parent::jsonSerialize() the subject's toArray().
 test('a parent call to a method other than toArray() over a JsonResource publishes none of the model\'s keys', function (string $method, array $members) {
     $published = array_map(
         fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
@@ -243,7 +283,7 @@ test('a parent call to a method other than toArray() over a JsonResource publish
     expect($published)->toBe($members);
 })->with([
     'a variable built on parent::with()' => ['with', ['extra: string']],
-    'a return of parent::jsonSerialize()' => ['jsonSerialize', []],
+    'a return of parent::jsonSerialize()' => ['jsonSerialize', ['id: number']],
 ]);
 
 test('the body fallback types a with() built on parent::with() by the keys it writes', function () {

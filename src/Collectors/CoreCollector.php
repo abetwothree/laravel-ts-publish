@@ -73,7 +73,6 @@ abstract class CoreCollector
             ->sortKeys()
             ->flip()
             ->merge($additionalClasses) // @phpstan-ignore argument.type
-            ->filter($this->passesClassFilter(...))
             ->when($included, function (Collection $collection) use ($included) {
                 $resolved = $this->resolveClassesAndDirectories($included);
 
@@ -84,6 +83,8 @@ abstract class CoreCollector
 
                 return $collection->filter(fn (string $class) => ! in_array($class, $resolved));
             })
+            // Loads each class, so it runs last: an excluded class whose parent this install lacks is never loaded.
+            ->filter($this->passesClassFilter(...))
             ->unique()
             ->values();
     }

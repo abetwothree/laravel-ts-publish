@@ -10,10 +10,10 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 
 | Class | Min Laravel | Guarded at | Tests skipped at | Convert when floor ≥ |
 | --- | --- | --- | --- | --- |
-| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/ModelClassResolver.php`, `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Handlers/ToResourceHandler.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Analyzers/Concerns/InspectsResourceCalls.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php` (see below) | `13.0.0` |
-| `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Analyzers/Concerns/ChecksPreserveKeys.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/ModelClassResolver.php`, `src/Ast/Concerns/GuessesModelResources.php`, `src/Ast/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Ast/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php`, `tests/Unit/Analyzers/CollectionWrapAndCollectsTest.php` (see below) | `13.0.0` |
+| `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Ast/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
@@ -22,9 +22,10 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\Initialize` | `12.22.0` | `src/ModelAttributeResolver.php` (`setsKeyInCode()`) | `tests/Unit/ModelAttributeResolverTest.php` | `12.22.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
+| `Illuminate\Http\Resources\JsonApi\JsonApiResource` | `12.45.0` | `src/Ast/JsonApiResources.php` | `tests/Unit/Analyzers/JsonApiResourceTest.php` (a `beforeEach()` skip), `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php` | `12.45.0` |
 
-The `PreserveKeys` guard covers only the `#[PreserveKeys]` attribute, which `collectionPreservesKeys()` reads through
-`ReflectionClass::getAttributes()`. The older `public $preserveKeys = true;` property is read through
+The `PreserveKeys` guard covers only the `#[PreserveKeys]` attribute, which `ResourceCollections::preservesKeys()` reads
+through `ReflectionClass::getAttributes()`. The older `public $preserveKeys = true;` property is read through
 `ReflectionClass::getDefaultProperties()` on every supported version, so it needs no guard and does not change when the
 row is converted.
 
@@ -33,10 +34,13 @@ The `Collects` row's test guards are not written as `class_exists()`. They spell
 convert the row. Each covers a `PostFlatCollection` assertion, except one in `ResourceAstAnalyzerTest.php`, which
 covers `StackedAttributeDigestCollection`: Laravel 12 ignores its attribute, so the `$collects` it inherits wins. The
 one in `ResourceCollectionItemsTest.php` covers `AttributedPostCollection`, which names its API resource only that way.
+The one in `CollectionWrapAndCollectsTest.php` covers `DialAttributeCollection`, whose attribute names a class that is
+no API resource; Laravel 12 ignores it, so the `$collects` beside it wins.
 `PostFlatCollection`'s collected resource is reachable only through the attribute, so on Laravel 12
-`resolveCollectedResourceClass()` returns null and the type degrades.
+`ResourceCollections::collectedElement()` returns null and the type degrades.
 `PreserveKeysFlatCollection` uses the `$collects` property and needs no guard. `PostCollection` carries the attribute
-but also follows the `FooCollection` to `FooResource` naming convention, so it resolves either way.
+but also follows the `FooCollection` to `FooResource` naming convention (no `Post` class sits beside it), so it
+resolves either way.
 
 The four `Attributes\{Hidden,Visible,Appends,Connection}` rows have no `src/` guard. Laravel applies those
 attributes itself in `Model::__construct()`, and this package reads only the results, through `getAppends()` and the
@@ -54,6 +58,14 @@ The workbench fixture models `use`-import these five attributes, and that is saf
 a compile-time alias that loads nothing, and PHP never instantiates a class attribute unless something calls
 `newInstance()` on it.
 
+`JsonResource::toAttributes()` shipped in `v12.45.0` with `JsonApiResource`, so `JsonApiResources::shipped()` guards
+both. Extending a missing class is fatal when the class loads, so on a Laravel without `JsonApiResource`,
+`WorkbenchServiceProvider` adds `workbench/app/Http/Resources/JsonApi/` to `ts-publish.resources.excluded`, which a
+collector applies before it loads a class, and points the Inertia middleware lookup at `Http/Middleware`. A test that
+sets `resources.excluded` keeps the entries already there. `workbench/routes/web.php` registers the
+`InertiaJsonApiController` routes only under `class_exists()` on the string FQCN, so the page analyzer never loads those
+resources.
+
 ## How each minimum version was established
 
 Only one Laravel version is installed locally, so each minimum comes from `laravel/framework`'s release tags, read
@@ -67,6 +79,8 @@ that release more reliably than changelog prose:
   `v12.69.2`, present at `v13.0.0`. Recorded as `13.0.0`, the first tag proven to contain them, since no 12.x release
   was found to carry them.
 - **`Initialize`**: absent through `v12.21.0`, present from `v12.22.0`. An exact minimum.
+- **`JsonApiResource`**: absent at `v12.44.0`, present from `v12.45.0`, with `make:resource --json-api`. An exact
+  minimum.
 - **`RouteKey`**: absent through `v13.20.0`, present from `v13.21.0`. An exact minimum.
 
 ## Scanner coverage and blind spots
