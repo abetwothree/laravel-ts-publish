@@ -2,6 +2,78 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.8.0 - 2026-10-19
+
+### v2.8.0
+
+Generated types now follow what Laravel actually sends: API resources and their collections, Inertia props, casts, enum values and numeric keys. Many types become more specific and some change shape, so run `php artisan ts:publish` after updating and check your frontend against the [upgrade guide](https://tolki.abe.dev/ts/upgrade-guide.html#upgrading-from-2-7).
+
+#### Requirements
+
+- `@tolki/types` `^1.9.0`
+
+#### New
+
+- **Resource collections publish their response.** A collection's items come from `#[Collects]`, `$collects` or Laravel's naming convention, and `#[PreserveKeys]` decides between a list and a record. The `make:resource --collection` stub publishes the collection it returns. Each paginator kind (length-aware, simple and cursor) publishes its own `meta`. [Read more](https://tolki.abe.dev/ts/api-resources.html#resource-collections)
+- **The wrap key your app sets.** `$wrap`, `JsonResource::withoutWrapping()` and `wrap('items')` are read from your booted app and apply to resources, collections and Inertia props. [Read more](https://tolki.abe.dev/ts/api-resources.html#the-wrap-key-your-app-sets)
+- **JSON:API resources.** A `JsonApiResource` subclass (Laravel 12.45 and later) publishes the resource object Laravel sends: `id`, a `type` literal, `attributes`, and optional `relationships`, `links` and `meta`. As an Inertia prop, it publishes the JSON:API document. [Read more](https://tolki.abe.dev/ts/api-resources.html#json-api-resources)
+- **`EnumResource` page props** publish `AsEnum<typeof X>`.
+- **A smarter generation cache.** A class now rebuilds when anything it reads changes, such as an enum method, a service, a cast or a `#[TsEnum]` rename, without `--fresh`. Partial runs, including the one a Vite build makes, keep the rest of the cache, and editing a published template rebuilds it. A fully cached publish takes about half as long. [Read more](https://tolki.abe.dev/ts/generating-cache.html)
+- **New warnings after `ts:publish`:**
+  - a `when()` or `unless()` closure that requires a parameter, which Laravel calls with none;
+  - a first-class callable that nothing calls;
+  - a top-level integer key on an Inertia page, in shared data or in a `broadcastWith()` payload, which Laravel renumbers from `0`;
+  - a key that reads like an index signature, a `#[TsCasts]` key that spells two signatures, and a key an index signature matches but whose type it can't take (TS2411).
+  
+
+#### Changed
+
+These types now match what Laravel sends, so code built on the old types can fail `tsc`. The upgrade guide describes each one and what to do.
+
+- **Casts:** `decimal:N` publishes `string` and `timestamp` publishes `number`. A class with `__toString()` publishes its JSON shape instead of `string`, and a plain `DateTime` publishes its date object. Carbon stays `string`.
+- **Inertia props:** a single API resource as a page prop or shared value publishes `{ data: R }`, or bare `R` after `withoutWrapping()`. It used to publish `R`.
+- **Collections:** after `withoutWrapping()`, a named collection without its own `toArray()` publishes its list, so code that reads `.data` breaks. A guessed collection with its own `toArray()` gains a `never[]` arm. Pagination `from` and `to` are now `number | null`.
+- **Numeric keys and literals:** inside an API resource, an array whose keys are all numeric publishes as the list Laravel sends. Top-level integer keys on pages, in shared data and in events are renumbered. List literals publish lists, bare enum cases publish their enum's type, and `new UserResource(null)` publishes `null`.
+- **`EnumResource` responses:** an array whose keys are numeric but don't count up from `0`, such as `[1 => 'a', 4 => 'b']`, is now sent as an object, which matches the published enum. Wrap it in `array_values()` if your frontend needs a list. A method that returns `null` for a case, or throws, is sent as `null`; it used to be sent as `""`. Enum values that hold objects publish only their public data, as `json_encode()` writes it.
+- **`#[TsCasts]`:** an entry publishes exactly what you write, and a resource's own entry wins over its model's. An entry without `'optional'` keeps the key's `?`.
+- **Types the package used to guess:** `getKey()` and `Auth::id()` publish the model's real key type. Reads through `$this->relation` and `$this->resource` use the right class. Helper parameters are typed inside the helper. Docblock tuples, shapes and aliases publish as written. Where Laravel sends something the package can't type, or throws, the type is now `unknown` instead of a guess.
+
+#### Fixed
+
+- An API resource, broadcast event or shared-data middleware now publishes the keys its body sends, where it used to publish an empty interface or the model's columns. This covers a returned local variable, a method from a trait in another file, and both arms of `merge()` and `when()`.
+- `whenLoaded()` on a nullable to-one relation adds `| null`.
+- A method that adds keys to an array parameter it returns keeps the caller's keys open with `[key: string]: unknown`.
+- `ts:publish` publishes the same types whatever ran before it, including a second run in one process, such as in a test suite, a queue worker or Octane.
+- A numeric `#[TsCasts]` key in shared data, a numeric `@return` key in model metadata, and an enum case in a model metadata provider no longer stop `ts:publish`.
+- Inertia keys that aren't valid identifiers, such as `can-edit`, are quoted. An optional cast on an index signature publishes `| undefined` instead of the invalid `]?:`.
+- A file imports only the names its types use: a `#[TsCasts]` cast no longer leaves unused or duplicate imports, and `AsEnum` is imported only where a type uses it.
+- A docblock tag with spaces, such as `@return string | null`, keeps its `| null`.
+- Nullsafe chains such as `$this->resource?->author->only(...)` add `| null`. Resource macros are typed from the macro instead of a model method they shadow.
+
+#### Upgrading
+
+1. Update `@tolki/types` to `^1.9.0`.
+2. Run `php artisan ts:publish`. The generation cache rebuilds once.
+3. Type-check your frontend and fix what breaks using the [upgrade guide](https://tolki.abe.dev/ts/upgrade-guide.html#upgrading-from-2-7). `custom_ts_mappings`, `#[TsCasts]` and `#[TsType]` still override any type.
+4. If you published the `broadcast-event` or `globals` templates, merge in the new ones.
+5. If you extend `InertiaPageAnalyzer`, `InertiaSharedDataAnalyzer` or `ResourceTransformer`, or call `LaravelTsPublish::extractReturnTypeFromDocblock()` or `parseArrayShapeToTsTypes()`, check the upgrade guide's notes on them.
+
+### What's Changed
+
+* fix(resources): publish what Laravel sends for an API resource's toArray() by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/113
+* fix: publish what json_encode() writes for enum values, classes, dates, callables and casts by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/116
+* fix: publish the same types whatever ran before (#97) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/119
+* fix(casts): publish a #[TsCasts] cast as written, and let index signatures see every key (#87) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/120
+* Refactor/fixtures laravel layout by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/122
+* fix(ast): publish literals, numeric keys, enum cases, new values and defaults as Laravel sends them (#89) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/123
+* fix(ast): publish what Laravel sends where the package guessed a type or read the wrong class (#99) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/124
+* fix(ast): type every call and read against the class PHP runs it on (#92) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/126
+* fix(ast): publish resource collections, the live wrap, paginator kinds and JSON:API resources as Laravel sends them (#114) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/129
+* GH-127 fix: an open shape for a returned key-written parameter, and EnumResource keeps numeric keys by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/131
+* Develop by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/132
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.7.0...v2.8.0
+
 ## v2.7.0 - 2026-10-03
 
 ### v2.7.0
@@ -86,6 +158,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -100,6 +173,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -107,6 +181,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -140,6 +215,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -148,6 +224,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -164,6 +241,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -191,6 +269,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -235,6 +314,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
