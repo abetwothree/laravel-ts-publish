@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Dtos\TsRouteDto;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use BackedEnum;
+use Closure;
 use InvalidArgumentException;
+use JsonException;
+use JsonSerializable;
 use stdClass;
 use UnitEnum;
 
 /**
  * Turn PHP values and docblock text into JavaScript source: object keys, identifiers, literals,
  * route-argument objects, and JSDoc blocks.
+ *
+ * @phpstan-import-type RouteArgData from TsRouteDto
+ *
+ * @phpstan-type JsonData = null|bool|int|float|string|array<array-key, mixed>|stdClass
  *
  * @internal
  */
@@ -27,10 +36,14 @@ class JsEmitter
         'yield',
     ];
 
+    /** json_encode()'s default depth, which also stops a jsonSerialize() that returns a fresh object every call. */
+    private const int MAX_JSON_DEPTH = 512;
+
     /**
-     * $allowIndexSignature: a generated `[key: number]`/`[key: string]` is valid TS only in a type
-     * position — pass true only there. In a value position (an object literal) it's a syntax error,
-     * so every other caller must keep the default and never risk emitting it unquoted.
+     * Spell a key as a JS object key: bare when it is an identifier, else as a quoted string.
+     *
+     * Pass $allowIndexSignature only in a type position: a generated `[key: number]`/`[key: string]` left unquoted
+     * is a syntax error in a value position (an object literal).
      */
     public function validJsObjectKey(string $key, bool $allowIndexSignature = false): string
     {
@@ -44,12 +57,23 @@ class JsEmitter
     }
 
     /**
-     * Whether a key is a generated `[key: number]`/`[key: string]`/template-literal index signature rather than a
-     * property name: it prints unquoted in a type position and can never carry `?:`.
+     * Whether a key is a generated index signature; see IndexSignatureKey::is().
      */
     public function isIndexSignatureKey(string $key): bool
     {
-        return preg_match('/^\[[a-zA-Z_$][a-zA-Z0-9_$]*: (?:string|number|`[^`]*`)\]$/', $key) === 1;
+        return IndexSignatureKey::is($key);
+    }
+
+    /**
+     * Publish an optional index signature, which cannot carry `?`, as a required one whose value admits `undefined`.
+     *
+     * @return array{type: string, optional: bool}
+     */
+    public function signatureSafeMember(string $key, string $type, bool $optional): array
+    {
+        return $optional && $this->isIndexSignatureKey($key)
+            ? ['type' => TsTypeString::orUndefined($type), 'optional' => false]
+            : ['type' => $type, 'optional' => $optional];
     }
 
     /**
@@ -57,9 +81,9 @@ class JsEmitter
      *
      * @template TCast
      *
-     * @param  array<string, TCast>  $casts
+     * @param  array<array-key, TCast>  $casts
      * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
-     * @return array<string, TCast>
+     * @return array<array-key, TCast>
      */
     public function castsByKey(array $casts, array $keys): array
     {
@@ -77,20 +101,8 @@ class JsEmitter
      */
     public function castTargets(array $castKeys, array $keys): array
     {
-        $known = [];
-        $spelledBy = [];
-
-        foreach ($keys as $key) {
-            $key = (string) $key;
-            $known[$key] = true;
-
-            if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
-                foreach ($this->castSpellings($key) as $spelling) {
-                    $spelledBy[$spelling][$key] = true;
-                }
-            }
-        }
-
+        $known = array_fill_keys(array_map(strval(...), $keys), true);
+        $spelledBy = $this->signaturesBySpelling($keys);
         $cast = array_fill_keys($castKeys, true);
         $claimed = [];
         $targets = [];
@@ -111,13 +123,47 @@ class JsEmitter
     }
 
     /**
+     * The cast keys castTargets() leaves on their own key because each spells more than one signature's name.
+     *
+     * @param  list<string>  $castKeys
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     * @return list<string>
+     */
+    public function ambiguousCastKeys(array $castKeys, array $keys): array
+    {
+        $known = array_fill_keys(array_map(strval(...), $keys), true);
+        $spelledBy = $this->signaturesBySpelling($keys);
+
+        return array_values(array_filter(
+            $castKeys,
+            fn (int|string $castKey): bool => ! isset($known[$castKey]) && count($spelledBy[$castKey] ?? []) > 1,
+        ));
+    }
+
+    /**
+     * Warn, once per subject, about each cast key ambiguousCastKeys() names.
+     *
+     * @param  list<string>  $castKeys
+     * @param  array<array-key, int|string>  $keys  the keys the casts are laid over
+     */
+    public function warnAmbiguousCasts(string $subject, array $castKeys, array $keys): void
+    {
+        foreach ($this->ambiguousCastKeys($castKeys, $keys) as $castKey) {
+            AnalysisWarnings::addOnce($subject, sprintf(
+                'The #[TsCasts] key "%s" spells more than one index signature, so it retypes none; cast each by its exact name.',
+                $castKey,
+            ));
+        }
+    }
+
+    /**
      * Move each cast to the key castTargets() gave it, dropping one it gave none; a key it did not decide stays.
      *
      * @template TCast
      *
-     * @param  array<string, TCast>  $casts
+     * @param  array<array-key, TCast>  $casts
      * @param  array<string, string|null>  $targets
-     * @return array<string, TCast>
+     * @return array<array-key, TCast>
      */
     public function retargetCasts(array $casts, array $targets): array
     {
@@ -135,12 +181,9 @@ class JsEmitter
     }
 
     /**
-     * Ensure a string is safe as a bare JS/TS identifier ('delete' → 'deleteMethod').
+     * Ensure a string is safe as a bare JS/TS identifier: a reserved word gains $suffix ('delete' → 'deleteMethod').
      *
      * Not for object property keys — reserved words are legal there in TS interfaces and literals.
-     *
-     * @param  string  $name  The proposed identifier
-     * @param  string  $suffix  Required suffix appended when $name is reserved (e.g., 'Method', 'Controller')
      */
     public function safeJsIdentifier(string $name, string $suffix): string
     {
@@ -156,6 +199,8 @@ class JsEmitter
      *
      * Unlike Js::from(), this emits readable object/array literals instead of JSON.parse(...) — the
      * output lands in generated .ts files, where XSS-safe encoding is not needed.
+     *
+     * An object other than a stdClass is spelled as jsonValue() reads it, so no hidden property reaches the file.
      */
     public function toJsLiteral(mixed $value): string
     {
@@ -188,12 +233,12 @@ class JsEmitter
             return $this->toJsLiteral($this->enumScalar($value));
         }
 
-        if ($value instanceof stdClass && get_object_vars($value) === []) {
-            return '{}';
+        if ($value instanceof stdClass) {
+            return $this->objectLiteral(get_object_vars($value));
         }
 
         if (is_object($value)) {
-            $value = (array) $value;
+            return $this->toJsLiteral($this->jsonValue($value));
         }
 
         if (is_array($value)) {
@@ -201,15 +246,33 @@ class JsEmitter
                 return '['.implode(', ', array_map(fn ($v) => $this->toJsLiteral($v), $value)).']';
             }
 
-            $pairs = [];
-            foreach ($value as $key => $val) {
-                $pairs[] = $this->validJsObjectKey((string) $key).': '.$this->toJsLiteral($val);
-            }
-
-            return '{'.implode(', ', $pairs).'}';
+            return $this->objectLiteral($value);
         }
 
         return 'null';
+    }
+
+    /**
+     * The data json_encode() writes for a value, in the form toJsLiteral() spells the same way.
+     *
+     * A JsonSerializable value, an enum case among them, becomes its jsonSerialize() value, any other case its scalar
+     * (a pure case its name), and any other object the public properties json_encode() reads, through any get hook.
+     * A PHP array keeps its keys; an object with no string key is a stdClass.
+     *
+     * @return JsonData
+     *
+     * @throws JsonException when json_encode() cannot write the value
+     */
+    public function jsonValue(mixed $value): null|bool|int|float|string|array|stdClass
+    {
+        /** @var array<int, true> $open */
+        $open = [];
+        $data = $this->jsonData($value, 0, $open);
+
+        // json_encode() holds the walked data to its exact limits: depth past 512, a non-finite float, invalid UTF-8.
+        json_encode($data, JSON_THROW_ON_ERROR);
+
+        return $data;
     }
 
     /**
@@ -225,7 +288,7 @@ class JsEmitter
      *
      * Only fields that are present are emitted, so the generated TypeScript carries no `undefined` noise.
      *
-     * @param  list<array{name: string, required: bool, _routeKey?: string, _enumValues?: list<string|int>, where?: string}>  $args
+     * @param  list<RouteArgData>  $args
      */
     public function routeArgsToJs(array $args): string
     {
@@ -265,11 +328,9 @@ class JsEmitter
     }
 
     /**
-     * Format a description string into a JSDoc comment block.
+     * Format a description string into a JSDoc comment block, every line prefixed by $indent spaces.
      *
      * Single-line descriptions render inline; multi-line ones become a ` * `-prefixed block.
-     *
-     * @param  int  $indent  Number of leading spaces to prefix every line of the output.
      */
     public function formatJsDoc(string $description, int $indent = 0): string
     {
@@ -356,32 +417,155 @@ class JsEmitter
     }
 
     /**
-     * The spellings of a signature's name, other than the name, that a #[TsCasts] key may use for it.
+     * An object literal of the members, each key spelled as a JS object key.
      *
-     * @return list<string>
+     * @param  array<array-key, mixed>  $members
      */
-    private function castSpellings(string $name): array
+    private function objectLiteral(array $members): string
     {
-        $spellings = [
-            $this->readEscapes($name, ['\\' => '\\']),
-            $this->readEscapes($name, ['r' => "\r"]),
-            $this->readEscapes($name, ['\\' => '\\', 'r' => "\r"]),
-        ];
+        $pairs = [];
 
-        return array_values(array_diff(array_unique($spellings), [$name]));
+        foreach ($members as $key => $member) {
+            $pairs[] = $this->validJsObjectKey((string) $key).': '.$this->toJsLiteral($member);
+        }
+
+        return '{'.implode(', ', $pairs).'}';
     }
 
     /**
-     * The text with each escape the map names read back, pair by pair from the left, and every other one kept.
+     * One level of jsonValue()'s walk.
      *
-     * @param  array<string, string>  $as  escaped character => what it reads as
+     * @param  array<int, true>  $open  the objects being walked, to reject a cycle as json_encode() does
+     * @return JsonData
      */
-    private function readEscapes(string $text, array $as): string
+    private function jsonData(mixed $value, int $depth, array &$open): null|bool|int|float|string|array|stdClass
     {
-        return (string) preg_replace_callback(
-            '/\\\\(.)/s',
-            fn (array $escape): string => $as[$escape[1]] ?? $escape[0],
-            $text,
+        if ($depth > self::MAX_JSON_DEPTH) {
+            throw new JsonException('Maximum stack depth exceeded', JSON_ERROR_DEPTH);
+        }
+
+        if ($value === null || is_scalar($value)) {
+            return $value;
+        }
+
+        if ($value instanceof UnitEnum && ! $value instanceof JsonSerializable) {
+            return $this->enumScalar($value);
+        }
+
+        if (is_array($value)) {
+            return $this->jsonContainer($this->jsonMembers($value, $depth, $open), false);
+        }
+
+        if (! is_object($value)) {
+            throw new JsonException('Type is not supported', JSON_ERROR_UNSUPPORTED_TYPE);
+        }
+
+        $id = spl_object_id($value);
+
+        if (isset($open[$id])) {
+            throw new JsonException('Recursion detected', JSON_ERROR_RECURSION);
+        }
+
+        $open[$id] = true;
+
+        try {
+            if ($value instanceof JsonSerializable) {
+                $serialized = $value->jsonSerialize();
+
+                // json_encode() writes a `return $this;` as the object's own properties.
+                if ($serialized !== $value) {
+                    return $this->jsonData($serialized, $depth + (is_object($serialized) ? 1 : 0), $open);
+                }
+            }
+
+            return $this->jsonContainer($this->jsonMembers($this->publicProperties($value), $depth, $open), true);
+        } finally {
+            unset($open[$id]);
+        }
+    }
+
+    /**
+     * Each member of an array or of an object's properties, walked one level deeper.
+     *
+     * @param  array<array-key, mixed>  $members
+     * @param  array<int, true>  $open
+     * @return array<array-key, JsonData>
+     */
+    private function jsonMembers(array $members, int $depth, array &$open): array
+    {
+        foreach ($members as $key => $member) {
+            $members[$key] = $this->jsonData($member, $depth + 1, $open);
+        }
+
+        /** @var array<array-key, JsonData> $members */
+        return $members;
+    }
+
+    /**
+     * Walked members as json_encode() writes them; an object with no string key becomes a stdClass.
+     *
+     * An array keeps its keys. Only a stdClass spells such an object, `{}` among them, without printing it as a list.
+     *
+     * @param  array<array-key, JsonData>  $members
+     * @return array<array-key, JsonData>|stdClass
+     */
+    private function jsonContainer(array $members, bool $isObject): array|stdClass
+    {
+        if (! $isObject) {
+            return $members;
+        }
+
+        foreach (array_keys($members) as $key) {
+            if (is_string($key)) {
+                return $members;
+            }
+        }
+
+        return (object) $members;
+    }
+
+    /**
+     * The properties json_encode() writes for a plain object: its public, initialized ones, read through any get hook.
+     *
+     * get_object_vars() runs get hooks and initializes a lazy object; the array cast adds the properties internal
+     * classes such as DateTime expose only to it, with every non-public key dropped.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function publicProperties(object $value): array
+    {
+        // A closure casts to [$closure] rather than to its properties, and json_encode() writes it as {}.
+        if ($value instanceof Closure) {
+            return [];
+        }
+
+        return get_object_vars($value) + array_filter(
+            (array) $value,
+            fn (int|string $key): bool => ! is_string($key) || ! str_starts_with($key, "\0"),
+            ARRAY_FILTER_USE_KEY,
         );
+    }
+
+    /**
+     * Each other spelling of a backslash signature's name among the keys, mapped to the names it spells.
+     *
+     * @param  array<array-key, int|string>  $keys
+     * @return array<string, array<string, true>>
+     */
+    private function signaturesBySpelling(array $keys): array
+    {
+        $spelledBy = [];
+
+        foreach ($keys as $key) {
+            $key = (string) $key;
+
+            if (str_contains($key, '\\') && $this->isIndexSignatureKey($key)) {
+                foreach (IndexSignatureKey::castSpellings($key) as $spelling) {
+                    $spelledBy[$spelling][$key] = true;
+                }
+            }
+        }
+
+        return $spelledBy;
     }
 }

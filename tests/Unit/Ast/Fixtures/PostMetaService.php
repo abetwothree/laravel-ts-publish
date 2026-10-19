@@ -9,7 +9,7 @@ use Throwable;
 
 /**
  * Vague signatures over literal bodies, each with a return the literal shape alone does not describe, so the body
- * fallback must keep the declaration's other arms or decline.
+ * fallback must keep the declaration's other arms, or leave the method to the value read.
  */
 final class PostMetaService
 {

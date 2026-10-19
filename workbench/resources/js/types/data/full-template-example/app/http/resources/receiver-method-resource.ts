@@ -1,4 +1,4 @@
-import type { User } from '../../models';
+import type { Post, User } from '../../models';
 import type { UserResource } from '.';
 
 /**
@@ -28,7 +28,15 @@ export interface ReceiverMethodResource
     resource_author_key: number | null;
     bare_key: number;
     resource_key: number;
+    draft_key: number | null;
+    copy_key: number | null;
+    made_key: number | null;
+    made_comment_key: number | null;
+    loaded_author_key?: number;
+    comment_keys: number[];
     bare_comments_count: number;
     resource_comments_count: number;
+    author_bound: User | null;
+    resource_bound: Post | null;
     author_resource?: UserResource;
 }

@@ -5,11 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MethodChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -18,7 +19,6 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
@@ -36,6 +36,7 @@ use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\UnitEnumResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Depot;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
@@ -75,6 +76,12 @@ final class ChainHandlersMapStubEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -156,32 +163,6 @@ it('tries the wrapped-enum branch before the wrapped-model branch', function () 
         ->and($result)->toBe(['type' => 'string | number', 'optional' => false]);
 });
 
-it('declines a plain method call it does not claim', function () {
-    $expr = new MethodCall(chainThisProp('user'), 'fullName');
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-
-    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
-
-    expect($result)->toBeNull();
-});
-
-it('declines a nullsafe method whose declared return is a class no generated file declares', function () {
-    // Model::toResource() declares JsonResource, a token nothing imports; a relation's model would carry its import.
-    $expr = new NullsafeMethodCall(chainThisProp('user'), 'toResource');
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-
-    expect((new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
-});
-
-it('declines a nullsafe method chain with no resolvable return type', function () {
-    $expr = new NullsafeMethodCall(chainThisProp('user'), 'notAMethodAnywhere');
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-
-    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
-
-    expect($result)->toBeNull();
-});
-
 it('resolves a relation collection chain to the element-typed array', function () {
     $expr = new MethodCall(chainThisProp('members'), 'take', [new Arg(new Int_(5))]);
     $scope = new AnalysisScope(new ReflectionClass(RelationChainResource::class), Team::class);
@@ -256,16 +237,6 @@ it('declines only() and except() in both reflecting branches, whatever the recei
     '$this->post->except($fields)' => fn (): Expr => new MethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
     '$this->replies->only([1, 2])' => fn (): Expr => new MethodCall(chainThisProp('replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1)), new ArrayItem(new Int_(2))]))]),
     '$this->except($fields)' => fn (): Expr => new MethodCall(new Variable('this'), 'except', [new Arg(new Variable('fields'))]),
-]);
-
-it('declines only() and except() on a nullsafe relation chain', function (NullsafeMethodCall $expr) {
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-
-    expect((new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine()))->toBeNull();
-})->with([
-    '$this->post?->except($fields)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('post'), 'except', [new Arg(new Variable('fields'))]),
-    '$this->resource->post?->only([\'id\'])' => fn (): NullsafeMethodCall => new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'post'), 'only', [new Arg(new Array_([new ArrayItem(new String_('id'))]))]),
-    '$this->replies?->only($ids)' => fn (): NullsafeMethodCall => new NullsafeMethodCall(chainThisProp('replies'), 'only', [new Arg(new Variable('ids'))]),
 ]);
 
 it('declines a method call rooted at a bare variable, not $this', function () {
@@ -343,18 +314,6 @@ test('$this->resource inside a whenLoaded closure roots at the resource model', 
         ->and($nullsafe)->toBe(['type' => 'string | null', 'optional' => false]);
 });
 
-// Pins both `startIndex` uses in MethodChainHandler: the walk loop and the last-step relation branch.
-test('a nullsafe method chain on $this->resource roots at the resource model inside a closure', function () {
-    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
-    $scope->closureRelationModelClass = Comment::class;
-
-    $expr = new NullsafeMethodCall(new PropertyFetch(chainThisProp('resource'), 'author'), 'nameTitled');
-
-    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
-
-    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
-});
-
 // The discriminating pin for the `resolve()` exclusion: both models declare `options`, and they resolve
 // differently — Post's docblock gives Record<string, string> | null, User's cast gives unknown[] | null.
 // Dropping the exclusion lets the closure arm answer with User's, which is wrong and less specific.
@@ -371,34 +330,31 @@ test('$this->resource->options reads the resource model type, not the closure mo
     expect($result)->toBe(['type' => 'Record<string, string> | null', 'optional' => false]);
 });
 
-// Pins the walk loop under $rootedAtResource: after the shift a relation step still has to be walked.
-test('a 3-deep nullsafe method chain on $this->resource walks the resource model', function () {
-    $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), Post::class);
-    $scope->closureRelationModelClass = Comment::class;
-
-    $expr = new NullsafeMethodCall(
-        new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'author'), 'profile'),
-        'getFormattedBioAttribute',
-    );
-
-    $result = (new MethodChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
-
-    expect($result)->toBe(['type' => 'string | null', 'optional' => false]);
-});
-
-// The documented exception: a model that really declares a `resource` relation keeps the old walk, so
-// `resource` is a relation step to traverse rather than the wrapper property to skip.
-test('a model with a real resource relation keeps the old relation walk', function () {
+// PHP reads the declared JsonResource::$resource before any __get(), so a model's own `resource` relation is reached
+// only as `$this->resource->resource`; `$this->resource->name` reads the model, which has no `name`.
+test('a model with a real resource relation is still the proxy, and its relation is one step further', function () {
     $scope = new AnalysisScope(new ReflectionClass(ClosureResourceRootResource::class), ResourceRelationModel::class);
+    $handler = new PropertyChainHandler;
 
-    $result = (new PropertyChainHandler)->resolve(
-        new PropertyFetch(chainThisProp('resource'), 'name'),
-        $scope,
-        chainHandlersThrowingEngine(),
-    );
-
-    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+    expect($handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine()))->toBeNull()
+        ->and($handler->resolve(new PropertyFetch(new PropertyFetch(chainThisProp('resource'), 'resource'), 'name'), $scope, chainHandlersThrowingEngine()))
+        ->toBe(['type' => 'string', 'optional' => false]);
 });
+
+test('a property chain walks only steps that hold one model', function (string $subject, string $model, Closure $expr, ?array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass($subject), $model);
+
+    expect((new PropertyChainHandler)->resolve($expr(), $scope, chainHandlersThrowingEngine()))->toBe($expected);
+})->with([
+    'a column shadowing the relation' => [ProxyDepotResource::class, Depot::class, fn (): Expr => new NullsafePropertyFetch(chainThisProp('supervisor'), 'name'), null],
+    'an accessor shadowing the relation' => [ClosureResourceRootResource::class, ProxyShadowPost::class, fn (): Expr => new NullsafePropertyFetch(chainThisProp('author'), 'email'), null],
+    'a camelCase accessor typed as one model' => [
+        ClosureResourceRootResource::class,
+        Post::class,
+        fn (): Expr => new NullsafePropertyFetch(chainThisProp('latestComment'), 'content'),
+        ['type' => 'string | null', 'optional' => false],
+    ],
+]);
 
 // The published output must stay correct end to end, whichever handler ends up answering.
 test('the whenLoaded closure fixture publishes the resource model types', function () {

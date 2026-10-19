@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Variable;
 
@@ -22,8 +21,8 @@ trait NarrowsInstanceofSubjects
 {
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varClassBindings,
-     * or `$this->resource`'s model when that is one), then restore the scope. Null for any other subject, or for an
-     * arm that writes it, since a read after the write no longer holds what the test saw.
+     * its varGuardBindings past the write that ended its parameter binding, or what the `$this->resource` proxy holds),
+     * then restore the scope. Null for any other subject, or for an arm that writes it.
      *
      * @template TResult
      *
@@ -36,46 +35,57 @@ trait NarrowsInstanceofSubjects
         $variable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
 
         // `$this->resource` is written through the `this` variable.
-        if (($variable === null && ! $this->isResourceFetch($subject))
-            || in_array($variable ?? 'this', array_column($this->collectVariableWrites([$arm]), 0), true)
+        if (($variable === null && ! $this->isProxyFetch($subject, $scope))
+            || in_array($variable ?? 'this', $this->collectWrittenVariableNames([$arm], $scope), true)
         ) {
             return null;
         }
 
-        $classes = resolve(ReceiverClassResolver::class)->narrowedSubject($subject, $tested, $scope);
+        $receivers = resolve(ReceiverClassResolver::class);
+        $classes = $receivers->narrowedSubject($subject, $tested, $scope);
 
-        if ($variable !== null) {
+        if ($subject instanceof Variable && $variable !== null) {
             $previousVarClassBindings = $scope->varClassBindings;
+            $previousVarGuardBindings = $scope->varGuardBindings;
 
             try {
-                $scope->varClassBindings[$variable] = $classes;
+                // Past the write that ended its parameter binding, the proof holds only past the test, so the value
+                // that write assigned, read earlier, still reads the variable as the parameter it was.
+                if ($scope->holdsBinding($subject)) {
+                    $scope->varClassBindings[$variable] = $classes;
+                } else {
+                    $scope->varGuardBindings[$variable] = ['classes' => $classes, 'after' => $subject->getEndFilePos()];
+                }
 
                 return $resolve();
             } finally {
                 $scope->varClassBindings = $previousVarClassBindings;
+                $scope->varGuardBindings = $previousVarGuardBindings;
             }
         }
 
-        $model = $classes[0];
-
-        if (count($classes) !== 1 || ! is_a($model, Model::class, true)) {
-            return null;
+        // A test that rules out no class `$resource` is redeclared as proves nothing, so the arm reads it unproven.
+        if ($receivers->excludesNoNamedClass($classes, $scope)) {
+            return $resolve();
         }
 
+        $previousProvenProxy = $scope->provenProxy;
         $previousModelClass = $scope->modelClass;
         $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
 
         try {
-            $scope->modelClass = $model;
+            $scope->provenProxy = $classes;
 
-            // Derived from the subject, never from the previous value: a ternary-only guard leaves
-            // instanceOfWrappedClass unseeded, so a proxying subject may not have been forwarding before.
-            if ($scope->subjectReflection->isSubclassOf(JsonResource::class)) {
-                $scope->forwardsUndeclaredMembersTo = $model;
+            // One proven model also answers the subject's model reads, such as an undeclared `$this->prop`. Not
+            // rebase(): the collection facts stay the runtime class's, which an ancestor's body runs as.
+            if (count($classes) === 1 && is_a($classes[0], Model::class, true)) {
+                $scope->setBackingModel($classes[0]);
             }
 
             return $resolve();
         } finally {
+            // Restored, never re-derived: an instanceof guard in toArray() may have backed the proxy the model did not.
+            $scope->provenProxy = $previousProvenProxy;
             $scope->modelClass = $previousModelClass;
             $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }

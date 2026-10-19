@@ -9,9 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * The Resource-suffixed naming-convention guess for LedgerCollection, held out of the published
- * set with #[TsExclude] so the naming-convention branch must reject it before trying the bare
- * Ledger candidate.
+ * The Resource-suffixed naming-convention candidate for LedgerCollection, held out of the published set with
+ * #[TsExclude]. Laravel never reaches it while the bare Ledger exists.
  */
 #[TsExclude]
 class LedgerResource extends JsonResource

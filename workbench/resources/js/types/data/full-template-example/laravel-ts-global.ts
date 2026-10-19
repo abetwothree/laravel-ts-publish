@@ -9,9 +9,11 @@ export {}
 import type { PageMetaType } from '@js/types/page-meta';
 import type { PostAttributes } from '@js/types/posts';
 import type { ProductJsonMetaData, ProductMetadata } from '@js/types/product';
+import type { ReviewSubject, ReviewerCard } from '@js/types/reviews';
 import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { WidgetConfigType } from '@js/types/widget-config';
+import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
 import type { BroadcastableEvent } from '@/types/broadcast';
@@ -36,9 +38,9 @@ declare global {
             user_id: number;
             number: string;
             status: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at: string | null;
             paid_at: string | null;
@@ -62,7 +64,7 @@ declare global {
             status: accounting.enums.PaymentStatusType;
             method: app.enums.PaymentMethodType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             reference: string | null;
             paid_at: string | null;
             created_at: string | null;
@@ -566,6 +568,19 @@ declare global {
             commentable_count: number;
             commentable_exists: boolean;
         }
+        /**
+         * A consignment whose casts publish what Laravel serializes: a `timestamp` cast is the Unix integer and a `decimal:2`
+         * cast a string on every driver, while the `created_at` and `updated_at` columns keep the date type.
+         */
+        export interface Consignment {
+            // Columns
+            id: number;
+            scanned_at: number | null;
+            declared_value: string;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+            created_at: string | null;
+            updated_at: string | null;
+        }
         /** One model a RosterSlot's assignee can be. */
         export interface Crew {
             // Columns
@@ -633,6 +648,24 @@ declare global {
             child_rows: Comment[];
             child_rows_count: number;
             child_rows_exists: boolean;
+        }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms, in either order:
+         * an `@property` tag, a cast's get() `@return` and an accessor's `Attribute<…>`. The enum column and accessor keep
+         * the model's Resource interface, printed as a list of the AsEnum wrap or the wrap alone.
+         */
+        export interface DocblockUnionFixture {
+            // Columns
+            id: number;
+            tags: User[] | User | null;
+            related_users: User[] | User | null;
+            meta_info: app.enums.StatusType[] | app.enums.StatusType | null;
+            owner_snapshot: Record<string, User> | User | null;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** The grades, a list of statuses or one status. */
+            grades: app.enums.StatusType[] | app.enums.StatusType;
         }
         /** Model with excluded mutator and relation via #[TsExclude]. */
         export interface ExcludableModel {
@@ -779,7 +812,7 @@ declare global {
             uploaders_from_docblock_string: Record<string, User>;
             tree_from_docblock: { label: string; child: unknown[] };
             price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
+            label_from_docblock: Record<string, never>;
             no_docblock_accessor: null;
             wrong_format_docblock: string | null;
             positive_int_accessor: number;
@@ -960,10 +993,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             /** Trimmed notes — accessor on a nullable DB column */
@@ -1013,8 +1046,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             options: Record<string, string | number | boolean> | null;
             created_at: string | null;
             updated_at: string | null;
@@ -1073,7 +1106,7 @@ declare global {
             status: app.enums.StatusType;
             published_at: string | null;
             metadata: Record<string, {title: string, content: string}>;
-            rating: number | null;
+            rating: string | null;
             category: string;
             options: Record<string, string> | null;
             deleted_at: string | null;
@@ -1148,9 +1181,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price: number | null;
-            cost_price: number | null;
+            price: string;
+            compare_at_price: string | null;
+            cost_price: string | null;
             quantity: number;
             weight: number | null;
             dimensions: { length: number; width: number; height: number; unit: "cm" | "in" };
@@ -1372,6 +1405,14 @@ declare global {
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
             dynamic_totals: unknown[];
+            /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+            length_callable: Record<string, never>;
+            /** The same for a first-class callable on the model's own method. */
+            key_callable: Record<string, never>;
+            /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+            checked_at: string;
+            /** A getter that returns a collection returns what its items encode as. */
+            channel_ids: number[];
             trait_version: { major: number; label: string };
             /** Old-style accessor with a vague signature and a literal body. */
             summary: { major: number };
@@ -1435,6 +1476,19 @@ declare global {
             crm_agent: crm.models.User | null;
             crm_agent_count: number;
             crm_agent_exists: boolean;
+        }
+        /** A work shift, whose resource publishes each value as json_encode() writes it. */
+        export interface Shift {
+            // Columns
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            // Mutators
+            /** When the shift clocked in. Model::toArray() hands an old-style getter's DateTime to json_encode() as it is. */
+            clocked_at: { date: string; timezone_type: number; timezone: string };
+            /** The day the shift starts. Model::toArray() runs serializeDate() on a new-style getter's date. */
+            starts_on: string;
         }
         export interface SlugPost {
             // Columns
@@ -1883,7 +1937,7 @@ declare global {
     export namespace app.models.marketing.report {
         /**
          * Fixture: same basename AND same parent namespace segment as
-         * Sales\Report\Report — reproduces the eagle MailPrice alias collision.
+         * Sales\Report\Report — reproduces a same-basename alias collision one namespace level deep.
          */
         export interface Report {
             // Columns
@@ -1900,7 +1954,7 @@ declare global {
     export namespace app.models.sales.report {
         /**
          * Fixture: same basename AND same parent namespace segment as
-         * Marketing\Report\Report — reproduces the eagle MailPrice alias collision.
+         * Marketing\Report\Report — reproduces a same-basename alias collision one namespace level deep.
          */
         export interface Report {
             // Columns
@@ -2011,7 +2065,7 @@ declare global {
             title: string;
             status: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
-            value: number;
+            value: string;
             created_at: string | null;
             updated_at: string | null;
             // Relations
@@ -2177,6 +2231,15 @@ declare global {
         }
         export type ExcludableEnumType = 'alpha' | 'beta';
         export type ExcludableEnumKind = 'Alpha' | 'Beta';
+
+        /** Freight classes whose methods return objects, each published as json_encode() writes it. */
+        export interface FreightClass
+        {
+            Standard: 'standard',
+            Express: 'express',
+        }
+        export type FreightClassType = 'standard' | 'express';
+        export type FreightClassKind = 'Standard' | 'Express';
 
         /** Shares its name with the Grade model, whose own file imports this enum's const. */
         export interface Grade
@@ -2405,9 +2468,9 @@ declare global {
             id: number;
             number: string;
             status?: accounting.enums.InvoiceStatusType;
-            subtotal: number;
-            tax: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            total: string;
             due_at: string | null;
             issued_at?: string;
             paid_at?: string | null;
@@ -2426,7 +2489,7 @@ declare global {
             id: number;
             status: accounting.enums.PaymentStatusType;
             currency: app.enums.CurrencyType;
-            amount: number;
+            amount: string;
             method?: app.enums.PaymentMethodType;
             reference?: string;
             paid_at?: string;
@@ -2503,8 +2566,8 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
         }
         /** The other arm of the reviewable morph union ReviewResource unions over. */
         export interface ArtistResource {
@@ -2521,6 +2584,18 @@ declare global {
             clearance: app.enums.ClearanceType;
             clearance_type: crm.enums.ClearanceTypeType;
             summary: { clearance: app.enums.ClearanceType; clearance_type: crm.enums.ClearanceTypeType };
+        }
+        /**
+         * A docblock union naming a class or an enum both inside a container and bare publishes both arms: a model's
+         * `@property`, a property's `@var`, a helper's `@return` and a local's `@var`.
+         */
+        export interface BareBesideContainerResource {
+            tags: app.models.User[] | app.models.User | null;
+            related_users: app.models.User[] | app.models.User | null;
+            crew: app.models.User[] | app.models.User | null;
+            lead: app.models.User[] | app.models.User;
+            statuses: app.enums.StatusType[] | app.enums.StatusType;
+            either: app.models.Comment[] | app.models.Comment;
         }
         /** Fixture resource exercising bare function call spreads (without $this->). */
         export interface BareFuncCallResource {
@@ -2557,11 +2632,11 @@ declare global {
         export interface BodylessOrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number;
+            total_avg?: number | null;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -2713,6 +2788,23 @@ declare global {
             owned_by: app.models.User;
         }
         /**
+         * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
+         * when() or whenLoaded() value that holds one is called first, so the key sends that call's return.
+         */
+        export interface CallableValueResource {
+            length: Record<string, never>;
+            upper: Record<string, never>;
+            key: Record<string, never>;
+            label: Record<string, never>;
+            supervisor_resource: Record<string, never>;
+            nested: { length: Record<string, never> };
+            when_key?: number;
+            when_label?: string;
+            label_or_zero: number | string;
+            supervisor?: UserResource | null;
+            supervisor_card?: { name: string } | null;
+        }
+        /**
          * A resource over a value object rather than a model. The inline `@var` on each local names what it holds, for the
          * reads after its assignment and before the variable is written again.
          */
@@ -2736,6 +2828,36 @@ declare global {
             id: number;
             case_title: string;
         }
+        /** A docblock-filled signature beside a same-pattern key only the class-level cast types, so the fill joins the cast. */
+        export interface CastRestoredFillResource {
+            [key: `${string}_tag`]: string | number | undefined;
+            main_tag: number;
+        }
+        /**
+         * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
+         * `children`, a HasMany that loads as a collection, then every resource built around `parent`. Laravel returns null for
+         * a relation loaded as null before it reads the value and serializes a resource wrapping null as null, and a `?->`
+         * call on null is null, so each `parent` key publishes `| null`; a `children` key never does.
+         */
+        export interface CategoryLineageResource {
+            id: number;
+            parent_name?: string | null;
+            parent_list?: app.models.Category[] | null;
+            parent_label?: string | null;
+            parent_or_absent: app.models.Category | string | null;
+            parent_named_default: app.models.Category | string | null;
+            parent_name_or_absent: string | null;
+            parent_callable?: CategoryResource | null;
+            parent_new_loaded?: CategoryResource | null;
+            parent_make_direct: CategoryResource | null;
+            parent_nullsafe_resource: CategoryResource | null;
+            parent_siblings: CategoryResource[] | null;
+            parent_siblings_nullsafe: CategoryResource[] | null;
+            parent_in_array: { parent: CategoryResource | null };
+            parent_when?: CategoryResource | null;
+            children_names?: string[];
+            children_list?: app.models.Category[][];
+        }
         /**
          * Exercises: self-referencing Resource::make and Resource::collection,
          * when conditional, whenCounted, cross-resource PostResource::collection.
@@ -2747,21 +2869,21 @@ declare global {
             description?: string | null;
             sort_order: number;
             is_active: boolean;
-            parent?: CategoryResource;
+            parent?: CategoryResource | null;
             children?: CategoryResource[];
             posts?: PostResource[];
             posts_count?: number;
             children_self_collection: CategoryResource[];
             children_self_resource_collection: CategoryResource[];
-            children_self_collection_first_callable: CategoryResource[];
+            children_self_collection_first_callable: Record<string, never>;
             children_when_self_collection?: CategoryResource[];
             children_when_self_resource_collection?: CategoryResource[];
             children_when_self_collection_first_callable?: CategoryResource[];
-            parent_self: CategoryResource;
-            parent_make_self: CategoryResource;
-            parent_resource_self: CategoryResource;
-            parent_when_self?: CategoryResource;
-            parent_when_resource_self?: CategoryResource;
+            parent_self: CategoryResource | null;
+            parent_make_self: CategoryResource | null;
+            parent_resource_self: CategoryResource | null;
+            parent_when_self?: CategoryResource | null;
+            parent_when_resource_self?: CategoryResource | null;
             children_with_default: app.models.Category[];
             posts_with_default: PostResource[];
         }
@@ -2801,12 +2923,12 @@ declare global {
             mixed_tags: (string | number)[];
             nested_tags: { primary: string[]; secondary: string[] };
             broken_channels: unknown;
-            over_element_limit: unknown;
+            over_element_limit: number[];
             over_depth_limit: unknown;
             status_map: { status: app.enums.OrderStatusType };
             status_list: app.enums.OrderStatusType[];
-            all_int_keys: Record<string, unknown>;
-            mixed_keys: { a: number };
+            all_int_keys: string[];
+            mixed_keys: { a: number; "5": string };
             resource_marker: string;
             status_marker: app.enums.StatusType;
         }
@@ -2833,6 +2955,7 @@ declare global {
             mapped_members: app.models.User[];
             loaded_owner?: app.models.User;
             loaded_members_bare?: app.models.User[];
+            shadowed: string;
         }
         /**
          * Reads `$this->resource` inside whenLoaded closures bound to a different relation's model, so each
@@ -2850,6 +2973,7 @@ declare global {
             author_titled_inside?: string | null;
             options_inside?: Record<string, string> | null;
             profile_bio_inside?: string | null;
+            own_model: app.models.Post;
         }
         /**
          * Exercises analyzeClosureUnion metadata propagation (enum, model, resource FQCNs)
@@ -2915,8 +3039,8 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
             name: string;
             email: string;
             email_verified_at: string | null;
@@ -2943,6 +3067,7 @@ declare global {
         export interface CommentRelationFiltersResource {
             id: number;
             summary: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
+            summary_via_resource: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] };
             picks: { id: number; author: Pick<app.models.User, 'id' | 'name'>; author_role: Pick<app.models.User, 'id' | 'role'> | null; post_fields: Record<string, unknown>; replies: app.models.Comment[]; kept_replies: app.models.Comment[] | null; reply_previews: { id: number; content: string }[] };
             picks_summary: { id: number; picks: { id: number; author: { id: number; name: string }; author_role: { id: number; role: unknown } | null; post_fields: Record<string, unknown>; replies: unknown[]; kept_replies: unknown[] | null; reply_previews: { id: number; content: string }[] } };
         }
@@ -2989,7 +3114,7 @@ declare global {
         export interface ConditionalDefaultsResource {
             not_null_no_default?: string;
             not_null_with_default: string | number;
-            not_null_same_type_default: number;
+            not_null_same_type_default: string;
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
@@ -3000,8 +3125,8 @@ declare global {
             has_with_null: number | null;
             loaded_with_default: app.models.User | null;
             counted_with_default: number | string;
-            aggregated_no_default?: number;
-            aggregated_with_default: number | string;
+            aggregated_no_default?: number | null;
+            aggregated_with_default: number | string | null;
             pivot_loaded_no_default?: unknown;
             pivot_loaded_with_default: unknown;
             pivot_loaded_as_no_default?: unknown;
@@ -3090,7 +3215,7 @@ declare global {
         export interface ConditionalParamMappedResource {
             id: number;
             items_mapped?: { id: number; name: string; quantity: number }[];
-            items_priced?: { id: number; sku: string; unit_price: number; total_price: number }[];
+            items_priced?: { id: number; sku: string; unit_price: string; total_price: string }[];
             item_names?: string[];
         }
         /**
@@ -3110,6 +3235,13 @@ declare global {
             notes_length_or_default: string | number;
             notes_length_variadic_default: string | number;
         }
+        /** Reads each cast through the model, so the resource publishes what the cast returns, as the model does. */
+        export interface ConsignmentResource {
+            id: number;
+            scanned_at: number | null;
+            declared_value: string;
+            legs: ({ code: string; sequence: number; stop: { note: string | null; name: string; lat: number; lng: number } | null })[];
+        }
         /**
          * Exercises collectDirectReturns elseif, else, and loop branches
          * in the main toArray() body (not inside closures).
@@ -3119,7 +3251,7 @@ declare global {
             archived?: boolean;
             inline_enum_branch?: { method: app.enums.PaymentMethodType | null };
             draft?: boolean;
-            total?: number;
+            total?: string;
             status?: app.enums.OrderStatusType;
         }
         /**
@@ -3161,13 +3293,15 @@ declare global {
             title_as_totals: string;
             verifiable_email: string;
             callable: unknown;
-            callable_shape: unknown;
+            callable_shape: { fn: unknown };
             closure: unknown;
             intersection: unknown;
-            tuple: unknown;
-            decoded: unknown;
-            literal_keys: unknown;
-            quoted_key: unknown;
+            tuple: [number, string];
+            decoded: { a: number };
+            literal_keys: { a?: number; b?: number };
+            quoted_key: { a: number; b: string };
+            comma_key: { "a,b": number; c: string };
+            numeric_keyed_tuple: [(string | number)[], number];
             kept_title: string;
             kept_record: { a: number; b: string };
             kept_shape: { a: number; b: string };
@@ -3194,6 +3328,18 @@ declare global {
             author: app.models.User;
             opaque_name?: string;
         }
+        /**
+         * Reads helpers that add keys to the array they are passed through each call path: a container instance, a static
+         * call and the resource's own method.
+         */
+        export interface DecoratedPayloadResource {
+            decorated: { seen: boolean; [key: string]: unknown };
+            conditional: { flag?: string; [key: string]: unknown };
+            static: { seen: boolean; [key: string]: unknown };
+            helper: { seen: boolean; [key: string]: unknown };
+            passed_through: Record<string, string> | never[];
+            rebuilt: { id: number; seen: boolean };
+        }
         /** Resource that delegates to parent — tests non-array return guard. */
         export interface DelegatingResource {
         }
@@ -3216,18 +3362,64 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
+        }
+        /**
+         * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
+         * Depot column: PHP reads the declared property before JsonResource::__get() reaches the model, so the key sends null.
+         */
+        export interface DepotDefaultsResource {
+            id: number;
+            name: null;
+            stage: app.enums.StatusType;
+            limits: { daily: number; codes: string[] };
+            tags: (string | number)[];
+            notes: never[];
+            stage_name?: string;
+        }
+        /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
+        export interface DepotTierKeyedResource {
+            id: number;
+            tiers: { "1": string; "2": string };
+            codes: { "06": string; "1.5": string };
+            surcharges: { "3": number };
+            statuses: { "200": string; "404": string };
+            labelled: { name: string; "42": boolean };
+            nested: { inner: { "7": string } };
+            loaded_orders?: { "10": string; "20": string };
+            "42": string;
+        }
+        /**
+         * Numeric keys, which a resource's filter re-indexes into a list wherever every key of an array passes is_numeric(),
+         * and keeps beside a named key.
+         */
+        export interface DepotTierResource {
+            id: number;
+            tiers: string[];
+            codes: string[];
+            surcharges: number[];
+            statuses: string[];
+            labelled: { name: string; "42": boolean };
+            nested: { inner: string[] };
+            loaded_orders?: string[];
+            "42": string;
+        }
+        /**
+         * Its returned array names `state` twice. PHP keeps the last value in the first position, so the method's cast
+         * must retype the entry that publishes, not only the first.
+         */
+        export interface DuplicateKeyCastResource {
+            state: 'draft' | 'published';
+            title: string;
         }
         /** Resource with no toArray override — tests guard clause. */
         export interface EmptyResource {
@@ -3251,18 +3443,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -3334,18 +3524,18 @@ declare global {
         export interface FluentSelfResource {
             id: number;
             name: string;
-            parent_fluent?: FluentSelfResource;
-            parent_fluent_make?: FluentSelfResource;
-            parent_fluent_chain?: FluentSelfResource;
-            parent_fluent_docblock?: FluentSelfResource;
-            parent_summary?: { id: number };
-            foreign_summary?: { slug: string };
+            parent_fluent?: FluentSelfResource | null;
+            parent_fluent_make?: FluentSelfResource | null;
+            parent_fluent_chain?: FluentSelfResource | null;
+            parent_fluent_docblock?: FluentSelfResource | null;
+            parent_summary?: { id: number } | null;
+            foreign_summary?: { slug: string } | null;
             parent_fluent_nullable?: FluentSelfResource | null;
         }
         /** Resource using FQCN @mixin — tests resolveModelClass FQCN branch. */
         export interface FqcnMixinResource {
             id: number;
-            total: number;
+            total: string;
         }
         /**
          * Exercises the bug where resolveClosureReturnExpression() picks the first
@@ -3358,7 +3548,7 @@ declare global {
          */
         export interface GuardClauseClosureResource {
             id: number;
-            total: number;
+            total: string;
             buyer?: { name: string; email: string } | null;
         }
         /**
@@ -3369,6 +3559,45 @@ declare global {
             id: number;
             archived?: boolean;
             [key: number]: app.models.OrderItem;
+        }
+        /** A body-less collection with its own wrap key, which every collection stacked on it inherits. */
+        export interface HandoverCollection {
+            handovers: HandoverResource[];
+        }
+        /**
+         * Returns an array union whole: the filtered attributes keep their own types, and the defaults add only the keys the
+         * filter leaves out.
+         */
+        export interface HandoverDefaultsResource {
+            id: number;
+            sender_id: number | null;
+            note: string;
+        }
+        /**
+         * Stacked on a body-less collection and body-less itself: Laravel collects its own `$collects`, under the inherited
+         * `handovers` wrap.
+         */
+        export interface HandoverDigestCollection {
+            handovers: HandoverSummaryResource[];
+        }
+        /**
+         * Keyless list literals publish the JSON arrays they encode as: a constant one by its values, any other by its
+         * elements' types, a spread of a list adding its elements, and an element no rule types leaving the element `unknown`.
+         */
+        export interface HandoverListResource {
+            stages: string[];
+            stamps: (number | string | null)[];
+            lanes: number[];
+            route: { stops: string[]; hops: number };
+            empty: never[];
+            stops: string[];
+            statuses: app.enums.OrderStatusType[];
+            senders: (UserResource | null)[];
+            legs: ({ from: string; to: string } | { from: string; to: number })[];
+            grid: number[][];
+            flags: string[];
+            opaque: unknown[];
+            collected: (number | string | null)[];
         }
         /** Reads two models that share a name through the conditional helpers: each arm keeps its own class. */
         export interface HandoverNoticeResource {
@@ -3384,6 +3613,13 @@ declare global {
             pair: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
             parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
             audience: app.models.User[] | crm.models.User[];
+        }
+        /**
+         * Declares nothing: the `$collects` it inherits outranks the naming convention, so Laravel collects HandoverResource,
+         * not HandoverRosterResource.
+         */
+        export interface HandoverRosterCollection {
+            handovers: HandoverResource[];
         }
         /** Reads members typed by a docblock union whose arms render alike for two models that share a name. */
         export interface HandoverRosterResource {
@@ -3402,28 +3638,34 @@ declare global {
             receiver_id: number | null;
             created_at: string | null;
             updated_at: string | null;
-            party: app.models.User | crm.models.User | null;
             parties: { first: app.models.User | null; either: app.models.User | crm.models.User | null };
-            audience: app.models.User[] | crm.models.User[];
-            sender: app.models.User | null;
-            receiver: crm.models.User | null;
-            watchers: app.models.User[];
-            crmWatchers: crm.models.User[];
+            sender?: app.models.User | null;
+            receiver?: crm.models.User | null;
+            watchers?: app.models.User[];
+            crm_watchers?: crm.models.User[];
+        }
+        /**
+         * `+` on arrays publishes PHP's array union, where the left operand's keys win and the right one adds the rest, and
+         * `+` on numbers stays a number.
+         */
+        export interface HandoverUnionResource {
+            with_defaults: { note: string; id: number; sender_id: number | null };
+            override: { code: string; lane: number };
+            lanes: number[];
+            chained: { a: number; b: string; c: boolean };
+            total: number;
         }
         /**
          * Exercises userland global-helper reflection (route()), Carbon
          * receiver-method inference on a datetime-cast attribute, and the
          * can()/count() known-method rules (Task 11).
          *
-         * `diff_result` and `period_result` are a Task 12 regression: Carbon methods that
-         * return a Stringable-but-not-string value object (CarbonInterval, CarbonPeriod) must
-         * degrade to unknown rather than falsely resolve to `string` via toTsType()'s
-         * __toString fallback.
+         * `diff_result` and `period_result` are Carbon methods that return a Stringable value
+         * object json_encode() never writes as its __toString(): a CarbonInterval writes
+         * DateInterval's fields, and a CarbonPeriod the list of its dates.
          *
-         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: unlike CarbonInterval/
-         * CarbonPeriod, Carbon and CarbonImmutable themselves ARE correctly `string` via
-         * __toString() (their canonical ISO-ish datetime representation), so the Stringable
-         * guard must not over-degrade these two.
+         * `to_mutable`/`to_immutable` are a Task 12 review follow-up: Carbon and
+         * CarbonImmutable themselves are `string`, the ISO string their jsonSerialize() writes.
          *
          * `user_key`: `getKey()`'s type depends on which model it's called on, unlike
          * can()/cannot()/canAny() which are bool regardless of receiver. A resource's
@@ -3435,8 +3677,8 @@ declare global {
             ship_date: string;
             can_edit: boolean;
             item_total: number;
-            diff_result: unknown;
-            period_result: unknown;
+            diff_result: { y: number; m: number; d: number; h: number; i: number; s: number; f: number; invert: number; days: number | false; from_string: false };
+            period_result: string[];
             to_mutable: string;
             to_immutable: string;
             user_key: unknown;
@@ -3458,31 +3700,8 @@ declare global {
             metadata: unknown[] | null;
             created_at: string | null;
             updated_at: string | null;
-            size_for_humans: string;
-            is_landscape: boolean;
-            aspect_ratio: string | null;
-            extension: string | null;
-            size: number;
-            flexible_id: string | number | null;
-            optional_label: string | null;
-            status_from_docblock: app.enums.StatusType | null;
-            shirt_size: app.enums.SizeType;
-            uploader_from_docblock: app.models.User | null;
-            config_from_docblock: MenuSettingsType;
-            data_from_docblock: { recordedAt?: string; title: string; weight: number | null };
-            nested_optional_key_from_docblock: { inner: { assignedLater?: string; promoted: string }; label: string };
-            uploaders_from_docblock: app.models.User[] | Record<string, app.models.User>;
-            uploaders_from_docblock_int: app.models.User[];
-            uploaders_from_docblock_string: Record<string, app.models.User>;
-            tree_from_docblock: { label: string; child: unknown[] };
-            price_from_docblock: { amount: number; currency: string };
-            label_from_docblock: string;
-            no_docblock_accessor: null;
-            wrong_format_docblock: string | null;
-            positive_int_accessor: number;
-            numeric_string_accessor: string;
-            imageable: app.models.Post | app.models.Product | app.models.User | crm.models.User;
-            reviewable: crm.models.User | app.models.User | null;
+            imageable?: app.models.Post | app.models.Product | app.models.User | crm.models.User;
+            reviewable?: crm.models.User | app.models.User | null;
         }
         /**
          * Both when() arms are inline objects whose members are nullable, so the union must be split at the
@@ -3516,14 +3735,32 @@ declare global {
             height?: number;
         }
         /**
+         * Casts the key that reads two resources named `UserResource` to a type of the app's own, so neither resource is
+         * imported.
+         */
+        export interface ImageReviewCastResource {
+            id: number;
+            reviewable?: ReviewSubject | null;
+        }
+        /**
          * Exposes a morphTo whose targets' resources share a basename: Crm's UserResource and this namespace's UserResource
          * must each be named by its own alias, inside an inline array as well.
          */
         export interface ImageReviewResource {
             id: number;
-            reviewable?: crm.http.resources.UserResource | UserResource;
+            reviewable?: crm.http.resources.UserResource | UserResource | null;
             reviewer: crm.http.resources.UserResource | UserResource;
             review: { subject: crm.http.resources.UserResource | UserResource; label: string | null };
+        }
+        /**
+         * A whenLoaded() closure whose variadic parameter collects a morphTo. The list holds whichever target loaded, never
+         * null: Laravel calls the closure only for a loaded value that is not null. `reviewable` can load as null, so its key
+         * also takes the `null` whenLoaded() returns; `imageable` cannot. The reviewable targets share a basename, so each
+         * keeps its alias.
+         */
+        export interface ImageSubjectsResource {
+            subjects?: (crm.models.User | app.models.User)[] | null;
+            owners?: (app.models.Post | app.models.Product | app.models.User | crm.models.User)[];
         }
         /**
          * Base class for ChildInlineFqcnResource. Both regional_hub_* properties carry Warehouse::regionalHub()'s
@@ -3547,14 +3784,62 @@ declare global {
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
-         * reproducing the eagle MailPrice alias collision through a resource instead of a model.
+         * reproducing a same-basename alias collision through a resource instead of a model.
          */
         export interface KpiResource {
             reportable?: app.models.marketing.report.Report | app.models.sales.report.Report;
         }
         /** A collection of ledger entries. */
         export interface LedgerCollection {
-            data: unknown;
+            data: unknown[];
+        }
+        /**
+         * Locals a by-reference built-in rewrites in a form that keeps their type: each sort of the form it keeps, a count, a
+         * push, pop, shift or splice of a list, a walk or a by-reference loop writing each element within its type, and a
+         * recursive walk or a sort of a key likewise. A resource re-indexes a list a key-keeping sort reorders.
+         */
+        export interface LocalVarByReferenceResource {
+            sorted: string[];
+            reversed: number[];
+            user_sorted: string[];
+            plucked: string[];
+            key_sorted: { b: number; a: number };
+            key_sorted_list: string[];
+            user_key_sorted: { b: number; a: number };
+            reverse_key_sorted: { a: number; b: number };
+            value_sorted: { b: number; a: number };
+            reverse_value_sorted: { a: number; b: number };
+            user_value_sorted: { b: number; a: number };
+            natural_sorted: { b: string; a: string };
+            natural_case_sorted: { b: string; a: string };
+            replaced_count: number;
+            case_replaced_count: number;
+            pattern_count: number;
+            callback_count: number;
+            pushed: string[];
+            unshifted: string[];
+            walked: { x: number };
+            walked_list: string[];
+            read_only_walk: { b: number };
+            walked_nested: { a: { b: number } };
+            sorted_member: { x: number[] };
+            nested_sorted_member: { x: { y: number[] } };
+            key_sorted_member: { x: { b: number; a: number } };
+            looped: string[];
+            popped: string[];
+            shifted: string[];
+            spliced: string[];
+            value_sorted_list: string[];
+            value_sorted_member: { x: string[] };
+            mixed_member: { x: string[]; c: { "3": string } };
+            sorted_tuple: (string | number)[];
+            walked_keys: { a: string };
+            walked_import: string[];
+            pre_written_loop: string[];
+            concat_walked: string[];
+            plus_walked: number[];
+            copied_before_sort: { k: number };
+            list_copied_after_sort: string[];
         }
         /**
          * Regression fixture (Task 12 review, Critical 2): two TOP-LEVEL assignments to the
@@ -3628,7 +3913,7 @@ declare global {
         export interface LoopReturnResource {
             id: number;
             first_item_name?: string;
-            total?: number;
+            total?: string;
         }
         /**
          * Regression pin: `$this->map->only([...])` must route through the relation-filter guard, not
@@ -3643,7 +3928,7 @@ declare global {
         export interface MediaTypeInstanceOfResource {
             name?: string;
             value?: string;
-            meta?: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         /**
          * Resource using a positive instanceof guard (not negated).
@@ -3659,7 +3944,7 @@ declare global {
         export interface MediaTypeResource {
             name: string;
             value: string;
-            meta: { extensions: unknown[]; maxSizeMb: number; sizeUnit: string; icon: string };
+            meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
         export interface MediaTypeUnknownResource {
             name: unknown;
@@ -3682,18 +3967,18 @@ declare global {
          */
         export interface MerchantResource {
             id: number;
-            owner_via_closure?: UserResource;
-            owner_explicit?: UserResource;
+            owner_via_closure?: UserResource | null;
+            owner_explicit?: UserResource | null;
             owner_variant_constant?: unknown;
             owner_direct: UserResource;
-            staff_via_closure?: UserResource[];
+            staff_via_closure?: UserCollection | never[];
             staff_explicit?: UserResource[];
-            history_event?: EventLogResource;
+            history_event?: EventLogResource | null;
             filing?: unknown;
             alert?: unknown;
-            registrar?: RegistrarResource;
-            registrars?: unknown;
-            suppliers?: SupplierSummaryResource[];
+            registrar?: RegistrarResource | null;
+            registrars?: RegistrarGroupCollection | never[];
+            suppliers?: SupplierCollection | never[];
             unpublished_guess?: unknown;
             unpublished_guess_collection?: unknown;
             staff_map_only?: ({ id: number; name: string; role: app.enums.RoleType | null; last_login_at: string | null })[];
@@ -3701,27 +3986,94 @@ declare global {
             history_event_map_only?: unknown;
         }
         /**
-         * Exercises resolveClosureReturnExpression with a Closure passed to merge().
+         * Exercises closureReturnBranches() with a Closure passed to merge().
          * The closure has a guard clause followed by the real array return.
          */
         export interface MergeClosureResource {
             id: number;
-            user_name: string;
-            user_email: string;
+            user_name?: string;
+            user_email?: string;
+            ulid?: string;
+            user_id?: number;
+            status?: app.enums.OrderStatusType;
+            payment_method?: app.enums.PaymentMethodType | null;
+            currency?: app.enums.CurrencyType;
+            subtotal?: string;
+            tax?: string;
+            discount?: string;
+            total?: string;
+            shipping_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            billing_address?: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
+            notes?: string | null;
+            placed_at?: string | null;
+            paid_at?: string | null;
+            shipped_at?: string | null;
+            delivered_at?: string | null;
+            cancelled_at?: string | null;
+            ip_address?: string | null;
+            user_agent?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            deleted_at?: string | null;
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
         }
         /**
-         * Exercises resolveArrayOrClosureToProperties with a multi-return closure
+         * Exercises mergeWhen() and mergeUnless() with a default, which Laravel merges when the condition fails. A key only
+         * one side sets is optional, and a key both sides set is required, typed with both sides' types.
+         */
+        export interface MergeDefaultResource {
+            id: number;
+            state: string | number;
+            paid_by?: number;
+            awaiting_payment?: boolean;
+            cancelled: boolean;
+            open_since?: string | null;
+            note_text: string | null;
+            owner_id?: number;
+            subtotal_label?: string;
+            k: string;
+            null_total: null;
+        }
+        /**
+         * Exercises resolveMergedBranches() with a multi-return closure
          * passed to merge(). The closure has multiple branches returning different
          * array shapes, which should be merged with union semantics.
          */
         export interface MergeMultiBranchClosureResource {
             id: number;
             archived_at?: string | null;
-            total?: number;
+            total?: string;
             currency?: app.enums.CurrencyType;
         }
+        /**
+         * Interpolated keys written in the returned array and inside merges beside same-pattern keys, so each signature's
+         * value covers every key it matches, and merges of a helper's keys and of the model itself.
+         */
+        export interface MergedSignatureKeysResource {
+            id: number;
+            [key: `${string}_note`]: string | number | undefined;
+            main_label: string;
+            [key: `${string}_label`]: number | string | undefined;
+            name?: string;
+            slug?: string;
+            color?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
+        }
         export interface MiscCollection {
-            data: unknown;
+            data: unknown[];
+        }
+        /** A MissingValue passed on through `??`, a `when()` default and a ternary keeps its key optional. */
+        export interface MissingValueOperatorsResource {
+            direct_coalesce?: app.models.User | string;
+            when_wrap_default?: app.models.User | string;
+            when_missing_default?: string | app.models.User;
+            ternary?: app.models.User | string;
+            nested_coalesce: { inner?: app.models.User | string };
+            coalesce_right_missing: string | app.models.User;
         }
         /**
          * Regression fixture: a mixed EnumResource::collection()/direct-access ternary's per-arm shape
@@ -3763,8 +4115,8 @@ declare global {
          * AstEngine::analyzeMethod()'s cycle guard must break the loop wherever it's first re-entered.
          */
         export interface MutualSpreadBResource {
-            a_marker: boolean;
             b_marker: boolean;
+            a_marker: boolean;
         }
         /**
          * Two methods that spread each other. Without a visited-method guard this recurses until the
@@ -3832,6 +4184,7 @@ declare global {
             members_bare?: UserResource[];
             members_model_spread?: (Omit<app.models.User, 'flag'> & { flag: boolean })[];
             members_collection_spread?: Record<number, app.models.User> & { flag: boolean };
+            members_zero_key_spread?: (app.models.User | boolean)[];
             members_double_spread?: (Omit<UserResource, 'note' | keyof ProfileResource> & Omit<ProfileResource, 'note'> & { note: string })[];
             members_with_profile_untyped?: (Omit<UserResource, 'profile'> & { profile: ProfileResource })[];
             owner_map_untyped?: unknown;
@@ -3839,6 +4192,12 @@ declare global {
             members_model_then_resource_spread?: (Omit<app.models.User, 'flag' | keyof UserResource | keyof app.models.User> & Omit<UserResource, 'flag' | keyof app.models.User> & Omit<app.models.User, 'flag'> & { flag: boolean })[];
             members_resource_then_model_spread?: (Omit<UserResource, 'flag' | keyof app.models.User | keyof UserResource> & Omit<app.models.User, 'flag' | keyof UserResource> & Omit<UserResource, 'flag'> & { flag: boolean })[];
             owner_relation_spread: Omit<app.models.User, 'flag'> & { flag: boolean };
+        }
+        /** Index signatures inside nested shapes: one beside a named key its pattern matches, one whose text holds a backslash. */
+        export interface NestedSignatureResource {
+            id: number;
+            box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };
+            units: { [key: `${string}\\unit`]: string | undefined };
         }
         export interface NonArrayReturnResource {
             id: number;
@@ -3863,9 +4222,15 @@ declare global {
             id: number;
             comments_count: number;
             summary?: Pick<app.models.Post, 'id' | 'title'>;
-            category?: Pick<app.models.Category, 'id' | 'name'>;
+            category?: Pick<app.models.Category, 'id' | 'name'> | null;
             dynamic: Record<string, unknown>;
-            dynamic_category?: Record<string, unknown>;
+            dynamic_category?: Record<string, unknown> | null;
+        }
+        /** Optional casts on two index signatures, one on the class and one on toArray(): neither can carry `?:`. */
+        export interface OptionalSignatureCastResource {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
+            [key: `${string}_note`]: number | undefined;
         }
         /** Exercises closure / arrow function patterns in value expressions and merge methods. */
         export interface OrderClosureResource {
@@ -3877,7 +4242,7 @@ declare global {
             shipped_at?: string | null;
             tracking?: string | null;
             currency_label: app.enums.CurrencyType;
-            total_display: number;
+            total_display: string;
         }
         export interface OrderCollection {
             data: OrderResource[];
@@ -3914,10 +4279,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -3963,8 +4328,8 @@ declare global {
             name: string;
             sku: string;
             quantity: number;
-            unit_price: number;
-            total_price: number;
+            unit_price: string;
+            total_price: string;
             product?: ProductResource;
             order?: app.models.Order;
             options?: Record<string, string | number | boolean> | null;
@@ -3975,7 +4340,7 @@ declare global {
         export interface OrderOnlyResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             item_count: number;
             search_index: unknown;
@@ -3985,11 +4350,11 @@ declare global {
         export interface OrderResource {
             id: number;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             currency: app.enums.CurrencyType;
             items?: app.models.OrderItem[];
             items_count?: number;
-            total_avg?: number;
+            total_avg?: number | null;
             paid_at?: string | null;
             shipped_at?: string | null;
             delivered_at?: string | null;
@@ -4005,9 +4370,23 @@ declare global {
             formatted_total: string;
             user: app.models.User;
             status: app.enums.OrderStatusType;
-            total: number;
+            total: string;
             notes: string | null;
             search_index: unknown;
+        }
+        /**
+         * Helpers whose parameters declare no type, read as values: each body reads what its call passes, a first-class
+         * callable's included, which Laravel calls with the loaded relation, the attribute or the transformed value.
+         */
+        export interface PassedArgumentHelpersResource {
+            row: { pk: number; title: string };
+            author_card: { name: string; email: string };
+            static_row: { static_pk: number };
+            outer: { inner: { pk: number; title: string } };
+            loaded_card?: { name: string; email: string };
+            loaded_count?: { count: number };
+            has_title?: { value: string };
+            transformed?: { value: string };
         }
         /**
          * Every return branch of a spread method counts, and the method's own @return shape types
@@ -4054,6 +4433,26 @@ declare global {
             authors: ({ id: number; who: string | null; who_or: string | null })[];
             loaded?: ({ who: string | null })[];
         }
+        /**
+         * A bare enum case in every position a resource key reads one, with two enums that share a basename. A backed case
+         * sends its value; a pure case would make the response throw, so none is here.
+         */
+        export interface PostEnumCaseResource {
+            status: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            kept_status: app.enums.StatusType;
+            priority_or_low: app.enums.PriorityType;
+            flagged: app.enums.StatusType | null;
+            either: app.enums.StatusType | crm.enums.StatusType;
+            when_published?: app.enums.StatusType;
+            when_default: string | app.enums.StatusType;
+            matched: app.enums.StatusType;
+            pair: { app: app.enums.StatusType; crm: crm.enums.StatusType };
+            cases: app.enums.StatusType[];
+            case_list: app.enums.StatusType[];
+            wrapped: app.enums.StatusType;
+            wrapped_kept: app.enums.StatusType;
+        }
         /** Three enum members, two of them the same enum: the import queue must carry three entries, not two. */
         export interface PostEnumTrioResource {
             id: number;
@@ -4064,6 +4463,64 @@ declare global {
          * not wrapped in a 'data' key. Uses #[Collects] to identify the singular resource.
          */
         export type PostFlatCollection = PostResource[];
+        /**
+         * Helpers whose declarations are vague or missing, each typed from what its own returns hold: a scalar, a list
+         * literal, list pipelines, an attribute read and returned variables.
+         */
+        export interface PostHelperBodyResource {
+            shout_untyped: string;
+            stages: string[];
+            history: string[];
+            ids: number[];
+            untyped_title: string;
+            closure_first: { title: string; active: number };
+            mixed_meta: { a: number } | { a: number; b: string };
+        }
+        /**
+         * Helpers whose typed parameters their bodies read, through every reading of a helper body: a spread, a value, a
+         * nested call, a static helper and a trait's.
+         */
+        export interface PostHelperParamsResource {
+            id: number;
+            title: string;
+            extra: number;
+            summary: { id: number; title: string; extra: number };
+            card: { card_id: number; card_title: string };
+            nested: { inner: { card_id: number; card_title: string } };
+            static_card: { static_id: number };
+            headline_id: number;
+            headline: string;
+            maybe: { maybe_title: string | null };
+            status_label: { label: string; value: number };
+            status_payload: { payload_status: unknown; payload_name: string };
+            payload_status: app.enums.StatusType;
+            payload_name: string;
+        }
+        /** A `new` of a class that is not a resource, in place and as a parameter default. */
+        export interface PostNewValueResource {
+            error: Record<string, never>;
+            markup: Record<string, never>;
+            opened: { date: string; timezone_type: number; timezone: string };
+            opened_immutable: { date: string; timezone_type: number; timezone: string };
+            stamped: string;
+            dock: string;
+            reading: { date: string; timezone_type: number; timezone: string };
+            reading_returned: { date: string; timezone_type: number; timezone: string };
+            error_default?: Record<string, never>;
+            opened_default?: { date: string; timezone_type: number; timezone: string };
+            stamped_default?: string;
+            dock_default?: string;
+            reading_default?: { date: string; timezone_type: number; timezone: string };
+        }
+        /** Resources built around a payload that is only null, which JsonResource::filter() sends as null. */
+        export interface PostNullWrapResource {
+            null_new: null;
+            null_make: null;
+            null_default?: null;
+            null_local: null;
+            author_new: UserResource;
+            nested: { author: null };
+        }
         /**
          * A relation loaded under a name the model does not declare, so only the local's inline `@var` names the collection
          * it holds.
@@ -4099,8 +4556,26 @@ declare global {
             comments_resolved?: CommentResource[];
             post_class_name: string;
             post_table_name: string;
-            category_class_name?: string;
-            category_table_name?: string;
+            category_class_name?: string | null;
+            category_table_name?: string | null;
+        }
+        /**
+         * Returns `$this->resource`, the items it collects. Laravel sends them as it sends a body-less
+         * collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostResourceReturnCollection {
+            data: PostResource[];
+        }
+        /**
+         * Lays a cast that spells an enum's own type over each key that holds an enum resource: each key publishes its cast
+         * and imports the enum types it spells, never the `AsEnum` wrap.
+         */
+        export interface PostSpelledCastResource {
+            id: number;
+            status: app.enums.StatusType;
+            visibility: app.enums.VisibilityType;
+            either: app.enums.StatusType | app.enums.VisibilityType | null;
+            mixed: app.enums.StatusType | null;
         }
         /**
          * Reads a single-model accessor inside an inline member and under a key that differs from the
@@ -4135,6 +4610,28 @@ declare global {
             stats: { views: number; shares: number } | null;
             views: number | null;
             share_count: number | null;
+            blockers: { message: string; route?: string }[];
+            checks_count: string;
+            loaded_checks_count?: string;
+            loaded_checks_label?: string;
+        }
+        /**
+         * Wraps the post's enums in an EnumResource reached through a local, a helper on the resource and a method that returns
+         * the enum, which each publish the AsEnum type `EnumResource::make($this->status)` does.
+         */
+        export interface PostStatusSourcesResource {
+            status_from_local: app.enums.StatusType;
+            visibility_from_local: app.enums.VisibilityType | null;
+            status_from_helper: app.enums.StatusType;
+            visibility_from_helper: app.enums.VisibilityType | null;
+            status_from_method: app.enums.StatusType;
+        }
+        /**
+         * Keeps the `make:resource --collection` stub over `$collects`. Laravel sends the list it collects
+         * as it sends a body-less collection's: `{ data: PostResource[] }`.
+         */
+        export interface PostStubCollection {
+            data: PostResource[];
         }
         /** Inherits `$wrap = null` and declares nothing else — the delegated analysis must still see it. */
         export type PostUnwrappedCollection = PostResource[];
@@ -4173,6 +4670,11 @@ declare global {
             members_count?: number;
             settings?: Record<string, unknown> | null;
         }
+        /** Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer. */
+        export interface ProductAggregateCastResource {
+            first_sold_ts?: number | null;
+            unit_price_total?: string | null;
+        }
         /**
          * Exercises: multiple whenAggregated (sum/min/max), whenNotNull, when,
          * whenCounted, two mergeWhen blocks, Resource::collection x2.
@@ -4183,9 +4685,9 @@ declare global {
             slug: string;
             sku: string;
             description: string | null;
-            price: number;
-            compare_at_price?: number;
-            cost_price?: number | null;
+            price: string;
+            compare_at_price?: string;
+            cost_price?: string | null;
             quantity: number;
             is_active: boolean;
             is_featured: boolean;
@@ -4193,12 +4695,26 @@ declare global {
             tags?: TagResource[];
             images?: ImageResource[];
             orders_count?: number;
-            total_sold?: number;
-            min_unit_price?: number;
-            max_unit_price?: number;
+            total_sold?: number | null;
+            min_unit_price?: number | null;
+            max_unit_price?: number | null;
             weight?: number | null;
             dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
             metadata?: ProductMetadata | ProductJsonMetaData | null;
+        }
+        /**
+         * Exercises: whenAggregated() typed from the aggregated column and the connection's driver (SQLite here), its null arm
+         * over no rows, a value closure passed the aggregate, and whenCounted(), whose count is never null.
+         */
+        export interface ProductSalesResource {
+            id: string;
+            last_sold_at?: string | null;
+            first_item_name?: string | null;
+            average_quantity?: number | null;
+            top_quantity?: { max: number } | null;
+            has_bulk_line?: boolean | null;
+            revenue: number | null;
+            has_items?: boolean;
         }
         /** Exercises: multiple whenHas on different column types, multiple whenNotNull. */
         export interface ProfileResource {
@@ -4211,6 +4727,28 @@ declare global {
             social_links?: { twitter?: string; github?: string; linkedin?: string; website?: string };
             timezone?: string;
             locale?: string;
+        }
+        /**
+         * Declares no toArray(), so it publishes what Profile's toArray() writes: every column, `menu_settings` through its
+         * cast class's #[TsType] import, no accessor Profile does not append, and its `user` relation only when loaded.
+         */
+        export interface ProfileSummaryResource {
+            id: number;
+            user_id: number;
+            bio: string | null;
+            avatar_url: string | null;
+            date_of_birth: string | null;
+            website: string | null;
+            phone_number: string | null;
+            normalized_phone: string | null;
+            social_links: { twitter?: string; github?: string; linkedin?: string; website?: string };
+            settings: { notifications_enabled: boolean; theme: "light" | "dark"; language: string };
+            menu_settings: MenuSettingsType | null;
+            timezone: string;
+            locale: string;
+            created_at: string | null;
+            updated_at: string | null;
+            user?: app.models.User;
         }
         /** Exercises a class-typed `@property` tag reaching a resource, where the token still needs its import. */
         export interface PropertyDocblockEdgeResource {
@@ -4243,6 +4781,8 @@ declare global {
             comments_by_ids: app.models.Comment[];
             comments_maybe: app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: app.models.Comment[] | null;
+            comment_ids: number[];
         }
         /**
          * ProxyFilterDirectResource with every only() and except() spelled through $this->resource. The resource
@@ -4265,26 +4805,43 @@ declare global {
             comments_by_ids: app.models.Comment[];
             comments_maybe: app.models.Comment[] | null;
             comments_mapped: { id: number; content: string }[];
+            comments_nullsafe: app.models.Comment[] | null;
+            comment_ids: number[];
         }
         /** Edge-case resource exercising unusual but valid patterns for AST analyzer guard clauses. */
         export interface QuirkyResource {
             id: number;
+            "42": string;
             flag?: unknown;
             extra: string;
             dynamic?: string;
-            normal_merge_key?: number;
+            normal_merge_key?: string;
             formatted: unknown;
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
-            fcc_enum: unknown;
-            fcc_enum_collection: unknown;
+            fcc_enum: Record<string, never>;
+            fcc_enum_collection: Record<string, never>;
             not_enum: unknown;
             uncast_enum: unknown;
             empty_new_enum: unknown;
             var_new_enum: unknown;
             fake_field: unknown;
             fake_relation?: unknown;
+        }
+        /**
+         * A whenLoaded() closure parameter its body reassigns: a read past the reassignment takes what the body assigned, or
+         * either value past a reassignment that may not run, and a read before it, past a branch that reassigns it and
+         * returns, or a reassignment to the same model, keeps the parameter's own binding.
+         */
+        export interface ReassignedParameterResource {
+            declared_content?: string;
+            read_before?: string;
+            same_model?: string;
+            relation_bio?: string | null;
+            exiting_branch?: string | null;
+            nested_branch?: string | number | null;
+            new_model_name?: string | null;
         }
         /**
          * Method return types followed through every receiver kind: an enum cast, a Carbon cast, a local model,
@@ -4310,8 +4867,16 @@ declare global {
             resource_author_key: number | null;
             bare_key: number;
             resource_key: number;
+            draft_key: number | null;
+            copy_key: number | null;
+            made_key: number | null;
+            made_comment_key: number | null;
+            loaded_author_key?: number;
+            comment_keys: number[];
             bare_comments_count: number;
             resource_comments_count: number;
+            author_bound: app.models.User | null;
+            resource_bound: app.models.Post | null;
             author_resource?: UserResource;
         }
         /**
@@ -4350,11 +4915,11 @@ declare global {
         }
         /**
          * The #[UseResourceCollection] target for Registrar. Deliberately declares no $collects and has
-         * no matching RegistrarGroupResource/RegistrarGroup class, so its element type is undeterminable —
-         * this must degrade to unknown rather than silently falling through to RegistrarResource.
+         * no matching RegistrarGroupResource/RegistrarGroup class, so its element type is undeterminable:
+         * its items list as unknown, and Registrar's toResourceCollection() never falls through to RegistrarResource.
          */
         export interface RegistrarGroupCollection {
-            data: unknown;
+            data: unknown[];
         }
         /**
          * The Resource-suffixed naming candidate for Registrar — must win over the bare Registrar
@@ -4435,17 +5000,45 @@ declare global {
             merged_visibility?: app.enums.VisibilityType | null;
             deferred_status?: app.enums.StatusType;
             deferred_priority?: app.enums.PriorityType | null;
-            category_status?: app.enums.StatusType;
+            category_status?: app.enums.StatusType | null;
             category_visibility?: app.enums.VisibilityType | null;
         }
         /**
+         * Starts its variable from `parent::toArray()`, the model's own serialization, and adds one key.
+         *
+         * `Label` has no relation and no accessor, so the delegated base publishes only keys the response carries.
+         */
+        export interface ReturnedParentVariableResource {
+            id: number;
+            name: string;
+            created_at: string | null;
+            updated_at: string | null;
+            display_name: string;
+        }
+        /** A returned variable is one branch beside a literal and a `return []` guard, so every key publishes optional. */
+        export interface ReturnedVariableBranchesResource {
+            id?: number;
+            name?: string;
+        }
+        /** Builds its payload in a local variable and returns it: a key written on one path only publishes optional. */
+        export interface ReturnedVariableResource {
+            id: number;
+            name: string;
+            slug?: string;
+            posts_count?: number;
+            quote: { unit: string; tax: number };
+        }
+        /**
          * Exercises a morphTo closure parameter: $subject binds to every morph target, so toResource()
-         * unions their resources and a plain attribute read unions the targets' own column types.
+         * unions their resources and a plain attribute read unions the targets' own column types. The
+         * closure-less toResource() unions the same resources, and its `?->` spelling adds null.
          */
         export interface ReviewResource {
             id: number;
             reviewable?: ArtistResource | VenueResource;
             reviewable_name?: string;
+            reviewable_resource: ArtistResource | VenueResource;
+            reviewable_nullsafe_resource: ArtistResource | VenueResource | null;
         }
         /**
          * A nullsafe call on a morphTo whose methods the resource's own model also has. Only the relation's generic says
@@ -4522,7 +5115,7 @@ declare global {
          */
         export interface ServiceReturnResource {
             quote: { unit: string; minimum: number; discounted: { unit: string } };
-            tiers: { "1": string; "2": string };
+            tiers: string[];
         }
         /**
          * Guards against the regression narrowing collectWrittenVariableNames() could introduce: a closure
@@ -4533,6 +5126,34 @@ declare global {
         export interface ShadowedClosureParamResource {
             outer: string;
             shadowed?: unknown;
+        }
+        /** Publishes each value as json_encode() writes it, not as `__toString()` reads it. */
+        export interface ShiftResource {
+            last_fault: Record<string, never>;
+            fault: Record<string, never>;
+            started_at: { date: string; timezone_type: number; timezone: string };
+            handover_note: string | null;
+            next_bell: string;
+            checked_at: string | null;
+        }
+        /**
+         * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a
+         * helper's `@return` keeps a spaced `| null`, an array of collections and a union of spaced generics.
+         */
+        export interface SpacedDocblockResource {
+            title: string;
+            subtitle: string | null;
+            pages: app.models.Comment[][];
+            threads: app.models.Comment[] | app.models.Post[];
+        }
+        /** A spread helper called inside closures whose parameter is named like a local the helper writes itself. */
+        export interface SpreadHelperScopeResource {
+            has_t?: { v: number; k: number };
+            transform_t?: { v: number };
+            loaded_t?: { v: number };
+            author_named?: { n: unknown };
+            author_passed?: { n: string };
+            v: number;
         }
         /** Resource spreading parent::toArray() from JsonResource base with extra keys. */
         export interface SpreadJsonBaseResource {
@@ -4553,18 +5174,16 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -4595,19 +5214,17 @@ declare global {
             settings: { theme: "light" | "dark"; notifications: boolean; locale: string } | null;
             last_login_at: string | null;
             last_login_ip: string | null;
-            initials: string;
-            is_premium: boolean;
-            profile: app.models.Profile | null;
-            posts: app.models.Post[];
-            comments: app.models.Comment[];
-            orders: app.models.Order[];
-            addresses: app.models.Address[];
-            primaryAddress: app.models.Address | null;
-            teams: app.models.Team[];
-            ownedTeams: app.models.Team[];
-            images: app.models.Image[];
-            notifications: illuminate.notifications.DatabaseNotification[];
-            metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string };
+            profile?: app.models.Profile | null;
+            posts?: app.models.Post[];
+            comments?: app.models.Comment[];
+            orders?: app.models.Order[];
+            addresses?: app.models.Address[];
+            primary_address?: app.models.Address | null;
+            teams?: app.models.Team[];
+            owned_teams?: app.models.Team[];
+            images?: app.models.Image[];
+            notifications?: illuminate.notifications.DatabaseNotification[];
+            metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
          * Exercises both bugs simultaneously — the exact pattern from the original
@@ -4628,10 +5245,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4645,21 +5262,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: app.models.OrderItem[];
-            keyed_items: Record<string, app.models.OrderItem>;
-            listed_items: app.models.OrderItem[];
-            unsorted_items: app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: app.models.admin.Store[];
-            user: app.models.User;
-            items: app.models.OrderItem[];
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
             customer?: { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         export interface SpreadWithGuardDoubleClosureReturnResource {
@@ -4669,10 +5273,10 @@ declare global {
             status: app.enums.OrderStatusType;
             payment_method: app.enums.PaymentMethodType | null;
             currency: app.enums.CurrencyType;
-            subtotal: number;
-            tax: number;
-            discount: number;
-            total: number;
+            subtotal: string;
+            tax: string;
+            discount: string;
+            total: string;
             shipping_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             billing_address: { line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string };
             notes: string | null;
@@ -4686,21 +5290,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             deleted_at: string | null;
-            item_count: number;
-            is_paid: boolean;
-            formatted_total: string;
-            flagged_notes: (string | null)[] | null;
-            tracking_code: string | null;
-            score_map: Record<string, number>;
-            sorted_items: app.models.OrderItem[];
-            keyed_items: Record<string, app.models.OrderItem>;
-            listed_items: app.models.OrderItem[];
-            unsorted_items: app.models.OrderItem[];
-            state_ids: number[] | null;
-            capabilities: { typeName: string; tracksSteelDetails: boolean; warehouseDocsKey: string | null } | null;
-            summary_items: app.models.admin.Store[];
-            user: app.models.User;
-            items: app.models.OrderItem[];
+            user?: app.models.User;
+            items?: app.models.OrderItem[];
             customer?: { name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: app.enums.RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null;
         }
         /** Exercises static-call return type reflection and enum static args (Task 10). */
@@ -4716,11 +5307,12 @@ declare global {
             status_or_priority: app.enums.StatusType | app.enums.PriorityType;
             void_return: unknown;
             never_return: unknown;
-            mixed_return: unknown;
+            mixed_return: null;
             order_or_status: app.models.Order | app.enums.StatusType;
             money_value: unknown;
             page_meta_ternary: PageMetaType | null;
             widget_config_coalesce: WidgetConfigType;
+            order_or_base: app.models.Order;
             autocomplete: { value: number; label: string };
             summaries: { key: string; label: string }[];
         }
@@ -4900,8 +5492,8 @@ declare global {
             status_type_or_resource: app.enums.StatusType;
             status_or_visibility: app.enums.StatusType | app.enums.VisibilityType | null;
             category_or_null: CategoryResource | null;
-            category_or_category: CategoryResource;
-            category_or_user: CategoryResource | UserResource;
+            category_or_category: CategoryResource | null;
+            category_or_user: CategoryResource | UserResource | null;
             image_or_null: ImageResource | null;
             comments_or_null: CommentResource[] | null;
             comments_or_comments: CommentResource[];
@@ -4933,6 +5525,25 @@ declare global {
         export interface TrackingEventResource {
             id: number;
         }
+        /** Reads a trait-declared `: array` helper through three receivers: itself, a container instance and a static call. */
+        export interface TraitHelperReadResource {
+            id: number;
+            own_quote: { band: string; ceiling: number };
+            service_quote: { band: string; ceiling: number };
+            static_quote: { band: string; ceiling: number };
+        }
+        /** Inherits a toArray() its parent takes from a trait, so the analysis walks to the parent and reads the trait there. */
+        export interface TraitShapedChildResource {
+            id: number;
+            name: string;
+            shaped_by: string;
+        }
+        /** Takes its toArray() from a trait declared in another file, which is still the resource's own method. */
+        export interface TraitShapedResource {
+            id: number;
+            name: string;
+            shaped_by: string;
+        }
         export interface TraitSpreadCoverageResource {
             id: number;
             computed: string;
@@ -4950,9 +5561,9 @@ declare global {
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site, so the dropped-arm audit proves each site fires: the plain ternary and the
-         * Elvis go through analyzeClosureUnion(), 'narrowed' through TernaryHandler's instanceof path, and
-         * 'data_get_default' through KnownFunctionCallHandler. Line numbers here are pinned by the audit baseline.
+         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
+         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
+         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -4960,6 +5571,9 @@ declare global {
             still_typed: string | null;
             narrowed: null;
             data_get_default: string | null;
+            conditional_default: string;
+            match_arm: string;
+            coalesce_right: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
@@ -4973,6 +5587,8 @@ declare global {
         export interface UserCollection {
             data: UserResource[];
             has_admin: boolean;
+            page: UserResource[] | LengthAwarePaginator<UserResource> | SimplePaginator<UserResource> | CursorPaginator<UserResource>;
+            first_user: UserResource | null;
         }
         /**
          * Exercises return $this->except([...]) against a model with $hidden columns.
@@ -5016,7 +5632,7 @@ declare global {
          */
         export interface UserFeaturedPostsResource {
             id: number;
-            featured_posts?: ({ id: number; title: string; file: string | null })[];
+            featured_posts?: ({ id: number; title: string; file: string | null })[] | null;
         }
         /**
          * Exercises return $this->only([...]) naming a $hidden column explicitly.
@@ -5041,6 +5657,23 @@ declare global {
             posts_count?: number;
             comments_count?: number;
         }
+        /**
+         * Laravel's value helpers, typed as json_encode() writes what they return: a Carbon as its date string, a Stringable
+         * and a URL as strings, and a collection as the list or object its items encode as. `translated` stays unknown,
+         * since __() can return an array.
+         */
+        export interface ValueHelperResource {
+            generated_at: string;
+            day: string;
+            title: string;
+            link: string;
+            empty_list: never[];
+            list: number[];
+            record: { a: number };
+            names: string[];
+            count_or_since: number | string;
+            translated: unknown;
+        }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {
             id: number;
@@ -5057,7 +5690,11 @@ declare global {
             foreachKey?: string;
             forKey?: string;
             whileKey?: string;
-            doWhileKey?: string;
+            doWhileKey: string;
+            doWhileBranchKey?: string;
+            doWhileAfterBreakKey?: string;
+            doWhileAfterContinueKey?: string;
+            doWhileUnderBranchKey?: string;
             status: string;
         }
         /** One arm of the reviewable morph union ReviewResource unions over. */
@@ -5072,6 +5709,16 @@ declare global {
          */
         export interface ViewerPermissionsResource {
             can_publish: boolean;
+        }
+        /**
+         * Casts away the CRM `User` of `contact` and both enums of the `review_priority` accessor, so the only class left to
+         * import is the app's own `User`, under its own name.
+         */
+        export interface WarehouseContactCastResource {
+            id: number;
+            manager: app.models.User | null;
+            contact: { id: number; name: string } | null;
+            review_priority: string;
         }
         /**
          * Resource with no @mixin or TsResource — tests convention-based model guess.
@@ -5126,7 +5773,9 @@ declare global {
             appended_label?: string;
             comments_flag?: string;
             comments_exists_flag?: boolean;
-            title_unresolvable?: string;
+            title_unresolvable?: unknown;
+            status_label?: string;
+            appended_status_label?: string | number;
         }
     }
     export namespace app.http.resources.admin {
@@ -5137,6 +5786,128 @@ declare global {
         /** A collection of admin stores. */
         export interface StoreCollection {
             data: Store[];
+        }
+    }
+    export namespace app.http.resources.jsonApi {
+        /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
+        export interface AttributesPostResource {
+            id: string;
+            type: 'attributes_posts';
+            attributes: { title: string; word_count: number | null; is_long: boolean; secret?: string };
+        }
+        /** A JSON:API resource naming no attributes, so toAttributes() falls back to the model's own toArray(). */
+        export interface BarePostResource {
+            id: string;
+            type: 'bare_posts';
+            attributes: { id: number; title: string; content: string; user_id: number; status: app.enums.StatusType; published_at: string | null; metadata: Record<string, {title: string, content: string}>; rating: string | null; category: string; options: Record<string, string> | null; deleted_at: string | null; created_at: string | null; updated_at: string | null; category_id: number | null; visibility: app.enums.VisibilityType | null; priority: app.enums.PriorityType | null; word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; is_pinned: boolean; author?: app.models.User; category_rel?: app.models.Category | null; comments?: app.models.Comment[]; tags?: app.models.Tag[]; images?: app.models.Image[]; attachment?: app.models.Attachment | null };
+        }
+        /** A JSON:API resource naming an attribute the model's #[TsCasts] types, and casting another one itself. */
+        export interface CastedAttributesPostResource {
+            id: string;
+            type: 'casted_attributes_posts';
+            attributes: { metadata: Record<string, {title: string, content: string}>; rating: `${number}` | null; status: app.enums.StatusType };
+        }
+        /** A JSON:API resource a nullable to-one relationship names. */
+        export interface CategoryResource {
+            id: string;
+            type: 'categories';
+            attributes: { name: string; slug: string };
+        }
+        /**
+         * A JSON:API resource whose toAttributes() mixes attribute names with a closure Laravel calls, and whose
+         * toRelationships() resolves each relationship through a closure.
+         */
+        export interface ClosureRelationsPostResource {
+            id: string;
+            type: 'closure_relations_posts';
+            attributes: { title: string; published_at: string | null; excerpt: string | null; is_published: boolean };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'> };
+        }
+        /** A JSON:API resource with a to-one relationship of its own, which a nested include follows. */
+        export interface CommentResource {
+            id: string;
+            type: 'comments';
+            attributes: { content: string; is_flagged: boolean };
+            relationships?: { user?: JsonApiToOneRelationship<'users'> };
+        }
+        /** A JSON:API resource sending links and meta through the defaults toLinks() and toMeta() return. */
+        export interface DefaultLinksPostResource {
+            id: string;
+            type: 'default_links_posts';
+            attributes: { title: string };
+            links?: { describedby: string };
+            meta?: { version: number; stable: boolean };
+        }
+        /** A JSON:API resource overriding toId() with an int, which Laravel sends as a string, and toType() with a literal. */
+        export interface IdentifiedPostResource {
+            id: string;
+            type: 'articles';
+            attributes: { title: string };
+        }
+        /**
+         * A JSON:API resource whose morph relationship reaches models with no API resource, so an include sends Laravel's
+         * bare JsonApiResource over each, typed by the model's name.
+         */
+        export interface KpiResource {
+            id: string;
+            type: 'kpis';
+            attributes: { value: number };
+            relationships?: { reportable?: JsonApiToOneRelationship<'reports'> };
+        }
+        /** A JSON:API resource overriding toLinks() and toMeta(). */
+        export interface LinkedPostResource {
+            id: string;
+            type: 'linked_posts';
+            attributes: { title: string };
+            links?: { self: string };
+            meta?: { readable: boolean; words: number | null };
+        }
+        /**
+         * A plain API resource nesting JSON:API resources as values. Laravel sends a single one as its resolve(), its
+         * resource object under `data`, the items of its collection() bare, and each item of a named collection under `data`.
+         */
+        export interface NestingPlainResource {
+            id: number;
+            author: { data: UserResource };
+            category: { data: CategoryResource } | null;
+            comments: CommentResource[];
+            siblings: { data: PostResource }[];
+        }
+        /**
+         * A named collection of JSON:API resources: ResourceCollection's toArray() sends each item's resolve(), its resource
+         * object under `data`.
+         */
+        export interface PostCollection {
+            data: { data: PostResource }[];
+        }
+        /** A body-less JSON:API resource: its attributes and relationships named by property. */
+        export interface PostResource {
+            id: string;
+            type: 'posts';
+            attributes: { title: string; content: string; word_count: number | null; published_at: string | null };
+            relationships?: { author?: JsonApiToOneRelationship<'users'>; comments?: JsonApiToManyRelationship<'comments'>; categoryRel?: JsonApiToOneRelationship<'categories'> };
+        }
+        /** A JSON:API resource declaring toArray(), which toAttributes() falls back to, so its keys are the attributes. */
+        export interface ToArrayPostResource {
+            id: string;
+            type: 'to_array_posts';
+            attributes: { title: string; rating: string | null };
+        }
+        /** A plain API resource declaring toAttributes() and no toArray(), which Laravel 12.45 and later sends. */
+        export interface ToAttributesOnlyPlainResource {
+            headline: string;
+        }
+        /** A JSON:API resource naming its attributes only. */
+        export interface UserResource {
+            id: string;
+            type: 'users';
+            attributes: { name: string; email: string };
+        }
+        /** A JSON:API resource whose toAttributes() returns a variable: each keyless name in it reads the model attribute. */
+        export interface VariableAttributesPostResource {
+            id: string;
+            type: 'variable_attributes_posts';
+            attributes: { title: string; word_count: number | null; content?: string; is_long: boolean };
         }
     }
     export namespace app.http.resources.reportCards {
@@ -5232,7 +6003,7 @@ declare global {
         export interface DealResource {
             id: number;
             title: string;
-            value: number;
+            value: string;
             status: app.enums.StatusType;
             status_enum: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
@@ -5560,6 +6331,10 @@ declare global {
             id: number;
             note: string | null;
         }
+        export interface DispatchRelayed {
+            dispatchId: number;
+            channel: string;
+        }
         export interface DocblockShapedEvent {
             published_at: string | null;
         }
@@ -5571,6 +6346,17 @@ declare global {
             facility: Partial<app.models.Facility>;
             trail: Partial<app.packages.audit.models.AuditTrail>;
             record: unknown;
+        }
+        export interface HandoverListed {
+            stages: string[];
+            ids: number[];
+            codes: { "200": string; "404": string };
+            override: { code: string; lane: number };
+        }
+        export interface ManifestAssembled {
+            parcelId: number;
+            carrier: string;
+            priority?: string;
         }
         export interface MixedTypesEvent {
             post: PostSnapshot;
@@ -5592,9 +6378,19 @@ declare global {
             kind: string;
             count: number;
         }
+        export interface PostHelperPayloadEvent {
+            post_id: number;
+            post_title: string;
+            row: { post_id: number; post_title: string };
+        }
         export interface PostPublishedEvent {
             post: Partial<app.models.Post>;
             message: string;
+        }
+        export interface PostStatusBroadcast {
+            status: app.enums.StatusType;
+            crm_status: crm.enums.StatusType;
+            kept: app.enums.StatusType;
         }
         export interface PureEnumEvent {
             role: app.enums.RoleType;
@@ -5605,6 +6401,10 @@ declare global {
             salesReport: Partial<app.models.sales.report.Report>;
             marketingReport: Partial<app.models.marketing.report.Report>;
         }
+        export interface ReviewerCastEvent {
+            reviewer: ReviewerCard | null;
+            contact: Partial<crm.models.User>;
+        }
         export interface SameBasenameModelEvent {
             actor: app.models.User | crm.models.User;
         }
@@ -5612,9 +6412,16 @@ declare global {
             serverId: number;
             serverName: string;
         }
+        export interface TaggedPayloadEvent {
+            id: number;
+            [key: `${string}_tag`]: string | undefined;
+        }
         export interface TeamMessageSent {
             teamId: number;
             content: string;
+        }
+        export interface TeamRosterSynced {
+            team: app.http.resources.TeamResource;
         }
         export interface UserNotification extends HasTimestamps {
             userId: number;

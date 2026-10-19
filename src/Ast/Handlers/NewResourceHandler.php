@@ -4,23 +4,24 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollectionBody;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
-use ReflectionClass;
 
 /**
- * `new SomeResource(...)`, `new EnumResource($this->prop)`, and `new SomeCollection($this->items)`.
+ * `new SomeResource(...)`, `new EnumResource($this->prop)`, `new SomeCollection($this->items)`,
+ * `new Collection($items)` and a `new` of any other class.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -28,9 +29,9 @@ use ReflectionClass;
  */
 final class NewResourceHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
     use InspectsResourceCalls;
+    use ReadsNullablePayloads;
     use ResolvesEnumPropertyArgTypes;
 
     /** @return list<class-string<Expr>> */
@@ -43,18 +44,19 @@ final class NewResourceHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof New_) {
-            return $this->analyzeNewResource($expr, $scope);
+            return $this->analyzeNewResource($expr, $scope, $engine);
         }
 
         return null;
     }
 
     /**
-     * Analyze `new SomeResource(...)` — resolve as a nested resource.
+     * Type `new X(...)`: a resource as itself or null, an EnumResource or a resource collection as what it wraps,
+     * `new Collection($items)` as collect($items), and any other class as json_encode() writes it.
      *
      * @return ValueExpressionResult
      */
-    private function analyzeNewResource(New_ $expr, AnalysisScope $scope): array
+    private function analyzeNewResource(New_ $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $result = ValueResult::unknown();
 
@@ -62,48 +64,51 @@ final class NewResourceHandler implements ExpressionHandler
             return $result; // @codeCoverageIgnore
         }
 
-        $className = $expr->class->toString();
-
-        // Resolve `self`/`static` so `new self(...)` is treated identically to `new ClassName(...)`.
-        if ($className === 'self' || $className === 'static') {
-            $className = $scope->subjectReflection->getName();
-        }
+        $className = $this->subjectClassName($expr->class, $scope->subjectReflection);
 
         // new EnumResource($this->prop)
         if ($this->isEnumResourceClass($className)) {
             $payload = $this->resourcePayloadArguments($expr, $className)->at(0)?->value;
 
-            return $payload === null ? $result : ($this->resolveEnumFromPropertyArg($payload, $scope) ?? $result);
+            if ($payload === null) {
+                return $result;
+            }
+
+            return $this->resolveEnumFromPropertyArg($payload, $scope)
+                ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
+                ?? $result;
         }
 
-        // new SomeCollection($this->items) — resolve the collected element type. Must precede the
-        // generic isResourceClass() branch below, for the same reason as in analyzeStaticCall().
+        // new SomeCollection($this->items). Must precede the generic isResourceClass() branch below, for the same
+        // reason as in analyzeStaticCall().
         if (is_a($className, ResourceCollection::class, true)) {
-            $collected = $this->resolveCollectedResourceClass($className);
+            $nested = resolve(ResourceCollectionBody::class)->nestedValue($className);
 
-            if ($collected !== null) {
-                return [
-                    ...$result,
-                    'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($collected), new ReflectionClass($className)),
-                    'optional' => $this->hasConditionalNewArgument($expr, $className),
-                    'resourceFqcn' => $collected,
-                ];
+            if ($nested !== null) {
+                return [...$nested, 'optional' => $this->hasConditionalNewArgument($expr, $className)];
             }
         }
 
-        if (! $this->isResourceClass($className)) {
-            return $result; // @codeCoverageIgnore
+        $collect = resolve(ValueResolver::class)->collectCall($expr);
+
+        if ($collect !== null) {
+            return $engine->resolve($collect);
         }
 
-        $resourceName = TsNaming::resourceTypeName($className);
-        $optional = $this->hasConditionalNewArgument($expr, $className);
+        // Any other class reaches JSON as whatever json_encode() writes for it.
+        if (! $this->isResourceClass($className)) {
+            return resolve(ValueResolver::class)->resolveSerializedNew($expr) ?? $result;
+        }
 
         /** @var class-string $className */
+        $type = $this->resourceWrapType($expr, $className, $scope, $engine);
+        $optional = $this->hasConditionalNewArgument($expr, $className);
+
         return [
             ...$result,
-            'type' => $resourceName,
+            'type' => $type,
             'optional' => $optional,
-            'resourceFqcn' => $className,
+            ...($type === 'null' ? [] : ['resourceFqcn' => $className]),
         ];
     }
 }

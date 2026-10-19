@@ -4,18 +4,22 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportBadge;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomImportsModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumShapePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HandoverCrew;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\App\Enums\Status;
@@ -26,7 +30,9 @@ use Workbench\App\Models\BaseSharedExtendableModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\ChildSharedExtendableModel;
 use Workbench\App\Models\CompositeComment;
+use Workbench\App\Models\Consignment;
 use Workbench\App\Models\Depot;
+use Workbench\App\Models\DocblockUnionFixture;
 use Workbench\App\Models\ExcludableModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Grade;
@@ -602,7 +608,7 @@ describe('ModelTransformer import alias resolution for duplicate names', functio
 describe('ModelTransformer import alias resolution for same basename and same parent segment', function () {
     test('same basename and same parent segment produce distinct aliases', function () {
         // Kpi::reportable() morphs to both Report models; their nearest namespace segment is
-        // identically 'Report', reproducing the eagle MailPrice collision at depth 1.
+        // identically 'Report', reproducing a same-basename alias collision one namespace level deep.
         resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
             Kpi::class,
             SalesReport::class,
@@ -715,9 +721,9 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toHaveKey('visibility')
             ->toHaveKey('priority');
 
-        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false]);
-        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false]);
-        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false]);
+        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
     });
 
     test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
@@ -843,15 +849,57 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(Team::class))->data();
 
         expect($data->enumColumns['week_days'])
-            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true]);
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false]);
     });
 
     test('enumColumns marks a scalar enum column as not a collection', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
         expect($data->enumColumns['status'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
     });
+
+    test('keeps the enum of a column or accessor that publishes a list of it or the enum alone', function () {
+        $data = (new ModelTransformer(DocblockUnionFixture::class))->data();
+
+        expect($data->columns['meta_info']['type'])->toBe('StatusType[] | StatusType | null')
+            ->and($data->enumColumns['meta_info'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->and($data->appends['grades']['type'])->toBe('StatusType[] | StatusType')
+            ->and($data->enumAppends['grades'])
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true]);
+    });
+
+    test('prints a list of the AsEnum wrap or the wrap alone in the Resource interface', function (string $template) {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(DocblockUnionFixture::class));
+
+        expect($content)
+            ->toContain("export interface DocblockUnionFixtureResource extends Omit<DocblockUnionFixture, 'meta_info' | 'grades'>")
+            ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
+            ->toContain('    grades: AsEnum<typeof Status>[] | AsEnum<typeof Status>;');
+    })->with(['model-full', 'model-split']);
+
+    test('prints the same for the enum before its list, and the list alone for a list of the enum', function (string $template) {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        $data = (new ModelTransformer(EnumListUnionModel::class))->data();
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(EnumListUnionModel::class));
+
+        expect($data->columns['meta_info']['type'])->toBe('StatusType | StatusType[] | null')
+            ->and($data->enumColumns['meta_info'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->and($data->columns['tags']['type'])->toBe('StatusType[] | null')
+            ->and($data->enumColumns['tags'])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false])
+            ->and($content)
+            ->toContain("export interface EnumListUnionModelResource extends Omit<EnumListUnionModel, 'tags' | 'meta_info'>")
+            ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
+            ->toContain('    tags: AsEnum<typeof Status>[] | null;');
+    })->with(['model-full', 'model-split']);
 });
 
 describe('ModelTransformer with Warehouse model', function () {
@@ -1477,11 +1525,11 @@ describe('Image model @return Attribute<> docblock accessor resolution', functio
             ->and($data->mutators['price_from_docblock']['type'])->toBe('{ amount: number; currency: string }');
     });
 
-    test('labelFromDocblock resolves class with __toString to string', function () {
+    test('labelFromDocblock resolves a __toString class to the empty object json_encode() writes', function () {
         $data = (new ModelTransformer(Image::class))->data();
 
         expect($data->mutators)->toHaveKey('label_from_docblock')
-            ->and($data->mutators['label_from_docblock']['type'])->toBe('string');
+            ->and($data->mutators['label_from_docblock']['type'])->toBe('Record<string, never>');
     });
 
     test('accessor with no docblock types from its getter body, which returns only null', function () {
@@ -1693,7 +1741,7 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
             ->and($data->combinedMutators)->toBe([])
             ->and($data->combinedAppends)->toBe([])
             ->and($data->combinedEnums)
-            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false]])
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]])
             ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
             ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
     });
@@ -1718,10 +1766,10 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
         $data = (new ModelTransformer(ShadowedEnumParcel::class))->data();
 
         expect($data->shadowedKeys)->toBe(['handler', 'courier'])
-            ->and($data->typeImports['../../../../workbench/app/models'])->toBe(['Order', 'User'])
+            ->and($data->typeImports['../../../../../workbench/app/models'])->toBe(['Order', 'User'])
             ->and($data->combinedEnums)->toBe([])
             ->and($data->combinedValueImports)->toBe([])
-            ->and($data->combinedTypeImports)->toBe(['../../../../workbench/app/models' => ['User']])
+            ->and($data->combinedTypeImports)->toBe(['../../../../../workbench/app/models' => ['User']])
             ->and($data->relationCountKeys)->toBe([])
             ->and($data->relationExistsKeys)->toBe([]);
     });
@@ -1871,7 +1919,7 @@ describe('ModelTransformer with a const and a type that share a name', function 
 
         expect($data->columns['label']['type'])->toBe('Clearance')
             ->and($data->typeImports['@js/types/clearance'])->toBe(['Clearance'])
-            ->and($data->valueImports['../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
+            ->and($data->valueImports['../../../../../workbench/app/enums'])->toBe(['Clearance as WorkbenchClearance'])
             ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
     });
 
@@ -1906,8 +1954,23 @@ describe('ModelTransformer with accessors that union two models sharing a name',
             ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
             ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
             ->and($data->typeImports)->toBe([
-                '../../../../workbench/app/models' => ['User as SenderUser'],
-                '../../../../workbench/crm/models' => ['User as CrmUser'],
+                '../../../../../workbench/app/models' => ['User as SenderUser'],
+                '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
+    });
+});
+
+describe('a nullable column whose declared type holds a nested null', function () {
+    test('keeps its own null on a primitive cast, never on a class cast', function () {
+        $columns = (new ModelTransformer(NestedNullShapeModel::class))->data()->columns;
+
+        expect($columns['owner_snapshot']['type'])->toBe('{ a: number | null } | null')
+            ->and($columns['meta_info']['type'])->toBe('{ a: number | null }');
+    });
+
+    test('leaves a class cast that returns a list on a nullable column as it is', function () {
+        $legs = (new ModelTransformer(Consignment::class))->data()->columns['legs']['type'];
+
+        expect($legs)->not->toEndWith('| null');
     });
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
@@ -24,6 +25,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -42,19 +45,22 @@ use Throwable;
  * Detects Inertia::render() calls in controller actions and types their page props with the AST engine.
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
+ * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
  *
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
+ *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
  * @phpstan-type PagePropEntry = array{type: string, optional: bool}
- * @phpstan-type PagePropMap = array<string, PagePropEntry>
+ * @phpstan-type PagePropMap = array<array-key, PagePropEntry>
  */
 class InertiaPageAnalyzer
 {
     use InspectsAstNodes;
+    use RewritesEnumResourceProps;
 
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
@@ -142,7 +148,7 @@ class InertiaPageAnalyzer
      */
     protected function analyzeAction(string $controllerClass, string $methodName): ?array
     {
-        $context = resolve(MethodLocator::class)->locateOwn($controllerClass, $methodName);
+        $context = resolve(MethodLocator::class)->locateDeclared($controllerClass, $methodName);
 
         if ($context === null) {
             return null;
@@ -158,7 +164,14 @@ class InertiaPageAnalyzer
 
         $parsed = $this->parseTsCastsFromMethod($controllerClass, $methodName);
 
-        return $this->buildPageData($branches, $analyzer, $parsed['overrides'], $parsed['importMap']);
+        return $this->buildPageData(
+            $branches,
+            $analyzer,
+            $parsed['overrides'],
+            $parsed['importPaths'] ?? [], // @phpstan-ignore nullCoalesce.offset (a 2.7-shaped override omits it)
+            $parsed['optionalOverrides'] ?? [],
+            $controllerClass.'@'.$methodName,
+        );
     }
 
     /**
@@ -258,7 +271,7 @@ class InertiaPageAnalyzer
         }
 
         if ($propsArg instanceof Variable && is_string($propsArg->name)) {
-            $bound = $scope->localVarBindings[$propsArg->name] ?? null;
+            $bound = $scope->literalLocalBindings()[$propsArg->name] ?? null;
 
             return $bound === null ? [] : $this->propsArrayLiterals($bound, $scope, $hops + 1);
         }
@@ -270,7 +283,7 @@ class InertiaPageAnalyzer
                 return [$compacted];
             }
 
-            $merged = $this->mergedArrayLiteral($propsArg, null, $scope->localVarBindings);
+            $merged = $this->mergedArrayLiteral($propsArg, $scope->subjectReflection, null, $scope->literalLocalBindings());
 
             if ($merged !== null) {
                 return [$merged];
@@ -282,7 +295,8 @@ class InertiaPageAnalyzer
 
     /**
      * Re-express `compact('post', 'comments')` as `['post' => $post, 'comments' => $comments]`, so the
-     * variable bindings type the props exactly as the equivalent literal would.
+     * variable bindings type the props exactly as the equivalent literal would. Each variable sits where its name
+     * does, so a read past the write that ended a parameter's binding takes what the action assigned.
      */
     protected function compactedArrayLiteral(FuncCall $call): ?Array_
     {
@@ -297,7 +311,7 @@ class InertiaPageAnalyzer
                 return null;
             }
 
-            $items[] = new ArrayItem(new Variable($arg->value->value), new String_($arg->value->value));
+            $items[] = new ArrayItem(new Variable($arg->value->value, $arg->value->getAttributes()), new String_($arg->value->value));
         }
 
         return $items === [] ? null : new Array_($items);
@@ -329,43 +343,72 @@ class InertiaPageAnalyzer
      * Build the InertiaPageData contract from the per-component branch analyses.
      *
      * @param  array<string, list<ResourceAnalysis>>  $branches
-     * @param  array<string, string>  $overrides  TsCasts overrides from the controller method
-     * @param  array<string, list<string>>  $importMap  Import map from TsCasts `import` keys
+     * @param  array<array-key, string>  $overrides  TsCasts overrides from the controller method
+     * @param  array<string, string>  $importPaths  each override's `import` path, by its key
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
+     * @param  string  $subject  the `Controller@method` action a warning names
      * @return InertiaPageData
      */
     protected function buildPageData(
         array $branches,
         ResourceAstAnalyzer $analyzer,
         array $overrides,
-        array $importMap,
+        array $importPaths,
+        array $optionalOverrides = [],
+        string $subject = '',
     ): array {
         $components = array_keys($branches);
         /** @var list<string> $pageTypes */
         $pageTypes = [];
         /** @var list<class-string> $allFqcns */
         $allFqcns = [];
+        /** @var list<class-string> $constFqcns */
+        $constFqcns = [];
         /** @var array<string, list<string>> $externalImports */
-        $externalImports = $importMap;
+        $externalImports = [];
 
         foreach ($branches as $analyses) {
             $analysis = count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
-            $casts = JsEmitter::castsByKey($overrides, array_column($analysis->properties, 'name'));
+            $keys = array_column($analysis->properties, 'name');
+            $targets = JsEmitter::castTargets(array_keys($overrides), $keys);
+            JsEmitter::warnAmbiguousCasts($subject, array_keys($overrides), $keys);
+            $casts = JsEmitter::retargetCasts($overrides, $targets);
+
+            // A losing spelling's import goes with its type.
+            foreach (JsEmitter::retargetCasts($importPaths, $targets) as $key => $path) {
+                foreach (TsTypeString::extractImportableTypes($casts[$key] ?? '') as $type) {
+                    if (! in_array($type, $externalImports[$path] ?? [], true)) {
+                        $externalImports[$path][] = $type;
+                    }
+                }
+            }
 
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
-            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts);
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
 
             $this->forgetOverriddenChannels($analysis, $casts);
 
-            $props = $this->collectProps($analysis);
+            $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+            $renumbered = $this->renumberTopLevel($props, $casts, $subject);
             $pageType = $props === [] && $casts === []
                 ? 'Inertia.SharedData'
-                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides($props, $casts);
+                : 'Inertia.SharedData & '.$this->buildTypeStringWithOverrides(
+                    TopLevelRenumbering::rekey($props, $renumbered),
+                    TopLevelRenumbering::rekey($casts, $renumbered),
+                    TopLevelRenumbering::rekey(JsEmitter::retargetCasts($optionalOverrides, $targets), $renumbered),
+                );
 
             $pageTypes[] = $pageType;
 
             foreach ($this->usedFqcns($analysis, $pageType) as $fqcn) {
                 if (! in_array($fqcn, $allFqcns, true)) {
                     $allFqcns[] = $fqcn;
+                }
+            }
+
+            foreach ($this->spelledEnumConsts($analysis, $pageType) as $fqcn) {
+                if (! in_array($fqcn, $constFqcns, true)) {
+                    $constFqcns[] = $fqcn;
                 }
             }
 
@@ -382,6 +425,7 @@ class InertiaPageAnalyzer
             'component' => count($components) === 1 ? $components[0] : $components,
             'pageType' => count($pageTypes) === 1 ? $pageTypes[0] : $pageTypes,
             'classFqcns' => $allFqcns,
+            'enumConstFqcns' => $constFqcns,
             'externalImports' => $externalImports,
         ];
     }
@@ -403,29 +447,48 @@ class InertiaPageAnalyzer
     }
 
     /**
+     * The key Laravel sends each top-level prop on, warning for each it renumbers; assumes shared data has no int key.
+     *
+     * @param  PagePropMap  $props
+     * @param  array<array-key, string>  $casts
+     * @return array<array-key, string>
+     */
+    protected function renumberTopLevel(array $props, array $casts, string $subject): array
+    {
+        $renumbered = TopLevelRenumbering::renumber(array_map(strval(...), array_keys(array_replace($props, $casts))));
+        TopLevelRenumbering::warnRenumbered($subject, 'a page', $renumbered);
+
+        return $renumbered;
+    }
+
+    /**
      * Build a TypeScript object type string, applying TsCasts overrides for specific props.
      *
      * @param  PagePropMap  $props
-     * @param  array<string, string>  $overrides
+     * @param  array<array-key, string>  $overrides
+     * @param  array<array-key, bool>  $optionalOverrides  each override's own `optional` flag, by its key
      */
-    protected function buildTypeStringWithOverrides(array $props, array $overrides): string
+    protected function buildTypeStringWithOverrides(array $props, array $overrides, array $optionalOverrides = []): string
     {
         if ($props === [] && $overrides === []) {
-            return 'Record<string, never>'; // @codeCoverageIgnore
+            return TsTypeStringService::EMPTY_OBJECT; // @codeCoverageIgnore
+        }
+
+        $casts = [];
+
+        // A cast that says nothing about optional keeps the prop's own flag.
+        foreach ($overrides as $key => $type) {
+            $optional = $optionalOverrides[$key] ?? $props[$key]['optional'] ?? false;
+            $casts[$key] = JsEmitter::signatureSafeMember((string) $key, $type, $optional);
         }
 
         $parts = [];
 
-        foreach ($props as $key => $prop) {
-            $parts[] = isset($overrides[$key])
-                ? $key.': '.$overrides[$key]
-                : $key.($prop['optional'] ? '?: ' : ': ').$prop['type'];
-        }
-
-        foreach ($overrides as $key => $type) {
-            if (! array_key_exists($key, $props)) {
-                $parts[] = $key.': '.$type;
-            }
+        // A cast keeps its prop's place, and one no prop has goes after them.
+        foreach (array_replace($props, $casts) as $key => $entry) {
+            $key = (string) $key;
+            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
+                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
         }
 
         return '{ '.implode(', ', $parts).' }';
@@ -434,7 +497,7 @@ class InertiaPageAnalyzer
     /**
      * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
      *
-     * @param  array<string, string>  $overrides
+     * @param  array<array-key, string>  $overrides
      */
     protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
     {
@@ -466,10 +529,34 @@ class InertiaPageAnalyzer
 
         return array_values(array_filter(
             array_unique($candidates),
-            // An enum's TypeScript name follows #[TsEnum(name:)], which neither of the first two spell.
-            fn (string $fqcn): bool => $this->typeSpells($pageType, class_basename($fqcn))
-                || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn))
-                || (enum_exists($fqcn) && $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])),
+            // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
+            fn (string $fqcn): bool => enum_exists($fqcn)
+                ? $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])
+                : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
+        ));
+    }
+
+    /**
+     * Every enum whose const the rendered type reads through `typeof`, as an `AsEnum<typeof Status>` prop does.
+     *
+     * @return list<class-string>
+     */
+    protected function spelledEnumConsts(MethodAnalysis $analysis, string $pageType): array
+    {
+        $candidates = array_values($analysis->enumResources);
+
+        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
+            foreach ($map as $fqcns) {
+                $candidates = [...$candidates, ...$fqcns];
+            }
+        }
+
+        return array_values(array_filter(
+            array_unique($candidates),
+            fn (string $fqcn): bool => preg_match(
+                TsTypeString::queuedTokenPattern([LaravelTsPublish::toTsType($fqcn)['enums'][0] ?? class_basename($fqcn)], 'typeof\s+\K'),
+                $pageType,
+            ) === 1,
         ));
     }
 
@@ -489,29 +576,33 @@ class InertiaPageAnalyzer
     /**
      * Parse the `#[TsCasts]` attribute from a controller method.
      *
-     * @return array{overrides: array<string, string>, importMap: array<string, list<string>>}
+     * @return TsCastsParseResult
      */
     protected function parseTsCastsFromMethod(string $controllerClass, string $methodName): array
     {
         if (! class_exists($controllerClass)) {
-            return ['overrides' => [], 'importMap' => []];
+            return ['overrides' => [], 'importPaths' => []];
         }
 
         $reflection = new ReflectionClass($controllerClass);
 
         if (! $reflection->hasMethod($methodName)) {
-            return ['overrides' => [], 'importMap' => []]; // @codeCoverageIgnore
+            return ['overrides' => [], 'importPaths' => []]; // @codeCoverageIgnore
         }
 
         $attrs = $reflection->getMethod($methodName)->getAttributes(TsCasts::class);
 
         if ($attrs === []) {
-            return ['overrides' => [], 'importMap' => []];
+            return ['overrides' => [], 'importPaths' => []];
         }
 
         /** @var TsCastsUnpacked $unpacked */
         $unpacked = resolve(TsCastsReader::class)->unpack([$attrs[0]->newInstance()]);
 
-        return ['overrides' => $unpacked['overrides'], 'importMap' => $unpacked['importMap']];
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
     }
 }

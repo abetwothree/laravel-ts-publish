@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Concerns\ResolvesAccessorType;
@@ -15,9 +18,13 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Carbon\CarbonImmutable;
 use Closure;
+use Exception;
+use Illuminate\Auth\Authenticatable;
 use Illuminate\Contracts\Database\Eloquent\Castable;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Concerns\HasUniqueStringIds;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -35,6 +42,7 @@ use ReflectionFunction;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionType;
+use SplFileObject;
 use Throwable;
 
 /**
@@ -47,6 +55,7 @@ use Throwable;
  * @phpstan-import-type RelationInfo from ModelInfo
  *
  * @phpstan-type RelationContext = array{instance: Model, relations: Collection<int, RelationInfo>}
+ * @phpstan-type RelationTypeInfo = array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
  */
 class ModelAttributeResolver
 {
@@ -71,6 +80,13 @@ class ModelAttributeResolver
      * @var array<class-string, RelationContext>
      */
     protected array $relationContexts = [];
+
+    /**
+     * Per-FQCN Eloquent inspection, read once a run though the morph map and the model publisher each need it.
+     *
+     * @var array<class-string, ModelInfo<Model>>
+     */
+    protected array $inspections = [];
 
     /**
      * Per-FQCN message of the exception a context read caught: the reason a related model is left out.
@@ -103,8 +119,70 @@ class ModelAttributeResolver
      */
     protected array $attributeClassCache = [];
 
+    /**
+     * The paths each resolveAttributeClass() answer recorded, replayed on reuse; null when computed unrecorded.
+     *
+     * @var array<string, list<string>|null>
+     */
+    protected array $attributeClassPaths = [];
+
     /** Whether the morph target map being built reads each model's relations without its table. */
     private bool $buildsWithoutTables = false;
+
+    /**
+     * Whether a `NULL` column reaches the published type as `null`: a database type, a primitive or an enum cast.
+     * An enum cast passes null through, since getEnumCastableAttributeValue() returns null for null.
+     */
+    public static function sendsNullAsIs(?string $cast): bool
+    {
+        if ($cast === null || $cast === '') {
+            return true;
+        }
+
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return false;
+        }
+
+        $class = Str::before($cast, ':');
+
+        return enum_exists($class) || ! (class_exists($class) || interface_exists($class));
+    }
+
+    /**
+     * Whether a type already holds the column's `null`: a top-level arm if the cast passes null as is, else any.
+     */
+    public static function typeHoldsNull(string $type, ?string $cast): bool
+    {
+        return self::sendsNullAsIs($cast) ? ValueResult::hasNullArm($type) : str_contains($type, 'null');
+    }
+
+    /**
+     * Forget every cached model read, so the next run inspects the models and their tables afresh.
+     */
+    public function reset(): void
+    {
+        $this->contexts = [];
+        $this->inspections = [];
+        $this->relationContexts = [];
+        $this->contextFailures = [];
+        $this->morphTargetMap = [];
+        $this->dbColumnNamesCache = [];
+        $this->attributeClassCache = [];
+        $this->attributeClassPaths = [];
+    }
+
+    /**
+     * A model's Eloquent inspection: its columns, relations and the classes it names, read once a run.
+     *
+     * @internal
+     *
+     * @param  class-string  $modelFqcn
+     * @return ModelInfo<Model>
+     */
+    public function inspect(string $modelFqcn): ModelInfo
+    {
+        return $this->inspections[$modelFqcn] ??= resolve(ModelInspector::class)->inspect($modelFqcn);
+    }
 
     /**
      * Resolve a model attribute's TypeScript type through the accessor → cast → DB type waterfall.
@@ -137,7 +215,7 @@ class ModelAttributeResolver
                 if ($accessorInfo['type'] !== 'unknown') {
                     $accessorInfo = $this->refineAccessorType($ctx, $attributeName, $accessorInfo, $carriesImports);
 
-                    return $this->appendNullable($accessorInfo, $attr['nullable']);
+                    return $this->appendNullable($accessorInfo, $attr['nullable'], 'accessor');
                 }
             } catch (Throwable) { // @codeCoverageIgnore
                 // Fall through to cast/DB type
@@ -145,18 +223,18 @@ class ModelAttributeResolver
         }
 
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::toTsType($cast);
+            $tsInfo = LaravelTsPublish::castToTsType($cast);
 
             $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-            return $this->appendNullable($tsInfo, $attr['nullable']);
+            return $this->appendNullable($tsInfo, $attr['nullable'], $cast);
         }
 
         if ($attr['type'] === null || $attr['type'] === '') {
             return $empty;
         }
 
-        $tsInfo = LaravelTsPublish::toTsType($attr['type']);
+        $tsInfo = $this->columnTsType($modelFqcn, $attr['type']);
 
         if ($tsInfo['type'] === 'unknown') {
             return $empty; // @codeCoverageIgnore
@@ -164,7 +242,27 @@ class ModelAttributeResolver
 
         $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
 
-        return $this->appendNullable($tsInfo, $attr['nullable']);
+        return $this->appendNullable($tsInfo, $attr['nullable'], null);
+    }
+
+    /**
+     * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
+     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number. A user's `custom_ts_mappings` entry for the
+     * column type wins over the driver, as it does over the built-in map.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    protected function columnTsType(string $modelFqcn, string $columnType): array
+    {
+        $tsInfo = LaravelTsPublish::toTsType($columnType);
+        $driver = $tsInfo['type'] === 'number' && ! (new TypeScriptMap)->isCustomMapped($columnType)
+            ? $this->connectionDriver($modelFqcn)
+            : null;
+
+        return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
+            ? [...$tsInfo, 'type' => 'string']
+            : $tsInfo;
     }
 
     /**
@@ -335,7 +433,8 @@ class ModelAttributeResolver
     {
         $doc = $class->getDocComment();
 
-        if ($doc === false) {
+        // Both patterns need the name verbatim, and most attributes a run asks about go unnamed in the docblock.
+        if ($doc === false || ! str_contains($doc, $attributeName)) {
             return null;
         }
 
@@ -420,21 +519,45 @@ class ModelAttributeResolver
     {
         $key = $modelFqcn.'::'.$attributeName;
 
-        if (! array_key_exists($key, $this->attributeClassCache)) {
+        // A reuse replays the cast and model files the answer read, so a later class's cache entry still names them.
+        if (! array_key_exists($key, $this->attributeClassCache)
+            || (($this->attributeClassPaths[$key] ?? null) === null && DependencyRecorder::isRecording())) {
+            $mark = DependencyRecorder::mark();
             $this->attributeClassCache[$key] = $this->findAttributeClass($modelFqcn, $attributeName);
+            $this->attributeClassPaths[$key] = DependencyRecorder::isRecording()
+                ? DependencyRecorder::since($mark)
+                : null;
+
+            return $this->attributeClassCache[$key];
+        }
+
+        foreach ($this->attributeClassPaths[$key] ?? [] as $path) {
+            DependencyRecorder::record($path);
         }
 
         return $this->attributeClassCache[$key];
     }
 
     /**
-     * Determine whether a resolved model cast belongs to the date/datetime family, including
-     * immutable_* variants and the `:format` suffix on custom_datetime casts.
+     * Whether Model::toArray() writes the attribute's value as that Arrayable's toArray() array, not as the object.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function serializesAsArray(string $modelFqcn, string $attributeName): bool
+    {
+        $class = $this->resolveAttributeClass($modelFqcn, $attributeName);
+
+        return $class !== null && is_a($class, Arrayable::class, true);
+    }
+
+    /**
+     * Determine whether a resolved model cast holds a Carbon date, including immutable_* variants and the `:format`
+     * suffix on custom_datetime casts. A `timestamp` cast holds the Unix integer, so it is no date cast.
      */
     public function isDateFamilyCast(string $cast): bool
     {
         return in_array(explode(':', $cast)[0], [
-            'date', 'datetime', 'custom_datetime', 'timestamp',
+            'date', 'datetime', 'custom_datetime',
             'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
         ], true);
     }
@@ -460,16 +583,11 @@ class ModelAttributeResolver
             return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
         }
 
-        $head = Str::before($cast, ':');
-
-        // Laravel's timestamp cast returns the Unix integer, not a date object.
         if ($this->isDateFamilyCast($cast)) {
-            return match (true) {
-                $head === 'timestamp' => null,
-                str_starts_with($cast, 'immutable_') => CarbonImmutable::class,
-                default => Carbon::class,
-            };
+            return str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
         }
+
+        $head = Str::before($cast, ':');
 
         if (is_a($head, Castable::class, true)) {
             return $this->castableValueClass($head);
@@ -594,6 +712,7 @@ class ModelAttributeResolver
      */
     protected function methodReturnClass(string $class, string $method): ?string
     {
+        DependencyRecorder::recordClass($class);
         $reflection = new ReflectionMethod($class, $method);
 
         return $this->singleClass($reflection->getReturnType(), $class, $reflection->getDeclaringClass()->getName());
@@ -628,7 +747,7 @@ class ModelAttributeResolver
      * and every token in the emitted union still needs an import.
      *
      * @param  class-string  $modelFqcn
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     public function resolveRelation(string $modelFqcn, string $relationName): array
     {
@@ -644,10 +763,7 @@ class ModelAttributeResolver
             return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
         }
 
-        $isMorphTo = $relation['type'] === 'MorphTo'
-            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
-
-        if ($isMorphTo) {
+        if (self::isMorphToRelation($relation)) {
             $targets = $this->resolveMorphToTargets($modelFqcn, $relationName);
 
             return $this->buildMorphUnionInfo($targets, $relation, $ctx);
@@ -661,20 +777,46 @@ class ModelAttributeResolver
         DependencyRecorder::recordClass($relation['related']);
 
         $relatedModel = class_basename($relation['related']);
-        $containsMany = str_contains(strtolower($relation['type']), 'many');
 
-        if ($containsMany) {
+        if (self::isToManyRelation($relation)) {
             return ['type' => $relatedModel.'[]', 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
         }
 
         $type = $relatedModel;
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
 
-        if ($nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => $relation['related'], 'morphFqcns' => []];
+    }
+
+    /**
+     * Whether a relation can be loaded as null, by the rule its type takes `| null` with; null when the model declares
+     * no such relation or its context cannot be read.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function relationLoadsNull(string $modelFqcn, string $relationName): ?bool
+    {
+        // With `nullable_relations` off no relation publishes `| null`, declared or not.
+        if (! Config::boolean('ts-publish.models.nullable_relations')) {
+            return false;
+        }
+
+        $ctx = $this->resolveContext($modelFqcn);
+        $relation = $ctx === null ? null : $ctx['relations']->firstWhere('name', $relationName);
+
+        if ($ctx === null || $relation === null) {
+            return null;
+        }
+
+        // A loaded to-many relation is a collection, never null, whatever its strategy says.
+        if (self::isToManyRelation($relation)) {
+            return false;
+        }
+
+        return $this->typesRelationNullable($relation, $ctx['relationNullable']);
     }
 
     /**
@@ -841,16 +983,63 @@ class ModelAttributeResolver
             return []; // @codeCoverageIgnore
         }
 
-        $visible = $instance->getVisible();
-        $hidden = $instance->getHidden();
-
         /** @var list<string> $appends */
         $appends = $instance->getAppends();
 
         return array_values(array_unique(array_filter(
             [...$this->publishedColumnNames($modelFqcn), ...$appends],
-            fn (string $name): bool => ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $hidden, true),
+            fn (string $name): bool => self::isArrayable($instance, $name),
         )));
+    }
+
+    /**
+     * Names of the attributes whole-model delegation publishes: serializedAttributeNames() while `exclude_hidden` is
+     * on, else every published column, then the appended attributes, each name once.
+     *
+     * @param  class-string  $modelFqcn
+     * @return list<string>
+     */
+    public function delegatedAttributeNames(string $modelFqcn): array
+    {
+        if ($this->excludeHiddenAttributes()) {
+            return $this->serializedAttributeNames($modelFqcn);
+        }
+
+        /** @var list<string> $appends */
+        $appends = $this->getInstance($modelFqcn)?->getAppends() ?? [];
+
+        return array_values(array_unique([...$this->publishedColumnNames($modelFqcn), ...$appends]));
+    }
+
+    /**
+     * The key toArray() writes each relation under once loaded, keyed by relation name: snake-cased while the model's
+     * `$snakeAttributes` is on. While `exclude_hidden` is on, a relation `$visible` leaves out or `$hidden` lists by
+     * its method name is skipped, as relationsToArray() skips it.
+     *
+     * @param  class-string  $modelFqcn
+     * @return array<string, string>
+     */
+    public function delegatedRelationKeys(string $modelFqcn): array
+    {
+        $instance = $this->getInstance($modelFqcn);
+        $relations = $this->getRelations($modelFqcn);
+
+        if ($instance === null || $relations === null) {
+            return []; // @codeCoverageIgnore
+        }
+
+        $excludeHidden = $this->excludeHiddenAttributes();
+        $keys = [];
+
+        foreach ($relations as $relation) {
+            $name = $relation['name'];
+
+            if (! $excludeHidden || self::isArrayable($instance, $name)) {
+                $keys[$name] = $instance::$snakeAttributes ? Str::snake($name) : $name;
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -880,21 +1069,73 @@ class ModelAttributeResolver
     }
 
     /**
-     * The TypeScript spelling of a model's primary key type, or null when the model cannot be instantiated. No default
-     * here: on no instance the receiver rules decline, while the auth and getKey rules fall back to `string`.
+     * The TypeScript spelling of a model's primary key type, read from its instance, else from what its class declares
+     * (an abstract model, or one that cannot be built) with an abstract one's published subclasses; null when none of
+     * these answers.
      *
      * @param  class-string  $modelFqcn
      */
     public function keyTsType(string $modelFqcn): ?string
     {
-        $instance = $this->getInstance($modelFqcn);
+        // A model whose table cannot be read is still built without it, so its constructor and initializers count.
+        $instance = $this->getInstance($modelFqcn) ?? $this->resolveRelationContext($modelFqcn)['instance'] ?? null;
 
-        if ($instance === null) {
+        if ($instance !== null) {
+            return self::keyTsTypeOf($instance->getKeyName(), $instance->getKeyType());
+        }
+
+        $declared = $this->declaredKeyTsType($modelFqcn);
+
+        return $declared === null ? null : $this->subclassKeyTsType($modelFqcn, $declared);
+    }
+
+    /**
+     * The TypeScript type of what Authenticatable::getAuthIdentifier() returns: the key's, or that of the column a
+     * literal getAuthIdentifierName() override names; null where code computes the identifier or its column.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function authIdentifierTsType(string $modelFqcn): ?string
+    {
+        $runsFramework = fn (string $method): bool => trait_exists(Authenticatable::class)
+            && self::runsFrameworkMethod(new ReflectionMethod($modelFqcn, $method), Authenticatable::class);
+
+        if (method_exists($modelFqcn, 'getAuthIdentifier') && ! $runsFramework('getAuthIdentifier')) {
             return null;
         }
 
-        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
-        return in_array($instance->getKeyType(), ['int', 'integer'], true) ? 'number' : 'string';
+        if (! method_exists($modelFqcn, 'getAuthIdentifierName') || $runsFramework('getAuthIdentifierName')) {
+            return $this->keyTsType($modelFqcn);
+        }
+
+        $column = resolve(ReturnLiteralReader::class)->stringLiteral($modelFqcn, 'getAuthIdentifierName');
+
+        if ($column === null) {
+            return null;
+        }
+
+        $type = $this->resolveAttribute($modelFqcn, $column)['type'];
+
+        // Its callers carry no import, so a column typed by an enum or a class declines.
+        return array_diff(TsTypeString::splitTopLevelUnion($type), ['string', 'number', 'boolean', 'null']) === []
+            ? $type
+            : null;
+    }
+
+    /**
+     * The driver of the connection a model queries through, such as `mysql`, read from its config once the run has the
+     * model's context, which a cold call builds by inspecting its schema; null when the model cannot be instantiated or
+     * its connection is not configured.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    public function connectionDriver(string $modelFqcn): ?string
+    {
+        try {
+            return $this->getInstance($modelFqcn)?->getConnection()->getDriverName();
+        } catch (Throwable) { // @codeCoverageIgnore
+            return null; // @codeCoverageIgnore
+        }
     }
 
     /**
@@ -1058,7 +1299,7 @@ class ModelAttributeResolver
         $this->morphTargetMap = $map;
 
         // An analysis the old map typed a morph relation for would otherwise be reused under the new one.
-        resolve(AnalysisMemo::class)->forget();
+        resolve(AnalysisMemo::class)->reset();
     }
 
     /**
@@ -1284,7 +1525,7 @@ class ModelAttributeResolver
      * @param  list<class-string>  $targets
      * @param  RelationInfo  $relation
      * @param  array{relationNullable: RelationNullable, ...}  $ctx
-     * @return array{type: string, modelFqcn: class-string<Model>|null, morphFqcns: list<class-string>}
+     * @return RelationTypeInfo
      */
     protected function buildMorphUnionInfo(array $targets, array $relation, array $ctx): array
     {
@@ -1292,14 +1533,22 @@ class ModelAttributeResolver
             ? implode(' | ', array_map(class_basename(...), $targets))
             : 'unknown';
 
-        $nullableRelations = Config::boolean('ts-publish.models.nullable_relations');
-
         // 'unknown' already admits null, so appending the suffix would only add noise.
-        if ($type !== 'unknown' && $nullableRelations && $ctx['relationNullable']->isNullable($relation)) {
+        if ($type !== 'unknown' && $this->typesRelationNullable($relation, $ctx['relationNullable'])) {
             $type .= ' | null';
         }
 
         return ['type' => $type, 'modelFqcn' => null, 'morphFqcns' => $targets];
+    }
+
+    /**
+     * Whether a relation's type takes a `| null` arm: `nullable_relations` is on and its strategy calls it nullable.
+     *
+     * @param  RelationInfo  $relation
+     */
+    protected function typesRelationNullable(array $relation, RelationNullable $nullable): bool
+    {
+        return Config::boolean('ts-publish.models.nullable_relations') && $nullable->isNullable($relation);
     }
 
     /**
@@ -1349,6 +1598,9 @@ class ModelAttributeResolver
      */
     protected function resolveContext(string $modelFqcn): ?array
     {
+        // Recorded before the cache, since every caller types something from the model's declarations.
+        DependencyRecorder::recordClass($modelFqcn);
+
         if (isset($this->contexts[$modelFqcn])) {
             return $this->contexts[$modelFqcn];
         }
@@ -1361,7 +1613,7 @@ class ModelAttributeResolver
             /** @var Model $instance */
             $instance = resolve($modelFqcn);
 
-            $data = resolve(ModelInspector::class)->inspect($modelFqcn);
+            $data = $this->inspect($modelFqcn);
 
             /** @var Collection<int, AttributeInfo> $attributes */
             $attributes = $data->attributes;
@@ -1401,6 +1653,8 @@ class ModelAttributeResolver
      */
     protected function resolveRelationContext(string $modelFqcn): ?array
     {
+        DependencyRecorder::recordClass($modelFqcn);
+
         if (isset($this->contexts[$modelFqcn])) {
             return [
                 'instance' => $this->contexts[$modelFqcn]['instance'],
@@ -1432,18 +1686,245 @@ class ModelAttributeResolver
     }
 
     /**
-     * Append ' | null' to a TypeScriptTypeInfo's type when nullable and not already present.
+     * An abstract model's declared key type unioned with each published concrete subclass's, since getKey() runs on a
+     * subclass, which can key differently; null when a subclass names none or overrides getKey(). With no published
+     * set to read, the declared type.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    protected function subclassKeyTsType(string $modelFqcn, string $declared): ?string
+    {
+        if (PublishedModelRegistry::isEmpty() || ! new ReflectionClass($modelFqcn)->isAbstract()) {
+            return $declared;
+        }
+
+        $types = [$declared];
+
+        foreach (PublishedModelRegistry::all() as $model) {
+            // Whether a published model is a subclass is its own declaration, so a change to it must rebuild this.
+            DependencyRecorder::recordClass($model);
+
+            if (! is_subclass_of($model, $modelFqcn) || new ReflectionClass($model)->isAbstract()) {
+                continue;
+            }
+
+            $type = new ReflectionMethod($model, 'getKey')->getDeclaringClass()->getName() === Model::class
+                ? $this->keyTsType($model)
+                : null;
+
+            if ($type === null) {
+                return null;
+            }
+
+            $types[] = $type;
+        }
+
+        return implode(' | ', array_unique($types));
+    }
+
+    /**
+     * The key type a model class declares, read without building it: `$primaryKey`, `$keyType`, Laravel 13's
+     * `#[Table]`, `HasUuids`/`HasUlids` and a literal `uniqueIds()` list. Null for `Model` itself and where code sets
+     * the key: a `getKeyType()` or `getKeyName()` override, a non-literal `uniqueIds()`, a constructor or initializer.
+     *
+     * @param  class-string  $modelFqcn
+     */
+    protected function declaredKeyTsType(string $modelFqcn): ?string
+    {
+        if (! is_subclass_of($modelFqcn, Model::class)) {
+            return null;
+        }
+
+        $reflection = new ReflectionClass($modelFqcn);
+        $getKeyType = $reflection->getMethod('getKeyType');
+        $uniqueIds = self::runsFrameworkMethod($getKeyType, HasUniqueStringIds::class);
+
+        if (! self::runsFrameworkMethod($reflection->getMethod('getKeyName'), Model::class)
+            || ! ($uniqueIds || self::runsFrameworkMethod($getKeyType, Model::class))
+            || $this->setsKeyInCode($reflection)) {
+            return null;
+        }
+
+        $defaults = $reflection->getDefaultProperties();
+        $table = $this->tableKeyDeclaration($reflection);
+        // Model::initializeModelAttributes() lets #[Table] replace only the defaults `id` and `int`.
+        $keyName = $defaults['primaryKey'] === 'id' ? $table['key'] ?? 'id' : $defaults['primaryKey'];
+        $keyType = $defaults['keyType'] === 'int' ? $table['keyType'] ?? 'int' : $defaults['keyType'];
+
+        if (! $uniqueIds) {
+            return self::keyTsTypeOf($keyName, $keyType);
+        }
+
+        // HasUniqueStringIds::getKeyType() answers `string` for a key uniqueIds() lists, which its own always does.
+        $listed = self::runsFrameworkMethod($reflection->getMethod('uniqueIds'), HasUniqueStringIds::class)
+            ? [$keyName]
+            : resolve(ReturnLiteralReader::class)->strings($modelFqcn, 'uniqueIds');
+
+        if ($listed === null) {
+            return null;
+        }
+
+        return self::keyTsTypeOf($keyName, in_array($keyName, $listed, true) ? 'string' : $keyType);
+    }
+
+    /**
+     * The `key` and `keyType` of the `#[Table]` Laravel 13 applies, found where Model::resolveClassAttribute() looks:
+     * on the class, then its own traits, then each parent in turn.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @return array{key: ?string, keyType: ?string}
+     */
+    protected function tableKeyDeclaration(ReflectionClass $reflection): array
+    {
+        // String FQCN behind class_exists(): Laravel 12 has no #[Table]. See docs/laravel-version-guards.md.
+        $tableAttribute = 'Illuminate\Database\Eloquent\Attributes\Table';
+
+        for ($class = $reflection; class_exists($tableAttribute) && $class !== false; $class = $class->getParentClass()) {
+            foreach ([$class, ...array_values($class->getTraits())] as $declarer) {
+                foreach ($declarer->getAttributes($tableAttribute) as $attribute) {
+                    try {
+                        $table = $attribute->newInstance();
+                    } catch (Exception) { // @codeCoverageIgnore
+                        return ['key' => null, 'keyType' => null]; // @codeCoverageIgnore
+                    }
+
+                    return ['key' => $table->key, 'keyType' => $table->keyType];
+                }
+            }
+        }
+
+        return ['key' => null, 'keyType' => null];
+    }
+
+    /**
+     * Whether a constructor or initializer outside the framework names the key, as `$this->keyType = …` does, so the
+     * value an instance would hold is not the declared default.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     */
+    protected function setsKeyInCode(ReflectionClass $reflection): bool
+    {
+        $framework = dirname((string) new ReflectionClass(Model::class)->getFileName(), 3);
+        // String FQCN behind class_exists(): #[Initialize] is new in Laravel 12.22. See docs/laravel-version-guards.md.
+        $initializeAttribute = 'Illuminate\Database\Eloquent\Attributes\Initialize';
+        $hasInitializeAttribute = class_exists($initializeAttribute);
+        $methods = array_filter(
+            $reflection->getMethods(),
+            fn (ReflectionMethod $method): bool => ! $method->isStatic()
+                && (str_starts_with($method->getName(), 'initialize')
+                    || ($hasInitializeAttribute && $method->getAttributes($initializeAttribute) !== [])),
+        );
+
+        // Each constructor in the chain can run through parent::__construct(), so each is read.
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            $constructor = $class->getConstructor();
+
+            if ($constructor !== null && $constructor->getDeclaringClass()->getName() === $class->getName()) {
+                $methods[] = $constructor;
+            }
+        }
+
+        foreach ($methods as $method) {
+            $path = $method->getFileName();
+
+            // Source that is not on disk, such as eval()'d code, cannot be read, so it may set the key.
+            if ($path === false || ! is_file($path)) {
+                return true;
+            }
+
+            if (str_starts_with($path, $framework)) {
+                continue;
+            }
+
+            $file = new SplFileObject($path);
+            $file->seek($method->getStartLine() - 1);
+            $code = '';
+
+            while (! $file->eof() && $file->key() < $method->getEndLine()) {
+                $line = $file->current();
+                $code .= is_string($line) ? $line : '';
+                $file->next();
+            }
+
+            if (preg_match('/\b(primaryKey|keyType|setKeyName|setKeyType)\b/', $code) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Append ' | null' to a TypeScriptTypeInfo's type when nullable and it holds no `null` yet.
+     *
+     * A primitive cast or a database-typed column sends `null` for a `NULL` column, so only a top-level `null` arm
+     * counts there; a class cast or an accessor runs on `NULL` and returns what it returns, so any `null` counts.
      *
      * @param  TypeScriptTypeInfo  $tsInfo
      * @return TypeScriptTypeInfo
      */
-    protected function appendNullable(array $tsInfo, ?bool $nullable): array
+    protected function appendNullable(array $tsInfo, ?bool $nullable, ?string $cast): array
     {
-        if ($nullable && ! str_contains($tsInfo['type'], 'null')) {
+        if ($nullable && ! self::typeHoldsNull($tsInfo['type'], $cast)) {
             $tsInfo['type'] .= ' | null';
         }
 
         return $tsInfo;
+    }
+
+    /**
+     * The TypeScript key type for a key name and Model::getKeyType() value: `null` when the model has no primary key,
+     * since getKey() is then getAttribute(null).
+     */
+    private static function keyTsTypeOf(mixed $keyName, mixed $keyType): string
+    {
+        if ($keyName === null || $keyName === '') {
+            return 'null';
+        }
+
+        // getCasts() casts an incrementing key as getKeyType(), and castAttribute() treats `int` and `integer` alike.
+        return in_array($keyType, ['int', 'integer'], true) ? 'number' : 'string';
+    }
+
+    /**
+     * Whether a method runs the given framework class's or trait's own body, which a trait method's file identifies.
+     *
+     * @param  class-string  $declarer
+     */
+    private static function runsFrameworkMethod(ReflectionMethod $method, string $declarer): bool
+    {
+        return $method->getFileName() === new ReflectionClass($declarer)->getFileName();
+    }
+
+    /**
+     * Whether a relation is a MorphTo, which resolves to one of several target models.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isMorphToRelation(array $relation): bool
+    {
+        return $relation['type'] === 'MorphTo'
+            || (str_ends_with($relation['type'], 'MorphTo') && ! str_ends_with($relation['type'], 'MorphToMany'));
+    }
+
+    /**
+     * Whether a relation loads a collection: its type names "many", and it is not a MorphTo, which loads one model.
+     *
+     * @param  RelationInfo  $relation
+     */
+    private static function isToManyRelation(array $relation): bool
+    {
+        return ! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many');
+    }
+
+    /**
+     * Whether toArray() writes a name past the model's `$visible` and `$hidden`, as getArrayableItems() decides.
+     */
+    private static function isArrayable(Model $instance, string $name): bool
+    {
+        $visible = $instance->getVisible();
+
+        return ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $instance->getHidden(), true);
     }
 
     /**

@@ -7,12 +7,17 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Error;
 use PhpParser\Node;
+use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\Parser;
 use PhpParser\ParserFactory;
 
 /**
  * Single php-parser entry point: name-resolved ASTs, cached per file, recorded as cache dependencies.
+ *
+ * @phpstan-type MethodsByName = array<string, list<ClassMethod>>
  *
  * @internal
  */
@@ -24,6 +29,20 @@ class AstParser
     /** @var array<string, array<Node>> */
     protected array $fileAsts = [];
 
+    /** @var array<string, array{array<Node>, MethodsByName}> each file's AST with its methods by lowercased name */
+    protected array $fileMethods = [];
+
+    /** Built once and reused: a run parses hundreds of files, and a fresh parser for each one adds up. */
+    protected Parser $parser;
+
+    /**
+     * Build the one parser every parse reuses.
+     */
+    public function __construct()
+    {
+        $this->parser = (new ParserFactory)->createForNewestSupportedVersion();
+    }
+
     /**
      * Parse a file into a name-resolved AST, caching per path and recording the cache dependency.
      *
@@ -34,14 +53,43 @@ class AstParser
         DependencyRecorder::record($path);
 
         if (isset($this->fileAsts[$path])) {
-            return $this->fileAsts[$path];
+            $stmts = $this->fileAsts[$path];
+
+            // Re-inserted last so eviction drops the least recently read file: a model or framework file read across
+            // many classes would otherwise be re-parsed whenever enough newer files pushed it out.
+            unset($this->fileAsts[$path]);
+
+            return $this->fileAsts[$path] = $stmts;
         }
 
         if (count($this->fileAsts) >= self::MAX_CACHED_FILES) {
-            array_shift($this->fileAsts);
+            $evicted = array_key_first($this->fileAsts);
+            unset($this->fileAsts[$evicted], $this->fileMethods[$evicted]);
         }
 
         return $this->fileAsts[$path] = $this->parseSource((string) file_get_contents($path));
+    }
+
+    /**
+     * A file's AST with the methods it declares by lowercased name, walked once while the AST stays cached.
+     *
+     * @return array{array<Node>, MethodsByName}
+     */
+    public function parseFileMethods(string $path): array
+    {
+        $stmts = $this->parseFile($path);
+
+        if (! isset($this->fileMethods[$path]) || $this->fileMethods[$path][0] !== $stmts) {
+            $methods = [];
+
+            foreach (new NodeFinder()->findInstanceOf($stmts, ClassMethod::class) as $method) {
+                $methods[$method->name->toLowerString()][] = $method;
+            }
+
+            $this->fileMethods[$path] = [$stmts, $methods];
+        }
+
+        return $this->fileMethods[$path];
     }
 
     /**
@@ -51,10 +99,8 @@ class AstParser
      */
     public function parseSource(string $source): array
     {
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-
         try {
-            $stmts = $parser->parse($source);
+            $stmts = $this->parser->parse($source);
         } catch (Error) {
             return [];
         }

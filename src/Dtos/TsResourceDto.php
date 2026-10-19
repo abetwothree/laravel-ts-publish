@@ -14,7 +14,7 @@ use JsonSerializable;
  * @phpstan-import-type ValuesImportMap from Datable
  *
  * @phpstan-type ResourceProperty = array{type: string, optional: bool, description: string}
- * @phpstan-type PropertiesList = array<string, ResourceProperty>
+ * @phpstan-type PropertiesList = array<array-key, ResourceProperty>
  * @phpstan-type ResourceData = array{
  *     resourceName: string,
  *     description: string,

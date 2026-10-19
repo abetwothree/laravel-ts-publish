@@ -15,7 +15,7 @@ export interface PaymentResource
     id: number;
     status: AsEnum<typeof PaymentStatus>;
     currency: AsEnum<typeof Currency>;
-    amount: number;
+    amount: string;
     method?: PaymentMethodType;
     reference?: string;
     paid_at?: string;

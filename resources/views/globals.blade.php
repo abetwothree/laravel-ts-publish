@@ -121,7 +121,7 @@ $references = $transformer->globalTypeReferenceMap();
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endif
@@ -165,9 +165,9 @@ $references = $transformer->globalTypeReferenceMap();
         export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
-$optional = $prop['optional'] ? '?' : '';
+$optional = $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '';
 @endphp
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endforeach

@@ -43,6 +43,7 @@ final class LiteralSpreadPostResource extends JsonResource
      *     maybe: 'draft'|'live'|null,
      *     mixed: 'a'|int,
      *     amount: int|float,
+     *     'quoted-key' ?: 'a'|'b',
      * }
      */
     protected function literals(): array
@@ -57,6 +58,7 @@ final class LiteralSpreadPostResource extends JsonResource
             'maybe' => $this->opaque(),
             'mixed' => $this->opaque(),
             'amount' => $this->opaque(),
+            'quoted-key' => $this->opaque(),
         ];
     }
 

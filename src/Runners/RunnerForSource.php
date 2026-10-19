@@ -4,15 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\Concerns\ValidatesCollectorFiles;
-use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelMetadataCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\BroadcastEventGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
@@ -20,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\RouteGenerator;
-use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use InvalidArgumentException;
@@ -66,19 +60,11 @@ class RunnerForSource extends BaseRunner
     /**
      * Resolve the configured source to a class and generate the matching TypeScript output.
      *
-     * Resets PublishedResourceRegistry first: a leftover set from an earlier full run in the
-     * same process must not gate this run's own convention-guessed resource resolution.
-     * AnalysisWarnings is reset for the same reason: a warning recorded by an earlier run must
-     * not leak into this run's summary output.
+     * Starts from a clean slate, so an earlier run in the same process leaks nothing into this one.
      */
     public function run(): void
     {
-        PublishedResourceRegistry::reset();
-        PublishedModelRegistry::reset();
-        AnalysisWarnings::reset();
-        CoreCollector::flushClassMapCache();
-        resolve(AnalysisMemo::class)->reset();
-        TsTypeString::forgetQualifiedTypes();
+        $this->resetRunState();
 
         $fqcn = $this->resolveSourceToFqcn();
 

@@ -74,21 +74,21 @@ class TernaryResource extends JsonResource
 
             // ── Named resource::make vs null ───────────────────────────────
             // One side is a nested resource, the other is null.
-            // Expected TypeScript: CategoryResource, optional.
+            // Expected TypeScript: CategoryResource | null, not optional.
             'category_or_null' => $this->is_pinned
                 ? CategoryResource::make($this->categoryRel)
                 : null,
 
             // ── Named resource::make vs resource::make (same class) ────────
             // Both sides resolve to the same resource class.
-            // Expected TypeScript: CategoryResource, not optional.
+            // Expected TypeScript: CategoryResource | null (categoryRel can load as null), not optional.
             'category_or_category' => $this->is_pinned
                 ? CategoryResource::make($this->categoryRel)
                 : CategoryResource::make($this->categoryRel),
 
             // ── Named resource::make vs resource::make (different classes) ─
             // Branches resolve to two different resource classes.
-            // Expected TypeScript: CategoryResource | UserResource union, or unknown.
+            // Expected TypeScript: CategoryResource | UserResource | null (categoryRel can load as null), not optional.
             'category_or_user' => $this->is_pinned
                 ? CategoryResource::make($this->categoryRel)
                 : UserResource::make($this->author),

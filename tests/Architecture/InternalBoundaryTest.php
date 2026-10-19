@@ -5,7 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
+use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 
@@ -57,7 +62,15 @@ it('tags every class under src/Ast except the two the engine exposes', function 
 
     // This sweep is per-directory, so a class that leaves src/Ast silently leaves it too. StringSerialization and
     // ClassTokenQueue moved to src/Support and stay internal, so they are named here to keep the tag enforced.
-    $alsoInternal = [ClassTokenQueue::class, StringSerialization::class];
+    $alsoInternal = [
+        ClassTokenQueue::class,
+        IndexSignatureKey::class,
+        PhpArrayKey::class,
+        ResourceReindexing::class,
+        ResourceWrapping::class,
+        StringSerialization::class,
+        TopLevelRenumbering::class,
+    ];
     $untagged = [];
 
     expect(packageReflections())->toHaveKeys($alsoInternal);

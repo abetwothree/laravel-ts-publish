@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -65,10 +66,7 @@ final class InertiaWrapperHandler implements ExpressionHandler
 
         $result = $engine->resolve($wrapped->value);
 
-        return [
-            ...$result,
-            'optional' => $result['optional'] || in_array($expr->name->toString(), self::OPTIONAL_WRAPPERS, true),
-        ];
+        return in_array($expr->name->toString(), self::OPTIONAL_WRAPPERS, true) ? ValueResult::missable($result) : $result;
     }
 
     /**

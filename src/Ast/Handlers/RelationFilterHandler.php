@@ -26,6 +26,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use ReflectionMethod;
@@ -57,10 +58,16 @@ final class RelationFilterHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (! ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall)
-            || ! $this->callsAttributeFilter($expr)
-            || ! $expr->var instanceof PropertyFetch
-        ) {
+        if (! ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall) || ! $this->callsAttributeFilter($expr)) {
+            return null;
+        }
+
+        // $this->resource?->relation->only([...]): the `?->` ends the chain as null where the resource wraps none.
+        if ($expr->var instanceof NullsafePropertyFetch && $this->isProxyFetch($expr->var->var, $scope)) {
+            return $this->analyzeRelationFilter($expr, $scope, $engine);
+        }
+
+        if (! $expr->var instanceof PropertyFetch) {
             return null;
         }
 
@@ -83,18 +90,6 @@ final class RelationFilterHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` in a resource.
-     *
-     * `$this->resource` itself is the model, not a member named `resource`; its filters belong to the receiver rules.
-     * Only a subject that forwards to its model has that proxy: in a model's own body it is the model's own member.
-     */
-    private function isModelMemberFetch(PropertyFetch $fetch, AnalysisScope $scope): bool
-    {
-        return ($this->isThisPropertyFetch($fetch) && ! $this->isResourceFetch($fetch))
-            || ($this->isResourceFetch($fetch->var) && $scope->forwardsUndeclaredMembersTo !== null);
-    }
-
-    /**
      * Analyze `$this->relation->only([...])` or `$this->relation?->only([...])`, declining when nothing types it.
      *
      * A many-relation publishes its own read, since `Eloquent\Collection::only()` keeps whole models by primary key.
@@ -103,14 +98,14 @@ final class RelationFilterHandler implements ExpressionHandler
      */
     private function analyzeRelationFilter(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $nullable = $call instanceof NullsafeMethodCall;
+        $nullable = $this->shortCircuits($call);
         $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
 
         if ($methodName === null) {
             return null; // @codeCoverageIgnore
         }
 
-        /** @var PropertyFetch $varExpr */
+        /** @var PropertyFetch|NullsafePropertyFetch $varExpr */
         $varExpr = $call->var;
         $propName = $varExpr->name instanceof Identifier ? $varExpr->name->toString() : null;
 
@@ -178,7 +173,7 @@ final class RelationFilterHandler implements ExpressionHandler
         ExpressionEngine $engine,
     ): ?array {
         if ($this->runsCollectionFilter($collectionClass, $methodName)) {
-            return $this->attributeRecordResult($call instanceof NullsafeMethodCall);
+            return $this->attributeRecordResult($this->shortCircuits($call));
         }
 
         if (! $this->runsEloquentCollectionFilter($collectionClass, $methodName) || ! $this->isAccessorMember($propName, $scope)) {
@@ -186,7 +181,7 @@ final class RelationFilterHandler implements ExpressionHandler
         }
 
         $models = $this->resolveAccessorModelFqcns($propName, $scope);
-        $nullable = $call instanceof NullsafeMethodCall || in_array('null', TsTypeString::splitTopLevelUnion($engine->resolve($call->var)['type']), true);
+        $nullable = $this->shortCircuits($call) || in_array('null', TsTypeString::splitTopLevelUnion($engine->resolve($call->var)['type']), true);
         $suffix = $nullable ? ' | null' : '';
 
         if ($models === [] || ! $scope->carriesImports) {
@@ -217,7 +212,7 @@ final class RelationFilterHandler implements ExpressionHandler
             return null;
         }
 
-        $nullable = $call instanceof NullsafeMethodCall;
+        $nullable = $this->shortCircuits($call);
         $keys = $this->extractFilterKeys($call, new ReflectionMethod(Model::class, $methodName));
         $runtimeKeys = $keys === null || $keys === [];
 
@@ -330,11 +325,19 @@ final class RelationFilterHandler implements ExpressionHandler
             $read = [...ValueResult::unknown(), 'type' => $nullableRead ? 'unknown[] | null' : 'unknown[]'];
         }
 
-        if ($call instanceof NullsafeMethodCall && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
+        if ($this->shortCircuits($call) && ! in_array('null', TsTypeString::splitTopLevelUnion($read['type']), true)) {
             $read['type'] .= ' | null';
         }
 
         return $read;
+    }
+
+    /**
+     * Whether a `?->` on the call or on the member it filters can end the chain as null.
+     */
+    private function shortCircuits(MethodCall|NullsafeMethodCall $call): bool
+    {
+        return $call instanceof NullsafeMethodCall || $call->var instanceof NullsafePropertyFetch;
     }
 
     /**

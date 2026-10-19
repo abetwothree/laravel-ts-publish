@@ -14,9 +14,9 @@ export interface ProductResource
     slug: string;
     sku: string;
     description: string | null;
-    price: number;
-    compare_at_price?: number;
-    cost_price?: number | null;
+    price: string;
+    compare_at_price?: string;
+    cost_price?: string | null;
     quantity: number;
     is_active: boolean;
     is_featured: boolean;
@@ -24,9 +24,9 @@ export interface ProductResource
     tags?: TagResource[];
     images?: ImageResource[];
     orders_count?: number;
-    total_sold?: number;
-    min_unit_price?: number;
-    max_unit_price?: number;
+    total_sold?: number | null;
+    min_unit_price?: number | null;
+    max_unit_price?: number | null;
     weight?: number | null;
     dimensions?: { length: number; width: number; height: number; unit: "cm" | "in" };
     metadata?: ProductMetadata | ProductJsonMetaData | null;

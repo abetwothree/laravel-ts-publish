@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use Illuminate\Support\Collection;
 
 use function Orchestra\Testbench\workbench_path;
@@ -16,7 +16,7 @@ test('models collector works correctly', function () {
 
     expect($models)
         ->toBeInstanceOf(Collection::class)
-        ->toHaveCount(88)
+        ->toHaveCount(91)
         ->toContain('Workbench\App\Models\TrackingEvent')
         ->toContain('Workbench\App\Models\PostMeta');
 });

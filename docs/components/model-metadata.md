@@ -45,14 +45,15 @@ For each key, `#[TsCasts]` on `provide()` beats the `@return array{...}` shape, 
   token check runs over those.
 - **Inference**: body inference keeps only the keys the payload returned and discards any type containing `unknown`.
   Such a key then needs a docblock or a cast, or the run fails naming it.
+- **Numeric keys**: a numeric `@return` shape key is read on its own key; a payload with an int key is rejected before it.
 
 `ModelMetadataTransformer::validateProperties()` runs before `resolveImports()`, which writes a type for every payload
 key and would fail on a key no source typed.
 
 ### Body inference is an engine consumer
 
-`ModelMetadataAnalyzer::analyzeBody()` does not call `AstEngine::analyzeMethod()`, which seeds no bindings. It locates
-and binds `provide()` itself:
+`ModelMetadataAnalyzer::analyzeBody()` calls `AstEngine::analyzeMethod()` only when it cannot locate `provide()`.
+Otherwise it locates and binds `provide()` itself:
 
 - **Declaring class**: it locates `provide()` on the class that declares it, so `self::`, `parent::` and
   `$this->method()` resolve against the file the body lives in. No test distinguishes this from the configured class.
@@ -61,8 +62,8 @@ and binds `provide()` itself:
 - **Declared-type binding**: `AstEngine::bindingsFor()` binds the `Model $model` parameter to `Model`. Method calls on
   it reflect Laravel's own docblocks, so `getTable()`, `getKeyName()`, `getRouteKeyName()` and `getMorphClass()` infer
   `string`.
-- **Located context**: it hands the located context to `ResourceAstAnalyzer`, whose `analyze()` would otherwise run
-  `locateOwn()` again and decline the trait file. The run has no model class and uses the default resource profile, so
+- **Located context**: it hands the located context to `ResourceAstAnalyzer` beside the scope `bindingsFor()` seeded
+  from it, so `analyze()` runs no second lookup. The run has no model class and uses `forNonResourceSubjects()`, so
   anything not involving `$model` infers as `analyzeMethod()` would. An engine failure infers nothing.
 
 An attribute read such as `$model->status` infers nothing. `ModelAttributeResolver` cannot instantiate the abstract
@@ -98,7 +99,7 @@ with members, or a tuple with required elements. A provider can return `(object)
 `ModelMetadataTransformer::normalizeMetadataValue()` keeps as the one PHP value that spells `{}`. Otherwise
 `coerceEmptyArrays()` spells a bare `[]` as `{}` where `TsTypeShape::isObjectLike()` holds for the type at that path.
 A PHP list asks `TsTypeShape::elementType()` first and falls back to `memberType()`, because a list can be typed as an
-object literal with numeric keys.
+object literal with numeric keys or as a tuple.
 
 `isObjectLike()` requires every non-null arm to be an object literal or a `Record`, so a mixed union, an imported alias
 or a `#[TsCasts]` tuple keeps `[]`. Coercion reads the type string because the engine's DTOs export nothing else. The

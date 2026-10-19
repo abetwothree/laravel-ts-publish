@@ -17,6 +17,7 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
@@ -101,6 +102,18 @@ function methodCallCorpus(): array
         new MethodCall(new PropertyFetch($this_, 'post'), 'fresh'),
         // A bare call the resource forwards to its model, which only ReceiverMethodCallHandler answers.
         new MethodCall($this_, 'getKey'),
+        // The same key read through the $this->resource proxy.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'getKey'),
+        // The proxy spelling RelationCollectionChainHandler keeps, a call on a relation it hands on, and a plain chain.
+        new MethodCall(new PropertyFetch($this_, 'resource'), 'getMorphClass'),
+        new MethodCall(new PropertyFetch($this_, 'post'), 'commentsCount'),
+        new MethodCall(new PropertyFetch($this_, 'replies'), 'take', [new Arg(new Int_(5))]),
+        // The same relation pipeline rooted through the $this->resource proxy.
+        new MethodCall(new PropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'take', [new Arg(new Int_(5))]),
+        // The nullsafe proxy spellings of a relation filter and pipeline.
+        new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'take', [new Arg(new Int_(5))]),
+        new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'replies'), 'only', [new Arg(new Array_([new ArrayItem(new Int_(1))]))]),
+        new MethodCall(new NullsafePropertyFetch(new PropertyFetch($this_, 'resource'), 'post'), 'only', [new Arg($arr(['id', 'title']))]),
         // Collection pipelines: a trailing values()->all() on a relation root, the same shape on a
         // collect() root, and concat() of the receiver's own relation.
         new MethodCall(new MethodCall(new MethodCall(new PropertyFetch($this_, 'replies'), 'map', [
@@ -145,6 +158,12 @@ function inertEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('the matrix never resolves through make()');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis

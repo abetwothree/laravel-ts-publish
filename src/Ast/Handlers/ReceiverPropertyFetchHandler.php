@@ -11,9 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
@@ -62,6 +62,8 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         $results = [];
 
         foreach ($receiver->classes as $class) {
+            // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
+            DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
                 ? $this->modelMember($class, $name, $scope->carriesImports)
                 : $this->reflectedProperty($class, $name);
@@ -140,14 +142,6 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
 
         $result = resolve(SubjectPropertyTypeResolver::class)->resolve($reflection, $name);
 
-        if ($result === null || ! ValueResult::namesOnlyPublishedModels($result)) {
-            return null;
-        }
-
-        // This class's own property, never the whole expression: one arm of a union holding a plain string
-        // names no class, which would otherwise read as "nothing here is a false string" for every arm.
-        $held = resolve(ReceiverClassResolver::class)->memberProperty($class, $name);
-
-        return $held !== null && array_any($held->classes, StringSerialization::isFalseString(...)) ? null : $result;
+        return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
     }
 }

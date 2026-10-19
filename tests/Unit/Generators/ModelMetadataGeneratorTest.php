@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CommentedModelMetadataWriter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TaggedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\TaggedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\CommentedModelMetadataWriter;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use Illuminate\Support\Facades\View;
 use Workbench\App\Models\User;

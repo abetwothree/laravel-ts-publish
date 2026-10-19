@@ -13,9 +13,6 @@ use PhpParser\Node\Identifier;
 /**
  * Flatten a `$this->a->b?->c` property-fetch chain into ordered steps.
  *
- * Shared by PropertyChainHandler and MethodChainHandler, which sit on disjoint node classes but
- * decompose the same receiver shape.
- *
  * @internal
  */
 trait DecomposesPropertyChains

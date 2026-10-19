@@ -16,6 +16,7 @@ use Workbench\App\ValueObjects\OpaqueHandle;
 use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\User as CrmUser;
+use Workbench\Shipping\Enums\Status as ShipmentStatus;
 
 describe('ValueResult::withAttributeChannels()', function () {
     test('carries each FQCN kind on the channel its count picks', function (array $attribute, array $channels) {
@@ -138,6 +139,42 @@ describe('ValueResult::unionResults() over arms that spell one name for two clas
         ]);
     });
 
+    test('two enums read directly that share a name are two members, queued per token in place of the direct one', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ s: StatusType | null }', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]],
+            ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]);
+
+        expect($result)->toBe([
+            'type' => '{ s: StatusType | null } | StatusType | StatusType | null',
+            'optional' => false,
+            'embeddedEnumFqcns' => [Status::class, CrmStatus::class, Status::class],
+        ]);
+    });
+
+    // An enum resource's token holds no queue entry, since the AsEnum rewrite spells it (#76, #108).
+    test('two enums read directly beside an enum resource arm stay merged by their text', function () {
+        $result = ValueResult::unionResults([
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
+        ]);
+
+        expect($result['type'])->toBe('StatusType | null')
+            ->and($result['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class]);
+    });
+
+    test('two enum resource arms that share a name stay merged by their text', function () {
+        $result = ValueResult::unionResults([
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => CrmStatus::class],
+        ]);
+
+        expect($result['type'])->toBe('StatusType')
+            ->and($result['multiEnumResourceFqcns'] ?? null)->toBeNull();
+    });
+
     test('arms whose classes each have a name of their own are merged by their text, as before', function () {
         $result = ValueResult::unionResults([
             ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class],
@@ -238,6 +275,58 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
     ]);
 });
 
+// A Collection reaches JSON with its keys, so a union keeps them only when no arm is an array the filter re-indexes.
+describe('ValueResult::unionResults() over arms that keep their keys', function () {
+    test('keeps the keys when every arm that is not null keeps them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => 'null', 'optional' => false],
+        ]);
+
+        expect($result)->toBe(['type' => '{ "200": string } | null', 'optional' => false, 'keepsKeys' => true]);
+    });
+
+    test('drops the keys when an arm that is not null does not keep them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => '{ "404": string }', 'optional' => false],
+        ]);
+
+        expect($result)->not->toHaveKey('keepsKeys');
+    });
+
+    test('keeps no keys for a union of null alone', function () {
+        expect(ValueResult::unionResults([['type' => 'null', 'optional' => false]]))->not->toHaveKey('keepsKeys');
+    });
+
+    // The re-index leaves a scalar or an empty list as it is, so neither decides whether the union keeps keys.
+    test('keeps the keys beside an arm holding no object', function (string $other) {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => $other, 'optional' => false],
+        ]);
+
+        expect($result)->toBe(['type' => '{ "200": string } | '.$other, 'optional' => false, 'keepsKeys' => true]);
+    })->with(['string', 'never[]', 'Record<string, number>']);
+
+    test('drops the keys beside a list of objects that does not keep them', function () {
+        $result = ValueResult::unionResults([
+            ['type' => '{ "200": string }', 'optional' => false, 'keepsKeys' => true],
+            ['type' => '{ "1": string }[]', 'optional' => false],
+        ]);
+
+        expect($result)->not->toHaveKey('keepsKeys');
+    });
+});
+
+describe('ValueResult::enumTypeName()', function () {
+    test('names an enum by the type its file exports', function () {
+        expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
+            ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
+    });
+});
+
 describe('ValueResult::unionResults() over model, resource and class-less arms', function () {
     $app = ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class];
     $crm = ['type' => 'User', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]];
@@ -336,5 +425,157 @@ describe('ValueResult::withAttributeChannels() and a per-token class queue', fun
         ]);
 
         expect($result['embeddedModelFqcns'])->toBe([User::class, User::class, CrmUser::class]);
+    });
+});
+
+describe('ValueResult::withEnumArmShapes()', function () {
+    $mixed = [
+        'type' => 'StatusType[] | StatusType',
+        'optional' => false,
+        'enumFqcn' => Status::class,
+        'directEnumFqcn' => Status::class,
+    ];
+
+    test('records which arm of a mixed union is a list, whatever the order of the arms', function (array $arms, bool $wrapIsCollection, bool $directIsArray) use ($mixed) {
+        expect(ValueResult::withEnumArmShapes($mixed, $arms))
+            ->toBe([...$mixed, 'wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+    })->with([
+        'a list wrap and a scalar direct read' => [
+            [
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            true,
+            false,
+        ],
+        'a scalar direct read and a list wrap' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ],
+            true,
+            false,
+        ],
+        'a scalar wrap and a list direct read' => [
+            [
+                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            false,
+            true,
+        ],
+        'a nullable list on each side' => [
+            [
+                ['type' => 'StatusType[] | null', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[] | null', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ],
+            true,
+            true,
+        ],
+        'wraps that agree, and an arm holding no enum' => [
+            [
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+                ['type' => 'null', 'optional' => false],
+            ],
+            true,
+            false,
+        ],
+    ]);
+
+    test('leaves the union as it is when the arms cannot be attributed', function (array $arms) use ($mixed) {
+        expect(ValueResult::withEnumArmShapes($mixed, $arms))->toBe($mixed);
+    })->with([
+        'an arm carrying both channels' => [[
+            ['type' => 'StatusType[] | StatusType', 'optional' => false, 'enumFqcn' => Status::class, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'wrap arms that disagree' => [[
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'direct arms that disagree' => [[
+            ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType[]', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+        'no arm that reads the enum directly' => [[
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+        ]],
+        'no arm that wraps the enum' => [[
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ]],
+    ]);
+
+    test('does not resolve the arms of a union that is not a mixed one of a single enum', function (array $union) {
+        $arms = fn (): array => throw new LogicException('the arms must not be resolved');
+
+        expect(ValueResult::withEnumArmShapes($union, $arms))->toBe($union);
+    })->with([
+        'a union with no enum' => [['type' => 'string | number', 'optional' => false]],
+        'a union that only wraps' => [['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+        'a union that only reads directly' => [['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]],
+        'a wrap and a direct read of two enums' => [[
+            'type' => 'StatusType | PriorityType',
+            'optional' => false,
+            'enumFqcn' => Status::class,
+            'directEnumFqcn' => Priority::class,
+        ]],
+    ]);
+
+    test('reads the arms of a mixed union from a closure as it does from a list', function () use ($mixed) {
+        $arms = [
+            ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+        ];
+
+        expect(ValueResult::withEnumArmShapes($mixed, fn (): array => $arms))->toBe(ValueResult::withEnumArmShapes($mixed, $arms))
+            ->and(ValueResult::withEnumArmShapes($mixed, fn (): array => $arms))->toHaveKeys(['wrapIsCollection', 'directIsArray']);
+    });
+});
+
+describe('ValueResult::withNullArm() and hasNullArm()', function () {
+    // Two classes can share a name, so the arm is appended to the text, never merged into it.
+    test('append one top-level null arm and read only a top-level one', function (string $type, string $withArm, bool $hasArm) {
+        expect(ValueResult::withNullArm($type))->toBe($withArm)
+            ->and(ValueResult::hasNullArm($type))->toBe($hasArm);
+    })->with([
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null', false],
+        'unknown, which already admits null' => ['unknown', 'unknown', false],
+        'a leading null arm' => ['null | string', 'null | string', true],
+        'a null inside an element type, which is not top-level' => ['(X | null)[]', '(X | null)[] | null', false],
+        'a trailing null arm' => ['string | null', 'string | null', true],
+    ]);
+});
+
+describe('ValueResult::unionResults() over an arm that can be a MissingValue', function () {
+    test('an optional typed arm beside a required null arm makes the union optional', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => true],
+            ['type' => 'null', 'optional' => false],
+        ])['optional'])->toBeTrue();
+    });
+
+    test('an optional arm with no type alone leaves an optional unknown', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'unknown', 'optional' => true],
+            ['type' => 'unknown', 'optional' => false],
+        ]))->toBe(['type' => 'unknown', 'optional' => true]);
+    });
+
+    test('an optional arm with no type still makes a typed union optional', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => false],
+            ['type' => 'unknown', 'optional' => true],
+        ]))->toBe(['type' => 'string', 'optional' => true]);
+    });
+
+    test('arms that are all required leave the union required', function () {
+        expect(ValueResult::unionResults([
+            ['type' => 'string', 'optional' => false],
+            ['type' => 'number', 'optional' => false],
+        ])['optional'])->toBeFalse();
     });
 });

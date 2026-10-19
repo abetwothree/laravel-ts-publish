@@ -3,30 +3,48 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ArrayMergeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCastsOverOptionalProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithClassTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithEnumResourceErrors;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithFlaggedClassCastUnderShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithImportPaths;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithInertiaWrappers;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithKeyEdges;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithLosingSpellingImport;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodOverridesClass;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMethodTsCasts;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithMultiEnumTernary;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericBodyKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithNumericCastKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalDocblockKey;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithOptionalShareCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithoutShareMethod;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSignatureCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithSpellingsAcrossLocations;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTagSignatureCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithTsCastsAndDocblock;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUndefinedLiteralCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithUnsharedOptionalKey;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedAndBareEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastChildMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKitArrayMergeMiddleware;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Middleware\HandleInertiaRequests;
 
 /**
  * Analyze one fixture middleware without touching the filesystem discovery pass.
@@ -46,6 +64,10 @@ function analyzeSharedDataFor(string $middlewareClass): ?array
 
     return $analyzer->analyze();
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 // ─── discovery ───────────────────────────────────────────────────
 
@@ -117,6 +139,12 @@ test('each spread body derives its own Request variable names', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ spreadUrl: string, decoy: unknown, top: string }');
+});
+
+// Inertia calls a callable wherever it sits, so a helper holding one, read as a value or spread, holds what it returns.
+test('a first-class callable passed to a shared-data helper reads as what it returns', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithCallableHelperArguments::class)['sharedPageProps'] ?? null)
+        ->toBe('{ held_value: { held: string }, spread_held: string }');
 });
 
 test('array_merge and the spread form agree on a parent chain', function () {
@@ -238,17 +266,18 @@ test('docblock optional key is emitted once, with its marker', function () {
     // used to miss — the prop was emitted from both loops, which TypeScript rejects (TS2300).
     $result = analyzeSharedDataFor(MiddlewareWithOptionalDocblockKey::class);
 
-    // appName is also declared optional in the docblock, but its #[TsCasts] entry wins outright —
-    // proving normalization did not let the docblock entry survive as a second key.
+    // appName is also declared optional in the docblock: its #[TsCasts] entry wins the type and, saying nothing about
+    // optional, keeps the `?` — once, so normalization did not let the docblock entry survive as a second key.
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
+        ->and($result['sharedPageProps'])->toBe('{ appName?: AppName, filters?: Record<string, string> }');
 });
 
+// The class cast says nothing about `optional`, so `appName` keeps the docblock's `?`.
 test('docblock optional key absent from the shared props keeps its marker', function () {
     $result = analyzeSharedDataFor(MiddlewareWithUnsharedOptionalKey::class);
 
     expect($result)->not->toBeNull()
-        ->and($result['sharedPageProps'])->toBe('{ appName: AppName, filters?: Record<string, string> }');
+        ->and($result['sharedPageProps'])->toBe('{ appName?: AppName, filters?: Record<string, string> }');
 });
 
 test('TsCasts overrides win over docblock for same key', function () {
@@ -314,6 +343,42 @@ test('an EnumResource shared prop is rewritten to AsEnum and imports the enum co
         ->and($result['typeImports'])->toBe([]);
 });
 
+// Inertia runs shared data through the props resolver, so a shared resource is sent as a page prop's is.
+test('a shared resource value publishes what Inertia sends', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithResources::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe('{ firstShelf: { data: WarehouseResource }, '
+        .'shelfList: AnonymousResourceCollection<WarehouseResource>, named: PostCollection, '
+        .'statuses: { data: AsEnum<typeof Status>[] }, role: AsEnum<typeof Role>, user: { data: UserResource } | null }')
+        ->and($result['typeImports'] ?? null)->toBe([
+            './workbench/app/http/resources' => ['PostCollection', 'UserResource', 'WarehouseResource'],
+            '@tolki/types' => ['AnonymousResourceCollection'],
+        ]);
+});
+
+test('a shared resource value publishes bare after JsonResource::withoutWrapping()', function () {
+    JsonResource::withoutWrapping();
+
+    expect(analyzeSharedDataFor(MiddlewareWithResources::class)['sharedPageProps'] ?? null)->toBe('{ firstShelf: WarehouseResource, '
+        .'shelfList: WarehouseResource[], named: PostCollection, statuses: AsEnum<typeof Status>[], role: AsEnum<typeof Role>, '
+        .'user: UserResource | null }');
+});
+
+// Inertia resolves shared data as it does page props, so a shared paginator reaches the collection's response too.
+test('a shared resource collection publishes the response Inertia sends, with the pagination its paginator sends', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithResourceCollections::class);
+
+    expect($result['sharedPageProps'] ?? null)->toBe(
+        '{ anonymous: AnonymousResourceCollection<PostResource>, named: PostCollection, '
+        .'simple: PostCollection & ResourceSimplePagination, cursor: JsonResourceCursorPaginator<PostResource>, '
+        .'guessed: PostCollection & ResourcePagination }'
+    )
+        ->and($result['typeImports'] ?? null)->toBe([
+            './workbench/app/http/resources' => ['PostCollection', 'PostResource'],
+            '@tolki/types' => ['AnonymousResourceCollection', 'JsonResourceCursorPaginator', 'ResourcePagination', 'ResourceSimplePagination'],
+        ]);
+});
+
 test('an enum read both wrapped and bare keeps its type import alongside the value import', function () {
     // The GC runs the opposite way round from the resource case: only the wrapped prop's own token is
     // substituted, so the prop that still reads the enum bare has to keep RoleType importable.
@@ -322,6 +387,15 @@ test('an enum read both wrapped and bare keeps its type import alongside the val
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ role: AsEnum<typeof Role>, bareRole: RoleType }')
         ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['RoleType']])
+        ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
+});
+
+test('a bare enum case shared prop publishes its enum and imports its type', function () {
+    $result = analyzeSharedDataFor(HandleInertiaRequests::class);
+
+    expect($result)->not->toBeNull()
+        ->and($result['sharedPageProps'])->toContain(', role: AsEnum<typeof Role>, defaultStatus: StatusType, ')
+        ->and($result['typeImports'])->toBe(['./workbench/app/enums' => ['StatusType']])
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
 });
 
@@ -372,4 +446,114 @@ test('the union keeps its undefined arm beside a cast that names undefined only 
 test('a #[TsCasts] key with the backslashes a single-quoted PHP string leaves retypes the escaped signature', function () {
     expect(analyzeSharedDataFor(MiddlewareWithSignatureCastSpelling::class)['sharedPageProps'])
         ->toBe('{ [key: `${string}\\\\_cast`]: number }');
+});
+
+test('a #[TsCasts] key that spells more than one index signature warns', function () {
+    AnalysisWarnings::reset();
+
+    analyzeSharedDataFor(MiddlewareWithAmbiguousCastSpelling::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => MiddlewareWithAmbiguousCastSpelling::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+// ─── #[TsCasts] key edges ────────────────────────────────────────
+
+// PHP stores '42' as an int; the optional-suffix check used to receive it under strict types and throw a TypeError.
+// PropsResolver::resolve() array_merge()s shared data with the page's props, which renumbers its int keys from 0.
+test('a numeric cast key lands on the key Laravel renumbers it to instead of stopping the run, and warns', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithNumericCastKey::class)['sharedPageProps'])
+        ->toBe('{ appName: string, "0": boolean }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => MiddlewareWithNumericCastKey::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of shared data; use a string key.',
+        ]]);
+});
+
+test('a top-level int key of shared data publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithNumericBodyKey::class)['sharedPageProps'])
+        ->toBe('{ appName: string, "0": boolean, codes: { "7": string } }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => MiddlewareWithNumericBodyKey::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of shared data; use a string key.',
+        ]]);
+});
+
+test('share()\'s spelling of a signature outranks the class\'s exact name', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithSpellingsAcrossLocations::class)['sharedPageProps'])
+        ->toBe('{ id: number, [key: `${string}\\\\_x`]: number }');
+});
+
+test('a losing cast spelling brings no import', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithLosingSpellingImport::class);
+
+    expect($result['sharedPageProps'])->toBe('{ id: number, [key: `${string}\\\\_cast`]: number }')
+        ->and($result['typeImports'])->toBe([]);
+});
+
+it('quotes a shared-data key that is not an identifier', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithKeyEdges::class)['sharedPageProps'])
+        ->toBe('{ "can-edit": boolean, ok: number }');
+});
+
+test('the shared-data type prints no ? after a signature, whatever flag reaches it', function () {
+    $analyzer = new class extends InertiaSharedDataAnalyzer
+    {
+        /**
+         * The type string the builder prints.
+         *
+         * @param  array<string, array{type: string, optional: bool}>  $props
+         * @param  array<string, array{type: string, optional: bool}>  $overrides
+         */
+        public function build(array $props, array $overrides): string
+        {
+            return $this->buildTypeStringWithOverrides($props, $overrides);
+        }
+    };
+
+    expect($analyzer->build(
+        ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
+        ['[key: number]' => ['type' => 'string', 'optional' => true]],
+    ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, [key: number]: string }');
+});
+
+// Applied once: a second pass by the engine would leave `filters?` a key of its own beside `filters` (TS2300).
+test('a share() cast marks a key optional by its `?` suffix or its optional flag, once', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithOptionalShareCast::class)['sharedPageProps'])
+        ->toBe("{ filters?: Record<string, string>, locale?: 'en' | 'es', id: number }");
+});
+
+test('the engine leaves share()\'s own casts to the shared-data analyzer', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(MiddlewareWithOptionalShareCast::class, 'share');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'filters' => 'unknown[]',
+        'locale' => 'string',
+        'id' => 'number',
+    ]);
+});
+
+test('a cast that says nothing about optional keeps the docblock\'s flag, else the prop\'s own', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithCastsOverOptionalProps::class)['sharedPageProps'])
+        ->toBe('{ flash?: Flash, notice: Notice, banner: Banner, held?: HeldShare, id: number, [key: `${string}_note`]: number | undefined }');
+});
+
+// The shared-data analyzer reads only the subclass's share(), so the engine still applies the parent's own cast.
+test('a parent middleware\'s share() cast reaches a subclass that spreads parent::share()', function () {
+    expect(analyzeSharedDataFor(ShareCastChildMiddleware::class)['sharedPageProps'])
+        ->toBe("{ locale: 'en' | 'es', id: number }");
+});
+
+test('a subclass that inherits share() whole gets its casts once', function () {
+    expect(analyzeSharedDataFor(ShareCastInheritingMiddleware::class)['sharedPageProps'])
+        ->toBe("{ filters?: Record<string, string>, locale?: 'en' | 'es', id: number }");
+});
+
+test('a share() cast that says nothing about optional keeps the class cast\'s flag', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithFlaggedClassCastUnderShareCast::class)['sharedPageProps'])
+        ->toBe('{ held?: HeldShare, id: number }');
 });

@@ -5,22 +5,39 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodContext;
+use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaInlineTableController;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaServiceTableController;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InertiaUiTable\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaInlineTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResourcePropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSignatureCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithSpreadProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTagSignatureBranches;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithTraitAction;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithUnionProps;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithValidatedProps;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\Status;
+use Workbench\App\Http\Controllers\InertiaEnumCaseController;
+use Workbench\App\Http\Controllers\InertiaKeyEdgesController;
 use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
+use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
 use Workbench\App\Http\Controllers\PostInertiaController;
+use Workbench\App\Http\Resources\PostStubCollection;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
@@ -31,6 +48,10 @@ function pageData(string $uses): ?array
 {
     return new InertiaPageAnalyzer()->analyze(['uses' => $uses]);
 }
+
+afterEach(function () {
+    JsonResource::flushState();
+});
 
 // ─── componentToFqn() ─────────────────────────────────────────────
 
@@ -100,6 +121,20 @@ it('marks the lazy Inertia wrappers optional and keeps the wrapped value type', 
         ->and($data['classFqcns'])->toBe([Comment::class]);
 });
 
+it('keeps a ternary prop required over plain arms and optional over a lazy one', function () {
+    $data = pageData(ControllerWithUnionProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { y: number | string, z?: number }');
+});
+
+// A field absent from the request reads null, which `??` and a short `?:` replace; a direct read, a full ternary and a
+// closure keep the field's optional, and so does an optional prop, which `??` never sees as null.
+it('drops a form-request field\'s optional across ?? and ?:, and keeps it across a ternary, a closure or an optional prop', function () {
+    $data = pageData(ControllerWithValidatedProps::class.'@index');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { a: string, b: number, c?: string, d?: string, e: { search: string }, f: string, h: string, i?: string, j?: string }');
+});
+
 it('reads compact() keys and array_merge() props as the array literal each is equivalent to', function () {
     $compacted = pageData(InertiaUserShapesController::class.'@compacted');
     $merged = pageData(InertiaUserShapesController::class.'@merged');
@@ -138,7 +173,47 @@ it('falls back to bare SharedData for a render with no props', function () {
 it('types the route-bound model parameter and the injected service call', function () {
     $data = pageData(InertiaUserShapesController::class.'@bound');
 
-    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, stats: { views: number; likes: number } }');
+    expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } }');
+});
+
+// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
+// model, in a branch or not, keeps the parameter's binding.
+it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
+    expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: string }')
+        ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { title: unknown }');
+});
+
+// Inertia sends what json_encode() writes, so a list asort() keys out of order arrives as an object.
+it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
+    expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
+});
+
+// Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract
+// `Model` names no class a published file exports, so its bare read publishes unknown, importing nothing.
+it('types the props an action reads from its scalar, enum, union and nullable model parameters', function () {
+    $show = pageData(TypedActionParametersController::class.'@show');
+    $abstract = pageData(TypedActionParametersController::class.'@abstractModel');
+
+    expect($show['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { id: number, status: StatusType, title: string | null, post: Post | null }')
+        ->and($show['classFqcns'] ?? null)->toBe([Status::class, Post::class])
+        ->and($abstract['pageType'] ?? null)->toBe('Inertia.SharedData & { model: unknown }')
+        ->and($abstract['classFqcns'] ?? null)->toBe([])
+        ->and(pageData(TypedActionParametersController::class.'@filter')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { term: string | null, key: string | number }');
 });
 
 it('types a resource collection from what it wraps', function () {
@@ -151,6 +226,39 @@ it('types a resource collection from what it wraps', function () {
         ->and($anonymous['pageType'])->toBe(
             'Inertia.SharedData & { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> }'
         );
+});
+
+// Inertia sends a resource prop as its toResponse() data, at any depth, so a single resource arrives in its wrap key.
+it('types a single resource page prop as what Inertia sends', function () {
+    $wrapped = pageData(InertiaSingleResourceController::class.'@resource');
+    $shared = pageData(InertiaResourceSharedTemplate::class.'@resource');
+
+    JsonResource::withoutWrapping();
+
+    expect($wrapped['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and($wrapped['classFqcns'] ?? null)->toBe([WarehouseResource::class])
+        ->and($shared['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } }')
+        ->and(pageData(InertiaSingleResourceController::class.'@resource')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }');
+});
+
+it('wraps a resource nested in a prop array, a toResource() call, an enum list and a body without its wrap key', function () {
+    $data = pageData(InertiaResourcePropsController::class.'@show');
+
+    expect($data['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'built: { data: WarehouseResource }, made: { data: WarehouseResource }, guessed: { data: WarehouseResource }, '
+        .'named: { data: WarehouseResource }, nested: { inner: { data: WarehouseResource } }, statuses: { data: AsEnum<typeof Status>[] }, '
+        .'custom: { data: ItemsKeyPostCollection }, custom_page: { data: ItemsKeyPostCollection } & ResourcePagination, '
+        .'held: DataKeyPostResource }')
+        ->and($data['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourcePagination']]);
+});
+
+it('keeps the body resolve() returns, and the response a fluent call on a resource hands back', function () {
+    expect(pageData(InertiaResourcePropsController::class.'@chained')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'resolved: WarehouseResource, made_resolved: WarehouseResource, additional: { data: WarehouseResource }, '
+        .'list: PostResource[], body: ItemsKeyPostCollection }');
 });
 
 it('types props delegated to a collaborator, and reads both inertia() helper forms', function () {
@@ -166,6 +274,14 @@ it('types props delegated to a collaborator, and reads both inertia() helper for
         ->and($chain['pageType'])->toBe('Inertia.SharedData & { label: string }');
 });
 
+it('types an action a trait in another file supplies', function () {
+    $data = pageData(ControllerWithTraitAction::class.'@helper');
+
+    expect($data)->not->toBeNull()
+        ->and($data['component'])->toBe('Dashboard/Helper')
+        ->and($data['pageType'])->toBe('Inertia.SharedData & { label: string }');
+});
+
 // Task 32 review, fix round 2: the props array literal passed to Inertia::render() is a whole
 // return shape in its own right, so a top-level resource spread inside it must flatten too.
 it('flattens a top-level resource spread inside the render props array', function () {
@@ -173,7 +289,7 @@ it('flattens a top-level resource spread inside the render props array', functio
 
     expect($data['component'])->toBe('Dashboard/Spread')
         ->and($data['pageType'])->toBe(
-            'Inertia.SharedData & { id: number, name: string, email: string, role: RoleType | null, '.
+            'Inertia.SharedData & { id: number, name: string, email: string, role: AsEnum<typeof Role> | null, '.
             'profile?: Profile | null, posts?: PostResource[], phone?: string | null, avatar?: string, '.
             'posts_count?: number, comments_count?: number, flag: boolean }'
         );
@@ -240,7 +356,7 @@ it('applies #[TsCasts] overrides and their imports', function () {
 test('parseTsCastsFromMethod returns empty arrays for a non-existent class', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -250,13 +366,13 @@ test('parseTsCastsFromMethod returns empty arrays for a non-existent class', fun
     $result = $analyzer->expose('NonExistent\\Controller', 'index');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
 test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts attribute', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -266,13 +382,13 @@ test('parseTsCastsFromMethod returns empty arrays when the method has no TsCasts
     $result = $analyzer->expose(InertiaPageAnalyzer::class, '__construct');
 
     expect($result['overrides'])->toBeEmpty()
-        ->and($result['importMap'])->toBeEmpty();
+        ->and($result['importPaths'])->toBeEmpty();
 });
 
-test('parseTsCastsFromMethod extracts both the overrides and the import map', function () {
+test('parseTsCastsFromMethod extracts both the overrides and each one\'s import path', function () {
     $analyzer = new class extends InertiaPageAnalyzer
     {
-        /** @return array{overrides: array<string, string>, importMap: array<string, list<string>>} */
+        /** @return array{overrides: array<string, string>, importPaths: array<string, string>} */
         public function expose(string $class, string $method): array
         {
             return $this->parseTsCastsFromMethod($class, $method);
@@ -283,7 +399,7 @@ test('parseTsCastsFromMethod extracts both the overrides and the import map', fu
 
     expect($result['overrides'])->toHaveKey('count', 'string')
         ->and($result['overrides'])->toHaveKey('meta', 'PageMeta')
-        ->and($result['importMap'])->toBe(['@workbench/types' => ['PageMeta']]);
+        ->and($result['importPaths'])->toBe(['meta' => '@workbench/types']);
 });
 
 // ─── analyze() paginated Resource::collection() ───────────────────
@@ -359,6 +475,51 @@ test('analyze() emits the keyed record shape for a preserve-keys paginated colle
         ->and($anonymous['pageType'])->toBe(
             "Inertia.SharedData & { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } }"
         );
+});
+
+test('analyze() types a resource collection over each paginator kind with what that kind sends', function () {
+    $named = pageData(InertiaPaginatorKindsController::class.'@named');
+    $anonymous = pageData(InertiaPaginatorKindsController::class.'@anonymous');
+
+    expect($named['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: PostCollection & ResourceSimplePagination, cursor: PostCollection & ResourceCursorPagination, '
+        .'either: PostCollection & (ResourceSimplePagination | ResourcePagination), sometimes: PostCollection | (PostCollection & ResourcePagination) }'
+    )
+        ->and($named['externalImports'] ?? null)->toBe(['@tolki/types' => ['ResourceSimplePagination', 'ResourceCursorPagination', 'ResourcePagination']])
+        ->and($anonymous['pageType'] ?? null)->toBe(
+            'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+            .'sometimes: AnonymousResourceCollection<PostResource> | JsonResourceSimplePaginator<PostResource> }'
+        )
+        ->and($anonymous['externalImports'] ?? null)
+        ->toBe(['@tolki/types' => ['JsonResourceSimplePaginator', 'JsonResourceCursorPaginator', 'AnonymousResourceCollection']]);
+});
+
+test('analyze() types a flat collection over a simple or cursor paginator as that paginator\'s response, keyed when it keeps keys', function () {
+    $flat = pageData(InertiaPaginatorKindsController::class.'@flat');
+
+    expect($flat['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { simple: JsonResourceSimplePaginator<PostResource>, cursor: JsonResourceCursorPaginator<PostResource>, '
+        ."keyed: Omit<JsonResourceCursorPaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }"
+    );
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+test('analyze() types toResourceCollection() as the response of the collection Laravel guesses or is given', function () {
+    $guessed = pageData(InertiaPaginatorKindsController::class.'@guessed');
+
+    expect($guessed['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { named: PostCollection & ResourceSimplePagination, anonymous: JsonResourceCursorPaginator<WarehouseResource>, '
+        .'explicit: JsonResourcePaginator<WarehouseResource>, unpaged: PostCollection }'
+    );
+});
+
+// Review Focus 2: the intersection is what Laravel sends only while the stub's own interface carries the `data` key.
+test('the stub collection over simplePaginate() publishes its data beside the simple pagination block', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    expect(pageData(InertiaPaginatorKindsController::class.'@stubPage')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { posts: PostStubCollection & ResourceSimplePagination }')
+        ->and(resolve(ResourceGenerator::class, ['findable' => PostStubCollection::class])->content)
+        ->toContain('data: PostResource[];');
 });
 
 // ─── analyze() shared-template isolation ──────────────────────────
@@ -468,7 +629,7 @@ describe('a docblock-filled index signature in page props merged from several br
 
     test('a resource-typed key from the other ternary arm puts the fill back', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternary')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: PostResource }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: unknown | undefined, price_tag?: { data: PostResource } }',
         );
     });
 
@@ -478,9 +639,10 @@ describe('a docblock-filled index signature in page props merged from several br
         );
     });
 
+    // The cast says nothing about optional, so the key only one arm sets keeps its `?`.
     test('a ternary arm\'s key the controller method\'s #[TsCasts] retypes joins with its cast type', function () {
         expect(pageData(ControllerWithTagSignatureBranches::class.'@ternaryCast')['pageType'])->toBe(
-            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag: number }',
+            'Inertia.SharedData & { [key: `${string}_tag`]: string | number | undefined, price_tag?: number }',
         );
     });
 
@@ -497,7 +659,133 @@ test('a controller method\'s #[TsCasts] key with the backslashes a single-quoted
         ->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }');
 });
 
+test('a controller method\'s cast key that spells more than one signature warns', function () {
+    AnalysisWarnings::reset();
+
+    pageData(ControllerWithAmbiguousCastSpelling::class.'@show');
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => ControllerWithAmbiguousCastSpelling::class.'@show',
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a parser override returning the 2.7 shape builds the page and applies its overrides', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /** @return array{overrides: array<string, string>, importMap: array<string, string>} */
+        protected function parseTsCastsFromMethod(string $controllerClass, string $methodName): array
+        {
+            return ['overrides' => ['heading' => 'Headline'], 'importMap' => ['Headline' => '@/types/headline']];
+        }
+    };
+
+    $data = $analyzer->analyze(['uses' => ControllerWithCastKeyEdges::class.'@numeric']);
+
+    expect($data['pageType'])->toContain('heading: Headline');
+});
+
 test('a controller method\'s cast key holding a raw CR retypes the CR signature', function () {
     expect(pageData(ControllerWithSignatureCastSpelling::class.'@rawCr')['pageType'])
         ->toBe('Inertia.SharedData & { [key: `${string}\r`]: number, id: number }');
+});
+
+// ─── #[TsCasts] key edges ────────────────────────────────────────
+
+// PropsResolver::resolve() array_merge()s the props over shared data, which renumbers their int keys from 0.
+test('a page cast on a numeric key lands on the key Laravel renumbers it to, and warns', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numeric')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => ControllerWithCastKeyEdges::class.'@numeric',
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ]]);
+});
+
+test('a top-level int key of a page publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numericBody')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean, codes: { "7": string } }')
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => ControllerWithCastKeyEdges::class.'@numericBody',
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+        ]]);
+});
+
+test('a collection keyed by numbers keeps its keys in a page prop', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@collectedCodes')['pageType'])
+        ->toBe('Inertia.SharedData & { codes: { "200": string; "404": string } }');
+});
+
+test('an int key a page cast adds renumbers after the props\' own', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@numericCastAdded')['pageType'])
+        ->toBe('Inertia.SharedData & { heading: string, "0": boolean, "1": string }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "42" is renumbered to "0" by Laravel at the top level of a page; use a string key.',
+            'The key "7" is renumbered to "1" by Laravel at the top level of a page; use a string key.',
+        ]);
+});
+
+test('a losing page cast spelling brings no import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@losing');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { [key: `${string}\\\\_cast`]: number, id: number }')
+        ->and($data['externalImports'])->toBe([]);
+});
+
+it('keeps a page cast\'s import once when only one rendered component returns its key', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@twoComponents');
+
+    expect($data['component'])->toBe(['Edges/WithMeta', 'Edges/WithoutMeta'])
+        ->and($data['pageType'][0])->toBe('Inertia.SharedData & { meta: PageMeta, id: number }')
+        ->and($data['externalImports'])->toBe(['@/types/meta' => ['PageMeta']]);
+});
+
+it('honors a page cast\'s optional flag, and keeps a prop\'s own ? under a type-only cast', function () {
+    expect(pageData(ControllerWithCastKeyEdges::class.'@optionalCast')['pageType'])
+        ->toBe('Inertia.SharedData & { heading?: Heading, id: number, [key: `${string}_note`]: number | undefined }')
+        ->and(pageData(ControllerWithCastKeyEdges::class.'@typeOnlyCast')['pageType'])
+        ->toBe('Inertia.SharedData & { meta?: PageMeta, note: Note, id: number }');
+});
+
+test('a prop typed from a request\'s import-aware cast carries the import', function () {
+    $data = pageData(ControllerWithCastKeyEdges::class.'@validated');
+
+    expect($data['pageType'])->toBe('Inertia.SharedData & { attributes?: PostAttributes }')
+        ->and($data['externalImports'])->toBe(['@js/types/posts' => ['PostAttributes']]);
+});
+
+it('quotes a page prop key that is not an identifier', function () {
+    expect(pageData(InertiaKeyEdgesController::class.'@show')['pageType'])
+        ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
+});
+
+it('types a bare enum case prop as its enum, and imports it once, beside a new value', function () {
+    $data = pageData(InertiaEnumCaseController::class.'@show');
+
+    expect($data['pageType'])
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
+        ->and($data['classFqcns'])->toBe([Status::class]);
+});
+
+test('the page type prints no ? after a signature, whatever flag reaches it', function () {
+    $analyzer = new class extends InertiaPageAnalyzer
+    {
+        /**
+         * The type string the builder prints.
+         *
+         * @param  array<string, array{type: string, optional: bool}>  $props
+         * @param  array<string, string>  $overrides
+         */
+        public function build(array $props, array $overrides): string
+        {
+            return $this->buildTypeStringWithOverrides($props, $overrides);
+        }
+    };
+
+    expect($analyzer->build(
+        ['[key: `${string}_flag`]' => ['type' => 'boolean', 'optional' => true], 'id' => ['type' => 'number', 'optional' => true]],
+        ['a-b' => 'string'],
+    ))->toBe('{ [key: `${string}_flag`]: boolean, id?: number, "a-b": string }');
 });

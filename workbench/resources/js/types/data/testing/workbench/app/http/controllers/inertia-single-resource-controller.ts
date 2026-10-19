@@ -31,7 +31,7 @@ export const resourceAnonymousCollection = annotatePageProps<ResourceAnonymousCo
     component: 'Resource/AnonymousWarehouse',
 }));
 
-export type ResourcePageProps = Inertia.SharedData & { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource };
+export type ResourcePageProps = Inertia.SharedData & { warehouse_first: { data: WarehouseResource }, warehouse_find: { data: WarehouseResource } };
 
 /**
  * Test single resource returns

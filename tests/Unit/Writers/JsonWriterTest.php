@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Writers\JsonWriter;
 use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Models\Parcel;

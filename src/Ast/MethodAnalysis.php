@@ -7,6 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use Closure;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -15,21 +18,29 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type ClassMapType = array<string, class-string>
+ * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
- * @phpstan-type InlineEnumFqcnsMap = array<string, list<class-string>>
- * @phpstan-type InlineModelFqcnsMap = array<string, list<class-string>>
- * @phpstan-type InlineResourceFqcnsMap = array<string, list<class-string>>
- * @phpstan-type MultiEnumFqcnsMap = array<string, list<class-string>>
+ * @phpstan-type InlineEnumFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
- * @phpstan-type EnumResourceArmShapeMap = array<string, EnumResourceArmShape>
- * @phpstan-type ImportedCastKeyMap = array<string, true>
+ * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
+ * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
+ * @phpstan-type CastMap = array<array-key, CastInForce>
+ * @phpstan-type CarriedMap = array{
+ *     enums?: list<class-string>,
+ *     models?: list<class-string>,
+ *     resources?: list<class-string>,
+ * }
  * @phpstan-type AnalyzedProperty = array{
  *     name: string,
  *     type: string,
  *     optional: bool,
  *     description: string,
  *     bodyType?: string,
+ *     fillType?: string,
+ *     keepsKeys?: bool,
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  *
@@ -41,7 +52,8 @@ class MethodAnalysis
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
-     *                                            fill or a same-pattern union changed: the value its body gives it
+     *                                            fill or a same-pattern union changed: the value its body gives it;
+     *                                            `fillType` is that signature's docblock fill, kept through a put-back
      * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
      * @param  ClassMapType  $nestedResources  property name => resource FQCN
      * @param  ImportMapType  $customImports  import path => list of type names
@@ -54,11 +66,14 @@ class MethodAnalysis
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
-     *                                                          for a mixed EnumResource/direct-access ternary
-     * @param  ImportedCastKeyMap  $importedCastKeys  property name => true, for a key whose method-level #[TsCasts]
-     *                                                entry brings its own import: that text is the app's own
+     *                                                          for a mixed EnumResource/direct-access ternary or match
+     * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
+     *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
+     *                          to that text
+     * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: kept apart from
+     *                               every queue, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
-     * @param  class-string<JsonResource>|null  $flatTypeAliasFqcn  FQCN of the singular resource for the flat type alias
+     * @param  class-string<JsonResource|Model>|null  $flatTypeAliasFqcn  FQCN of the element the flat type alias lists
      */
     public function __construct(
         public array $properties = [],
@@ -73,7 +88,8 @@ class MethodAnalysis
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
         public array $enumResourceArmShapes = [],
-        public array $importedCastKeys = [],
+        public array $casts = [],
+        public array $carried = [],
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
@@ -91,6 +107,12 @@ class MethodAnalysis
         // A class no generated file exports would be a token with no import behind it.
         if (! ValueResult::namesOnlyExportedClasses($result)) {
             $result = [...ValueResult::unknown(), 'optional' => $result['optional']];
+
+            // A signature's untyped value stays `unknown | undefined`, the floor the refiner fills and the reconcile
+            // puts back.
+            if (JsEmitter::isIndexSignatureKey($name)) {
+                $result = ValueResult::asIndexSignatureValue($result);
+            }
         }
 
         $this->properties[] = [
@@ -98,6 +120,7 @@ class MethodAnalysis
             'type' => $result['type'],
             'optional' => $optional || $result['optional'],
             'description' => $description,
+            ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
         ];
 
         $this->dispatchFqcnResults(
@@ -124,25 +147,49 @@ class MethodAnalysis
         foreach ($result['customImports'] ?? [] as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
         }
+
+        $this->carry($result['carriedFqcns'] ?? []);
+    }
+
+    /**
+     * Record one more runtime key a signature covers: it replaces no earlier entry, is never optional, and its value
+     * admits `undefined`. It brings no cast, so, as merge() does, the name's earlier cast no longer describes it.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function addSignatureEntry(string $name, array $result): void
+    {
+        unset($this->casts[$name]);
+        $this->addProperty($name, ValueResult::asIndexSignatureValue($result));
     }
 
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps spread-merge with the source winning on
-     * collision. `inlineModelFqcns`, `inlineResourceFqcns`, `inlineEnumFqcns` and `inlineEnumResourceFqcns` append
-     * WITHOUT deduping — aliasPropertyType() consumes each as a positional queue against the rendered type.
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning,
+     * and a key the source sets without a cast loses its entry. The four inline maps append WITHOUT deduping:
+     * aliasPropertyType() consumes each as a positional queue against the rendered type. `carried` unions per kind.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
-        $this->enumResources = [...$this->enumResources, ...$source->enumResources];
-        $this->nestedResources = [...$this->nestedResources, ...$source->nestedResources];
-        $this->directEnumFqcns = [...$this->directEnumFqcns, ...$source->directEnumFqcns];
-        $this->modelFqcns = [...$this->modelFqcns, ...$source->modelFqcns];
-        $this->multiEnumResourceFqcns = [...$this->multiEnumResourceFqcns, ...$source->multiEnumResourceFqcns];
-        $this->enumResourceArmShapes = [...$this->enumResourceArmShapes, ...$source->enumResourceArmShapes];
-        $this->importedCastKeys = [...$this->importedCastKeys, ...$source->importedCastKeys];
+        // A spread would renumber a numeric property name, which PHP stores as an int.
+        $this->enumResources = array_replace($this->enumResources, $source->enumResources);
+        $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
+        $this->directEnumFqcns = array_replace($this->directEnumFqcns, $source->directEnumFqcns);
+        $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
+        $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
+        $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
+
+        foreach ($source->properties as $property) {
+            if (! isset($source->casts[$property['name']])) {
+                unset($this->casts[$property['name']]);
+            }
+        }
+
+        // A spread would renumber a numeric cast key.
+        $this->casts = array_replace($this->casts, $source->casts);
+        $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
@@ -167,6 +214,20 @@ class MethodAnalysis
         }
     }
 
+    /**
+     * Add classes a cast carried, once each per kind.
+     *
+     * @param  CarriedMap  $carried
+     */
+    public function carry(array $carried): void
+    {
+        foreach ($carried as $kind => $fqcns) {
+            if ($fqcns !== []) {
+                $this->carried[$kind] = array_values(array_unique([...($this->carried[$kind] ?? []), ...$fqcns]));
+            }
+        }
+    }
+
     /** Whether any FQCN channel carries an entry for this property name, whose tokens are rewritten under it. */
     public function hasFqcnChannel(string $name): bool
     {
@@ -179,9 +240,9 @@ class MethodAnalysis
     }
 
     /**
-     * Forget every channel entry and cast mark keyed by this property name, when another value takes the key over: an
-     * entry left behind would alias the new type by the old one's classes, or keep an import nothing spells, and a
-     * mark would keep the new type from being aliased.
+     * Forget every import channel entry and cast entry keyed by this property name, when another value takes the key
+     * over: an import channel entry left behind would alias the new type by the old one's classes or keep an import
+     * nothing spells, and a cast entry would fit the new value to a text the key no longer publishes.
      */
     public function forgetChannels(string $name): void
     {
@@ -189,7 +250,54 @@ class MethodAnalysis
             $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->importedCastKeys[$name],
+            $this->enumResourceArmShapes[$name], $this->casts[$name],
         );
+    }
+
+    /**
+     * Drop each named key another analysis already holds, with its import channels and cast; signature entries stay.
+     *
+     * PHP's `+` and Laravel's mergeData() keep a key already set, while a signature entry is one more runtime key.
+     */
+    public function dropKeysHeldBy(self $held): void
+    {
+        $names = array_flip(array_column($held->properties, 'name'));
+        $kept = [];
+
+        foreach ($this->properties as $property) {
+            if (isset($names[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $this->forgetChannels($property['name']);
+
+                continue;
+            }
+
+            $kept[] = $property;
+        }
+
+        $this->properties = $kept;
+    }
+
+    /**
+     * Rewrite every property's type, body type and fill, except a key a cast types and a value that keeps its keys.
+     *
+     * @param  Closure(string): string  $rewrite
+     */
+    public function rewritePropertyTypes(Closure $rewrite): void
+    {
+        foreach ($this->properties as &$property) {
+            if (isset($this->casts[$property['name']]) || ($property['keepsKeys'] ?? false)) {
+                continue;
+            }
+
+            $property['type'] = $rewrite($property['type']);
+
+            foreach (['bodyType', 'fillType'] as $field) {
+                if (isset($property[$field])) {
+                    $property[$field] = $rewrite($property[$field]);
+                }
+            }
+        }
+
+        unset($property);
     }
 }

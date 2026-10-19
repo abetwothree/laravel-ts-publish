@@ -123,6 +123,7 @@ class InertiaUserShapesController
     {
         return Inertia::render('UserShapes/Bound', [
             'post' => $post,
+            'post_id' => $post->getKey(),
             'stats' => $this->stats->summary(),
         ]);
     }

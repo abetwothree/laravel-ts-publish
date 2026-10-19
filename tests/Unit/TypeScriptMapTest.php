@@ -78,6 +78,29 @@ test('custom_ts_mappings override default mappings', function () {
     expect($map['string'])->toBe('CustomString');
 });
 
+// castToTsType() defers a cast these keys name to toTsType(), so they must be the keys the map it reads was built with.
+test('customKeys names the custom_ts_mappings keys of the cached map, lowercased as gather() merges them', function () {
+    config()->set('ts-publish.custom_ts_mappings', ['Timestamp' => 'boolean', 'decimal:2' => 'number']);
+    $keys = (new TypeScriptMap)->customKeys();
+    config()->set('ts-publish.custom_ts_mappings', []);
+
+    expect($keys)->toBe(['timestamp' => true, 'decimal:2' => true])
+        ->and((new TypeScriptMap)->customKeys())->toBe($keys);
+});
+
+// toTsType() reads a user's entry by the whole type, then by the name before a `(`; a built-in key is no user entry.
+test('isCustomMapped reads a user key as toTsType() steps 1 and 1a do', function (string $type, bool $mapped) {
+    config()->set('ts-publish.custom_ts_mappings', ['Decimal' => 'number']);
+
+    expect((new TypeScriptMap)->isCustomMapped($type))->toBe($mapped);
+})->with([
+    'the whole type' => ['decimal', true],
+    'the whole type, in another case' => ['DECIMAL', true],
+    'the name before a `(`' => ['decimal(10,2) unsigned', true],
+    'a cast whose name only starts with the key' => ['decimal:2', false],
+    'a key only the built-in map has' => ['numeric', false],
+]);
+
 test('date types resolve to string by default', function () {
     config()->set('ts-publish.timestamps_as_date', false);
 

@@ -11,7 +11,7 @@ use Workbench\App\Models\Sales\Report\Report as SalesReport;
 
 /**
  * Fixture: broadcasts both Report models, which share a basename AND parent namespace
- * segment ('Report') — reproduces the eagle MailPrice alias collision via a broadcast event.
+ * segment ('Report') — reproduces a same-basename alias collision via a broadcast event.
  */
 class ReportSynced implements ShouldBroadcast
 {

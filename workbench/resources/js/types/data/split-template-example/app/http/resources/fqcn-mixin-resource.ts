@@ -6,5 +6,5 @@
 export interface FqcnMixinResource
 {
     id: number;
-    total: number;
+    total: string;
 }

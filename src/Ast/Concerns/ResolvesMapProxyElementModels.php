@@ -23,7 +23,7 @@ trait ResolvesMapProxyElementModels
     /**
      * Resolve the element model behind a `->map` proxy receiver: a whenLoaded to-many closure parameter, or
      * `$this->relation`, also as `$this->resource->relation`; null for a singular relation's variable, which is no
-     * collection. A reassignment inside the closure is not seen, an accepted approximation.
+     * collection, or for a variable read past the write that ended its parameter binding.
      *
      * @return class-string<Model>|null
      */
@@ -32,14 +32,12 @@ trait ResolvesMapProxyElementModels
         if ($receiver instanceof Variable
             && is_string($receiver->name)
             && isset($scope->varCollectionBindings[$receiver->name])
+            && $scope->holdsBinding($receiver)
         ) {
             return $scope->varCollectionBindings[$receiver->name]['modelFqcn'];
         }
 
-        if ($receiver instanceof PropertyFetch
-            && ($this->isThisPropertyFetch($receiver) || ($this->isResourceFetch($receiver->var) && $scope->forwardsUndeclaredMembersTo !== null))
-            && $receiver->name instanceof Identifier
-        ) {
+        if ($receiver instanceof PropertyFetch && $this->isModelMemberFetch($receiver, $scope) && $receiver->name instanceof Identifier) {
             $relationInfo = $this->resolveModelRelationTypeInfo($receiver->name->toString(), $scope);
 
             if (str_ends_with($relationInfo['type'], '[]') && $relationInfo['modelFqcn'] !== null) {

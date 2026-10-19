@@ -10,15 +10,21 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BrandedFormRequestRulesAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Analyzers\FormRequest\BrandedFormRequestRulesAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\StarterKit\StarterKitMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverIntegerKeyModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -54,6 +60,12 @@ function requestRuleEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -114,7 +126,15 @@ it('types a Request method call from the reflected signature', function (string 
     ['getLanguages', 'string[]'],
     // A class json_encode really does render as a string, unlike `interval()`'s CarbonInterval.
     ['date', 'string | null'],
+    // json_encode() ignores __toString(): an UploadedFile writes `{}`, a CarbonInterval its DateInterval fields.
+    ['allFiles', 'Record<string, Record<string, never> | Record<string, never>[]>'],
+    ['interval', LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE.' | null'],
 ]);
+
+it('types Request::image() as the `{}` an Image writes', function () {
+    expect((new KnownMethodRuleHandler)->resolve(requestCall('image'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'Record<string, never> | null', 'optional' => false, 'keepsKeys' => true]);
+})->skip(fn () => ! version_compare(app()->version(), '13.20.0', '>='), 'Request::image() requires Laravel 13.20+');
 
 it('types $request->user() through the auth provider model', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('user'), requestRuleScope(), requestRuleEngine()))
@@ -155,10 +175,6 @@ it('declines a Request method whose reflected type is unusable', function (strin
     'bare @return array, encoded as a map' => ['only'],
     'bare @return array behind a union arm' => ['cookie'],
     'a union arm reflection could not type' => ['getContent'],
-    // json_encode ignores __toString: an UploadedFile or a CarbonInterval arrives as an object.
-    '@return class that encodes as an object' => ['interval'],
-    'a docblock class token laundered to string' => ['allFiles'],
-    'a signature class token laundered to string' => ['image'],
 ]);
 
 // `getUserResolver(): Closure` is the live case for the token gate: emitting `Closure` would compile
@@ -166,40 +182,6 @@ it('declines a Request method whose reflected type is unusable', function (strin
 it('declines a Request method returning a class token it cannot import', function () {
     expect((new KnownMethodRuleHandler)->resolve(requestCall('getUserResolver'), requestRuleScope(), requestRuleEngine()))
         ->toBeNull();
-});
-
-it('scans every arm of a union return type for a class that does not serialize', function () {
-    $subject = new class
-    {
-        public function upload(): UploadedFile|string
-        {
-            return 'x';
-        }
-
-        public function stamp(): Carbon|string
-        {
-            return 'x';
-        }
-
-        public function combo(): UploadedFile&Countable
-        {
-            return 'x';
-        }
-
-        // DNF: an intersection arm nested inside a union — the case a flat instanceof check drops.
-        public function dnf(): (UploadedFile&Countable)|string
-        {
-            return 'x';
-        }
-    };
-
-    $check = fn (string $method): bool => (fn () => $this->serializesAsReflected(new ReflectionMethod($subject, $method)))
-        ->call(new KnownMethodRuleHandler);
-
-    expect($check('upload'))->toBeFalse()   // UploadedFile is not JsonSerializable
-        ->and($check('stamp'))->toBeTrue()  // Carbon is
-        ->and($check('combo'))->toBeFalse() // intersection arm: UploadedFile is not JsonSerializable
-        ->and($check('dnf'))->toBeFalse();  // DNF arm: the intersection nested in the union
 });
 
 // The decline above is a fall-through, not a result: requestMethodRule() runs before knownMethodRule()
@@ -211,22 +193,26 @@ it('leaves knownMethodRule its turn on a Request receiver reflection cannot type
 
 // The same constraint through the whole dispatcher rather than the handler alone. It is worth the
 // duplication: the assertion above is otherwise the only test that fails when the rule stops declining.
+// analyze() seeds the method's parameters, so each analyzer below has read its body before the call is resolved.
 it('leaves knownMethodRule its turn through the dispatcher too', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(StarterKitMiddleware::class), null, 'share');
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('can')))->toBe(['type' => 'boolean', 'optional' => false]);
 });
 
 it('keeps the Request rules off a resource, whose toArray() also takes a Request', function () {
     // A resource's committed output was inferred without these rules; seeding them there would move
-    // it, so ResourceAstAnalyzer deliberately leaves requestVarNames empty for a JsonResource.
+    // it, so ParameterBinder deliberately leaves requestVarNames empty for a JsonResource.
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('url')))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
 it('seeds requestVarNames for a non-resource subject from the analyzed method signature', function () {
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(StarterKitMiddleware::class), null, 'share');
+    $analyzer->analyze();
 
     expect($analyzer->resolve(requestCall('url')))->toBe(['type' => 'string', 'optional' => false]);
 });
@@ -306,7 +292,7 @@ it('types validated() for a dotted key the rules declare', function () {
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('options.default'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true]);
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // A prohibited rule keeps the key out of the generated interface entirely, so neither it nor
@@ -361,6 +347,59 @@ it('types auth()->id() and Auth::id() as number for an `integer` key type', func
         ->toBe(['type' => 'number | null', 'optional' => false])
         ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'number | null', 'optional' => false]);
+});
+
+it('types auth()->id() and Auth::id() from the key an auth model declares when it cannot be inspected', function (string $model, string $type) {
+    config()->set('auth.providers.users.model', $model);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => $type, 'optional' => false])
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => $type, 'optional' => false]);
+})->with([
+    'an unreachable connection' => [OfflineKeyUser::class, 'number | null'],
+    'no primary key' => [NullKeyPost::class, 'null'],
+]);
+
+it('declines auth()->id() and Auth::id() where code decides the auth model\'s key, where it once guessed string', function () {
+    config()->set('auth.providers.users.model', AbstractKeyTypeOverrideModel::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
+});
+
+// SessionGuard::id() sends getAuthIdentifier(), which reads the column getAuthIdentifierName() names.
+it('types auth()->id() and Auth::id() as the column a literal getAuthIdentifierName() return names', function () {
+    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string | null', 'optional' => false])
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'string | null', 'optional' => false]);
+});
+
+it('declines auth()->id() and Auth::id() where code computes the identifier or its column', function (string $model) {
+    config()->set('auth.providers.users.model', $model);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
+})->with([
+    'a computed identifier' => [ComputedIdentifierUser::class],
+    'a configured identifier column' => [ConfiguredIdentifierUser::class],
+]);
+
+it('records the auth model whose identifier column it reads, so editing it rebuilds the result', function () {
+    config()->set('auth.providers.users.model', EmailIdentifierUser::class);
+    DependencyRecorder::start();
+    (new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'id'), requestRuleScope(), requestRuleEngine());
+    $paths = DependencyRecorder::paths();
+    DependencyRecorder::stop();
+
+    expect($paths)->toContain((string) new ReflectionClass(EmailIdentifierUser::class)->getFileName());
 });
 
 it('declines an unbound ->user() on any other receiver', function () {
@@ -519,7 +558,7 @@ it('validated() honours the request #[TsCasts] type and optional overrides', fun
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('rating'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
-        ->toBe(['type' => 'number | bigint | null', 'optional' => true]);
+        ->toBe(['type' => 'number | bigint | null', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // `tags` overrides the type with no `optional` key, so optionalOverrides carries no entry for it and
@@ -528,7 +567,7 @@ it('reads optionality from the rules for an override that declares no optional k
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('tags'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, formRequestScope(), requestRuleEngine()))
-        ->toBe(['type' => 'string[]', 'optional' => true]);
+        ->toBe(['type' => 'string[]', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // An override naming an imported type has to carry its import, or the prop emits a token nothing
@@ -541,6 +580,7 @@ it('carries the import an override declares next to its type', function () {
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))->toBe([
         'type' => 'PostAttributes',
         'optional' => true,
+        'absentReadsNull' => true,
         'customImports' => ['@js/types/posts' => ['PostAttributes']],
     ]);
 });
@@ -555,7 +595,7 @@ it('does not let a #[TsCasts] override resurrect a key validated() declines', fu
     expect((new KnownMethodRuleHandler)->resolve($call('secret'), $scope, requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($call('tags.*'), $scope, requestRuleEngine()))->toBeNull()
         ->and((new KnownMethodRuleHandler)->resolve($call('options.default'), $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true]);
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // The rules alone answer both of these backwards: `title` is `required` and overridden optional, `note`
@@ -567,7 +607,7 @@ it('takes optionality from the override rather than the rule, both ways round', 
     $call = fn (string $key): MethodCall => new MethodCall(new Variable('request'), 'validated', [new Arg(new String_($key))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call('title'), $scope, requestRuleEngine()))
-        ->toBe(['type' => 'string', 'optional' => true])
+        ->toBe(['type' => 'string', 'optional' => true, 'absentReadsNull' => true])
         ->and((new KnownMethodRuleHandler)->resolve($call('note'), $scope, requestRuleEngine()))
         ->toBe(['type' => 'string', 'optional' => false]);
 });
@@ -580,7 +620,7 @@ it('emits no import for an override type with no importable token', function () 
     $call = new MethodCall(new Variable('request'), 'validated', [new Arg(new String_('meta'))]);
 
     expect((new KnownMethodRuleHandler)->resolve($call, $scope, requestRuleEngine()))
-        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true]);
+        ->toBe(['type' => 'Record<string, unknown>', 'optional' => true, 'absentReadsNull' => true]);
 });
 
 // The assumption the dotted decline rests on: the transformer matches an override to a top-level

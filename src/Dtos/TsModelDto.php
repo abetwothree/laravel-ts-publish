@@ -16,7 +16,7 @@ use JsonSerializable;
  * @phpstan-type ColumnsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type MutatorsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type RelationsList = array<string, array{type: string, description: string}>
- * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool, isCollection: bool}
+ * @phpstan-type EnumPropertyInfo = array{constName: string, nullable: bool, isCollection: bool, alsoBare: bool}
  * @phpstan-type EnumPropertiesList = array<string, EnumPropertyInfo>
  * @phpstan-type AppendsList = array<string, array{type: string, description: string, optional: bool}>
  * @phpstan-type ModelData = array{

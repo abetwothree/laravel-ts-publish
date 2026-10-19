@@ -33,6 +33,6 @@ export interface ApiPostResource
     comments_resolved?: CommentResource[];
     post_class_name: string;
     post_table_name: string;
-    category_class_name?: string;
-    category_table_name?: string;
+    category_class_name?: string | null;
+    category_table_name?: string | null;
 }

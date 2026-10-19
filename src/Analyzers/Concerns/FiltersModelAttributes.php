@@ -51,7 +51,7 @@ trait FiltersModelAttributes
      */
     protected function filtersOwnModel(MethodCall $call): bool
     {
-        return ($this->hasThisReceiver($call) || $this->isResourceFetch($call->var))
+        return ($this->hasThisReceiver($call) || $this->isProxyFetch($call->var, $this->scope))
             && $call->name instanceof Identifier
             && in_array($call->name->toString(), $this->supportedAttributeFilters(), true);
     }

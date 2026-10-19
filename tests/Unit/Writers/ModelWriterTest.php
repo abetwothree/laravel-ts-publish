@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FullListsModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedEnumParcel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SwappedRelationModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\FullListsModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\PreBareFlagModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\SwappedRelationModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -395,7 +396,7 @@ TYPESCRIPT)
         $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(ShadowedEnumParcel::class));
 
         expect($content)
-            ->toStartWith("import type { User } from '../../../../workbench/app/models';\n\n")
+            ->toStartWith("import type { User } from '../../../../../workbench/app/models';\n\n")
             ->toContain(<<<'TYPESCRIPT'
     // Relations
     /** The parcel's handler. */
@@ -567,4 +568,15 @@ export interface DepotAll extends Depot, DepotRelations {}
 
 TYPESCRIPT);
     });
+
+    test('enum property info built without the bare-arm flag renders as it did before the flag', function (string $template) {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        $transformer = new PreBareFlagModelTransformer(Team::class);
+
+        expect($transformer->data()->enumColumns['week_days'])
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true])
+            ->and((new ModelWriter(new Filesystem))->write($transformer))
+            ->toContain('    week_days: AsEnum<typeof WeekDays>[] | null;');
+    })->with(['model-full', 'model-split']);
 });

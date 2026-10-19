@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Workbench\App\Models\User;
 
 /**
- * A model that really declares a `resource` relation — the one exception where `$this->resource` is a
- * relation step to walk rather than the JsonResource wrapper property to skip.
+ * A model that really declares a `resource` relation, which a resource over it reaches only as
+ * `$this->resource->resource`: the JsonResource wrapper property always comes first.
  */
 final class ResourceRelationModel extends Model
 {

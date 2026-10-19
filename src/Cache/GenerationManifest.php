@@ -16,6 +16,7 @@ class GenerationManifest
     /**
      * @param  array<string, Entry>  $entries
      * @param  array<string, true>  $seen
+     * @param  array<string, string>  $fileHashes
      */
     private function __construct(
         protected CacheRepository $repository,
@@ -23,6 +24,7 @@ class GenerationManifest
         protected string $configHash,
         protected array $entries = [],
         protected array $seen = [],
+        protected array $fileHashes = [],
     ) {}
 
     /**
@@ -57,6 +59,20 @@ class GenerationManifest
         }
 
         return new self($repository, $version, $configHash, $entries);
+    }
+
+    /**
+     * Fingerprint a file set, hashing each file once until save() ends the run.
+     *
+     * @param  list<string>  $paths
+     */
+    public function fingerprint(array $paths, string $extra = ''): string
+    {
+        return Fingerprinter::fromPaths(
+            $paths,
+            $extra,
+            fn (string $path): string => $this->fileHashes[$path] ??= Fingerprinter::hashFile($path),
+        );
     }
 
     /**
@@ -136,6 +152,22 @@ class GenerationManifest
     }
 
     /**
+     * Mark every entry one generator class built as seen, so a feature this run skipped keeps its cache.
+     *
+     * Entry keys are `{generator class}::{class}`, as BaseRunner::cachedGenerate() builds them.
+     */
+    public function keepEntriesOf(string $generatorClass): void
+    {
+        $prefix = $generatorClass.'::';
+
+        foreach (array_keys($this->entries) as $key) {
+            if (str_starts_with($key, $prefix)) {
+                $this->seen[$key] = true;
+            }
+        }
+    }
+
+    /**
      * Persist all seen entries and the header, pruning any class not seen this
      * run (i.e. removed from the source tree).
      */
@@ -164,6 +196,8 @@ class GenerationManifest
         // Persist the backend's buffered bookkeeping (e.g. the store key index)
         // once, after all per-entry writes — no-op for the file backend.
         $this->repository->commit();
+
+        $this->fileHashes = [];
     }
 
     /**

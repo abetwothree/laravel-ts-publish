@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Metadata\Contracts\ModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Metadata\DefaultModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassNamedKeyMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingProvideDecoyProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DocblockOverridesEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EnumAndScalarMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TraitModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnionEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ClassNamedKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProvideDecoyProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DeclaredLocalMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
 
 /**
  * @param  class-string<ModelMetadataProvider>  $providerClass
@@ -43,6 +49,17 @@ test('binds the Model parameter so its Laravel-typed method calls infer', functi
         'routeKeyName' => 'inferred',
         'morphClass' => 'inferred',
     ])->and($analysis->requiredKeys)->toBe([]);
+});
+
+// The analyzer reads the scope bindingsFor() seeded as it is, as analyzeBody() hands it over, so no span is doubled.
+test('seeds a provider\'s body once, so an inline @var records one span', function () {
+    $context = resolve(MethodLocator::class)->locate(DeclaredLocalMetadataProvider::class, 'provide');
+    $scope = resolve(AstEngine::class)->bindingsFor($context);
+
+    new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
+
+    expect($scope->varDocBindings['table'] ?? [])->toHaveCount(1)
+        ->and(analyzeMetadataTypesFor(DeclaredLocalMetadataProvider::class, ['table'])->types)->toBe(['table' => 'string']);
 });
 
 test('keeps only inferred keys the concrete payload returned', function () {
@@ -199,4 +216,18 @@ test('the default provider still infers its cast morph class', function () {
 
     expect($analysis->types)->toBe(['morphClass' => 'string'])
         ->and($analysis->sources)->toBe(['morphClass' => 'docblock']);
+});
+
+// PHP stores `42` as an int, which str_ends_with() once received under strict types, and a spread renumbered.
+test('reads a numeric @return shape key on its own key instead of stopping the run', function () {
+    $analysis = analyzeMetadataTypesFor(NumericShapeKeyMetadataProvider::class, ['label']);
+
+    expect($analysis->types)->toBe(['label' => 'string', 42 => 'string', 7 => 'string'])
+        ->and($analysis->sources)->toBe(['label' => 'docblock', 42 => 'docblock', 7 => 'docblock'])
+        ->and($analysis->requiredKeys)->toBe(['label' => true, 7 => true]);
+});
+
+test('keeps a numeric provide() cast key on its own key', function () {
+    expect(analyzeMetadataTypesFor(NumericCastKeyMetadataProvider::class, ['label', '42'])->types)
+        ->toBe(['label' => 'string', 42 => 'boolean']);
 });

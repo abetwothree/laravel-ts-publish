@@ -7,10 +7,19 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\WhenNullDroppedArmResource;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WhenNullDroppedDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AggregateAliasPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullableStringJson;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
@@ -31,10 +40,14 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Requests\UpdatePostRequest;
 use Workbench\App\Http\Resources\ArtistResource;
+use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\ConditionalDefaultsResource;
+use Workbench\App\Http\Resources\ConditionalParamEnumResource;
 use Workbench\App\Http\Resources\ImageResource;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ReviewResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\VenueResource;
@@ -42,8 +55,11 @@ use Workbench\App\Http\Resources\WhenHasValueResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
+use Workbench\App\Models\Order;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Review;
 use Workbench\App\Models\User;
@@ -93,6 +109,12 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -124,6 +146,12 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -192,6 +220,12 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -282,7 +316,7 @@ it('binds whenLoaded()\'s closure param to the related model only for the closur
         ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
-        ->and($result)->toBe(['type' => 'string', 'optional' => true]);
+        ->and($result)->toBe(['type' => 'string | null', 'optional' => true]);
 });
 
 it('binds a to-many whenLoaded()\'s closure param to the collection type, never varModelBindings, then restores scope', function () {
@@ -439,7 +473,7 @@ it('reads whenAggregated(…, default: …) at the family\'s deepest default pos
 
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
 
-    expect($result)->toBe(['type' => 'number | string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'number | string | null', 'optional' => false]);
 });
 
 // whenHas('attr', default: …) skips $value: Laravel counts three arguments and evaluates value(null, …),
@@ -579,6 +613,8 @@ describe('value argument types the arm', function () {
             'title_passthrough' => 'string',
             'appended_label' => 'string',
             'comments_flag' => 'string',
+            'status_label' => 'string',
+            'appended_status_label' => 'string | number',
         ])->and($props->every(fn (array $p): bool => $p['optional']))->toBeTrue();
     });
 
@@ -592,13 +628,12 @@ describe('value argument types the arm', function () {
             ->and($props['comments_exists_flag']['optional'])->toBeTrue();
     });
 
-    // The fallback the value rule must never break: an unresolvable value leaves the attribute's own
-    // type standing rather than publishing a fresh `unknown`. json_decode() returns mixed, so the
-    // closure body resolves to unknown and `title`'s own `string` has to survive.
-    test('an unresolvable value keeps the named attribute type instead of becoming unknown', function () {
+    // json_decode() returns mixed: a plain title decodes to null, so `title`'s own `string` would be a type the key
+    // does not always hold. The value stays `unknown` rather than borrowing the attribute's.
+    test('an untypable value publishes unknown, not the type of the attribute it names', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(WhenHasValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-        expect($props['title_unresolvable']['type'])->toBe('string')
+        expect($props['title_unresolvable']['type'])->toBe('unknown')
             ->and($props['title_unresolvable']['optional'])->toBeTrue();
     });
 });
@@ -613,6 +648,24 @@ test('a morph union closure param binds every target and toResource unions their
         ->and($props['reviewable']['optional'])->toBeTrue()
         ->and($props['reviewable_name']['type'])->toBe('string')
         ->and(array_keys($analysis->nestedResources))->toContain(ArtistResource::class, VenueResource::class);
+});
+
+test('a morph union\'s toResource() publishes the closure\'s union without a closure, and null after a `?->`', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
+
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ReviewResource::class), Review::class)->analyze()->properties)
+        ->keyBy('name');
+
+    expect($props['reviewable_resource'])->toMatchArray(['type' => 'ArtistResource | VenueResource', 'optional' => false])
+        ->and($props['reviewable_nullsafe_resource'])->toMatchArray(['type' => 'ArtistResource | VenueResource | null', 'optional' => false])
+        ->and($props['reviewable']['type'])->toBe($props['reviewable_resource']['type']);
+});
+
+test('a ?-> on a whenLoaded parameter still adds null before toResource(), as it does for any other call', function () {
+    $expr = new AstParser()->parseSource('<?php $this->whenLoaded("post", fn ($p) => $p?->author->toResource());')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class)->resolve($expr))
+        ->toMatchArray(['type' => 'UserResource | null', 'optional' => true]);
 });
 
 // transform() calls $callback($value): the parameter holds the value, so it takes whatever that value is bound to.
@@ -639,6 +692,40 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a plain local' => ['$this->transform($local, fn ($local) => $local->email)', 'string'],
     'a model read through the resource' => ['$this->transform($this->resource->author, fn ($a) => $a->email)', 'string'],
     'a comparison, which passes a boolean' => ['$this->transform($this->title !== null, fn ($b) => $b)', 'boolean'],
+    // A User has no `website`: past the write the parameter holds the Profile the body assigned, not the old binding.
+    'a variable past the write that ended its binding' => [
+        '$this->whenLoaded("author", function (\\Workbench\\App\\Models\\User $author) { $author = $author->profile; return $this->transform($author, fn ($p) => $p->website); })',
+        'string | null',
+    ],
+]);
+
+// Laravel returns the value whatever it is, so the attribute answers only a value-less call or an EnumResource wrap.
+it('never answers an untypable whenHas() or whenAppended() value with the attribute', function (string $php, array $expected) {
+    expect(conditionalMethodHandlerResolveOnPost($php))->toMatchArray($expected);
+})->with([
+    'whenHas(), a closure' => ['$this->whenHas("title", fn ($t) => json_decode($t))', ['type' => 'unknown', 'optional' => true]],
+    'whenHas(), a closure and a default' => ['$this->whenHas("title", fn ($t) => json_decode($t), "none")', ['type' => 'unknown', 'optional' => false]],
+    'whenHas(), not a closure' => ['$this->whenHas("title", json_decode($this->title))', ['type' => 'unknown', 'optional' => true]],
+    'whenAppended(), a closure' => ['$this->whenAppended("title_display", fn () => json_decode($this->title))', ['type' => 'unknown', 'optional' => true]],
+    'whenAppended(), a closure Laravel cannot call' => ['$this->whenAppended("title_display", fn ($x) => $x)', ['type' => 'unknown', 'optional' => true]],
+    'whenHas(), a match' => [
+        '$this->whenHas("status", fn ($s) => match ($s) { \\Workbench\\App\\Enums\\Status::Published => "live", default => "draft" })',
+        ['type' => 'string', 'optional' => true],
+    ],
+]);
+
+// Only whenHas() and whenAppended() publish `unknown` for a closure the engine cannot type: the other three keep the
+// flag or the aggregate's type, which the package publishes for their keys.
+it('keeps the flag or the aggregate type for an untypable whenExistsLoaded(), whenCounted() or whenAggregated() closure', function (string $php, array $expected) {
+    expect(conditionalMethodHandlerResolveOnPost($php))->toMatchArray($expected);
+})->with([
+    'whenExistsLoaded()' => ['$this->whenExistsLoaded("comments", fn ($e) => json_decode($e))', ['type' => 'boolean', 'optional' => true]],
+    'whenExistsLoaded() and a default' => [
+        '$this->whenExistsLoaded("comments", fn ($e) => json_decode($e), "none")',
+        ['type' => 'boolean | string', 'optional' => false],
+    ],
+    'whenCounted()' => ['$this->whenCounted("comments", fn ($n) => json_decode($n))', ['type' => 'number', 'optional' => true]],
+    'whenAggregated()' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => json_decode($m))', ['type' => 'number | null', 'optional' => true]],
 ]);
 
 // Without the claim, ClosureHandler releases the name the value argument just bound, and the key loses its type.
@@ -670,34 +757,103 @@ it('binds each conditional closure parameter to what Laravel passes it', functio
     'whenAppended(), optional int' => ['$this->whenAppended("excerpt", fn ($e = 5) => $e)', 'number'],
     'whenLoaded() default, optional null' => ['$this->whenLoaded("author", fn ($a) => $a->email, fn ($local = null) => $local)', 'string | null'],
     'when() default, optional null' => ['$this->when($this->title, 1, fn ($local = null) => $local)', 'number | null'],
-    'transform() default, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn ($r) => $r)', 'string | number | null'],
+    'transform() default, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn ($r) => $r)', 'string | null'],
     'whenCounted() closure, passed the count' => ['$this->whenCounted("comments", fn ($n) => ["n" => $n])', '{ n: number }'],
     'whenCounted() closure, comparing the count' => ['$this->whenCounted("comments", fn ($n) => $n > 3)', 'boolean'],
     'whenCounted() closure, ignoring the count' => ['$this->whenCounted("comments", fn ($n) => "x")', 'string'],
-    'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string'],
-    'whenAggregated() closure, returning the untyped aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number'],
-    'whenAggregated() closure, binding nothing' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: unknown }'],
+    'whenAggregated() closure, ignoring the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => "x")', 'string | null'],
+    'whenAggregated() closure, returning the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => $m)', 'number | null'],
+    'whenAggregated() closure, passed the aggregate' => ['$this->whenAggregated("comments", "id", "max", fn ($m) => ["m" => $m])', '{ m: number } | null'],
+    'whenAggregated() closure, variadic' => ['$this->whenAggregated("comments", "id", "max", fn (...$m) => $m)', 'number[] | null'],
     'whenAggregated() count closure, passed the count' => ['$this->whenAggregated("comments", "id", "count", fn ($c) => ["c" => $c])', '{ c: number }'],
     'whenLoaded() second parameter, optional int' => ['$this->whenLoaded("author", fn ($a, $b = 5) => $b)', 'number'],
     'transform() callback second parameter, optional int' => ['$this->transform($this->title, fn ($t, $u = 5) => $u)', 'number'],
-    'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (number | null)[]'],
+    'transform() default, variadic, passed the blank value' => ['$this->transform($this->rating, fn ($r) => "x", fn (...$r) => $r)', 'string | (string | null)[]'],
     'transform() default, passed a nullable model' => [
         '$this->transform($this->resource->author->profile, fn ($p) => 1, fn ($p) => $p)',
         'number | Profile | null',
     ],
 ]);
 
-// The package publishes an aggregate as number by convention, whatever its column, function and driver.
-it('publishes whenAggregated()\'s aggregate as number', function (string $php) {
-    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('number');
+// The workbench runs SQLite, which returns an integer or decimal aggregate as a number and a date or text MIN()/MAX()
+// as a string. Any aggregate but a count is SQL NULL over no rows.
+it('publishes whenAggregated()\'s aggregate as the driver returns it', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
-    'max()' => ['$this->whenAggregated("comments", "created_at", "max")'],
-    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)'],
-    'count()' => ['$this->whenAggregated("comments", "id", "count")'],
+    'max() of a date column' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null'],
+    'max() of a text column' => ['$this->whenAggregated("comments", "content", "max")', 'string | null'],
+    'sum(), a null value' => ['$this->whenAggregated("comments", "id", "sum", null)', 'number | null'],
+    'sum() of a date column, which proves nothing' => ['$this->whenAggregated("comments", "created_at", "sum")', 'number | null'],
+    'max() of a column the related table lacks' => ['$this->whenAggregated("comments", "nope", "max")', 'number | null'],
+    'max() over a relation the model lacks' => ['$this->whenAggregated("nope", "id", "max")', 'number | null'],
+    'a function the call computes' => ['$this->whenAggregated("comments", "id", $local)', 'number'],
+    'count()' => ['$this->whenAggregated("comments", "id", "count")', 'number'],
+]);
+
+// The related model's column types the aggregate, so an edit to that model alone must publish the resource again.
+it('records the related model an aggregate reads as a dependency', function () {
+    DependencyRecorder::start();
+
+    try {
+        conditionalMethodHandlerResolveOnPost('$this->whenAggregated("comments", "created_at", "max")');
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toContain((new ReflectionClass(Comment::class))->getFileName());
+});
+
+// whenAggregated() names its attribute after the snake-cased relation, so either spelling reaches
+// Product::orderItems().
+it('reads the relation an aggregate names, spelled either way', function (string $relation) {
+    $expr = new AstParser()->parseSource('<?php $this->whenAggregated("'.$relation.'", "created_at", "max");')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe('string | null');
+})->with(['the method name' => 'orderItems', 'snake-cased' => 'order_items']);
+
+// Laravel reads the aggregate through the model's own accessor or cast, so the model's declaration wins over the
+// driver: an accessor can turn the SQL NULL into a value, while a built-in cast passes it through.
+it('reads a column aggregate through the model\'s own accessor, cast or @property', function (string $php, string $type, string $driver = 'sqlite') {
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), AggregateAliasPost::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), AggregateAliasPost::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'a string cast' => ['$this->whenAggregated("comments", "post_id", "sum")', 'string | null'],
+    'a datetime cast, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "max")', 'string | null', 'oracle'],
+    'a datetime cast with a format, on a driver the rule has no evidence for' => ['$this->whenAggregated("comments", "created_at", "min")', 'string | null', 'oracle'],
+    'a timestamp cast, where the driver\'s MAX() of a date is a string' => ['$this->whenAggregated("comments", "updated_at", "max")', 'number | null'],
+    'a decimal cast, where SQLite\'s own AVG() is a number' => ['$this->whenAggregated("comments", "id", "avg")', 'string | null'],
+    'an @property tag, where MySQL\'s own AVG() is a string' => ['$this->whenAggregated("comments", "post_id", "avg")', 'number | null', 'mysql'],
+    'an accessor that coalesces the null' => ['$this->whenAggregated("comments", "post_id", "max")', 'number'],
+    'an accessor, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "max", fn ($m) => ["m" => $m])', '{ m: number }'],
+    'a string cast, passed to a closure' => ['$this->whenAggregated("comments", "post_id", "sum", fn ($s) => ["s" => $s])', '{ s: string } | null'],
+    'no declaration, the driver\'s number' => ['$this->whenAggregated("comments", "post_id", "min")', 'number | null'],
+]);
+
+// MIN() and MAX() keep the column's type, so a user's mapping for it wins over the driver as it does for the column.
+// SUM() widens the column, so it keeps the driver's type. SQLite's schema reports a decimal column as `numeric`.
+it('publishes MIN() and MAX() of a column by a custom_ts_mappings entry for its type', function (string $php, string $type) {
+    config()->set('ts-publish.custom_ts_mappings', ['numeric' => 'number']);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(ProductResource::class), Product::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'max()' => ['$this->whenAggregated("orderItems", "unit_price", "max")', 'number | null'],
+    'min()' => ['$this->whenAggregated("orderItems", "unit_price", "min")', 'number | null'],
+    'sum(), which widens the column' => ['$this->whenAggregated("orderItems", "total_price", "sum")', 'string | null'],
 ]);
 
 // A parameter the call passes nothing holds its default, which PHP evaluates as a constant expression: a list literal
-// is a list, never the record the engine types an array literal as, and a list the evaluator cannot read binds nothing.
+// is a list, and a list the evaluator cannot read binds nothing.
 it('binds a parameter default to the value it evaluates to', function (string $php, string $type) {
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
 })->with([
@@ -710,32 +866,42 @@ it('binds a parameter default to the value it evaluates to', function (string $p
     'whenHas() default closure, a list' => ['$this->whenHas("no_such_attr", 1, fn ($d = [1]) => $d)', 'number | number[]'],
     'transform() callback, a later list' => ['$this->transform($this->title, fn ($t, $u = [1]) => $u)', 'number[]'],
     'whenLoaded(), a later list' => ['$this->whenLoaded("author", fn ($a, $u = ["x"]) => $u)', 'string[]'],
-    'when(), an int-keyed record a resource re-indexes' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', 'unknown'],
+    'when(), an int-keyed record, which the resource re-indexes later' => ['$this->when($this->title, fn ($t = [1 => "a"]) => $t)', '{ "1": string }'],
     'when(), a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = [new Foo]) => $t)', 'unknown'],
     'when(), a record the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => new Foo]) => $t)', '{ a: unknown }'],
     'when(), a record holding a list the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["a" => [new Foo]]) => $t)', 'unknown'],
-    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown'],
-    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', 'unknown'],
+    'when(), an int-like key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["0" => new Foo]) => $t)', 'unknown[]'],
+    'when(), a numeric key the evaluator cannot read' => ['$this->when($this->title, fn ($t = ["1.5" => new Foo]) => $t)', '{ "1.5": unknown }'],
     'when(), a default that reads another parameter' => ['$this->when($this->title, fn ($a = null, $b = $a) => $b)', 'unknown'],
     'when(), a list whose evaluation errors' => ['$this->when($this->title, fn ($t = [1 / 0]) => $t)', 'unknown'],
-    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'unknown'],
-    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'unknown'],
+    'when(), a keyed list whose evaluation errors' => ['$this->when($this->title, fn ($t = [0 => 1 / 0]) => $t)', 'number[]'],
+    'when(), a closure, which json_encode() writes as {}' => ['$this->when($this->title, fn ($t = static function () { return 1; }) => $t)', 'Record<string, never>'],
+    'when(), a first-class callable' => ['$this->when($this->title, fn ($t = strlen(...)) => $t)', 'Record<string, never>'],
+    'when(), a static method first-class callable' => ['$this->when($this->title, fn ($t = \\Workbench\\App\\Enums\\Status::from(...)) => $t)', 'Record<string, never>'],
+    'transform() callback, a later first-class callable' => ['$this->transform($this->title, fn ($t, $u = strlen(...)) => $u)', 'Record<string, never>'],
+    'when(), a closure that is not static, which PHP rejects' => ['$this->when($this->title, fn ($t = function () { return 1; }) => $t)', 'unknown'],
+    'when(), an arrow function, which PHP rejects' => ['$this->when($this->title, fn ($t = static fn () => 1) => $t)', 'unknown'],
+    'when(), a method first-class callable, which PHP rejects' => ['$this->when($this->title, fn ($t = $this->getKey(...)) => $t)', 'unknown'],
+    'when(), a list holding a first-class callable' => ['$this->when($this->title, fn ($t = [strlen(...)]) => $t)', 'unknown'],
     'when(), a cast' => ['$this->when($this->title, fn ($t = (int) "5") => $t)', 'number'],
+    'when(), a Collection, which json_encode() writes as its items' => ['$this->when($this->rating, 1, fn ($d = new \\Illuminate\\Support\\Collection(["z"])) => $d)', 'number | string[]'],
+    'when(), a Collection holding a closure' => ['$this->when($this->title, fn ($t = new \\Illuminate\\Support\\Collection([static function () { return 1; }])) => $t)', 'unknown'],
 ]);
 
-// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth, so
-// the record those keys would type as is not what reaches JSON.
-it('binds nothing for a default a resource re-indexes into a list', function (string $default) {
+// A resource's removeMissingValues() re-indexes an array whose keys all pass is_numeric() into a list, at any depth:
+// the engine types the default by its keys, and the resource's publisher sends it as the list that reaches JSON.
+it('binds a default a resource re-indexes into a list as that list', function (string $default, string $type, string $sent) {
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = '.$default.') => $t)')['type'])
-        ->toBe('unknown');
+        ->toBe($type)
+        ->and(ResourceReindexing::reindexedType($type))->toBe($sent);
 })->with([
-    'a float-string key' => ['["1.5" => "x"]'],
-    'an exponent key' => ['["1e3" => "x"]'],
-    'a key with a leading space' => ['[" 1" => "x"]'],
-    'a negative-zero key' => ['["-0" => "x"]'],
-    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]'],
-    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]'],
-    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]'],
+    'a float-string key' => ['["1.5" => "x"]', '{ "1.5": string }', 'string[]'],
+    'an exponent key' => ['["1e3" => "x"]', '{ "1e3": string }', 'string[]'],
+    'a key with a leading space' => ['[" 1" => "x"]', '{ " 1": string }', 'string[]'],
+    'a negative-zero key' => ['["-0" => "x"]', '{ "-0": string }', 'string[]'],
+    'an int key beside a float-string one' => ['[1 => "a", "1.5" => "b"]', '{ "1": string; "1.5": string }', 'string[]'],
+    'a float-string key nested in a record' => ['["a" => ["2.5" => 1]]', '{ a: { "2.5": number } }', '{ a: number[] }'],
+    'a float-string key over a global constant' => ['["1.5" => PHP_INT_SIZE]', '{ "1.5": number }', 'number[]'],
 ]);
 
 // Each of these is a constant expression whose value serializes to a string, so its parameter binds as one.
@@ -755,14 +921,35 @@ it('binds a default of a global or magic constant, an enum case property or a Ca
     '__PROPERTY__' => ['__PROPERTY__', 'string'],
     '__LINE__' => ['__LINE__', 'number'],
     'PHP_EOL' => ['PHP_EOL', 'string'],
+    'PHP_INT_MAX, an int on every host' => ['PHP_INT_MAX', 'number'],
+    'E_ALL, an int on every host' => ['E_ALL', 'number'],
+    'M_PI, a float on every host' => ['M_PI', 'number'],
+    'a class constant' => ['\\Workbench\\App\\Models\\Release::CHANNEL_STABLE', 'number'],
     'a global constant in a list' => ['[PHP_INT_SIZE]', 'number[]'],
+    'a global constant and an enum ->value in a list' => ['[PHP_INT_MAX, \\Workbench\\App\\Enums\\Status::Published->value]', 'number[]'],
     'a Carbon date' => ['new \\Illuminate\\Support\\Carbon("2020-01-01 00:00:00")', 'string'],
-    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', 'unknown'],
+    'a DateTime, which json_encode() writes as an object' => ['new \\DateTime("2020-01-01")', LaravelTsPublishService::DATE_TIME_OBJECT_TYPE],
     'a ?string serialization returning null' => ['new \\'.NullableStringJson::class.'()', 'string | null'],
     'a ?string serialization returning a string' => ['new \\'.NullableStringJson::class.'("x")', 'string | null'],
     '__TRAIT__ as a key, whose value depends on where it appears' => ['[__TRAIT__ => 1]', 'unknown'],
     '__FILE__ as a key' => ['[__FILE__ => 1]', 'unknown'],
     'a comparison on __TRAIT__, which never folds' => ['__TRAIT__ === "" ? 1 : "a"', 'number | string'],
+]);
+
+// A constant the publishing process never defines, such as one a request defines at runtime, has no value to type.
+it('binds nothing for a default naming a constant the publishing process never defines', function () {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = DEFINED_ONLY_AT_RUNTIME) => $t)')['type'])
+        ->toBe('unknown');
+});
+
+// A default holds one case of its enum, so the enum's members type a read through the parameter.
+it('reads a parameter bound to an enum case default as that enum', function (string $read, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($s = \\Workbench\\App\\Enums\\Status::Draft) => $s'.$read.')')['type'])
+        ->toBe($type);
+})->with([
+    '->value' => ['->value', 'number'],
+    '->name' => ['->name', 'string'],
+    'a method' => ['->icon()', 'string'],
 ]);
 
 // A later key must see the outer binding again once a default closure has bound the same name and returned.
@@ -772,30 +959,86 @@ it('restores the outer binding after a conditional default binds its parameter',
     expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe('{ a: number | null; b: string }');
 });
 
-// timestamps_as_date publishes a Carbon attribute as Date, but the value a default holds reaches JSON as an ISO string.
-it('binds a Carbon new default as string under timestamps_as_date', function (string $class) {
+it('binds a Carbon new default as Date under timestamps_as_date, as every other Carbon value', function (string $class) {
     config()->set('ts-publish.timestamps_as_date', true);
 
     expect(conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t = new '.$class.'("2020-01-01")) => $t)')['type'])
-        ->toBe('string');
+        ->toBe('Date');
 })->with([
     'Illuminate\\Support\\Carbon' => ['\\Illuminate\\Support\\Carbon'],
     'Carbon\\Carbon' => ['\\Carbon\\Carbon'],
     'Carbon\\CarbonImmutable' => ['\\Carbon\\CarbonImmutable'],
 ]);
 
-// whenLoaded() returns null for a relation loaded as null before it calls the closure, and a list type would omit it.
-it('leaves a morphTo whenLoaded() variadic parameter unbound', function (string $resource, string $model) {
+// whenLoaded() returns null, before it reads the value, for a relation loaded as null; a to-many loads a collection.
+it('adds the null a relation loaded as null returns to every whenLoaded() value arm', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a closure over a nullable to-one' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name)', 'string | null'],
+    'a closure whose nullsafe chain already yields null' => ['$this->whenLoaded("categoryRel", fn () => $this->categoryRel?->name)', 'string | null'],
+    'a value that is not a closure' => ['$this->whenLoaded("categoryRel", "loaded")', 'string | null'],
+    'a first-class callable' => ['$this->whenLoaded("categoryRel", \\Workbench\\App\\Http\\Resources\\CategoryResource::make(...))', 'CategoryResource | null'],
+    'a closure and a default' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name, "absent")', 'string | null'],
+    'a literal null value, which Laravel swaps for the identity closure' => ['$this->whenLoaded("categoryRel", null, "absent")', 'Category | string | null'],
+    'a variadic list, which never holds null' => ['$this->whenLoaded("categoryRel", fn (...$c) => $c)', 'Category[] | null'],
+    'a closure over a relation the model does not declare' => ['$this->whenLoaded("featured", fn ($f) => "x")', 'string | null'],
+    'a closure over a non-nullable to-one' => ['$this->whenLoaded("author", fn ($a) => $a->name)', 'string'],
+    'a closure over a to-many' => ['$this->whenLoaded("comments", fn ($c) => $c->pluck("id"))', 'number[]'],
+    'a closure the engine cannot type' => ['$this->whenLoaded("categoryRel", fn ($c) => json_decode($c->name))', 'unknown'],
+]);
+
+// Laravel swaps a literal null value for the identity closure, so the key reads the relation; one that does not type
+// would widen it to `unknown`, so the null value keeps its own type there, as it did before the relation was read.
+it('reads a literal null whenLoaded() value as the relation only when the relation types', function (string $php, string $type, bool $optional) {
+    $result = conditionalMethodHandlerResolveOnPost($php);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['optional'])->toBe($optional);
+})->with([
+    'a relation the model does not declare, with a default' => ['$this->whenLoaded("featured", null, "x")', 'string | null', false],
+    'a relation the model does not declare' => ['$this->whenLoaded("featured", null)', 'null', true],
+    'a relation name the engine cannot read, with a default' => ['$this->whenLoaded($rel, null, "x")', 'string | null', false],
+    'a relation name the engine cannot read' => ['$this->whenLoaded($rel, null)', 'null', true],
+    'a declared relation' => ['$this->whenLoaded("categoryRel", null)', 'Category | null', true],
+]);
+
+it('adds no whenLoaded() null arm while nullable_relations is off', function (string $php, string $type) {
+    config()->set('ts-publish.models.nullable_relations', false);
+
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a declared to-one' => ['$this->whenLoaded("categoryRel", fn ($c) => $c->name)', 'string'],
+    'an undeclared relation' => ['$this->whenLoaded("featured", fn ($f) => "x")', 'string'],
+]);
+
+// With no backing model every relation reads as undeclared, so nullable_relations alone decides the arm.
+it('adds the whenLoaded() null arm on a subject with no backing model only while nullable_relations is on', function (bool $nullableRelations, string $type) {
+    config()->set('ts-publish.models.nullable_relations', $nullableRelations);
+    $valueExpr = new String_('loaded');
+    $expr = new MethodCall(new Variable('this'), 'whenLoaded', [new Arg(new String_('author')), new Arg($valueExpr)]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([[$valueExpr, ['type' => 'string', 'optional' => false]]]);
+
+    expect((new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => true]);
+})->with([
+    'nullable_relations on' => [true, 'string | null'],
+    'nullable_relations off' => [false, 'string'],
+]);
+
+// whenLoaded() calls the closure only for a loaded value that is not null, so the list never holds null; the key takes
+// the null it returns instead, for a relation that can load as null.
+it('binds a morphTo whenLoaded() variadic parameter to the list of its targets', function (string $resource, string $model, string $type, array $targets) {
     resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Venue::class, Artist::class, Review::class, VenueReview::class, ArtistReview::class]);
     $scope = new AnalysisScope(new ReflectionClass($resource), $model);
     $expr = new AstParser()->parseSource('<?php $this->whenLoaded("reviewable", fn (...$r) => $r);')[0]->expr;
 
     $result = new ResourceAstAnalyzer(new ReflectionClass($resource), $model, 'toArray', null, $scope)->resolve($expr);
 
-    expect($result['type'])->toBe('unknown');
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedModelFqcns'] ?? null)->toBe($targets);
 })->with([
-    'targets from the morph map' => [ReviewResource::class, Review::class],
-    'a nullable relation' => [ImageResource::class, Image::class],
+    'targets from the morph map' => [ReviewResource::class, Review::class, '(Artist | Venue)[]', [Artist::class, Venue::class]],
+    'a nullable relation, its null arm on the key' => [ImageResource::class, Image::class, '(User | User)[] | null', [CrmUser::class, User::class]],
 ]);
 
 // The value is typed before the claim frees the name it shares, or `$local->profile` would read an unbound `$local`.
@@ -809,6 +1052,28 @@ it('binds transform()\'s callback to a nullable model read without its null arm'
     expect(conditionalMethodHandlerResolveOnPost('$this->resource->author->profile')['type'])->toBe('Profile | null')
         ->and(conditionalMethodHandlerResolveOnPost('$this->transform($this->resource->author->profile, fn ($p) => $p)')['type'])
         ->toBe('Profile');
+});
+
+// transform() calls back for a model no row backs yet, whose key Laravel sends as null.
+it('binds transform()\'s callback to a model no row backs yet with its unsaved mark', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type);
+})->with([
+    'a new model\'s key' => ['$this->transform(new \\Workbench\\App\\Models\\Post, fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s key' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->getKey())', 'number | null'],
+    'a copy\'s attribute' => ['$this->transform($this->resource->replicate(), fn ($p) => $p->title)', 'string'],
+    'a copy, bare' => ['$this->transform($this->resource->replicate(), fn ($p) => $p)', 'Post'],
+]);
+
+// A MissingValue drops the key, and `??` never sees it as null, so the field's absent null cannot make it required.
+it('keeps a when() key optional across ?? when its value is a form-request field that may be absent', function () {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->requestVarNames['request'] = UpdatePostRequest::class;
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+
+    expect($engine->resolve($parse('$request->validated("title") ?? "none"'))['optional'])->toBeFalse()
+        ->and($engine->resolve($parse('$this->when($this->title !== null, $request->validated("title")) ?? "none"')))
+        ->toBe(['type' => 'string', 'optional' => true]);
 });
 
 // A parameter holding its default or a list must not reach a receiver chain through a value the call does not pass.
@@ -900,7 +1165,35 @@ describe('whenNull()', function () {
 
         expect(array_values(preg_grep('/^\s*label\b/', explode("\n", $content)) ?: []))->toBe(['    label?: string | null;']);
     });
+
+    // A default the engine cannot type is counted as a dropped arm, so the local's `@var` type answers for its null.
+    it('counts a default it leaves out, so an annotated local publishes its declared type', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(WhenNullDroppedDefaultResource::class));
+
+        expect(array_values(preg_grep('/^\s*label\b/', explode("\n", $content)) ?: []))->toBe(['    label: string | null;']);
+    });
 });
+
+// A default the engine cannot type is left out of the union, and recorded only beside a value arm with a type.
+it('records a default it leaves out beside a typed value arm, and nothing beside an unknown one', function (string $php, array $sites) {
+    DroppedUnionArms::start();
+
+    try {
+        conditionalMethodHandlerResolveOnPost($php);
+    } finally {
+        $dropped = DroppedUnionArms::stop();
+    }
+
+    expect(array_map(fn (array $arm): string => $arm['expression'].' at '.$arm['site'], $dropped))->toBe($sites);
+})->with([
+    'when()' => ['$this->when($this->id > 0, $this->title, $this->undefined_column)', ['$this->undefined_column at conditional-default']],
+    'whenNull()' => ['$this->whenNull($this->title, $this->undefined_column)', ['$this->undefined_column at conditional-default']],
+    'a typed default' => ['$this->when($this->id > 0, $this->title, 0)', []],
+    'an unknown value arm' => ['$this->whenPivotLoaded("team_user", null, $this->undefined_column)', []],
+    'a default that needs an argument' => ['$this->when($this->id > 0, $this->title, fn ($x) => $this->undefined_column)', []],
+]);
 
 // `[]` is assignable to an array type and to nothing else, so it leaves the union only beside an array, in either arm.
 it('drops an empty-array arm only where the other arm holds an array', function (string $value, string $default, string $type) {
@@ -916,6 +1209,30 @@ it('drops an empty-array arm only where the other arm holds an array', function 
     'an empty default beside an array value' => ['string[]', 'never[]', 'string[]'],
     'an empty value beside a default that is no array' => ['never[]', 'string', 'never[] | string'],
 ]);
+
+// A default makes the key required unless the value or the default can itself be a MissingValue.
+it('keeps the key optional when the value or the default of a when() can be a MissingValue', function (array $value, array $default, bool $optional) {
+    expect(conditionalMethodHandlerResolveArms('when', $value, $default)['optional'] ?? null)->toBe($optional);
+})->with([
+    'a required value and default' => [['type' => 'string', 'optional' => false], ['type' => 'number', 'optional' => false], false],
+    'an optional value' => [['type' => 'User', 'optional' => true], ['type' => 'string', 'optional' => false], true],
+    'an optional default' => [['type' => 'string', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'an optional value beside an untyped default' => [['type' => 'User', 'optional' => true], ['type' => 'unknown', 'optional' => false], true],
+    'an untyped value beside an optional default' => [['type' => 'unknown', 'optional' => false], ['type' => 'User', 'optional' => true], true],
+    'a required value beside an untyped default' => [['type' => 'string', 'optional' => false], ['type' => 'unknown', 'optional' => false], false],
+]);
+
+// A default closure Laravel cannot call leaves the value arm alone, with the optional of its own.
+it('keeps the value arm\'s optional when the default closure needs an argument', function (bool $optional) {
+    $valueExpr = new Variable('valueArm');
+    $default = new ArrowFunction(['params' => [new Param(new Variable('x'))], 'expr' => new String_('y')]);
+    $expr = new MethodCall(new Variable('this'), 'when', [new Arg(new Variable('condition')), new Arg($valueExpr), new Arg($default)]);
+    $engine = new ConditionalMethodHandlerArmStubEngine([[$valueExpr, ['type' => 'User', 'optional' => $optional]]]);
+
+    $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), $engine);
+
+    expect($result)->toBe(['type' => 'User', 'optional' => $optional]);
+})->with([true, false]);
 
 // Where no two classes share a name, the union by class is the union by text.
 it('unions a value and a default of two different names as a merge by text does', function (string $method, string $type) {
@@ -944,3 +1261,84 @@ it('does not read two enum resources and a null as a union of enum resources', f
         'embeddedEnumFqcns' => [Status::class, Visibility::class],
     ]);
 });
+
+// when() calls its closure with no argument, so one requiring a parameter throws whenever the condition holds. The
+// parameter stays bound, so the key publishes what the intended `fn () => $this->status` would.
+it('warns that a when() or unless() closure requiring a parameter throws, and keeps its binding', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(ConditionalParamEnumResource::class), Order::class)->analyze();
+    $statusBare = collect($analysis->properties)->firstWhere('name', 'status_bare');
+
+    // The three when() closures warn; the whenLoaded() closure beside them is passed its relation.
+    expect($statusBare['type'])->toBe('OrderStatusType')
+        ->and(AnalysisWarnings::all())->toHaveCount(3)
+        ->and(AnalysisWarnings::all())->toContain([
+            'subject' => ConditionalParamEnumResource::class,
+            'message' => 'when() on line 41 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+        ]);
+});
+
+it('records one warning, naming the call, for a when() or unless() closure that requires a parameter', function (string $php, string $message) {
+    conditionalMethodHandlerResolveOnPost($php);
+
+    expect(AnalysisWarnings::all())->toBe([['subject' => PostResource::class, 'message' => $message]]);
+})->with([
+    'when()' => [
+        '$this->when($this->title, fn ($t) => $t)',
+        'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'unless()' => [
+        '$this->unless($this->title, fn ($t) => $t)',
+        'unless() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'a condition that binds nothing' => [
+        '$this->when($this->id > 0, fn ($t) => $t)',
+        'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+]);
+
+it('records the warning once, however often the call is analyzed', function () {
+    conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t) => $t)');
+    conditionalMethodHandlerResolveOnPost('$this->when($this->title, fn ($t) => $t)');
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
+});
+
+// A closure Laravel can call with no argument never throws for it, so nothing is warned of.
+it('records no warning for a when() or unless() value Laravel can call with no arguments', function (string $php) {
+    conditionalMethodHandlerResolveOnPost($php);
+
+    expect(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'an optional parameter' => ['$this->when($this->title, fn ($t = null) => $t)'],
+    'a variadic parameter' => ['$this->when($this->title, fn (...$t) => $t)'],
+    'no parameter' => ['$this->when($this->title, fn () => $this->title)'],
+    'a value that is no closure' => ['$this->when($this->title, $this->title)'],
+    'unless(), an optional parameter' => ['$this->unless($this->title, fn ($t = null) => $t)'],
+]);
+
+// Conditionable::when() passes its callback the object and the value, so a callback that takes them is right. Only an
+// API resource's profile reads `$this->when()` as JsonResource::when(), which passes nothing.
+it('records no warning for a $this->when() whose subject is no API resource', function () {
+    $subject = new ReflectionClass(ConditionableBroadcastEvent::class);
+    $call = new AstParser()->parseSource('<?php $this->when($this->user->exists, fn ($event, $value) => $value);')[0]->expr;
+
+    new ResourceAstAnalyzer($subject, User::class, 'broadcastWith', null, new AnalysisScope($subject, User::class))->resolve($call);
+
+    expect(AnalysisWarnings::all())->toBe([]);
+});
+
+// Laravel's value() calls a Closure, and a first-class callable is one, so each conditional types the call it stands
+// for, and none warns.
+it('types a first-class callable the conditional family calls as the call it stands for', function (string $php, string $type) {
+    expect(conditionalMethodHandlerResolveOnPost($php)['type'])->toBe($type)
+        ->and(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'when() value, a model method' => ['$this->when($this->title, $this->resource->getKey(...))', 'number'],
+    'when() value, a function' => ['$this->when($this->title, now(...))', 'string'],
+    'when() default, a model method' => ['$this->when($this->title, "x", $this->resource->getKey(...))', 'string | number'],
+    'unless() value' => ['$this->unless($this->title, $this->resource->getKey(...))', 'number'],
+    'whenNotNull() value' => ['$this->whenNotNull($this->resource->getKey(...))', 'number'],
+    'whenHas() value' => ['$this->whenHas("title", $this->resource->getKey(...))', 'number'],
+    'whenLoaded() value, a static resource factory' => ['$this->whenLoaded("categoryRel", \\Workbench\\App\\Http\\Resources\\CategoryResource::make(...))', 'CategoryResource | null'],
+    'transform() callback' => ['$this->transform($this->title, strtoupper(...))', 'string'],
+]);

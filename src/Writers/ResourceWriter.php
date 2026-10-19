@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Writers;
 
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
@@ -30,11 +31,19 @@ class ResourceWriter extends CoreWriter
 
         $data = $transformer->data();
 
+        // The template imports `AsEnum` under this flag, and a cast can write `typeof Status`, needing only the const.
+        $usesAsEnum = Config::boolean('ts-publish.enums.use_tolki_package') && TsTypeString::typeNameOccursIn(
+            'AsEnum',
+            ...array_column($data->properties, 'type'),
+            ...$data->tsExtends,
+            ...array_filter([$data->typeAlias]),
+        );
+
         $content = view(
             $template,
             [
                 'filename' => $filename,
-                'usesTolkiPackage' => Config::boolean('ts-publish.enums.use_tolki_package'),
+                'usesTolkiPackage' => $usesAsEnum,
                 'data' => $data,
             ]
         )->render();

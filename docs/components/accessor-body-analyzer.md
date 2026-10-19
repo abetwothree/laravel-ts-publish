@@ -60,9 +60,10 @@ subject to the model. `resolveBody()` locates on the model, so the context alrea
 accessor, and the reset keeps that true for a caller that locates on the declaring class. `Release` pins the trait case
 through `DerivesReleaseVersion`.
 
-The closure profile drops `ConditionalMethodHandler` and `ToResourceHandler`, because a getter body is not a resource
-`toArray()`. It keeps `RelationFilterHandler`, which looks redundant on a single relation's filter, where
-`ReceiverMethodCallHandler` gives the same answer. Only `RelationFilterHandler` types these filters:
+The closure profile drops `ConditionalMethodHandler`, as any non-resource subject's does, and `ToResourceHandler`,
+because the model file cannot import a resource. It keeps `RelationFilterHandler`, which looks redundant on a single
+relation's filter, where `ReceiverMethodCallHandler` gives the same answer. Only `RelationFilterHandler` types these
+filters:
 
 - a to-many relation's filter, a map proxy, and a multi-model accessor's filter;
 - a filter on a column cast to a `Support\Collection`, which publishes `Record<string, unknown>`;
@@ -113,7 +114,7 @@ reading method its shape. `FilteringAccessorModel` in the unit fixtures pins eac
 Two accessors that read each other would recurse forever. `analyze()` enters an `AnalysisMemo` guard keyed
 `accessor-body:{model}@{attribute}`, with `@importless` appended for a read without imports, and returns null on
 re-entry. The inner read is `unknown` and the outer one terminates, as `Release::loopA()` and `loopB()` pin. The same
-key memoizes the answer for the run, and a cut-short answer is never stored.
+key memoizes the answer for the run, a cut-short one with the guards that cut it.
 
 `AccessorBodyAnalyzer` keys its own guard because `analyzeModelClosure()` guards and memoizes nothing, unlike
 `AstEngine::analyzeMethod()` with its `analysis:` key. The two keys are not interchangeable, so don't merge them. Each

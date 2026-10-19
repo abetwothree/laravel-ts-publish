@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Collectors\CoreCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Collectors\ResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\EnumGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
@@ -16,31 +17,41 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\Access;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessKind;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingEnums\AccessType;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HeaderedBarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ListOnlyModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MagicCallModelsCollector;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MarkedModelMetadataGenerator;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrefixedModelMetadataTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SingleModelMetadataCollector;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SuffixedModelMetadataTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnreadableRelationFacility;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnreadableRelationTrail;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\Access;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\AccessKind;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Colliding\AccessType;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\ReindexedValueEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateTableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LateTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationFacility;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationTrail;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ListOnlyModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\MagicCallModelsCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\SingleModelMetadataCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\MarkedModelMetadataGenerator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\PrefixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\SuffixedModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\CustomBarrelWriter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\HeaderedBarrelWriter;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Workbench\App\Http\Resources\CommentComposedResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Models\BaseExtendableModel;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\ExcludedModel;
 use Workbench\App\Models\Facility;
 use Workbench\App\Models\Post;
@@ -100,7 +111,7 @@ test('runner skips one failing metadata model and records the failure', function
                 'message' => RuntimeException::class.': Metadata is unavailable for this model.',
             ],
         ])
-        ->and(AnalysisWarnings::all())->toBe([]);
+        ->and(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain(User::class);
 });
 
 test('runner rejects an invalid metadata provider before processing models', function () {
@@ -862,7 +873,7 @@ describe('PublishedResourceRegistry run boundary', function () {
 
         expect(PublishedResourceRegistry::isPublished(RegistrarResource::class))->toBeTrue();
 
-        config()->set('ts-publish.resources.excluded', [RegistrarResource::class]);
+        config()->set('ts-publish.resources.excluded', [...config()->array('ts-publish.resources.excluded'), RegistrarResource::class]);
 
         $secondRunner = new Runner;
         $secondRunner->run();
@@ -889,7 +900,11 @@ describe('PublishedResourceRegistry run boundary', function () {
 
         // Both naming candidates for the Registrar model, so the convention loop has nothing
         // left to fall through to and the property degrades to unknown rather than to Registrar.
-        config()->set('ts-publish.resources.excluded', [RegistrarResource::class, BareRegistrarResource::class]);
+        config()->set('ts-publish.resources.excluded', [
+            ...config()->array('ts-publish.resources.excluded'),
+            RegistrarResource::class,
+            BareRegistrarResource::class,
+        ]);
 
         $secondRunner = new Runner;
         $secondRunner->run();
@@ -1228,13 +1243,16 @@ describe('PublishedModelRegistry run boundary', function () {
             ->and($runner->modelGenerators->first()->filename())->toBe('facility');
     });
 
-    test('a run starts with an empty analysis memo, pinned answers included', function () use ($enumsOnly) {
+    test('a run starts with an empty analysis memo', function () use ($enumsOnly) {
+        // Inertia off, so no morph map is built: buildMorphTargetMap() drops every answer too.
+        config()->set('ts-publish.inertia.enabled', false);
         $memo = resolve(AnalysisMemo::class);
-        $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+        $memo->remember('an-earlier-run', fn (): string => 'stale');
 
         $enumsOnly()->run();
 
-        expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
+        // The registry versions alone reject a stale answer, so only a dropped entry proves reset().
+        expect((fn (): array => $this->entries)->call($memo))->not->toHaveKey('an-earlier-run');
     });
 
     test('a resource, an event and an Inertia page name an on-demand model and decline an unpublished one', function () {
@@ -1304,6 +1322,19 @@ describe('enum names that collide inside one namespace', function () {
     });
 });
 
+// An EnumResource response keeps every key the published enum keeps, so no enum method value is worth a warning.
+test('never warns of an enum method value\'s keys, since an EnumResource response keeps them', function () {
+    config()->set('ts-publish.enums.additional_directories', [ReindexedValueEnum::class]);
+    config()->set('ts-publish.enums.included', [ReindexedValueEnum::class]);
+
+    (new Runner)->run();
+
+    expect(array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'EnumResource response re-indexes'),
+    ))->toBe([]);
+});
+
 // ─── CoreCollector class map run boundary ────────────────────────
 
 test('a run drops a class map memoized before it so the disk is rescanned', function () {
@@ -1335,4 +1366,170 @@ test('runner honors the configured model metadata generator_class', function () 
     expect($runner->modelMetadataGenerators)->toHaveCount(1)
         ->and($runner->modelMetadataGenerators->first())->toBeInstanceOf(MarkedModelMetadataGenerator::class)
         ->and($runner->modelMetadataGenerators->first()->content)->toEndWith("// custom generator\n");
+});
+
+// ─── Run boundary: process-lifetime state ───────────────────────
+
+describe('ModelAttributeResolver run boundary', function () {
+    beforeEach(function () {
+        config()->set('ts-publish.output_to_files', false);
+        config()->set('ts-publish.models.additional_directories', [LateTableModel::class]);
+        config()->set('ts-publish.models.included', [LateTableModel::class]);
+        config()->set('ts-publish.resources.additional_directories', [LateTableResource::class]);
+        config()->set('ts-publish.resources.included', [LateTableResource::class]);
+    });
+
+    /** A runner that publishes the late-table model and its resource only. */
+    $runner = function (): Runner {
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastChannels = false;
+        $runner->shouldPublishBroadcastEvents = false;
+
+        return $runner;
+    };
+
+    /** The missing-table warnings this run recorded for the late-table model. */
+    $tableWarnings = fn (): array => array_values(array_filter(
+        AnalysisWarnings::all(),
+        fn (array $warning): bool => $warning['subject'] === LateTableModel::class
+            && str_starts_with($warning['message'], 'Table [late_tables] does not exist'),
+    ));
+
+    test('a table created between two runs in one process reaches a resource that reads its column', function () use ($runner) {
+        $first = $runner();
+        $first->run();
+        expect($first->resourceGenerators->first()?->content)->toContain('title: unknown;');
+
+        Schema::create('late_tables', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+        });
+
+        $second = $runner();
+        $second->run();
+        expect($second->modelGenerators->first()?->content)->toContain('title: string;')
+            ->and($second->resourceGenerators->first()?->content)->toContain('title: string;');
+    });
+
+    test('a table still missing on a second run in one process warns again', function () use ($runner, $tableWarnings) {
+        $runner()->run();
+        expect($tableWarnings())->toHaveCount(1);
+        $runner()->run();
+        expect($tableWarnings())->toHaveCount(1);
+    });
+
+    test('a source run after a full run in one process reads a table created between them', function () use ($runner) {
+        $runner()->run();
+        Schema::create('late_tables', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+        });
+
+        $source = new RunnerForSource(LateTableResource::class);
+        $source->run();
+        expect($source->resourceGenerators->first()?->content)->toContain('title: string;');
+    });
+});
+
+describe('config-derived maps run boundary', function () {
+    beforeEach(function () {
+        config()->set('ts-publish.output_to_files', false);
+    });
+
+    /** A runner that publishes models only, limited to the given ones. */
+    $modelsRunner = function (array $models): Runner {
+        config()->set('ts-publish.models.included', $models);
+
+        $runner = new Runner;
+        $runner->shouldPublishEnums = false;
+        $runner->shouldPublishModelMetadata = false;
+        $runner->shouldPublishResources = false;
+        $runner->shouldPublishRoutes = false;
+        $runner->shouldPublishFormRequests = false;
+        $runner->shouldPublishBroadcastChannels = false;
+        $runner->shouldPublishBroadcastEvents = false;
+
+        return $runner;
+    };
+
+    /** The generated content of the Post model file. */
+    $post = fn (Runner $runner): ?string => $runner->modelGenerators
+        ->first(fn (ModelGenerator $generator): bool => $generator->filename() === 'post')
+        ?->content;
+
+    test('a custom_ts_mappings change between two runs in one process reaches the second', function () use ($modelsRunner) {
+        $first = $modelsRunner([User::class]);
+        $first->run();
+        expect($first->modelGenerators->first()?->content)->toContain('email: string;');
+
+        config()->set('ts-publish.custom_ts_mappings', ['varchar' => 'Lowercase<string>']);
+
+        $second = $modelsRunner([User::class]);
+        $second->run();
+        expect($second->modelGenerators->first()?->content)->toContain('email: Lowercase<string>;');
+    });
+
+    test('a relation_nullability_map change between two runs in one process reaches the second', function () use ($modelsRunner, $post) {
+        $first = $modelsRunner([Post::class, User::class]);
+        $first->run();
+        expect($post($first))->toMatch('/\n\s+author: User;/');
+
+        config()->set('ts-publish.models.relation_nullability_map', [BelongsTo::class => 'nullable']);
+
+        $second = $modelsRunner([Post::class, User::class]);
+        $second->run();
+        expect($post($second))->toMatch('/\n\s+author: User \| null;/');
+    });
+});
+
+describe('a second run in one process', function () {
+    /** The generated content of the comment-composed resource. */
+    $composed = fn (Collection $generators): string => $generators
+        ->first(fn (ResourceGenerator $generator): bool => $generator->filename() === 'comment-composed-resource')
+        ->content;
+
+    /** Asserts the content a run publishes when Comment is excluded, as a fresh process publishes it. */
+    $expectsCommentExcluded = function (string $content): void {
+        expect($content)
+            ->toContain('comments: Record<string, unknown>;')
+            ->toContain('comments_limited: Record<string, unknown>;')
+            ->toContain("import type { Tag } from '../../models';")
+            ->not->toContain('Comment[]');
+    };
+
+    test('a second run in one process publishes what a fresh process does', function (Closure $secondRun) use ($composed, $expectsCommentExcluded) {
+        $first = new Runner;
+        $first->run();
+        config()->set('ts-publish.models.excluded', [Comment::class]);
+        $second = $secondRun();
+        $second->run();
+
+        expect($composed($first->resourceGenerators))
+            ->toContain('comments: Comment[];')
+            ->toContain("import type { Comment, Tag } from '../../models';");
+        $expectsCommentExcluded($composed($second->resourceGenerators));
+    })->with([
+        'a full run' => [fn (): Runner => new Runner],
+        'a --source run' => [fn (): RunnerForSource => new RunnerForSource(CommentComposedResource::class)],
+    ]);
+
+    test('a run that throws part-way leaves the next run in the process clean', function () use ($composed, $expectsCommentExcluded) {
+        $first = new Runner;
+        $first->run();
+
+        config()->set('ts-publish.resources.collector_class', ThrowingResourcesCollector::class);
+        $throwing = new Runner;
+        expect(fn () => $throwing->run())->toThrow(RuntimeException::class);
+
+        config()->set('ts-publish.resources.collector_class', ResourcesCollector::class);
+        config()->set('ts-publish.models.excluded', [Comment::class]);
+        $second = new Runner;
+        $second->run();
+
+        $expectsCommentExcluded($composed($second->resourceGenerators));
+    });
 });

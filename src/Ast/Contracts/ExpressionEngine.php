@@ -37,4 +37,10 @@ interface ExpressionEngine
      * "this literal IS the whole return shape" (Inertia props, a delegated return), not AST depth.
      */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
+
+    /**
+     * Whether the subject's caller calls each callable value it reads, as Inertia does with props and shared data, so a
+     * callable's value is what it returns wherever it sits.
+     */
+    public function invokesCallables(): bool;
 }

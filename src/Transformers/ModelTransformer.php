@@ -16,7 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -47,6 +46,8 @@ use ReflectionClass;
  *
  * @phpstan-type DbColumns = list<string>
  * @phpstan-type TsTypeOverrides = array<string, string>
+ * @phpstan-type EnumFqcnInfo = array{fqcn: string, nullable: bool, isCollection: bool, alsoBare: bool}
+ * @phpstan-type EnumListFlags = array{isCollection: bool, alsoBare: bool}
  * @phpstan-type ResolvedImports = array{
  *    typeImports: TypesImportMap,
  *    valueImports: ValuesImportMap,
@@ -124,13 +125,13 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> */
     public protected(set) array $customImports = [];
 
-    /** @var array<string, array{fqcn: string, nullable: bool, isCollection: bool}> column_name => enum property info */
+    /** @var array<string, EnumFqcnInfo> column_name => enum property info */
     protected array $enumColumnProperties = [];
 
-    /** @var array<string, array{fqcn: string, nullable: bool, isCollection: bool}> mutator_name => enum property info */
+    /** @var array<string, EnumFqcnInfo> mutator_name => enum property info */
     protected array $enumMutatorProperties = [];
 
-    /** @var array<string, array{fqcn: string, nullable: bool, isCollection: bool}> append_name => enum property info */
+    /** @var array<string, EnumFqcnInfo> append_name => enum property info */
     protected array $enumAppendsProperties = [];
 
     /** @var list<string> Attribute names from model's array */
@@ -283,7 +284,7 @@ class ModelTransformer extends CoreTransformer
         $this->modelInstance = $modelInstance;
         $this->dbColumns = $this->modelInstance->getConnection()->getSchemaBuilder()->getColumnListing($this->modelInstance->getTable());
         $this->appendedAttributes = $this->modelInstance->getAppends();
-        $this->modelInspect = resolve(ModelInspector::class)->inspect($this->findable);
+        $this->modelInspect = resolve(ModelAttributeResolver::class)->inspect($this->findable);
         /** @var Collection<int, AttributeInfo> $attributes */
         $attributes = $this->modelInspect->attributes;
         $this->relationNullable = new RelationNullable($this->modelInstance, $attributes);
@@ -358,15 +359,15 @@ class ModelTransformer extends CoreTransformer
             // Fall back to the raw cast so enum and class metadata still propagates.
             if ($typings['type'] === 'unknown') {
                 $typings = match ($cast) {
-                    'attribute', 'accessor' => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
-                    default => LaravelTsPublish::toTsType($cast ?? $attribute['type'] ?? ''),
+                    'attribute', 'accessor', null => LaravelTsPublish::toTsType($attribute['type'] ?? ''),
+                    default => LaravelTsPublish::castToTsType($cast),
                 };
             }
 
             $typings = $this->exportedTypeInfo($typings);
             $type = $typings['type'];
 
-            if ($attribute['nullable'] && ! str_contains($type, 'null')) {
+            if ($attribute['nullable'] && ! ModelAttributeResolver::typeHoldsNull($type, $cast)) {
                 $type .= ' | null';
             }
 
@@ -381,12 +382,10 @@ class ModelTransformer extends CoreTransformer
             $enumFqcn = $this->soleEnumFqcn($typings, $type);
 
             if ($enumFqcn !== null) {
-                // $type itself may already carry '| null' here: resolveAttribute() appends it
-                // internally before this point, so the suffix check must strip it first.
                 $this->enumColumnProperties[$name] = [
                     'fqcn' => $enumFqcn,
                     'nullable' => $attribute['nullable'],
-                    'isCollection' => str_ends_with(rtrim(str_replace('| null', '', $type)), '[]'),
+                    ...$this->enumListFlags($type),
                 ];
             }
 
@@ -464,7 +463,7 @@ class ModelTransformer extends CoreTransformer
                 $enumInfo = [
                     'fqcn' => $enumFqcn,
                     'nullable' => str_contains($resolved['type'], 'null'),
-                    'isCollection' => str_ends_with(rtrim(str_replace('| null', '', $resolved['type'])), '[]'),
+                    ...$this->enumListFlags($resolved['type']),
                 ];
 
                 if ($isAppended) {
@@ -645,10 +644,11 @@ class ModelTransformer extends CoreTransformer
     /**
      * A keyed list without the keys a relation shares, which a combined interface leaves to the relation.
      *
+     * @template TKey of array-key
      * @template TEntry
      *
-     * @param  array<string, TEntry>  $list
-     * @return array<string, TEntry>
+     * @param  array<TKey, TEntry>  $list
+     * @return array<TKey, TEntry>
      */
     protected function withoutShadowed(array $list): array
     {
@@ -725,7 +725,7 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * The one enum a property's type is, bare or as a list and optionally nullable, else null.
+     * The one enum a property's type is, bare, as a list or as both, optionally nullable, else null.
      *
      * The model's Resource interface prints `AsEnum<typeof X>` in place of the whole type, so a shape, a list of shapes
      * or a union with any other arm keeps its own type.
@@ -738,10 +738,33 @@ class ModelTransformer extends CoreTransformer
             return null;
         }
 
-        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
         $token = $info['enumTypes'][0];
+        $forms = [[$token], [$token.'[]'], [$token.'[]', $token], [$token, $token.'[]']];
 
-        return $arms === [$token] || $arms === [$token.'[]'] ? $info['enumFqcns'][0] : null;
+        return in_array($this->nonNullArms($type), $forms, true) ? $info['enumFqcns'][0] : null;
+    }
+
+    /**
+     * Whether a sole enum's type is a list of it, and whether the bare enum stands beside that list.
+     *
+     * @return EnumListFlags
+     */
+    protected function enumListFlags(string $type): array
+    {
+        $arms = $this->nonNullArms($type);
+        $isCollection = array_any($arms, fn (string $arm): bool => str_ends_with($arm, '[]'));
+
+        return ['isCollection' => $isCollection, 'alsoBare' => $isCollection && count($arms) === 2];
+    }
+
+    /**
+     * The top-level arms of a type other than `null`.
+     *
+     * @return list<string>
+     */
+    protected function nonNullArms(string $type): array
+    {
+        return array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
     }
 
     protected function resolveAccessorDescription(string $name): string
@@ -958,6 +981,7 @@ class ModelTransformer extends CoreTransformer
                 'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
                 'nullable' => $info['nullable'],
                 'isCollection' => $info['isCollection'],
+                'alsoBare' => $info['alsoBare'],
             ];
         }
 
@@ -976,6 +1000,7 @@ class ModelTransformer extends CoreTransformer
                 'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
                 'nullable' => $info['nullable'],
                 'isCollection' => $info['isCollection'],
+                'alsoBare' => $info['alsoBare'],
             ];
         }
 
@@ -996,6 +1021,7 @@ class ModelTransformer extends CoreTransformer
                 'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
                 'nullable' => $info['nullable'],
                 'isCollection' => $info['isCollection'],
+                'alsoBare' => $info['alsoBare'],
             ];
         }
 

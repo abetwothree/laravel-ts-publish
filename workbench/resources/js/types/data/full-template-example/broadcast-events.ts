@@ -1,19 +1,27 @@
 import type { ComputedNameEvent } from './app/events/ComputedNameEvent';
 import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
+import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
 import type { FacilityAudited } from './app/events/FacilityAudited';
+import type { HandoverListed } from './app/events/HandoverListed';
+import type { ManifestAssembled } from './app/events/ManifestAssembled';
 import type { MixedTypesEvent } from './app/events/MixedTypesEvent';
 import type { MultiModelEvent } from './app/events/MultiModelEvent';
 import type { OrderShipped } from './app/events/OrderShipped';
 import type { PayloadDiffersEvent } from './app/events/PayloadDiffersEvent';
+import type { PostHelperPayloadEvent } from './app/events/PostHelperPayloadEvent';
 import type { PostPublishedEvent } from './app/events/PostPublishedEvent';
+import type { PostStatusBroadcast } from './app/events/PostStatusBroadcast';
 import type { PureEnumEvent } from './app/events/PureEnumEvent';
 import type { ReportSynced } from './app/events/ReportSynced';
+import type { ReviewerCastEvent } from './app/events/ReviewerCastEvent';
 import type { SameBasenameModelEvent } from './app/events/SameBasenameModelEvent';
 import type { ServerCreated } from './app/events/ServerCreated';
 import type { StatusSynced } from './crm/events/StatusSynced';
+import type { TaggedPayloadEvent } from './app/events/TaggedPayloadEvent';
 import type { TeamMessageSent } from './app/events/TeamMessageSent';
+import type { TeamRosterSynced } from './app/events/TeamRosterSynced';
 import type { UserNotification } from './app/events/UserNotification';
 import type { UserRegisteredEvent } from './app/events/UserRegisteredEvent';
 import type { UserSynced as AppUserSynced } from './app/events/UserSynced';
@@ -22,20 +30,28 @@ import type { UserSynced as CrmUserSynced } from './crm/events/UserSynced';
 export type BroadcastEvent =
     | '.Workbench.App.Events.ComputedNameEvent'
     | '.Workbench.App.Events.DeclaredPropsEvent'
+    | '.Workbench.App.Events.DispatchRelayed'
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
     | '.Workbench.App.Events.FacilityAudited'
+    | '.Workbench.App.Events.HandoverListed'
+    | '.Workbench.App.Events.ManifestAssembled'
     | '.Workbench.App.Events.MixedTypesEvent'
     | '.Workbench.App.Events.MultiModelEvent'
     | '.Workbench.App.Events.OrderShipped'
     | '.Workbench.App.Events.PayloadDiffersEvent'
+    | '.Workbench.App.Events.PostHelperPayloadEvent'
     | '.Workbench.App.Events.PostPublishedEvent'
+    | '.Workbench.App.Events.PostStatusBroadcast'
     | '.Workbench.App.Events.PureEnumEvent'
     | '.Workbench.App.Events.ReportSynced'
+    | '.Workbench.App.Events.ReviewerCastEvent'
     | '.Workbench.App.Events.SameBasenameModelEvent'
     | 'server.created'
     | '.Workbench.Crm.Events.StatusSynced'
+    | '.Workbench.App.Events.TaggedPayloadEvent'
     | '.Workbench.App.Events.TeamMessageSent'
+    | '.Workbench.App.Events.TeamRosterSynced'
     | '.Workbench.App.Events.UserNotification'
     | '.Workbench.App.Events.UserRegisteredEvent'
     | '.Workbench.App.Events.UserSynced'
@@ -44,20 +60,28 @@ export type BroadcastEvent =
 export const BroadcastEvents = Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
+    DispatchRelayed: '.Workbench.App.Events.DispatchRelayed',
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
+    HandoverListed: '.Workbench.App.Events.HandoverListed',
+    ManifestAssembled: '.Workbench.App.Events.ManifestAssembled',
     MixedTypesEvent: '.Workbench.App.Events.MixedTypesEvent',
     MultiModelEvent: '.Workbench.App.Events.MultiModelEvent',
     OrderShipped: '.Workbench.App.Events.OrderShipped',
     PayloadDiffersEvent: '.Workbench.App.Events.PayloadDiffersEvent',
+    PostHelperPayloadEvent: '.Workbench.App.Events.PostHelperPayloadEvent',
     PostPublishedEvent: '.Workbench.App.Events.PostPublishedEvent',
+    PostStatusBroadcast: '.Workbench.App.Events.PostStatusBroadcast',
     PureEnumEvent: '.Workbench.App.Events.PureEnumEvent',
     ReportSynced: '.Workbench.App.Events.ReportSynced',
+    ReviewerCastEvent: '.Workbench.App.Events.ReviewerCastEvent',
     SameBasenameModelEvent: '.Workbench.App.Events.SameBasenameModelEvent',
     ServerCreated: 'server.created',
     StatusSynced: '.Workbench.Crm.Events.StatusSynced',
+    TaggedPayloadEvent: '.Workbench.App.Events.TaggedPayloadEvent',
     TeamMessageSent: '.Workbench.App.Events.TeamMessageSent',
+    TeamRosterSynced: '.Workbench.App.Events.TeamRosterSynced',
     UserNotification: '.Workbench.App.Events.UserNotification',
     UserRegisteredEvent: '.Workbench.App.Events.UserRegisteredEvent',
     AppUserSynced: '.Workbench.App.Events.UserSynced',
@@ -67,20 +91,28 @@ export const BroadcastEvents = Object.freeze({
 export type {
     ComputedNameEvent,
     DeclaredPropsEvent,
+    DispatchRelayed,
     DocblockShapedEvent,
     EnumBroadcastEvent,
     FacilityAudited,
+    HandoverListed,
+    ManifestAssembled,
     MixedTypesEvent,
     MultiModelEvent,
     OrderShipped,
     PayloadDiffersEvent,
+    PostHelperPayloadEvent,
     PostPublishedEvent,
+    PostStatusBroadcast,
     PureEnumEvent,
     ReportSynced,
+    ReviewerCastEvent,
     SameBasenameModelEvent,
     ServerCreated,
     StatusSynced,
+    TaggedPayloadEvent,
     TeamMessageSent,
+    TeamRosterSynced,
     UserNotification,
     UserRegisteredEvent,
     AppUserSynced,

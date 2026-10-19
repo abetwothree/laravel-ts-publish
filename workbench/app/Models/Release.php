@@ -127,4 +127,28 @@ class Release extends Model
             return $totals;
         });
     }
+
+    /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
+    protected function lengthCallable(): Attribute
+    {
+        return Attribute::get(fn () => strlen(...));
+    }
+
+    /** The same for a first-class callable on the model's own method. */
+    protected function keyCallable(): Attribute
+    {
+        return Attribute::get(fn () => $this->getKey(...));
+    }
+
+    /** A getter that returns now() returns a Carbon, which json_encode() writes as its date string. */
+    protected function checkedAt(): Attribute
+    {
+        return Attribute::get(fn () => now());
+    }
+
+    /** A getter that returns a collection returns what its items encode as. */
+    protected function channelIds(): Attribute
+    {
+        return Attribute::get(fn () => collect([self::CHANNEL_STABLE, self::CHANNEL_BETA]));
+    }
 }

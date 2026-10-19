@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
  *
+ * @phpstan-import-type CollectedElement from ResourceCollections
+ *
  * @internal
  */
 final readonly class ReceiverType
@@ -17,13 +19,20 @@ final readonly class ReceiverType
      * @param  non-empty-list<class-string>  $classes  every class the value may be an instance of
      * @param  bool  $shortCircuits  a `?->` earlier in the chain can end the whole expression as null
      * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
-     * @param  class-string<Model>|null  $relatedModel  set for a relation instance, such as `$post->comments()`
+     * @param  class-string<Model>|null  $relatedModel  the model a relation, query or factory builds
+     * @param  bool  $unsaved  the model may be one no row backs yet: `new`, a `replicate()` copy, or a `make()` result
+     * @param  bool  $collectedItems  a resource collection's `$this->resource`: its items in a Support\Collection,
+     *                                or the paginator it was given, so a method an arm cannot run throws, not answers
+     * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
      */
     public function __construct(
         public array $classes,
         public bool $shortCircuits = false,
         public ?string $elementModel = null,
         public ?string $relatedModel = null,
+        public bool $unsaved = false,
+        public bool $collectedItems = false,
+        public ?array $collectedElement = null,
     ) {}
 
     /**
@@ -41,7 +50,25 @@ final readonly class ReceiverType
      */
     public function withShortCircuit(bool $shortCircuits): self
     {
-        return new self($this->classes, $shortCircuits, $this->elementModel, $this->relatedModel);
+        return $this->copy(shortCircuits: $shortCircuits);
+    }
+
+    /**
+     * The same receiver marked as a model no row backs yet.
+     */
+    public function asUnsaved(): self
+    {
+        return $this->copy(unsaved: true);
+    }
+
+    /**
+     * The same value holding other classes, as an `instanceof` test narrows it.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    public function withClasses(array $classes): self
+    {
+        return $this->copy(classes: $classes);
     }
 
     /**
@@ -68,5 +95,23 @@ final readonly class ReceiverType
         $models = array_values(array_filter($this->classes, fn (string $c): bool => is_a($c, Model::class, true)));
 
         return $models;
+    }
+
+    /**
+     * A copy with the given parts replaced and every other flag kept.
+     *
+     * @param  non-empty-list<class-string>|null  $classes
+     */
+    private function copy(?array $classes = null, ?bool $shortCircuits = null, ?bool $unsaved = null): self
+    {
+        return new self(
+            classes: $classes ?? $this->classes,
+            shortCircuits: $shortCircuits ?? $this->shortCircuits,
+            elementModel: $this->elementModel,
+            relatedModel: $this->relatedModel,
+            unsaved: $unsaved ?? $this->unsaved,
+            collectedItems: $this->collectedItems,
+            collectedElement: $this->collectedElement,
+        );
     }
 }

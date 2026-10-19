@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
@@ -68,6 +69,12 @@ function relationFilterStubEngine(array $result): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         /** Fails the test: no array is analyzed in this case. */
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
@@ -101,6 +108,12 @@ function relationFilterHandlerThrowingEngine(): ExpressionEngine
         public function spreadAnalysis(string $methodName): ?MethodAnalysis
         {
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -150,7 +163,7 @@ it('relation except() falls back to database columns only, matching Model::excep
 
     expect($result)->toBe([
         'type' => '{ id: number; title: string; content: string; user_id: number; status: StatusType; '
-            .'published_at: string | null; metadata: unknown[] | null; rating: number | null; category: string; '
+            .'published_at: string | null; metadata: unknown[] | null; rating: string | null; category: string; '
             .'options: Record<string, string> | null; deleted_at: string | null; updated_at: string | null; '
             .'category_id: number | null; visibility: VisibilityType | null; priority: PriorityType | null; '
             .'word_count: number | null; reading_time_minutes: number | null; featured_image_url: string | null; '
@@ -292,6 +305,43 @@ it('publishes a many-relation filter as the relation read, under both spellings 
     'morphMany through $this->resource' => [PostResource::class, Post::class, '$this->resource->images->except($ids)', '$this->resource->images', 'Image[]', 'Image[]'],
     'belongsToMany with a pivot' => [TeamResource::class, Team::class, '$this->members->only($ids)', '$this->members', 'User[]', 'User[]'],
     'belongsToMany ?-> through $this->resource' => [TeamResource::class, Team::class, '$this->resource->members?->only([1])', '$this->resource->members', 'User[]', 'User[] | null'],
+]);
+
+// A resource can wrap null, which ends a chain through `$this->resource?->` as null, so every filter on a relation read
+// that way gains one `| null`, whether or not a later `?->` repeats it.
+it('adds null once to a filter on a relation read through $this->resource?->', function (string $resource, string $model, string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass($resource), $model);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($resource), $model);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine)['type'] ?? null)->toBe($type);
+})->with([
+    'hasMany' => [PostResource::class, Post::class, '$this->resource?->comments->only([1])', 'Comment[] | null'],
+    'hasMany, ?-> again' => [PostResource::class, Post::class, '$this->resource?->comments?->only([1])', 'Comment[] | null'],
+    'belongsTo, a column subset' => [PostResource::class, Post::class, '$this->resource?->author->only([\'id\'])', "Pick<User, 'id'> | null"],
+    'belongsTo, the proxy\'s own post' => [CommentResource::class, Comment::class, '$this->resource?->post->only([\'id\'])', "Pick<Post, 'id'> | null"],
+    'belongsTo, runtime keys' => [CommentResource::class, Comment::class, '$this->resource?->post->except($keys)', 'Record<string, unknown> | null'],
+    'multi-model accessor' => [WarehouseResource::class, Warehouse::class, '$this->resource?->last_user_activity_by->only($keys)', 'Record<string, unknown> | null'],
+]);
+
+// Only the proxy's `?->` can end the chain as null: on any other receiver the name is not the scope model's relation.
+it('declines a nullsafe read whose receiver is not the resource proxy', function (string $php) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBeNull();
+})->with([
+    'a member of $this' => ['$this->author?->comments->only([1])'],
+    'a local variable' => ['$comment?->comments->only([1])'],
+]);
+
+it('declines a nullsafe pipeline whose receiver is not the resource proxy', function (string $php) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class);
+
+    expect((new RelationCollectionChainHandler)->resolve(relationFilterExpr($php), $scope, $engine))->toBeNull();
+})->with([
+    'a member of $this' => ['$this->author?->comments->take(1)'],
+    'a local variable' => ['$comment?->comments->take(1)'],
 ]);
 
 it('declines a many-relation filter whose relation read is unknown', function () {

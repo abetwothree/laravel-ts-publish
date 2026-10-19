@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -96,7 +95,8 @@ final class KnownMethodRuleHandler implements ExpressionHandler
         if (! $expr->name instanceof Identifier
             || ! $expr->var instanceof Variable
             || ! is_string($expr->var->name)
-            || ! isset($scope->requestVarNames[$expr->var->name])) {
+            || ! isset($scope->requestVarNames[$expr->var->name])
+            || ! $scope->holdsBinding($expr->var)) {
             return null;
         }
 
@@ -130,8 +130,7 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // A prop is JSON, and a bare `@return array` carries no key evidence: the `unknown[]` it
         // derives claims a list for the string-keyed `all()`. Vagueness also covers a `| unknown` arm.
-        if (TsTypeString::isVagueTsType($tsInfo['type'])
-            || ! $this->serializesAsReflected($reflection->getMethod($method))) {
+        if (TsTypeString::isVagueTsType($tsInfo['type'])) {
             return null;
         }
 
@@ -197,21 +196,13 @@ final class KnownMethodRuleHandler implements ExpressionHandler
 
         // The request's own interface renders the override and then appends ` | null` from the rule,
         // so the suffix stays outside the override here too.
+        $optional = $casts['optionalOverrides'][$key] ?? ! $field->isRequired;
+
         return [
             'type' => $type.($field->isNullable ? ' | null' : ''),
-            'optional' => $casts['optionalOverrides'][$key] ?? ! $field->isRequired,
+            'optional' => $optional,
+            ...($optional ? ['absentReadsNull' => true] : []),
             ...($customImports !== [] ? ['customImports' => $customImports] : []),
         ];
-    }
-
-    /**
-     * Whether every class the declared return names reaches a page prop as the type reflection derived.
-     *
-     * `allFiles()`'s UploadedFile and `interval()`'s CarbonInterval are not the strings `toTsType()` promises;
-     * see StringSerialization.
-     */
-    private function serializesAsReflected(ReflectionMethod $method): bool
-    {
-        return ! StringSerialization::methodReturnsFalseString($method->class, $method->getName());
     }
 }

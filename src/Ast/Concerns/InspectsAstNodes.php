@@ -4,31 +4,59 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use Illuminate\Http\Resources\Json\JsonResource;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use Closure;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\BinaryOp\Coalesce;
+use PhpParser\Node\Expr\BinaryOp\Concat;
+use PhpParser\Node\Expr\BinaryOp\Plus;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Expr\Yield_;
+use PhpParser\Node\Expr\YieldFrom;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\InterpolatedStringPart;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Block;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Do_;
+use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor;
+use PhpParser\NodeVisitorAbstract;
 use ReflectionClass;
 
 /**
@@ -40,6 +68,18 @@ use ReflectionClass;
  */
 trait InspectsAstNodes
 {
+    /**
+     * The int PHP stores a literal key as, a numeric string such as `'6'` included, or null for any other key.
+     */
+    protected static function storedIntKey(Expr $key): ?int
+    {
+        return match (true) {
+            $key instanceof Int_ => $key->value,
+            $key instanceof String_ => PhpArrayKey::storedInt($key->value),
+            default => null,
+        };
+    }
+
     /**
      * Whether an expression is `$this->{$methodName}(...)`, called directly on `$this`.
      */
@@ -61,6 +101,28 @@ trait InspectsAstNodes
     }
 
     /**
+     * Whether a `?->` in this member chain can end the whole expression as null: PHP skips the rest of a chain, up to
+     * the first node that is not a property read, method call or offset read, once a nullsafe step meets null.
+     */
+    protected function chainShortCircuits(Expr $expr): bool
+    {
+        while ($expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
+            || $expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof ArrayDimFetch
+        ) {
+            if ($expr instanceof NullsafeMethodCall || $expr instanceof NullsafePropertyFetch) {
+                return true;
+            }
+
+            $expr = $expr->var;
+        }
+
+        return false;
+    }
+
+    /**
      * Whether an expression is a `$this->prop` property fetch, whichever property it names.
      */
     protected function isThisPropertyFetch(Expr $expr): bool
@@ -71,7 +133,7 @@ trait InspectsAstNodes
     }
 
     /**
-     * Whether an expression is the `$this->resource` a JsonResource wraps its model in.
+     * Whether an expression is spelled `$this->resource`, in any subject; isProxyFetch() says whether it is the proxy.
      */
     protected function isResourceFetch(Expr $expr): bool
     {
@@ -83,48 +145,119 @@ trait InspectsAstNodes
     }
 
     /**
+     * The class a name spells from inside the subject: the subject for `self` and `static`, in any case, else the name.
+     *
+     * @param  ReflectionClass<object>  $subject
+     */
+    protected function subjectClassName(Name $name, ReflectionClass $subject): string
+    {
+        return in_array($name->toLowerString(), ['self', 'static'], true) ? $subject->getName() : $name->toString();
+    }
+
+    /**
+     * Whether an expression is `$this->resource` on a subject that has the proxy; anywhere else it is a member.
+     */
+    protected function isProxyFetch(Expr $expr, AnalysisScope $scope): bool
+    {
+        return $this->isResourceFetch($expr) && $scope->hasResourceProxy();
+    }
+
+    /**
+     * Whether a fetch reads a member of the scope's model: `$this->prop`, or `$this->resource->prop` through the proxy.
+     * The proxy itself is the model, never a member named `resource`.
+     */
+    protected function isModelMemberFetch(Expr $fetch, AnalysisScope $scope): bool
+    {
+        return $fetch instanceof PropertyFetch
+            && (($this->isThisPropertyFetch($fetch) && ! $this->isProxyFetch($fetch, $scope)) || $this->isProxyFetch($fetch->var, $scope));
+    }
+
+    /**
      * The name an array key spells, or null when it is not a literal this can read.
      *
-     * An int key is a real JSON object key: `[1 => 'Basic']` encodes as `{"1":"Basic"}`, not as a list.
+     * An int key is named as `json_encode()` writes it, `"1"`, whatever the subject: only a resource publisher
+     * re-indexes an array whose keys are all numeric. A key built from literal text around a value is named by the
+     * template-literal index signature that covers it.
      *
      * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      */
     protected function resolveKeyName(Expr $key, ReflectionClass $subject): ?string
     {
         if ($key instanceof String_) {
-            return $key->value;
+            return $this->literalKeyName($key->value, $subject);
         }
 
         if ($key instanceof Int_) {
-            return $this->publishableKeyName((string) $key->value, $subject);
+            return (string) $key->value;
         }
 
-        if ($key instanceof ClassConstFetch && $key->class instanceof Name && $key->name instanceof Identifier) {
-            $parent = $subject->getParentClass();
-            $class = match ($key->class->toLowerString()) {
-                'self', 'static' => $subject->getName(),
-                'parent' => $parent === false ? null : $parent->getName(),
-                default => $key->class->toString(),
-            };
-            $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
-            $value = $constant !== null && defined($constant) ? constant($constant) : null;
+        if ($key instanceof ClassConstFetch) {
+            $value = $this->constantKeyValue($key, $subject);
+            $value = is_string($value) ? $this->literalKeyName($value, $subject) : $value;
 
-            return is_int($value) || is_string($value) ? $this->publishableKeyName((string) $value, $subject) : null;
+            return $value === null ? null : (string) $value;
         }
+
+        return $this->interpolatedKeyName($key);
+    }
+
+    /**
+     * The int or string a class-constant key holds, or null when it holds neither or cannot be read.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent`
+     */
+    protected function constantKeyValue(ClassConstFetch $key, ReflectionClass $subject): int|string|null
+    {
+        if (! $key->class instanceof Name || ! $key->name instanceof Identifier) {
+            return null;
+        }
+
+        $parent = $subject->getParentClass();
+        $class = $key->class->toLowerString() === 'parent'
+            ? ($parent === false ? null : $parent->getName())
+            : $this->subjectClassName($key->class, $subject);
+        $constant = $class !== null ? $class.'::'.$key->name->toString() : null;
+        $value = $constant !== null && defined($constant) ? constant($constant) : null;
+
+        return is_int($value) || is_string($value) ? $value : null;
+    }
+
+    /**
+     * A literal key's text, or null with a warning when it reads as an index signature: printed bare, it would type
+     * other keys.
+     *
+     * @param  ReflectionClass<object>  $subject  the warning's subject
+     */
+    protected function literalKeyName(string $text, ReflectionClass $subject): ?string
+    {
+        if (! IndexSignatureKey::is($text)) {
+            return $text;
+        }
+
+        AnalysisWarnings::addOnce(
+            $subject->getName(),
+            'The key "'.$text.'" reads as an index signature, so it is left out; rename it.',
+        );
 
         return null;
     }
 
     /**
-     * Drop a numeric key when the analyzed subject is a resource, and keep every other one: PHP stores a numeric
-     * string key as an int, which the transformer's `array<string, …>` property maps cannot hold. The test is the
-     * subject, not the position, so a numeric key nested inside a resource is dropped as well.
-     *
-     * @param  ReflectionClass<object>  $subject
+     * An index-signature name for a key built from literal text around a variable, `"{$name}_tag"` or
+     * `$name.'_tag'`, or null for any other key.
      */
-    private function publishableKeyName(string $name, ReflectionClass $subject): ?string
+    protected function interpolatedKeyName(Expr $key): ?string
     {
-        return is_numeric($name) && $subject->isSubclassOf(JsonResource::class) ? null : $name;
+        $parts = match (true) {
+            $key instanceof InterpolatedString => $key->parts,
+            $key instanceof Concat => [$key->left, $key->right],
+            default => null,
+        };
+
+        return $parts === null ? null : IndexSignatureKey::fromParts(array_values(array_map(
+            fn (Node $part): ?string => $part instanceof InterpolatedStringPart || $part instanceof String_ ? $part->value : null,
+            $parts,
+        )));
     }
 
     /**
@@ -144,15 +277,25 @@ trait InspectsAstNodes
      * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
      * only a single walk lets a later key clear the FQCN channels an earlier one registered.
      *
+     * array_merge() renumbers every int key from 0, so a literal int key, or a constant holding one, takes its new
+     * number until a spread, a `parent::` call or a constant that cannot be read, whose int keys cannot be counted.
+     *
+     * @param  ReflectionClass<object>  $subject  resolves `self`, `static` and `parent` in a constant key
      * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
-    protected function mergedArrayLiteral(FuncCall $call, ?string $parentMethodName = null, array $localVarBindings = []): ?Array_
-    {
+    protected function mergedArrayLiteral(
+        FuncCall $call,
+        ReflectionClass $subject,
+        ?string $parentMethodName = null,
+        array $localVarBindings = [],
+    ): ?Array_ {
         if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
             return null;
         }
 
         $items = [];
+        $keyless = [];
+        $next = 0;
 
         foreach ($call->getArgs() as $arg) {
             $value = $arg->value;
@@ -162,7 +305,34 @@ trait InspectsAstNodes
             }
 
             if ($value instanceof Array_) {
-                $items = [...$items, ...$value->items];
+                foreach ($value->items as $item) {
+                    $constant = $item->key instanceof ClassConstFetch
+                        ? $this->constantKeyValue($item->key, $subject)
+                        : null;
+                    $intKey = match (true) {
+                        $item->key === null => null,
+                        $constant !== null => is_int($constant) ? $constant : PhpArrayKey::storedInt($constant),
+                        default => self::storedIntKey($item->key),
+                    };
+
+                    if ($next !== null && $intKey !== null) {
+                        $items[] = new ArrayItem($item->value, new Int_($next++), $item->byRef, $item->getAttributes());
+
+                        continue;
+                    }
+
+                    if ($next !== null && $item->key === null && ! $item->unpack) {
+                        $keyless[count($items)] = new ArrayItem($item->value, new Int_($next), $item->byRef, $item->getAttributes());
+                    }
+
+                    $next = match (true) {
+                        $next === null || $item->unpack => null,
+                        $item->key === null => $next + 1,
+                        $item->key instanceof ClassConstFetch && $constant === null => null,
+                        default => $next,
+                    };
+                    $items[] = $item;
+                }
 
                 continue;
             }
@@ -172,9 +342,39 @@ trait InspectsAstNodes
             }
 
             $items[] = new ArrayItem($value, byRef: false, unpack: true);
+            $next = null;
+        }
+
+        // A keyless item keeps the key it gets at runtime only beside a keyed one; an all-keyless literal stays a list.
+        if ($keyless !== [] && array_filter($items, fn (ArrayItem $item): bool => $item->key !== null) !== []) {
+            $items = array_values(array_replace($items, $keyless));
         }
 
         return new Array_($items);
+    }
+
+    /**
+     * Re-express PHP's array union `$left + $right` as one literal. A literal operand, or a local holding one, gives
+     * its items; a nested `+` its own; anything else one spread.
+     *
+     * With every key a literal, the items run as PHP builds them: the left's, then each right one under a key the left
+     * lacks, a keyless item under the int key PHP gives it.
+     *
+     * A spread hides its keys, so the literal is then `[...$right, ...$left]`, whose later spread wins a key as the
+     * left operand does, though an int key can land out of PHP's order.
+     *
+     * @param  array<string, Expr>  $localVarBindings  substituted for a variable operand
+     */
+    protected function arrayUnionLiteral(Plus $union, array $localVarBindings = []): Array_
+    {
+        $left = $this->unionOperandItems($union->left, $localVarBindings);
+        $right = $this->unionOperandItems($union->right, $localVarBindings);
+        $storedLeft = $this->itemsByStoredKey($left);
+        $storedRight = $this->itemsByStoredKey($right);
+
+        return new Array_($storedLeft === null || $storedRight === null
+            ? [...$right, ...$left]
+            : array_values($storedLeft + $storedRight));
     }
 
     /**
@@ -296,7 +496,8 @@ trait InspectsAstNodes
 
             if ($stmt instanceof Foreach_
                 || $stmt instanceof For_
-                || $stmt instanceof While_) {
+                || $stmt instanceof While_
+                || $stmt instanceof Block) {
                 $returns = [...$returns, ...$this->collectReturnExpressions($stmt->stmts)];
 
                 continue;
@@ -308,5 +509,166 @@ trait InspectsAstNodes
         }
 
         return $returns;
+    }
+
+    /**
+     * Whether a function-like body can end without a value, returning a `null` that none of its returns shows.
+     */
+    protected function canEndWithoutValue(FunctionLike $function): bool
+    {
+        // A declared return type throws where the body would end without a value.
+        if ($function->getReturnType() !== null) {
+            return false;
+        }
+
+        // A trailing comment parses as a statement of its own.
+        $stmts = $function->getStmts() ?? [];
+        $statements = array_filter($stmts, fn (Stmt $stmt): bool => ! $stmt instanceof Nop);
+        $last = end($statements);
+
+        if (! $last instanceof Return_ && ! ($last instanceof ExpressionStmt && $last->expr instanceof Throw_)) {
+            return true;
+        }
+
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Return_ && $node->expr === null);
+    }
+
+    /**
+     * Whether a value may be a closure, an arrow function or, where counted, a first-class callable: as itself, an arm
+     * of `?:`, `??` or `match`, or the one write the scope binds a local to, which is how the engine reads that local.
+     *
+     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
+     */
+    protected function mayHoldCallable(
+        Expr $expr,
+        AnalysisScope $scope,
+        bool $firstClassCallables = true,
+        array $followed = [],
+    ): bool {
+        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
+            return true;
+        }
+
+        if ($expr instanceof CallLike) {
+            return $firstClassCallables && $expr->isFirstClassCallable();
+        }
+
+        if ($expr instanceof Variable && is_string($expr->name)) {
+            $bound = $scope->localVarBindings[$expr->name] ?? null;
+
+            return $bound !== null
+                && ! isset($followed[$expr->name])
+                && $this->mayHoldCallable($bound, $scope, $firstClassCallables, [...$followed, $expr->name => true]);
+        }
+
+        $arms = match (true) {
+            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
+            $expr instanceof Coalesce => [$expr->left, $expr->right],
+            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
+            default => [],
+        };
+
+        return array_any(
+            $arms,
+            fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $firstClassCallables, $followed),
+        );
+    }
+
+    /**
+     * Whether a body yields, so calling it returns a `Generator`, never the value it returns.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    protected function yields(array $stmts): bool
+    {
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Yield_ || $node instanceof YieldFrom);
+    }
+
+    /**
+     * The items one operand of `+` gives the union literal.
+     *
+     * @param  array<string, Expr>  $localVarBindings
+     * @return list<ArrayItem>
+     */
+    private function unionOperandItems(Expr $operand, array $localVarBindings): array
+    {
+        if ($operand instanceof Variable && is_string($operand->name)) {
+            $operand = $localVarBindings[$operand->name] ?? $operand;
+        }
+
+        return match (true) {
+            $operand instanceof Array_ => array_values($operand->items),
+            $operand instanceof Plus => array_values($this->arrayUnionLiteral($operand, $localVarBindings)->items),
+            default => [new ArrayItem($operand, byRef: false, unpack: true)],
+        };
+    }
+
+    /**
+     * A literal's items as PHP stores them: a key written twice keeps its first place and its last value, and a keyless
+     * item takes its int key; null when an item is a spread or its key is no literal.
+     *
+     * @param  list<ArrayItem>  $items
+     * @return array<array-key, ArrayItem>|null
+     */
+    private function itemsByStoredKey(array $items): ?array
+    {
+        $stored = [];
+        $next = null;
+
+        foreach ($items as $item) {
+            $key = match (true) {
+                $item->key === null => $next ?? 0,
+                $item->key instanceof Int_ => $item->key->value,
+                $item->key instanceof String_ => self::storedIntKey($item->key) ?? $item->key->value,
+                default => null,
+            };
+
+            if ($key === null || $item->unpack) {
+                return null;
+            }
+
+            $stored[$key] = $item->key === null
+                ? new ArrayItem($item->value, new Int_($key), $item->byRef, $item->getAttributes())
+                : $item;
+
+            if (is_int($key)) {
+                $next = max($next ?? $key + 1, $key + 1);
+            }
+        }
+
+        return $stored;
+    }
+
+    /**
+     * Whether a node of the body's own matches; a nested closure, function or class answers for itself.
+     *
+     * @param  array<Stmt>  $stmts
+     * @param  Closure(Node): bool  $matches
+     */
+    private function bodyHas(array $stmts, Closure $matches): bool
+    {
+        $visitor = new class($matches) extends NodeVisitorAbstract
+        {
+            public bool $found = false;
+
+            /** @param  Closure(Node): bool  $matches */
+            public function __construct(private readonly Closure $matches) {}
+
+            /** Stop at the first match, leaving a nested function-like or class unread. */
+            public function enterNode(Node $node): ?int
+            {
+                if ($node instanceof FunctionLike || $node instanceof ClassLike) {
+                    return NodeVisitor::DONT_TRAVERSE_CHILDREN;
+                }
+
+                $this->found = ($this->matches)($node);
+
+                return $this->found ? NodeVisitor::STOP_TRAVERSAL : null;
+            }
+        };
+
+        new NodeTraverser($visitor)->traverse($stmts);
+
+        return $visitor->found;
     }
 }

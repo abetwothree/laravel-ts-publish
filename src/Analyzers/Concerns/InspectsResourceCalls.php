@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -100,73 +100,12 @@ trait InspectsResourceCalls
     }
 
     /**
-     * Whether a class is a resource this run will also emit a file for.
-     *
-     * A convention-guessed candidate must be one, or the import it produces points at no module.
+     * Whether a class is an API resource this run will also emit a file for, as ResourceCollections decides it.
      *
      * @phpstan-assert-if-true class-string<JsonResource> $fqcn
      */
     protected function isPublishedResourceClass(string $fqcn): bool
     {
-        return $this->isResourceClass($fqcn) && PublishedResourceRegistry::isPublished($fqcn);
-    }
-
-    /**
-     * Resolve the resource class a ResourceCollection collects, from the #[Collects] attribute, the
-     * $collects property default, or the FooCollection → FooResource naming convention.
-     *
-     * Shared by both analyzers so their resolution order cannot drift apart.
-     *
-     * @param  class-string  $collectionFqcn
-     * @return class-string<JsonResource>|null
-     */
-    protected function resolveCollectedResourceClass(string $collectionFqcn): ?string
-    {
-        $reflection = new ReflectionClass($collectionFqcn);
-
-        $collectsAttribute = 'Illuminate\Http\Resources\Attributes\Collects';
-        if (class_exists($collectsAttribute)) {
-            // Priority 1: #[Collects] attribute (Laravel 13.0+)
-            $collectsAttrs = $reflection->getAttributes($collectsAttribute);
-
-            if ($collectsAttrs !== []) {
-                $collectsClass = $collectsAttrs[0]->newInstance()->class;
-
-                if (class_exists($collectsClass) && is_a($collectsClass, JsonResource::class, true)) {
-                    return $collectsClass;
-                }
-            }
-        }
-
-        // Priority 2: explicit $collects property default value
-        /** @var array<string, mixed> $defaults */
-        $defaults = $reflection->getDefaultProperties();
-        $collects = $defaults['collects'] ?? null;
-
-        if (is_string($collects) && class_exists($collects) && is_a($collects, JsonResource::class, true)) {
-            return $collects;
-        }
-
-        // Priority 3: naming convention — FooCollection → FooResource, gated on the published set
-        $className = $reflection->getShortName();
-        $namespace = $reflection->getNamespaceName();
-
-        if (str_ends_with($className, 'Collection')) {
-            $base = substr($className, 0, -10);
-
-            $candidate = $namespace.'\\'.$base.'Resource';
-
-            if ($this->isPublishedResourceClass($candidate)) {
-                return $candidate;
-            }
-
-            $candidate = $namespace.'\\'.$base;
-
-            if ($this->isPublishedResourceClass($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
+        return ResourceCollections::isPublishedResource($fqcn);
     }
 }

@@ -16,7 +16,7 @@ use ReflectionProperty;
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  *
  * @phpstan-type VarTag = array{string, string|null}
- * @phpstan-type CapturedTag = array{string, string}
+ * @phpstan-type CapturedTag = array{string, string, int}
  *
  * @internal
  */
@@ -71,7 +71,7 @@ final class PropertyDocblockTypeReader
 
     /**
      * Capture an inline `@var` on a local assignment: its type, and the variable it names, null when it names none.
-     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part.
+     * Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      * @return VarTag|null
@@ -80,10 +80,8 @@ final class PropertyDocblockTypeReader
     {
         $tag = $this->captureTag($docComment, '/(?<![\w-])@var\s+/');
 
-        if ($tag === null
-            || ! VarTypeWhitelist::for($context)->accepts($tag[0])
-            || preg_match('/\bunknown\b/', $this->readDeclared($tag[0], $context)['type'] ?? '') === 1
-        ) {
+        // A tag no reading accepts, such as an interface's, still names the receiver its local holds.
+        if ($tag === null || ! $this->readsInFull($tag[0], $context, unreadAccepted: true)) {
             return null;
         }
 
@@ -91,10 +89,36 @@ final class PropertyDocblockTypeReader
     }
 
     /**
+     * Capture the type a method's `@phpstan-param`, `@psalm-param` or `@param` tag gives one parameter, tried in that
+     * order. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
+     *
+     * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
+     */
+    public function extractParamTag(string $docComment, string $name, ReflectionClass $context): ?string
+    {
+        foreach (['@phpstan-param', '@psalm-param', '@param'] as $tagName) {
+            $offset = 0;
+            $pattern = '/(?<![\w-])'.preg_quote($tagName, '/').'\s+/';
+
+            while (($tag = $this->captureTag($docComment, $pattern, $offset)) !== null) {
+                [$type, $rest, $offset] = $tag;
+
+                if (preg_match('/^\s*&?\s*(?:\.\.\.)?\$'.preg_quote($name, '/').'(?![\w\x80-\xff])/', $rest) !== 1) {
+                    continue;
+                }
+
+                return $this->readsInFull($type, $context, unreadAccepted: false) ? $type : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Capture the full type after a line-leading `@return`, `@phpstan-return` or `@psalm-return`, tried in that order.
      *
-     * Unlike LaravelTsPublish::extractReturnTypeFromDocblock(), text after a generic's closing `>`, such as `[]`, stays
-     * part of the type, so ReceiverClassResolver refuses an array of a class instead of naming the class.
+     * Text after a generic's closing `>`, such as `[]`, stays part of the type, so ReceiverClassResolver refuses an
+     * array of a class instead of naming the class. LaravelTsPublish::extractReturnTypeFromDocblock() reads through it.
      */
     public function extractReturnType(string $docComment): ?string
     {
@@ -110,20 +134,21 @@ final class PropertyDocblockTypeReader
     }
 
     /**
-     * Capture the type expression after the first match of a tag pattern, stopping at the separator that ends it, with
-     * the text that follows it.
+     * Capture the type expression after the first match of a tag pattern at or past an offset, stopping at the
+     * separator that ends it, with the text that follows it and the offset a next search starts from.
      *
      * @return CapturedTag|null
      */
-    private function captureTag(string $docComment, string $tagPattern): ?array
+    private function captureTag(string $docComment, string $tagPattern, int $offset = 0): ?array
     {
         $content = trim((string) preg_replace(['#^[ \t]*/?\*+/?#m', '#\*+/\s*$#'], '', $docComment));
 
-        if (! preg_match($tagPattern, $content, $match, PREG_OFFSET_CAPTURE)) {
+        if (! preg_match($tagPattern, $content, $match, PREG_OFFSET_CAPTURE, $offset)) {
             return null;
         }
 
-        $rest = ltrim(substr($content, (int) $match[0][1] + strlen((string) $match[0][0])));
+        $next = (int) $match[0][1] + strlen((string) $match[0][0]);
+        $rest = ltrim(substr($content, $next));
         $type = '';
         $depth = 0;
         $length = strlen($rest);
@@ -153,7 +178,7 @@ final class PropertyDocblockTypeReader
 
         $type = trim($type);
 
-        return [$type, substr($rest, $end)];
+        return [$type, substr($rest, $end), $next];
     }
 
     /**
@@ -164,12 +189,36 @@ final class PropertyDocblockTypeReader
         $captured = rtrim($captured);
         $remaining = ltrim($remaining);
 
+        // A `&` before a parameter name marks a by-reference `@param`, not an intersection. A `:` after a `)` opens a
+        // callable's return type.
         return str_ends_with($captured, '|') || str_ends_with($captured, '&')
-            || str_starts_with($remaining, '|') || str_starts_with($remaining, '&');
+            || str_starts_with($remaining, '|')
+            || (str_starts_with($remaining, '&') && preg_match('/^&\s*(?:\.\.\.)?\$/', $remaining) !== 1)
+            || preg_match('/\)\s*:$/', $captured) === 1
+            || (str_ends_with($captured, ')') && str_starts_with($remaining, ':'));
     }
 
     /**
-     * Resolve a PHPDoc type string against a class's use-map and namespace.
+     * Whether a tag's type is a VarTypeWhitelist form whose reading holds an `unknown` only where a callable stands.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @param  bool  $unreadAccepted  the answer when the reading is null, as for a type that only names a receiver
+     */
+    private function readsInFull(string $type, ReflectionClass $context, bool $unreadAccepted): bool
+    {
+        $leaves = VarTypeWhitelist::for($context)->unknownLeaves($type);
+
+        if ($leaves === null) {
+            return false;
+        }
+
+        $read = $this->readDeclared($type, $context);
+
+        return $read === null ? $unreadAccepted : preg_match_all('/\bunknown\b/', $read['type']) === $leaves;
+    }
+
+    /**
+     * Resolve a PHPDoc type string against a class's use-map, namespace and type aliases.
      *
      * @param  ReflectionClass<object>  $context
      * @return TypeScriptTypeInfo
@@ -181,7 +230,7 @@ final class PropertyDocblockTypeReader
 
         $infos = [];
 
-        // Union fan-out duplicates LaravelTsPublish::resolveDocblockPartToInfo(), which is protected.
+        // Union fan-out duplicates LaravelTsPublish::resolveDocblockTypeStringAgainst(), which is protected.
         foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $part) {
             $part = trim($part);
 
@@ -189,7 +238,7 @@ final class PropertyDocblockTypeReader
                 continue;
             }
 
-            $infos[] = LaravelTsPublish::resolveDocblockTypePart($part, $useMap, $namespace);
+            $infos[] = LaravelTsPublish::resolveDocblockTypePartOrAlias($part, $useMap, $namespace, $context);
         }
 
         if ($infos === []) {

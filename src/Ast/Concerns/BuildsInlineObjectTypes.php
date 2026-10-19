@@ -36,9 +36,12 @@ trait BuildsInlineObjectTypes
         }
 
         $parts = array_map(function (array $prop): string {
-            $key = JsEmitter::validJsObjectKey($prop['name']);
+            $name = (string) $prop['name'];
+            $key = JsEmitter::validJsObjectKey($name, allowIndexSignature: true);
 
-            return $prop['optional'] ? "{$key}?: {$prop['type']}" : "{$key}: {$prop['type']}";
+            return $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name)
+                ? "{$key}?: {$prop['type']}"
+                : "{$key}: {$prop['type']}";
         }, array_values($collapsed));
 
         return '{ '.implode('; ', $parts).' }';

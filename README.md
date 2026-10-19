@@ -127,6 +127,7 @@ Status.from('active').label;  // 'Active User', a PHP-like enum "instance"
 Key capabilities include:
 
 - **Your own methods**: publish them with `#[TsEnumMethod]` and `#[TsEnumStaticMethod]`, or auto-include public ones.
+- **Values as sent**: a method's value publishes as `json_encode()` writes it, objects and dates included.
 - **Renames and descriptions**: `#[TsEnum]` and `#[TsCase]` rename an enum or a case, or add a JSDoc description.
 - **Type aliases**: `{Name}Type` types a raw case value, and a backed enum's `{Name}Kind` types a case name.
 - **PHPDoc carried over**: class, case, and method doc blocks become JSDoc comments.
@@ -173,6 +174,7 @@ Key capabilities include:
 - **Accessor getter bodies**: an accessor with a vague signature is typed from the value its getter returns.
 - **Nullable relations**: singular relations get `| null` from their type and foreign key, configurable per type.
 - **Related models**: a model outside your configured directories publishes when a published model relates to it.
+- **Serialized casts**: a cast publishes what Laravel serializes, so `decimal:2` is a `string` and `timestamp` a `number`.
 - **Overrides**: `#[TsCasts]` retypes a property, and `#[TsType]` types every column that uses a custom cast class.
 - **Enum columns**: a parallel `{Model}Resource` interface types each enum column as a resolved `AsEnum<>` instance.
 - **Hidden columns**: `$hidden` attributes publish unless you turn on `models.exclude_hidden`.
@@ -256,10 +258,13 @@ export interface UserResource {
 Key capabilities include:
 
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
-- **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties.
+- **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
+- **Resource collections**: a collection publishes the body Laravel sends under the wrap key your app sets, over items or a length-aware, simple, or cursor paginator.
+- **JSON:API resources**: a `JsonApiResource` publishes the resource object it sends, with typed `attributes` and `relationships`.
 - **Computed values**: method calls, local variables, `instanceof` narrowing, and collection chains keep their types.
-- **Spreads and inheritance**: `merge()`, parent `toArray()` spreads, and trait method spreads add their keys.
+- **Spreads and inheritance**: `merge()`, `mergeWhen()` and its default, parent `toArray()` and trait method spreads, and a trait's own `toArray()` add their keys.
+- **Base delegation**: a resource with no `toArray()` publishes the model's columns, appended accessors, and relations, each relation an optional key.
 - **Attribute filters**: `only([...])` and `except([...])`, on the resource or on a relation, are typed from the model.
 - **Overrides**: `#[TsResource]` sets the name or model, and `#[TsCasts]` overrides or adds property types.
 
@@ -458,6 +463,8 @@ Key capabilities include:
 - **Typed user**: `$request->user()` and `Auth::user()` publish your auth provider's model as `User | null`.
 - **Live config values**: a literal `config('some.key')` is typed from its value in your booted app.
 - **Prop wrappers**: `Inertia::defer()`, `optional()`, `merge()`, and the other v2 wrappers type as the value they wrap.
+- **API resource props**: resources and collections type as the response Laravel sends, under your app's wrap key, with each paginator kind's `links` and `meta`.
+- **JSON:API props**: a `JsonApiResource` types as the JSON:API document Inertia sends, its `included` resources too.
 - **Overrides**: `#[TsCasts]` or a `@return array{...}` docblock on `share()` types a key the package can't infer.
 - **Validation errors**: `errors` is left to `@inertiajs/core`, and `$withAllErrors` adds an `errorValueType`.
 
@@ -603,7 +610,7 @@ Key capabilities include:
 
 - **Ready to render**: the properties and both import maps agree, so a module that renders all three compiles.
 - **Any class, any method**: `toArray()` by default, or another method, such as `analyze($event, 'broadcastWith')`.
-- **Resource semantics**: conditional methods, nested resources, and relation filters type as they do in a publish.
+- **Resource semantics**: on an API resource, conditional methods, nested resources, and relation filters type as they do in a publish. On any other class, Laravel's `Conditionable::when()` comes back `unknown`.
 - **Public API**: `analyze()` and `AnalysisResult` are supported, and every other engine class is internal.
 
 For the arguments, the result's fields, and what it can't analyze, see the [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).

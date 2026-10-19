@@ -9,8 +9,8 @@ export interface OrderItem
     name: string;
     sku: string;
     quantity: number;
-    unit_price: number;
-    total_price: number;
+    unit_price: string;
+    total_price: string;
     options: Record<string, string | number | boolean> | null;
     created_at: string | null;
     updated_at: string | null;

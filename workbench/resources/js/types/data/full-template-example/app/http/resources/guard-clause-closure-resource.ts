@@ -12,6 +12,6 @@
 export interface GuardClauseClosureResource
 {
     id: number;
-    total: number;
+    total: string;
     buyer?: { name: string; email: string } | null;
 }

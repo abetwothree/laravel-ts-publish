@@ -18,6 +18,19 @@ The helpers and the test that pins them live in these files:
   for a class. Static, with no facade.
 - [`Support\ClassTokenQueue`](../../src/Support/ClassTokenQueue.php): which class each token of a type string names,
   for aliasing. No facade, and `@internal` like `StringSerialization`.
+- [`Support\ResourceReindexing`](../../src/Support/ResourceReindexing.php): whether an API resource response
+  re-indexes an array into a list, and what it sends a published type as. Static and `@internal`, read by the
+  resource publisher and the enum-value warning.
+- [`Support\ResourceWrapping`](../../src/Support/ResourceWrapping.php): the key an API resource response wraps its
+  body in, read from the live `$wrap` of the class Laravel instantiates, and each slot the booted app changed. Static
+  and `@internal`, read by the collection analysis, the Inertia collection props and the cache header.
+- [`Support\TopLevelRenumbering`](../../src/Support/TopLevelRenumbering.php): which key Laravel's top-level
+  `array_merge()` renumbers an int key to, for a page, shared data and a `broadcastWith()`
+  payload. Static and `@internal`.
+- [`Support\IndexSignatureKey`](../../src/Support/IndexSignatureKey.php): the template-literal index-signature key
+  grammar: encode from parts, recognize, literal segments and cast spellings. Static and `@internal`.
+- [`Support\PhpArrayKey`](../../src/Support/PhpArrayKey.php): which int PHP stores a string array key as. Static and
+  `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -30,7 +43,14 @@ Ask what the helper's input domain is, not what calls it:
 | What does this PHP value or docblock text become in a `.ts` file: a literal, key, identifier or comment? | `JsEmitter` |
 | What is true of this TypeScript type string, or what does it become? | `TsTypeString` |
 | What is this FQCN, file path or array key called, and where does it live? | `TsNaming` |
-| Does `json_encode()` write a string for this class, or for this method's declared return? | `StringSerialization` |
+| Does `json_encode()` write a string for this class? | `StringSerialization` |
+| Does an API resource response re-index this array into a list? | `ResourceReindexing` |
+| What does an API resource send a value of this published type as? | `ResourceReindexing::reindexedType()` |
+| Which key does an API resource response wrap its body in, live? | `ResourceWrapping` |
+| Which key does Laravel's top-level `array_merge()` renumber this int key to? | `TopLevelRenumbering` |
+| What is the list type of these element types? | `TsTypeShape::listType()` |
+| Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
+| Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 
 Read the question, not the signature. `JsEmitter::enumScalar()` returns a PHP `int|string`, not JavaScript, but it
@@ -46,7 +66,13 @@ belongs to the engine, however string-shaped its signature looks. Reflection alo
 
 `validJsObjectKey()`'s `$allowIndexSignature` flag is a trap. A generated `[key: number]` or `[key: string]` is legal
 only in a type position, so every value-position caller must leave the default alone.
-[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does.
+[The arbiter](#the-arbiter-is-the-generated-tree) shows what a dropped default does. The type positions that pass it are
+the `resource`, `broadcast-event` and `globals` templates, both Inertia `buildTypeStringWithOverrides()` methods and
+`BuildsInlineObjectTypes::buildInlineObjectType()`; each prints `?` only after a key `isIndexSignatureKey()` rejects.
+
+`signatureSafeMember()` sits beside `isIndexSignatureKey()` as the one home for the optional-signature rule: each site
+that sets `optional` from a `#[TsCasts]` entry sends it through, so an optional signature publishes required, with a
+value that admits `undefined`.
 
 `castTargets()` decides which published key a `#[TsCasts]` key retypes:
 
@@ -54,18 +80,29 @@ only in a type position, so every value-position caller must leave the default a
 - Failing that, a cast key equal to another spelling of an index signature's name retypes that signature. The other
   spellings are the name with each `\\` read as `\` (a single-quoted paste), with each `\r` read as a raw CR (a
   double-quoted paste), or with both, read escape by escape from the left.
-- Where two cast keys name one signature, the exact spelling wins, else the first. The loser's target is null.
-- A spelling two signatures share retypes neither.
+- Where two cast keys name one signature, the exact spelling wins, else the first, inside one `#[TsCasts]` location;
+  across locations see [`#[TsCasts]` overrides](ts-casts.md#matching-a-key). The loser's target is null.
+- A spelling two signatures share retypes neither; `ambiguousCastKeys()` names it, and every publisher warns.
 
 `retargetCasts()` applies those decisions to every map that runs parallel to the casts, so a loser's optional flag and
 import are dropped with its type. `castsByKey()` does both steps for a map whose entries are whole. The resource,
-broadcast-event and Inertia paths call them before any cast lookup.
+broadcast-event and Inertia shared-data paths reach `castTargets()` through `TsCastsReader::castTargets()`, one location
+at a time, and an Inertia page calls it per rendered component; each then calls `retargetCasts()`. A method's own casts
+and shared data's docblock-and-cast merge go through `castsByKey()`. What a matched cast then does to the key is in
+[`#[TsCasts]` overrides](ts-casts.md).
+
+`jsonValue()` turns a PHP value into the data `json_encode()` writes for it, and `toJsLiteral()` sends every object but
+a `stdClass` through it. A PHP array keeps its keys, and an object with no string key becomes a `stdClass`, so `{}`
+never prints as `[]`. An array whose numeric keys are out of order keeps them, and an `EnumResource` response sends it
+the same way, since `EnumResource` and its collection skip Laravel's re-indexing filter. A pure enum keeps its name,
+where `json_encode()` fails. A value `json_encode()` cannot write throws `JsonException`, which `EnumTransformer`
+publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue()`.
 
 ### `TsTypeString`
 
-The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward call is
-`TsTypeShape::splitTopLevel()`. That one-way dependency is what made the class safe to lift out. A new member that
-wants `toTsType()` is not a type-string helper, and would be in the same bind as the
+The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
+`TsTypeShape::splitTopLevel()` and `IndexSignatureKey::PATTERN`. That one-way dependency is what made the class safe to
+lift out. A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 The globals template passes `qualifyGlobalType()` each transformer's `globalTypeReferenceMap()`, which
@@ -74,8 +111,10 @@ name two namespaces publish resolves as that file's import does. For a name no F
 `#[TsCasts]` string spells, the current namespace's own type wins, else the first namespace that owns it.
 `GlobalsWriterTest` pins both collection orders.
 
-`JsEmitter::isIndexSignatureKey()`, `TsTypeString::isUnknownOnly()` and `TsTypeString::orUndefined()` are each the
-one home for their test or spelling, so a new caller uses them rather than a local regex.
+The index-signature key grammar lives in `IndexSignatureKey`; `JsEmitter::isIndexSignatureKey()` is the facade entry
+point that delegates to `IndexSignatureKey::is()`, the one home for that test. `TsTypeString::isUnknownOnly()` and
+`TsTypeString::orUndefined()` are likewise the one home for their test or spelling, so a new caller uses them rather
+than a local regex.
 
 ### `TsNaming`
 
@@ -88,10 +127,15 @@ every generated tree.
 
 ### `StringSerialization`
 
-Its callers in `src/Ast/` use it to decline a receiver rule where `toTsType()` says `string` but `json_encode()` writes
-an object. It lives in `src/Support/` because it asks a type question and never touches a `PhpParser` node. The
-question a class answers decides its home, not where its callers sit. It has no facade and no delegation because it
-was never part of the pre-extraction surface.
+`StringSerialization` answers for a class only. Its `jsonStringType()` method returns the type of the string
+`json_encode()` writes an instance as, `string` or `string | null`, and null when it writes anything else.
+`toTsType()` step 5b and `ValueResolver` call it. The `@return` of a `jsonSerialize()` declaring `mixed` needs the
+docblock engine, so step 5b reads that itself. The class lives in `src/Support/` because it asks a type question of
+reflection alone and never touches a `PhpParser` node. The question a class answers decides its home, not where its
+callers sit. The engine calls the class and the class never calls back, a one-way rule
+[`SupportBoundaryTest`](../../tests/Architecture/SupportBoundaryTest.php) pins for all of `src/Support/`. The class has
+no facade and no delegation because it was never part of the pre-extraction surface. `jsonStringType()` answers from a
+class's declarations, and `JsEmitter::jsonValue()` from a live value.
 
 It stays `@internal`. [`InternalBoundaryTest`](../../tests/Architecture/InternalBoundaryTest.php) sweeps `src/Ast/` by
 directory, so it names `StringSerialization` explicitly, and another class that leaves `src/Ast/` but should stay
@@ -185,5 +229,3 @@ These pages hold the neighboring rules:
   generated tree. The helpers have no user-facing docs.
 - [Known gaps](../known-gaps.md), whose entry on overriding a moved helper on a `LaravelTsPublish` subclass says why a
   subclass override leaves the output unchanged, and which container binding does change it.
-- [Receiver types § Following a method's return type](receiver-types.md#following-a-methods-return-type), where
-  `StringSerialization`'s callers decline.

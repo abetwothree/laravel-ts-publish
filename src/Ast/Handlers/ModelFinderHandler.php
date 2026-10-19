@@ -110,7 +110,7 @@ final class ModelFinderHandler implements ExpressionHandler
                 ...ValueResult::unknown(),
                 'type' => $tolkiName.'<'.$basename.'>',
                 'modelFqcn' => $modelFqcn,
-                'customImports' => ['@tolki/types' => [$tolkiName]],
+                'customImports' => [TolkiTypes::MODULE => [$tolkiName]],
             ];
         }
 

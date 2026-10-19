@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
@@ -14,8 +16,10 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Status;
+use Workbench\App\Events\ManifestAssembled;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
@@ -41,6 +45,12 @@ function inlineArrayHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -64,6 +74,12 @@ final class InlineArrayHandlerReturnArrayStubEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -140,6 +156,7 @@ it('keeps both arms of a nested mixed EnumResource ternary that rendered the sam
     expect($result)->toBe([
         'type' => '{ history: AsEnum<typeof Status>[] | StatusType[] }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedEnumFqcns' => [Status::class],
         'embeddedEnumResourceFqcns' => [Status::class],
     ]);
@@ -200,6 +217,7 @@ it('claims no type import for a nested mixed enum whose bare name the rewrite sp
     expect($result)->toBe([
         'type' => '{ history: AsEnum<typeof Status>[] }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedEnumResourceFqcns' => [Status::class],
     ]);
 });
@@ -233,6 +251,7 @@ it('queues one resource per token in the order the object spells them, never ded
     expect($result)->toBe([
         'type' => '{ subject: UserResource | UserResource; again: UserResource; label: string }',
         'optional' => false,
+        'keepsKeys' => true,
         'embeddedResourceFqcns' => [$crm, $app, $crm],
     ]);
 });
@@ -370,3 +389,106 @@ it('keeps the queue of a member that gives one name two classes, whatever its to
         [UserResource::class, CrmUserResource::class],
     ],
 ]);
+
+/** The type one expression resolves to on a resource subject, or on a plain class when $subject names one. */
+function inlineListType(string $php, ?string $subject = null): string
+{
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $analyzer = $subject === null
+        ? new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)
+        : new ResourceAstAnalyzer(new ReflectionClass($subject));
+
+    return $analyzer->resolve($expr)['type'];
+}
+
+it('types a keyless list literal as the list it encodes as, as collect() does', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type)
+        ->and(inlineListType('collect('.$php.')'))->toBe($type);
+})->with([
+    'a constant list' => ['["a", "b"]', 'string[]'],
+    'a mixed constant list' => ['[1, "a"]', '(number | string)[]'],
+    'a constant list of lists' => ['[[1, 2], [3]]', 'number[][]'],
+    'a constant list of records' => ['[["a" => 1], ["a" => 2]]', '{ a: number }[]'],
+    'enum cases' => ['[\\'.Status::class.'::Draft, \\'.Status::class.'::Published]', 'StatusType[]'],
+    'a global constant and an enum value' => ['[PHP_INT_MAX, \\'.Status::class.'::Published->value]', 'number[]'],
+    'a list of reads' => ['[$this->id, $this->title]', '(number | string)[]'],
+    'a list of shapes' => ['[["a" => $this->id], ["b" => $this->title]]', '({ a: number } | { b: string })[]'],
+    'a spread of a list' => ['[...explode(",", $this->title), 1]', '(string | number)[]'],
+    'a spread of a constant list' => ['[...["a"], "b"]', 'string[]'],
+    'an element no rule types' => ['[$this->id, json_decode("{}")]', 'unknown[]'],
+]);
+
+// A resource's filter keeps every key beside a named one, so it rewrites only the members, and only those that list.
+it('keeps a keyed literal\'s keys when no member the re-index could rewrite drops them', function (string $php, bool $keeps) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['keepsKeys'] ?? false)->toBe($keeps);
+})->with([
+    'a collection under a named key' => ['["inner" => collect([6 => $this->title])]', true],
+    'scalars under named keys' => ['["a" => 1, "b" => $this->title]', true],
+    'only numeric keys, which the filter lists' => ['[6 => collect([6 => $this->title])]', false],
+    'an array member beside a collection' => ['["a" => collect([6 => 1]), "b" => [6 => 2]]', false],
+    'a spread' => ['[...["a" => 1], "b" => 2]', false],
+]);
+
+it('keeps a missing when() element out of a list, which a resource re-indexes', function () {
+    expect(inlineListType('[$this->when($this->is_pinned, "pinned"), "x"]'))->toBe('string[]');
+});
+
+it('types a list nested in a keyed literal, and a resource list, with its import', function () {
+    $expr = new AstParser()->parseSource('<?php ["tags" => ["a"], "authors" => [new \\'.UserResource::class.'($this->author)]];')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe('{ tags: string[]; authors: UserResource[] }')
+        ->and($result['embeddedResourceFqcns'] ?? [])->toBe([UserResource::class]);
+});
+
+it('types a list literal the same on a subject that is no resource', function (string $php, string $type) {
+    expect(inlineListType($php, ManifestAssembled::class))->toBe($type);
+})->with([
+    'a constant list' => ['["a", "b"]', 'string[]'],
+    'a list of reads' => ['[$this->parcelId, $this->carrier]', '(number | string)[]'],
+]);
+
+it('leaves a literal that is no list to the record path', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type);
+})->with([
+    'an empty literal' => ['[]', 'never[]'],
+    'a spread of a reflected array, whose keys are unknown' => ['[...$this->resource->toArray(), "x"]', 'Record<string, unknown>'],
+    'a merge() call, which a resource merges into the array' => ['[$this->merge(["a" => 1])]', '{ a: number }'],
+]);
+
+// json_encode() writes a list only when the keys run 0 to n-1 in order; a resource's re-index is its publisher's.
+it('types a literal whose keys run 0 to n-1 as a list, and any other literal by the keys JSON writes', function (string $php, string $type) {
+    expect(inlineListType($php, ManifestAssembled::class))->toBe($type);
+})->with([
+    'int keys from 0 in order' => ['[0 => "a", 1 => "b"]', 'string[]'],
+    'numeric-string keys from 0' => ['["0" => "a", "1" => 2]', '(string | number)[]'],
+    'a key written twice keeps its last value' => ['[0 => "a", "0" => 1]', 'number[]'],
+    'int keys out of order' => ['[1 => "a", 0 => "b"]', '{ "1": string; "0": string }'],
+    'an int key not from 0' => ['[42 => "a"]', '{ "42": string }'],
+    'a numeric-string key PHP keeps as a string' => ['["06" => "a"]', '{ "06": string }'],
+    'a named key beside an int key' => ['[0 => "a", "b" => 1]', '{ "0": string; b: number }'],
+    'reads keyed 0 to n-1' => ['[0 => $this->parcelId, "1" => $this->carrier]', '(number | string)[]'],
+    'a read written twice keeps its last value' => ['[0 => $this->parcelId, "0" => $this->carrier]', 'string[]'],
+    'a keyless read after an int key, which PHP keys 1' => ['[0 => $this->parcelId, $this->carrier]', '(number | string)[]'],
+    'reads keyed out of order' => ['[1 => $this->parcelId, 0 => $this->carrier]', '{ "1": number; "0": string }'],
+]);
+
+// O5: a spread of an object-typed value joins as an arm of its own type, where it was left out.
+it('keeps an arm for a spread whose value types as one object', function (string $php, string $type) {
+    expect(inlineListType($php))->toBe($type);
+})->with([
+    'an array cast' => ['[...$this->options, "a" => 1]', "Omit<Record<string, string>, 'a'> & { a: number }"],
+    // The runtime also sends the keyless item, as "0" (Follow-Up F11).
+    'a record beside a keyless item' => ['[...["k" => 1], "x"]', '{ k: number }'],
+]);
+
+it('carries the import an object-typed spread arm names', function () {
+    $expr = new AstParser()->parseSource('<?php [...$this->author->only(["id"]), "x" => 1];')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe("Omit<Pick<User, 'id'>, 'x'> & { x: number }")
+        ->and($result['embeddedModelFqcns'] ?? [])->toBe([User::class]);
+});

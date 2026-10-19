@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\ValueReadHelper;
+
+/**
+ * Copied to a temp file under a unique name, so a test can edit a helper only a read of its body types.
+ */
+final class Labeler__SUFFIX__
+{
+    /**
+     * The label the resource publishes; it declares no return type.
+     */
+    public function label()
+    {
+        return strtoupper('label');
+    }
+}

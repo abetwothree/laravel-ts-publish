@@ -46,8 +46,9 @@ first 40 regressed properties with their base and head types.
 ### How properties are keyed
 
 A key is the file, the enclosing interface or namespace path, and the property name, so `Invoice.status` and
-`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. Single-line
-`type X = …;` aliases are keyed like properties, including one inside `declare global`.
+`InvoiceResource.status` stay apart, and so do the nested namespaces in `laravel-ts-global.ts`. A quoted name,
+`"42"` or `'tags.*'`, is keyed by its text without the quotes. Single-line `type X = …;` aliases are keyed like
+properties, including one inside `declare global`.
 
 An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
 `prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
@@ -293,16 +294,15 @@ on any diagnostic under `tests/types/`. The same check runs locally:
 npx tsc --noEmit -p tsconfig.json 2>&1 | grep "^tests/types/"   # must print nothing
 ```
 
-`patches/@tolki+ts+1.0.1.patch`, applied by `patch-package` from the `postinstall` hook, rewrote both imports to
-`@tolki/types`. `@tolki/ts` 1.0.2, the locked version, ships that fix, so the patch changes nothing. `patch-package`
-finds the change already present and only warns about the version mismatch. If the guard step fails, suspect the
-installed `@tolki/ts` release, whatever its failure message says about the patch. Keep `@tolki/types` as a direct
-dependency whether or not the patch stays, because the trees import its paginator and collection types. To check
-whether a release carries the broken import, read its pristine tarball in a temporary directory, not `node_modules`,
-where `postinstall` has already run:
+A `patch-package` patch once rewrote those imports. `@tolki/ts` 1.0.2 and later ship working ones, and the patch stopped
+applying to 1.0.3, so it was removed. The `postinstall` hook still runs `patch-package` for any future patch under
+`patches/`. If the guard step fails, suspect the installed `@tolki/ts` release, whatever its failure message says about
+the patch. Keep `@tolki/types` as a direct dependency, because the trees import its paginator and collection types. To
+check whether a release carries a broken import, read its pristine tarball in a temporary directory, not `node_modules`,
+where `postinstall` may have run:
 
 ```bash
-cd "$(mktemp -d)" && npm pack @tolki/ts@1.0.2 && tar xzf tolki-ts-1.0.2.tgz && head -1 package/dist/enums.d.ts
+cd "$(mktemp -d)" && npm pack @tolki/ts@1.0.3 && tar xzf tolki-ts-1.0.3.tgz && head -1 package/dist/enums.d.ts
 ```
 
 ## What the gates do not cover
@@ -327,5 +327,7 @@ The gates miss these cases:
 - **An object that already holds an `unknown` member**: `detect_regressions()` tests the base side with
   `"unknown" not in b[k]` on the parent's whole rendered value, so one `unknown` member disarms the parent key, and
   when the object then collapses to `unknown` no member key is left to match.
+- **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
+  sibling among `x`'s members, so a regression of `x` itself can still be masked.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
   is accepted. Do not fix it with content-hashed arm keys.

@@ -5,43 +5,45 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsInstanceofGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\FunctionLike;
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionProperty;
 
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other four methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other six methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type PassedBinding from ParameterBinder
  */
 final class AstEngine
 {
-    use CollectsInstanceofGuards;
     use CollectsLocalVarBindings;
-
-    /** How many analyses are in progress, so the outermost one in a chain can be told apart. */
-    private int $depth = 0;
+    use InspectsAstNodes;
 
     /**
      * Analyze a method body's return shape: resources get full resource semantics ('toArray' default), and any other
-     * class or method runs the same engine with the same handlers. Cycle-guarded, and memoized for the run through
-     * AnalysisMemo: the outermost call in its chain always, any other call once nothing cut it short.
+     * class runs the same engine without the `when*()` family. Cycle-guarded, and memoized for the run through
+     * AnalysisMemo.
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
      * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
+     * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
+     *                           resource's toArray() is its body, never the resource object it publishes
      *
      * @internal
      */
@@ -50,6 +52,8 @@ final class AstEngine
         string $method = 'toArray',
         ?string $modelClass = null,
         bool $carriesImports = true,
+        array $passed = [],
+        bool $readsCall = false,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
 
@@ -57,20 +61,48 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($reflection);
         }
 
-        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless');
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
+            .($readsCall ? '@call' : '').CallSite::signature($passed);
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key),
-            pin: $this->depth === 0,
+            fn (): MethodAnalysis => $this->analyzeOnce($reflection, $method, $modelClass, $carriesImports, $key, $passed, $readsCall),
         );
 
         return clone $analysis;
     }
 
     /**
-     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs,
-     * except for a $wrap = null collection, whose whole answer is MethodAnalysis::$flatTypeAlias.
+     * The value a method's own returns hold, read in a fresh scope over its class; null when the read declines.
+     *
+     * @param  class-string  $class
+     * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @return ValueExpressionResult|null
+     *
+     * @internal
+     */
+    public function analyzeMethodValue(string $class, string $method, array $passed = []): ?array
+    {
+        $context = resolve(MethodLocator::class)->locate($class, $method);
+
+        if ($context === null) {
+            return null;
+        }
+
+        $modelClass = match (true) {
+            is_a($class, Model::class, true) => $class,
+            is_a($class, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($context->reflection),
+            default => null,
+        };
+        $scope = $this->bindingsFor($context, $modelClass, $passed);
+        $analyzer = new ResourceAstAnalyzer($scope->subjectReflection, $modelClass, $method, scope: $scope, context: $context);
+
+        return $this->returnsValue($context->method, $analyzer, $scope);
+    }
+
+    /**
+     * Analyze a method and resolve its imports in one call — the whole contract a consumer needs, except for
+     * a collection whose live wrap key is null or empty, whose whole answer is MethodAnalysis::$flatTypeAlias.
      *
      * The three fields agree with each other: same-basename imports are aliased apart and the
      * property types spell the aliases, an `EnumResource::make()` property is already wrapped as
@@ -83,6 +115,8 @@ final class AstEngine
      * broadcast events) keep calling analyzeMethod() and AnalysisImports::build() themselves; this
      * method is the answer for everyone else.
      *
+     * An API resource's `toArray()` comes back re-indexed as `ts:publish` publishes it.
+     *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass
      */
@@ -92,48 +126,40 @@ final class AstEngine
         ?string $modelClass = null,
         string $fromNamespacePath = '',
     ): AnalysisResult {
-        return new AnalysisComposer()->compose(
-            $this->analyzeMethod($class, $method, $modelClass),
-            $fromNamespacePath,
-        );
+        $analysis = $this->analyzeMethod($class, $method, $modelClass);
+
+        // Laravel's filter runs over what toArray() returns, and over no other method's value.
+        if ($method === 'toArray') {
+            ResourceAstAnalyzer::reindexNumericKeyedArrays($analysis, new ReflectionClass($class));
+        }
+
+        return new AnalysisComposer()->compose($analysis, $fromNamespacePath);
     }
 
     /**
-     * Build the starting scope for a located method: its subject, its body's file, the classes its parameters bind and
-     * the locals its body assigns. Parameters are seeded here because a route-bound `Post $post` or an injected
-     * `Request $request` is a fact the resource path never had.
+     * Build the starting scope for a located method: its subject and backing model, its body's file, its parameters,
+     * bound as a helper's are, and its body's own bindings. A route-bound `Post $post` binds as its model, a
+     * `?Post $post` as that model or null, and an injected `Request $request` as a request.
+     *
+     * @param  class-string<Model>|null  $modelClass
+     * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      *
      * @internal
      */
-    public function bindingsFor(MethodContext $context): AnalysisScope
+    public function bindingsFor(MethodContext $context, ?string $modelClass = null, array $passed = []): AnalysisScope
     {
-        $scope = new AnalysisScope($context->reflection);
+        $scope = new AnalysisScope($context->reflection, $modelClass);
         $methodName = $context->method->name->toString();
+        $stmts = $context->method->stmts ?? [];
 
         if ($context->reflection->hasMethod($methodName)) {
-            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($context->reflection->getMethod($methodName));
+            $method = $context->reflection->getMethod($methodName);
+            $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
 
-            foreach ($context->reflection->getMethod($methodName)->getParameters() as $parameter) {
-                $type = $parameter->getType();
-
-                if (! $type instanceof ReflectionNamedType || $type->isBuiltin()) {
-                    continue;
-                }
-
-                $class = $type->getName();
-
-                if (is_a($class, Model::class, true)) {
-                    /** @var class-string<Model> $class */
-                    $scope->varModelBindings[$parameter->getName()] = $class;
-                } elseif (is_a($class, Request::class, true)) {
-                    /** @var class-string<Request> $class */
-                    $scope->requestVarNames[$parameter->getName()] = $class;
-                }
-            }
+            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
         }
 
-        $this->collectLocalVarBindings($context->method->stmts ?? [], $scope);
-        $this->collectInstanceofGuards($context->method->stmts ?? [], $scope);
+        $this->seedBody($stmts, $scope);
 
         return $scope;
     }
@@ -156,8 +182,7 @@ final class AstEngine
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
-        $scope->subjectReflection = self::genericReflection($modelClass);
-        $scope->modelClass = $modelClass;
+        $scope->rebase(self::genericReflection($modelClass), $modelClass);
         $scope->carriesImports = $carriesImports;
 
         $analyzer = new ResourceAstAnalyzer(
@@ -170,6 +195,43 @@ final class AstEngine
         );
 
         return $analyzer->resolve($closure);
+    }
+
+    /**
+     * The value a closure returns when bound to a subject it was not declared in, as `Macroable::__call()` binds a
+     * macro: `$this` is the subject, while its captured variables read the method that declares it; null when the
+     * read declines.
+     *
+     * @param  class-string  $subjectClass
+     * @param  class-string<Model>|null  $modelClass
+     * @return ValueExpressionResult|null
+     *
+     * @internal
+     */
+    public function analyzeBoundClosure(
+        string $subjectClass,
+        ?string $modelClass,
+        ClosureExpr|ArrowFunction $closure,
+        MethodContext $context,
+    ): ?array {
+        $scope = $this->bindingsFor($context);
+        $scope->rebase(self::genericReflection($subjectClass), $modelClass);
+        $analyzer = new ResourceAstAnalyzer(
+            $scope->subjectReflection,
+            $modelClass,
+            $context->method->name->toString(),
+            scope: $scope,
+            context: $context,
+        );
+
+        // A parameter owns its name inside the closure, and nothing binds what a call passes it.
+        $scope->releaseUnclaimedParameters($closure);
+
+        if ($closure instanceof ClosureExpr) {
+            $this->seedBody($closure->stmts, $scope);
+        }
+
+        return $this->returnsValue($closure, $analyzer, $scope);
     }
 
     /**
@@ -218,10 +280,43 @@ final class AstEngine
     }
 
     /**
+     * A function-like body's own returns, merged strictly; null if it yields, may return a callable, or one is unknown.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function returnsValue(FunctionLike $function, ExpressionEngine $engine, AnalysisScope $scope): ?array
+    {
+        $stmts = $function->getStmts() ?? [];
+        $returns = $this->collectReturnExpressions($stmts);
+
+        // A generator returns a Generator, and a callable is the Closure object, never what calling it gives.
+        if ($returns === []
+            || $this->yields($stmts)
+            || array_any($returns, fn (Expr $returned): bool => $this->mayHoldCallable($returned, $scope))
+        ) {
+            return null;
+        }
+
+        $results = array_map($engine->resolve(...), $returns);
+
+        // unionResults() would drop a return typed unknown and claim less than PHP can return, so the read declines.
+        if (array_any($results, fn (array $result): bool => $result['type'] === 'unknown')) {
+            return null;
+        }
+
+        $result = ValueResult::unionResults($results);
+
+        return $this->canEndWithoutValue($function)
+            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            : $result;
+    }
+
+    /**
      * Run one analysis of a method body, entering its cycle guard for the duration.
      *
      * @param  ReflectionClass<object>  $reflection
      * @param  class-string<Model>|null  $modelClass
+     * @param  array<string, PassedBinding>  $passed
      */
     private function analyzeOnce(
         ReflectionClass $reflection,
@@ -229,6 +324,8 @@ final class AstEngine
         ?string $modelClass,
         bool $carriesImports,
         string $key,
+        array $passed,
+        bool $readsCall,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -238,12 +335,18 @@ final class AstEngine
             return new MethodAnalysis;
         }
 
-        $this->depth++;
-
         try {
-            return new ResourceAstAnalyzer($reflection, $modelClass, $method, carriesImports: $carriesImports)->analyze();
+            $analyzer = new ResourceAstAnalyzer(
+                $reflection,
+                $modelClass,
+                $method,
+                carriesImports: $carriesImports,
+                passed: $passed,
+                readsCall: $readsCall,
+            );
+
+            return $analyzer->analyze();
         } finally {
-            $this->depth--;
             $memo->leave($key);
         }
     }

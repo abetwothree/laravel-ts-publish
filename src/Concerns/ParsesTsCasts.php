@@ -12,6 +12,7 @@ use ReflectionClass;
  * Parses #[TsCasts] attributes from a class, $casts property, and casts() method,
  * merging them with Laravel's own cast resolution priority: class < property < method.
  *
+ * @phpstan-import-type TsCastMap from TsCasts
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  *
  * @phpstan-type TsCastsResult = array{
@@ -31,6 +32,26 @@ trait ParsesTsCasts
      * @return TsCastsResult
      */
     protected function parseTsCastsFromReflection(ReflectionClass $reflection): array
+    {
+        /** @var TsCastsUnpacked $unpacked */
+        $unpacked = resolve(TsCastsReader::class)->unpack($this->tsCastsAttributes($reflection));
+
+        return [
+            'overrides' => $unpacked['overrides'],
+            'importPaths' => $unpacked['importPaths'],
+            'optionalOverrides' => $unpacked['optionalOverrides'],
+        ];
+    }
+
+    /**
+     * The class's #[TsCasts] instances in precedence order: the class, its $casts property, then its casts() method.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @return list<TsCasts>
+     */
+    protected function tsCastsAttributes(ReflectionClass $reflection): array
     {
         $attributes = [];
 
@@ -53,20 +74,13 @@ trait ParsesTsCasts
             }
         }
 
-        /** @var TsCastsUnpacked $unpacked */
-        $unpacked = resolve(TsCastsReader::class)->unpack($attributes);
-
-        return [
-            'overrides' => $unpacked['overrides'],
-            'importPaths' => $unpacked['importPaths'],
-            'optionalOverrides' => $unpacked['optionalOverrides'],
-        ];
+        return $attributes;
     }
 
     /**
      * Normalize TsCasts definitions into types, imports, and optional flags.
      *
-     * @param  array<string, string|array{type: string, import?: string, optional?: bool}>  $types
+     * @param  TsCastMap  $types
      * @return TsCastsResult
      */
     protected function normalizeTsCasts(array $types): array

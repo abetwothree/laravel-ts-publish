@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 
@@ -37,9 +39,10 @@ trait ResolvesAuthHelperCalls
             return null;
         }
 
-        // An uninstantiable model names no key type; this caller has always fallen back to string.
-        $keyType = resolve(ModelAttributeResolver::class)->keyTsType($model) ?? 'string';
+        DependencyRecorder::recordClass($model);
 
-        return ['type' => $keyType.' | null', 'optional' => false];
+        $identifier = resolve(ModelAttributeResolver::class)->authIdentifierTsType($model);
+
+        return $identifier === null ? null : ['type' => ValueResult::withNullArm($identifier), 'optional' => false];
     }
 }

@@ -59,7 +59,7 @@ class EnumInstanceTransformer
     {
         return collect($this->data->methods)
             ->mapWithKeys(fn ($methodData) => [
-                $methodData['name'] => $methodData['returns'][$this->enum->name] ?? '',
+                $methodData['name'] => $methodData['returns'][$this->enum->name] ?? null,
             ])
             ->all();
     }

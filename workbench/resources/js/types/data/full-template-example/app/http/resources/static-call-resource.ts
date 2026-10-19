@@ -26,11 +26,12 @@ export interface StaticCallResource
     status_or_priority: StatusType | PriorityType;
     void_return: unknown;
     never_return: unknown;
-    mixed_return: unknown;
+    mixed_return: null;
     order_or_status: Order | StatusType;
     money_value: unknown;
     page_meta_ternary: PageMetaType | null;
     widget_config_coalesce: WidgetConfigType;
+    order_or_base: Order;
     autocomplete: { value: number; label: string };
     summaries: { key: string; label: string }[];
 }

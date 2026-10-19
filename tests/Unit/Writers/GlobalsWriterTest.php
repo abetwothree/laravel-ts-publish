@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\LiteralKindPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ShadowedAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LiteralKindPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostResource;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
@@ -59,6 +59,24 @@ test('globals content emits the extends clause for form requests and events', fu
 
     expect($content)->toContain('interface StringRulesRequest extends FormRequestBase')
         ->and($content)->toContain('interface ServerCreated extends BroadcastableEvent');
+});
+
+test('the globals file prints an event\'s and a nested shape\'s index signature bare', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = (new GlobalsWriter(new Filesystem))->write($runner);
+
+    expect($content)
+        ->toContain("export interface TaggedPayloadEvent {\n            id: number;\n            [key: `\${string}_tag`]: string | undefined;")
+        ->toContain('box: { [key: `${string}_tag`]: string | number | undefined; price_tag: number };')
+        ->toContain('units: { [key: `${string}\\\\unit`]: string | undefined };')
+        ->toContain('[key: `${string}_note`]: number | undefined;')
+        ->not->toContain('"[key:')
+        ->not->toContain(']?:');
 });
 
 test('returns empty string when globals output is disabled', function () {

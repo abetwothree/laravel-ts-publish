@@ -26,6 +26,7 @@ final class AstInferredModelMetadataProvider implements ModelMetadataProvider
                 'maximum' => null,
             ],
             'role' => 'Admin',
+            'regions' => ['north', 'south'],
         ];
     }
 }

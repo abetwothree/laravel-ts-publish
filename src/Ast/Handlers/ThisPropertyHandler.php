@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ChecksPreserveKeys;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesSingularResourceClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use Illuminate\Database\Eloquent\Model;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -36,13 +36,10 @@ use ReflectionClass;
  */
 final class ThisPropertyHandler implements ExpressionHandler
 {
-    use ChecksPreserveKeys;
     use InspectsAstNodes;
-    use InspectsResourceCalls;
     use InspectsResourceSubject;
     use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
-    use ResolvesSingularResourceClass;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -63,8 +60,8 @@ final class ThisPropertyHandler implements ExpressionHandler
     /**
      * Extract properties and FQCNs from an array expression, e.g. for mergeWhen's second argument.
      *
-     * Public: the analyzer's own resolveArrayOrClosureToProperties() (merge()/mergeWhen() resolution)
-     * calls this directly — the array machinery moved here while that caller stayed on the analyzer.
+     * Public: the analyzer's own mergedArrayAnalysis() (merge()/mergeWhen() resolution) calls this
+     * directly — the array machinery moved here while that caller stayed on the analyzer.
      *
      * @param  ReflectionClass<object>  $subject  the analyzed subject, which decides whether a numeric key survives
      */
@@ -83,7 +80,15 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $analysis->addProperty($keyName, $engine->resolve($item->value), $optional);
+            $result = $engine->resolve($item->value);
+
+            if (JsEmitter::isIndexSignatureKey($keyName)) {
+                $analysis->addSignatureEntry($keyName, $result);
+
+                continue;
+            }
+
+            $analysis->addProperty($keyName, $result, $optional);
         }
 
         return $analysis;
@@ -108,6 +113,22 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         if ($propName === 'collection' && $this->isResourceCollection($scope)) {
             return $this->analyzeCollectionProperty($scope);
+        }
+
+        // PHP reads the declared JsonResource::$resource before any __get(), so a model member named `resource` is
+        // unreachable: the value is its items, the class a proof holds, the backing model or the redeclaration.
+        if ($this->isProxyFetch($expr, $scope)) {
+            $receivers = resolve(ReceiverClassResolver::class);
+            $proxy = $receivers->proxyHeld($scope);
+            $items = $proxy === null ? null : resolve(ReceiverMethodReturnResolver::class)->heldItems($proxy, $scope);
+            $held = match (true) {
+                $items !== null => $items,
+                $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
+                default => $this->proxiedModel($receivers, $scope)
+                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName),
+            };
+
+            return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
         }
 
         // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
@@ -152,24 +173,49 @@ final class ThisPropertyHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->collection in a ResourceCollection: the singular resource type as an array,
-     * or a keyed record when the collection preserves keys.
+     * The model the proxy is read as whole, as the model's own interface with any null its redeclaration admits; null
+     * when it is read as no model, which publishes as the subject declares it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function proxiedModel(ReceiverClassResolver $receivers, AnalysisScope $scope): ?array
+    {
+        $model = $receivers->proxyModel($scope);
+
+        if ($model === null) {
+            return null;
+        }
+
+        $type = class_basename($model);
+
+        return [
+            ...ValueResult::unknown(),
+            'type' => $receivers->redeclaresNullableProxy($scope) ? ValueResult::withNullArm($type) : $type,
+            'modelFqcn' => $model,
+        ];
+    }
+
+    /**
+     * The classes an `instanceof` proof holds the proxy to, as their published types; null when one has none.
+     *
+     * @param  non-empty-list<class-string>  $proven
+     * @return ValueExpressionResult|null
+     */
+    private function provenValue(array $proven, AnalysisScope $scope): ?array
+    {
+        $declared = implode('|', array_map(fn (string $class): string => '\\'.$class, $proven));
+
+        return resolve(PropertyDocblockTypeReader::class)->readDeclared($declared, $scope->subjectReflection);
+    }
+
+    /**
+     * Analyze $this->collection in a ResourceCollection: the runtime class's collected list, keyed as that class keeps
+     * keys, since an inherited body runs as the class Laravel builds.
      *
      * @return ValueExpressionResult
      */
     private function analyzeCollectionProperty(AnalysisScope $scope): array
     {
-        $result = ValueResult::unknown();
-        $singular = $this->resolveSingularResourceClass($scope);
-
-        if ($singular === null) {
-            return $result;
-        }
-
-        return [
-            ...$result,
-            'type' => $this->wrapCollectionElementType(TsNaming::resourceTypeName($singular), $scope->subjectReflection),
-            'resourceFqcn' => $singular,
-        ];
+        return ResourceCollections::listValue($scope->collectedElement, ! $scope->reindexesNumericKeys);
     }
 }

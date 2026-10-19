@@ -30,6 +30,7 @@ final class ClosureResourceRootResource extends JsonResource
             'author_titled_inside' => $this->whenLoaded('comments', fn () => $this->resource->author?->nameTitled()),
             'options_inside' => $this->whenLoaded('author', fn () => $this->resource->options),
             'profile_bio_inside' => $this->whenLoaded('comments', fn () => $this->resource->author->profile?->getFormattedBioAttribute()),
+            'own_model' => $this->resource,
         ];
     }
 }

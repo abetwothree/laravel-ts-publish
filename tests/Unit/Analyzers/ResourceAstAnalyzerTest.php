@@ -4,47 +4,91 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedCastSpreadResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastAliasedEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastOverModelCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastTwoEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ClassCastOverMethodCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\HostCastOverHelperCastResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastAliasedEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastMorphUnionResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastNoImportResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MethodCastTwoEnumResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ModelCastReadResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyModelResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RedeclaredKeyResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadBeforeMemberResource;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\SpreadModelBeforeMemberResource;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceReshapedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastAliasedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastNoImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastTwoEnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MissingThroughOperatorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ModelCastReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperBodyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadDeclinesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ShortCircuitedCategoryResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpellingsAcrossLocationsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadBeforeMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadModelBeforeMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedAttributeDigestCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EscapedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\IndexSignatureConflictResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\Laravel13AttributesSummaryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeArrayMergeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeParameterShadowResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeSpreadChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeUnreadableDefaultResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergeVariableClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ModelArmAppendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NamedMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NestedMethodModelSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnedParentTagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SamePatternDeclinedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ShippingAddressOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
@@ -77,6 +121,7 @@ use Workbench\App\Http\Resources\BulletinOwnershipSpreadResource;
 use Workbench\App\Http\Resources\BulletinResource;
 use Workbench\App\Http\Resources\BulletinWrappedResource;
 use Workbench\App\Http\Resources\CaseSpreadResource;
+use Workbench\App\Http\Resources\CategoryLineageResource;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\ChildSharedResource;
 use Workbench\App\Http\Resources\ClassConstantResource;
@@ -97,6 +142,7 @@ use Workbench\App\Http\Resources\ControlFlowReturnResource;
 use Workbench\App\Http\Resources\CustomImportChannelResource;
 use Workbench\App\Http\Resources\DelegatingResource;
 use Workbench\App\Http\Resources\DelegatingWithMixinResource;
+use Workbench\App\Http\Resources\DuplicateKeyCastResource;
 use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
@@ -106,12 +152,19 @@ use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\GuardClauseClosureResource;
 use Workbench\App\Http\Resources\GuardedCollectionSpreadResource;
+use Workbench\App\Http\Resources\HandoverDefaultsResource;
+use Workbench\App\Http\Resources\HandoverDigestCollection;
+use Workbench\App\Http\Resources\HandoverListResource;
+use Workbench\App\Http\Resources\HandoverRosterCollection;
+use Workbench\App\Http\Resources\HandoverRosterResource;
+use Workbench\App\Http\Resources\HandoverSummaryResource;
+use Workbench\App\Http\Resources\HandoverUnionResource;
 use Workbench\App\Http\Resources\HelperCallResource;
-use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\InlineArrayFqcnResource;
 use Workbench\App\Http\Resources\Ledger;
 use Workbench\App\Http\Resources\LedgerCollection;
 use Workbench\App\Http\Resources\LedgerResource;
+use Workbench\App\Http\Resources\LocalVarByReferenceResource;
 use Workbench\App\Http\Resources\LocalVarGuardClauseResource;
 use Workbench\App\Http\Resources\LocalVarReassignResource;
 use Workbench\App\Http\Resources\LocalVarRecursionResource;
@@ -125,6 +178,7 @@ use Workbench\App\Http\Resources\MediaTypeResource;
 use Workbench\App\Http\Resources\MediaTypeUnknownResource;
 use Workbench\App\Http\Resources\MerchantResource;
 use Workbench\App\Http\Resources\MergeClosureResource;
+use Workbench\App\Http\Resources\MergeDefaultResource;
 use Workbench\App\Http\Resources\MergeMultiBranchClosureResource;
 use Workbench\App\Http\Resources\MiscCollection;
 use Workbench\App\Http\Resources\ModelWrappedPropResource;
@@ -146,6 +200,7 @@ use Workbench\App\Http\Resources\OrderSummaryResource;
 use Workbench\App\Http\Resources\PermissionsSpreadResource;
 use Workbench\App\Http\Resources\PostAttachmentFilterResource;
 use Workbench\App\Http\Resources\PostCollection;
+use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostUnwrappedCollection;
@@ -153,11 +208,13 @@ use Workbench\App\Http\Resources\PreserveKeysCollection;
 use Workbench\App\Http\Resources\PreserveKeysPropertyCollection;
 use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProfileResource;
+use Workbench\App\Http\Resources\ProfileSummaryResource;
 use Workbench\App\Http\Resources\ProxyFilterDirectResource;
 use Workbench\App\Http\Resources\ProxyFilterWrappedResource;
 use Workbench\App\Http\Resources\QuirkyResource;
 use Workbench\App\Http\Resources\ReflectedMethodChannelResource;
 use Workbench\App\Http\Resources\Registrar as BareRegistrarResource;
+use Workbench\App\Http\Resources\RegistrarGroupCollection;
 use Workbench\App\Http\Resources\RegistrarResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ReleaseColumnsResource;
@@ -169,6 +226,7 @@ use Workbench\App\Http\Resources\SpreadWithClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardClauseClosureResource;
 use Workbench\App\Http\Resources\SpreadWithGuardDoubleClosureReturnResource;
 use Workbench\App\Http\Resources\StaticCallResource;
+use Workbench\App\Http\Resources\SupplierCollection;
 use Workbench\App\Http\Resources\SupplierResource;
 use Workbench\App\Http\Resources\SupplierSummaryCollection;
 use Workbench\App\Http\Resources\SupplierSummaryResource;
@@ -193,6 +251,7 @@ use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStoreModel;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Handover;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Merchant;
 use Workbench\App\Models\Order;
@@ -201,6 +260,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Release;
+use Workbench\App\Models\Supplier;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
@@ -212,6 +272,7 @@ use Workbench\Blog\Http\Resources\ApiArticleResource;
 use Workbench\Blog\Http\Resources\ReactionResource;
 use Workbench\Blog\Models\Article;
 use Workbench\Blog\Models\Reaction;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\DealResource;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 use Workbench\Crm\Models\Deal;
@@ -426,7 +487,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'category_class_name');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('string')
+            ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -438,7 +499,7 @@ describe('ResourceAstAnalyzer with PostResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'category_table_name');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('string')
+            ->and($prop['type'])->toBe('string | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -505,14 +566,14 @@ describe('ResourceAstAnalyzer with OrderResource', function () {
             ->and($deliveredAt['optional'])->toBeTrue();
     });
 
-    test('marks whenAggregated as optional number', function () {
+    test('marks whenAggregated as an optional nullable number', function () {
         $reflection = new ReflectionClass(OrderResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Order::class);
         $analysis = $analyzer->analyze();
 
         $totalAvg = collect($analysis->properties)->firstWhere('name', 'total_avg');
 
-        expect($totalAvg['type'])->toBe('number')
+        expect($totalAvg['type'])->toBe('number | null')
             ->and($totalAvg['optional'])->toBeTrue();
     });
 
@@ -937,9 +998,37 @@ describe('ResourceAstAnalyzer with ProductResource', function () {
         $minPrice = collect($analysis->properties)->firstWhere('name', 'min_unit_price');
         $maxPrice = collect($analysis->properties)->firstWhere('name', 'max_unit_price');
 
-        expect($totalSold['type'])->toBe('number')
-            ->and($minPrice['type'])->toBe('number')
-            ->and($maxPrice['type'])->toBe('number');
+        expect($totalSold['type'])->toBe('number | null')
+            ->and($minPrice['type'])->toBe('number | null')
+            ->and($maxPrice['type'])->toBe('number | null');
+    });
+
+    // The driver is read from the resource's model, and the SQLite schema stands in for each driver's column types, so
+    // `quantity` reads as `integer` and `unit_price` as `numeric` under every driver.
+    test('narrows each column aggregate by the model connection\'s driver', function (string $driver, array $types) {
+        app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class)->analyze()->properties)
+            ->keyBy('name');
+
+        expect([$props['total_sold']['type'], $props['min_unit_price']['type'], $props['max_unit_price']['type']])
+            ->toBe($types)
+            ->and($props['orders_count']['type'])->toBe('number');
+    })->with([
+        'sqlite' => ['sqlite', ['number | null', 'number | null', 'number | null']],
+        'mysql' => ['mysql', ['string | null', 'string | null', 'string | null']],
+        'mariadb' => ['mariadb', ['string | null', 'string | null', 'string | null']],
+        'pgsql' => ['pgsql', ['number | null', 'string | null', 'string | null']],
+        'sqlsrv' => ['sqlsrv', ['number | null', 'number | null', 'number | null']],
+    ]);
+
+    // The aggregate is a subquery of the model's own query, so the model's connection returns it.
+    test('narrows each column aggregate by the model\'s driver, not the related model\'s', function () {
+        app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('sqlite', [Product::class => 'mysql']));
+        $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ProductResource::class), Product::class)->analyze()->properties)
+            ->keyBy('name');
+
+        expect([$props['total_sold']['type'], $props['min_unit_price']['type'], $props['max_unit_price']['type']])
+            ->toBe(['string | null', 'string | null', 'string | null']);
     });
 });
 
@@ -952,7 +1041,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $parent = collect($analysis->properties)->firstWhere('name', 'parent');
         $children = collect($analysis->properties)->firstWhere('name', 'children');
 
-        expect($parent['type'])->toBe('CategoryResource')
+        expect($parent['type'])->toBe('CategoryResource | null')
             ->and($parent['optional'])->toBeTrue()
             ->and($children['type'])->toBe('CategoryResource[]')
             ->and($children['optional'])->toBeTrue();
@@ -1001,7 +1090,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         ['posts_with_default', 'PostResource[]'],
     ]);
 
-    test('self::collection(...) first-class callable resolves to CategoryResource[]', function () {
+    test('self::collection(...) first-class callable is a Closure, which json_encode() writes as {}', function () {
         $reflection = new ReflectionClass(CategoryResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, Category::class);
         $analysis = $analyzer->analyze();
@@ -1009,7 +1098,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'children_self_collection_first_callable');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource[]')
+            ->and($prop['type'])->toBe('Record<string, never>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1057,7 +1146,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1069,7 +1158,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_make_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1081,7 +1170,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_resource_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -1093,7 +1182,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1105,7 +1194,7 @@ describe('ResourceAstAnalyzer with CategoryResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_when_resource_self');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -1119,7 +1208,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1131,7 +1220,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1143,7 +1232,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_chain');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1155,7 +1244,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_fluent_docblock');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('FluentSelfResource')
+            ->and($prop['type'])->toBe('FluentSelfResource | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1167,7 +1256,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         $prop = collect($analysis->properties)->firstWhere('name', 'parent_summary');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ id: number }')
+            ->and($prop['type'])->toBe('{ id: number } | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1181,7 +1270,7 @@ describe('ResourceAstAnalyzer with FluentSelfResource', function () {
         // CategoryResource::summary() returns ['slug' => $this->slug], so this is the real payload —
         // not CategoryResource, which the expression never yields.
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ slug: string }')
+            ->and($prop['type'])->toBe('{ slug: string } | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -1575,7 +1664,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
 
         $total = collect($analysis->properties)->firstWhere('name', 'total');
 
-        expect($total['type'])->toContain('number');
+        expect($total['type'])->toContain('string');
     });
 
     test('resolves enum FQCN from EnumResource::make for model property', function () {
@@ -1784,10 +1873,10 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($names)->not->toContain('bare_value');
     });
 
-    test('skips integer keyed items', function () {
-        $names = array_column($this->analysis->properties, 'name');
+    test('keeps integer keyed items', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
 
-        expect($names)->not->toContain('42');
+        expect($props['42']['type'])->toBe('string');
     });
 
     test('resolves when with single arg as unknown optional', function () {
@@ -1844,17 +1933,17 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
         expect($emptyEnum['type'])->toBe('unknown');
     });
 
-    test('resolves EnumResource::make first-class callable as unknown', function () {
+    test('resolves EnumResource::make first-class callable as the Closure it is', function () {
         $fccEnum = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum');
 
-        expect($fccEnum['type'])->toBe('unknown')
+        expect($fccEnum['type'])->toBe('Record<string, never>')
             ->and($fccEnum['optional'])->toBeFalse();
     });
 
-    test('resolves EnumResource::collection first-class callable as unknown', function () {
+    test('resolves EnumResource::collection first-class callable as the Closure it is', function () {
         $fccEnumCollection = collect($this->analysis->properties)->firstWhere('name', 'fcc_enum_collection');
 
-        expect($fccEnumCollection['type'])->toBe('unknown')
+        expect($fccEnumCollection['type'])->toBe('Record<string, never>')
             ->and($fccEnumCollection['optional'])->toBeFalse();
     });
 
@@ -2246,7 +2335,7 @@ describe('ResourceAstAnalyzer with OrderSummaryResource', function () {
         $total = collect($this->analysis->properties)->firstWhere('name', 'total');
 
         expect($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($total['optional'])->toBeFalse();
     });
 
@@ -2328,7 +2417,7 @@ describe('ResourceAstAnalyzer with OrderOnlyResource (spread only)', function ()
         $status = collect($this->analysis->properties)->firstWhere('name', 'status');
 
         expect($id['type'])->toBe('number')
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status['type'])->toBe('OrderStatusType');
     });
 
@@ -2362,7 +2451,7 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
 
         expect($props['comments_count']['type'])->toBe('number')
             ->and($props['summary']['type'])->toBe("Pick<Post, 'id' | 'title'>")
-            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'>");
+            ->and($props['category']['type'])->toBe("Pick<Category, 'id' | 'name'> | null");
     });
 
     test('a filter call with no literal key list publishes Record<string, unknown> instead of falling to unknown', function () {
@@ -2371,7 +2460,7 @@ describe('ResourceAstAnalyzer with OnlyValueResource (only() off a relation rece
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(OnlyValueResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
         expect($props['dynamic']['type'])->toBe('Record<string, unknown>')
-            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown>');
+            ->and($props['dynamic_category']['type'])->toBe('Record<string, unknown> | null');
     });
 });
 
@@ -2396,6 +2485,8 @@ describe('ResourceAstAnalyzer with ProxyFilterDirectResource and ProxyFilterWrap
             'comments_by_ids' => 'Comment[]',
             'comments_maybe' => 'Comment[] | null',
             'comments_mapped' => '{ id: number; content: string }[]',
+            'comments_nullsafe' => 'Comment[] | null',
+            'comment_ids' => 'number[]',
         ]);
     });
 
@@ -2558,7 +2649,7 @@ describe('ResourceAstAnalyzer with OrderExceptResource (direct return)', functio
         expect($id)->not->toBeNull()
             ->and($id['type'])->toBe('number')
             ->and($total)->not->toBeNull()
-            ->and($total['type'])->toBe('number')
+            ->and($total['type'])->toBe('string')
             ->and($status)->not->toBeNull()
             ->and($status['type'])->toBe('OrderStatusType');
     });
@@ -2701,7 +2792,7 @@ describe('ResourceAstAnalyzer with OrderClosureResource', function () {
         $totalDisplay = collect($this->analysis->properties)->firstWhere('name', 'total_display');
 
         expect($totalDisplay)->not->toBeNull()
-            ->and($totalDisplay['type'])->toBe('number')
+            ->and($totalDisplay['type'])->toBe('string')
             ->and($totalDisplay['optional'])->toBeFalse();
     });
 
@@ -2769,14 +2860,14 @@ describe('ResourceAstAnalyzer with OrderCollection (explicit $collects)', functi
 });
 
 describe('ResourceAstAnalyzer with MiscCollection (unresolvable singular)', function () {
-    test('falls back to unknown when singular resource cannot be resolved', function () {
+    test('lists unknown items when singular resource cannot be resolved', function () {
         $reflection = new ReflectionClass(MiscCollection::class);
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
 
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
     });
 });
@@ -2973,7 +3064,7 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
             ->and($whileKey['optional'])->toBeTrue();
     });
 
-    test('marks do-while loop dim assignments as optional', function () {
+    test('marks do-while dim assignments before any break or continue as required', function () {
         $reflection = new ReflectionClass(VarReturnSpreadResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection, User::class);
         $analysis = $analyzer->analyze();
@@ -2981,8 +3072,25 @@ describe('ResourceAstAnalyzer with variable-return trait method spreads', functi
         $doWhileKey = collect($analysis->properties)->firstWhere('name', 'doWhileKey');
 
         expect($doWhileKey)->not->toBeNull()
-            ->and($doWhileKey['optional'])->toBeTrue();
+            ->and($doWhileKey['optional'])->toBeFalse();
     });
+
+    test('keeps a do-while dim assignment optional when the first pass can skip it', function (string $key) {
+        $reflection = new ReflectionClass(VarReturnSpreadResource::class);
+        $analyzer = new ResourceAstAnalyzer($reflection, User::class);
+        $analysis = $analyzer->analyze();
+
+        $prop = collect($analysis->properties)->firstWhere('name', $key);
+
+        expect($prop)->not->toBeNull()
+            ->and($prop['type'])->toBe('string')
+            ->and($prop['optional'])->toBeTrue();
+    })->with([
+        'inside a branch' => 'doWhileBranchKey',
+        'after a break' => 'doWhileAfterBreakKey',
+        'after a continue' => 'doWhileAfterContinueKey',
+        'in a do-while under a branch' => 'doWhileUnderBranchKey',
+    ]);
 
     test('resolves all loop properties in variable-return methods', function () {
         $reflection = new ReflectionClass(VarReturnSpreadResource::class);
@@ -3200,7 +3308,7 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
         expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
-            ->toContain('extensions: unknown[]')
+            ->toContain('extensions: string[]')
             ->toContain('maxSizeMb: number')
             ->toContain('icon: string');
     });
@@ -3224,8 +3332,8 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
 
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
-        // extensions() returns array on MediaType enum → unknown[]
-        expect($meta['type'])->toContain('extensions: unknown[]');
+        // MediaType::extensions() declares only array, so its match of string lists types it.
+        expect($meta['type'])->toContain('extensions: string[]');
     });
 });
 
@@ -3290,7 +3398,7 @@ describe('ResourceAstAnalyzer with MediaTypeInstanceOfResource (instanceof guard
         $meta = collect($analysis->properties)->firstWhere('name', 'meta');
 
         expect($meta['type'])->toStartWith('{ ')->toEndWith(' }')
-            ->toContain('extensions: unknown[]')
+            ->toContain('extensions: string[]')
             ->toContain('maxSizeMb: number')
             ->toContain('icon: string');
     });
@@ -3687,7 +3795,7 @@ describe('ResourceAstAnalyzer with ClosureControlFlowResource (collectReturnExpr
     });
 });
 
-describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExpression with Closure)', function () {
+describe('ResourceAstAnalyzer with MergeClosureResource (a merge closure\'s returns as branches)', function () {
     beforeEach(function () {
         $reflection = new ReflectionClass(MergeClosureResource::class);
         $this->analysis = (new ResourceAstAnalyzer($reflection, Order::class))->analyze();
@@ -3705,6 +3813,85 @@ describe('ResourceAstAnalyzer with MergeClosureResource (resolveClosureReturnExp
 
         expect($names)->toContain('id');
     });
+
+    // Laravel merges nothing for the guard's `[]`, so the keys the other branch sets can be missing from the response.
+    test('a return [] guard leaves the keys the other branch sets optional', function () {
+        $props = collect($this->analysis->properties)->keyBy('name');
+
+        expect($props['user_name']['type'])->toBe('string')
+            ->and($props['user_name']['optional'])->toBeTrue()
+            ->and($props['user_email']['type'])->toBe('string')
+            ->and($props['user_email']['optional'])->toBeTrue()
+            ->and($props['id']['optional'])->toBeFalse();
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mergeWhen()/mergeUnless() merge their default when the condition fails — MergeDefaultResource
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ResourceAstAnalyzer with MergeDefaultResource — a merge default is a branch of its own', function () {
+    beforeEach(function () {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeDefaultResource::class), Order::class);
+        $this->props = collect($analyzer->analyze()->properties)->keyBy('name');
+    });
+
+    it('publishes a key both sides set as required, typed with both sides\' types', function (string $key, string $type) {
+        expect($this->props[$key]['type'])->toBe($type)
+            ->and($this->props[$key]['optional'])->toBeFalse();
+    })->with([
+        'an array default' => ['state', 'string | number'],
+        'a closure default' => ['cancelled', 'boolean'],
+        'a named default' => ['note_text', 'string | null'],
+        'both sides set it, the default untypable' => ['k', 'string'],
+        'both sides set it, the value null and the default untypable' => ['null_total', 'null'],
+    ]);
+
+    it('publishes a key only one side sets as optional', function (string $key, string $type) {
+        expect($this->props[$key]['type'])->toBe($type)
+            ->and($this->props[$key]['optional'])->toBeTrue();
+    })->with([
+        'the value only' => ['paid_by', 'number'],
+        'an array default only' => ['awaiting_payment', 'boolean'],
+        'a closure default only' => ['open_since', 'string | null'],
+        'a default closure that can return []' => ['owner_id', 'number'],
+        'no default' => ['subtotal_label', 'string'],
+    ]);
+});
+
+// A side read as no array merges no key it knows, as the MissingValue an omitted default leaves; the model and a
+// helper call merge their keys, as a closure returning them would.
+it('reads the model and a helper call as merge sides, and a side read as no array as an empty branch', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeUnreadableDefaultResource::class), Post::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props->map(fn (array $p): string => ($p['optional'] ? '?' : '').$p['type'])->all())->toMatchArray([
+        'id' => 'number',
+        'null_default' => '?string',
+        'call_default' => 'string',
+        'title' => '?string',
+        'default_only' => '?number',
+        'spread_default' => '?string',
+        'needs_arg_default' => '?string',
+    ]);
+});
+
+test('a merge closure that returns a variable it builds merges the variable\'s keys', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeVariableClosureResource::class), Order::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props['merged_a'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($props['merged_b'])->toMatchArray(['type' => 'string', 'optional' => false]);
+});
+
+// The returned variable is a branch like a literal, and one the walk cannot read completely proves no key absent.
+test('a merge closure\'s variable branch sits beside a return [] guard, and an unreadable one is skipped', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(MergeVariableClosureResource::class), Order::class);
+    $props = collect($analyzer->analyze()->properties)->keyBy('name');
+
+    expect($props['guarded'])->toMatchArray(['type' => 'boolean', 'optional' => true])
+        ->and($props['literal'])->toMatchArray(['type' => 'number', 'optional' => false])
+        ->and($props)->not->toHaveKey('appended');
 });
 
 describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple return branches)', function () {
@@ -3747,7 +3934,7 @@ describe('ResourceAstAnalyzer with ControlFlowReturnResource (union multiple ret
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'archived')['type'])->toBe('boolean')
             ->and($props->firstWhere('name', 'draft')['type'])->toBe('boolean')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number')
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string')
             ->and($props->firstWhere('name', 'status')['type'])->toBe('OrderStatusType');
     });
 
@@ -3816,7 +4003,7 @@ describe('ResourceAstAnalyzer with LoopReturnResource (collectDirectReturns loop
 
         expect($props->firstWhere('name', 'id')['type'])->toBe('number')
             ->and($props->firstWhere('name', 'first_item_name')['type'])->toBe('string')
-            ->and($props->firstWhere('name', 'total')['type'])->toBe('number');
+            ->and($props->firstWhere('name', 'total')['type'])->toBe('string');
     });
 });
 
@@ -4224,6 +4411,64 @@ it('honours an inherited $wrap = null on a body-less collection', function () {
     expect($analysis->flatTypeAlias)->toBe('PostResource[]');
 });
 
+// Laravel's collects() reads #[Collects], $collects and the naming convention off static::class, so a body-less
+// collection stacked on another collects what it names itself, under the $wrap it inherits.
+it('collects a stacked body-less collection\'s own $collects under its inherited wrap', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(HandoverDigestCollection::class)))->analyze();
+
+    expect($analysis->properties)->toHaveCount(1)
+        ->and($analysis->properties[0]['name'])->toBe('handovers')
+        ->and($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]')
+        ->and($analysis->nestedResources)->toBe(['handovers' => HandoverSummaryResource::class]);
+});
+
+it('lets an inherited $collects outrank the naming convention on a stacked collection', function () {
+    // Non-vacuous: the convention's own candidate exists, so only the inherited $collects explains the result.
+    expect(class_exists(HandoverRosterResource::class))->toBeTrue();
+
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(HandoverRosterCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('HandoverResource[]');
+});
+
+it('collects a stacked collection\'s own #[Collects] over the $collects it inherits', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedAttributeDigestCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('HandoverSummaryResource[]');
+})->skip(fn () => ! version_compare(app()->version(), '13', '>='));
+
+// Laravel collects raw models here, so the element is the model the parent's resource is backed by.
+it('publishes the raw models of the parent\'s resource when a stacked collection names none itself', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnnamedCollection::class)))->analyze();
+
+    expect($analysis->properties[0]['type'])->toBe('Supplier[]')
+        ->and($analysis->modelFqcns)->toBe(['data' => Supplier::class]);
+});
+
+it('honours a stacked collection\'s own $wrap = null over the wrap it inherits', function () {
+    $analysis = (new ResourceAstAnalyzer(new ReflectionClass(StackedUnwrappedCollection::class)))->analyze();
+
+    expect($analysis->flatTypeAlias)->toBe('HandoverResource[]')
+        ->and($analysis->properties)->toBeEmpty();
+});
+
+it('delegates a body-less collection for toArray() alone', function () {
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(HandoverDigestCollection::class), methodName: 'jsonSerialize');
+
+    expect($analyzer->analyze()->properties)->toBeEmpty();
+});
+
+// Each collects a resource, so reaching the delegation instead of the trait's body would publish a `data` key.
+it('reads a collection\'s toArray() a trait in another file supplies, not its delegation', function (string $class) {
+    $props = collect((new ResourceAstAnalyzer(new ReflectionClass($class)))->analyze()->properties)->keyBy('name');
+
+    expect($props)->toHaveKey('label')->not->toHaveKey('data')
+        ->and($props['label'])->toMatchArray(['type' => 'string', 'optional' => false]);
+})->with([
+    'the trait user' => [TraitShapedCollection::class],
+    'a body-less child of the trait user' => [TraitShapedChildCollection::class],
+]);
+
 describe('ResourceAstAnalyzer with PreserveKeysCollection (#[PreserveKeys] attribute)', function () {
     test('emits a keyed record for a collection carrying #[PreserveKeys]', function () {
         $reflection = new ReflectionClass(PreserveKeysCollection::class);
@@ -4337,7 +4582,7 @@ describe('ResourceAstAnalyzer ternary operator — resource branches', function 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_or_category');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CategoryResource')
+            ->and($prop['type'])->toBe('CategoryResource | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -4513,7 +4758,7 @@ describe('ResourceAstAnalyzer with ConditionalParamMappedResource — issue #38 
         $prop = collect($this->analysis->properties)->firstWhere('name', 'items_priced');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: number; total_price: number }[]')
+            ->and($prop['type'])->toBe('{ id: number; sku: string; unit_price: string; total_price: string }[]')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -4660,7 +4905,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_same_type_default']['type'])->toBe('number')
+        expect($props['not_null_same_type_default']['type'])->toBe('string')
             ->and($props['not_null_same_type_default']['optional'])->toBeFalse();
     });
 
@@ -4732,7 +4977,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — explicit defa
         expect($props['has_with_default']['type'])->toBe('string | number');
         expect($props['has_with_null']['type'])->toBe('number | null');
         expect($props['counted_with_default']['type'])->toBe('number | string');
-        expect($props['aggregated_with_default']['type'])->toBe('number | string');
+        expect($props['aggregated_with_default']['type'])->toBe('number | string | null');
         expect($props['appended_with_default']['type'])->toBe('string | number');
         expect($props['appended_with_null']['type'])->toBe('number | null');
         expect($props['exists_with_default']['type'])->toBe('string | null');
@@ -5119,7 +5364,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('StatusType | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5224,10 +5469,13 @@ describe('static call inference', function () {
             ->and($this->props['status_or_priority']['type'])->toContain('PriorityType');
     });
 
-    test('static call declared void/never/mixed degrades to unknown', function () {
-        foreach (['void_return', 'never_return', 'mixed_return'] as $name) {
+    test('static call declared void/never degrades to unknown, and one declared mixed publishes what it returns', function () {
+        foreach (['void_return', 'never_return'] as $name) {
             expect($this->props[$name]['type'])->toBe('unknown', "property {$name}");
         }
+
+        // UrlService::mixedReturn() returns null, which Laravel sends.
+        expect($this->props['mixed_return']['type'])->toBe('null');
     });
 
     test('static call declared to return an enum-plus-model union resolves via both channels', function () {
@@ -5344,16 +5592,16 @@ describe('helper and receiver method inference', function () {
             ->and($this->props['item_total']['optional'])->toBeFalse();
     });
 
-    // CarbonInterval/CarbonPeriod are Stringable but not strings — toTsType()'s __toString fallback must not fire.
-    test('Carbon diff() returning CarbonInterval degrades to unknown, not string', function () {
-        expect($this->props['diff_result']['type'])->toBe('unknown');
+    // CarbonInterval/CarbonPeriod are Stringable, but json_encode() never calls __toString().
+    test('Carbon diff() returning CarbonInterval publishes the DateInterval fields json_encode() writes', function () {
+        expect($this->props['diff_result']['type'])->toBe(LaravelTsPublish::CARBON_INTERVAL_OBJECT_TYPE);
     });
 
-    test('Carbon toPeriod() returning CarbonPeriod degrades to unknown, not string', function () {
-        expect($this->props['period_result']['type'])->toBe('unknown');
+    test('Carbon toPeriod() returning CarbonPeriod publishes the list of date strings json_encode() writes', function () {
+        expect($this->props['period_result']['type'])->toBe('string[]');
     });
 
-    // Carbon/CarbonImmutable's __toString() IS their canonical form, so the Stringable guard must skip them.
+    // Carbon and CarbonImmutable keep Carbon's own jsonSerialize(), which writes the ISO string.
     test('Carbon toMutable() returning Carbon resolves to string, not unknown', function () {
         expect($this->props['to_mutable']['type'])->toBe('string');
     });
@@ -5362,7 +5610,8 @@ describe('helper and receiver method inference', function () {
         expect($this->props['to_immutable']['type'])->toBe('string');
     });
 
-    // Resources leave `$request` unbound (resolveRequestVarNames()), so `$request->user()` names no receiver model.
+    // An API resource leaves `$request` out of requestVarNames (ParameterBinder::bindCall()), so `$request->user()`
+    // names no receiver model.
     test('getKey() on an unbound request user stays unknown', function () {
         expect($this->props['user_key']['type'])->toBe('unknown');
     });
@@ -5397,7 +5646,9 @@ describe('local variable bindings', function () {
         expect($props['mapped_members']['type'])->toBe('User[]')
             ->and($props['loaded_owner']['type'])->toBe('User')
             // The shadowing closure param no longer suppresses the outer $member local's own binding.
-            ->and($props['outer_member']['type'])->toBe('string');
+            ->and($props['outer_member']['type'])->toBe('string')
+            // Nor does a closure's write to its own same-named parameter.
+            ->and($props['shadowed']['type'])->toBe('string');
     });
 
     // Guards the regression narrowing collectWrittenVariableNames() alone would introduce: with no
@@ -5757,21 +6008,19 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // A constant whose own initializer is another class's enum case.
         ->and($props['default_status']['type'])->toBe('StatusType')
         ->and($analysis->directEnumFqcns)->toContain(Status::class)
-        // The left arm ($this->totally_unmapped_field) is unresolvable, so the constant on the
-        // right — the same kind eaglesys's default_subscription_channels falls back to — wins.
+        // The left arm ($this->totally_unmapped_field) is unresolvable, so the nested array constant on the right wins.
         ->and($props['fallback_channels']['type'])->toBe($nestedChannelsShape)
         // A plain list where every element agrees resolves to an element array.
         ->and($props['channel_tags']['type'])->toBe('string[]')
         // A list whose elements don't agree resolves to a union element array.
         ->and($props['mixed_tags']['type'])->toBe('(string | number)[]')
-        // A list nested inside a keyed constant resolves the same way a top-level one does,
-        // rather than the Record<string, unknown> a keyless item would otherwise misreport.
+        // A list nested inside a keyed constant resolves the same way a top-level one does.
         ->and($props['nested_tags']['type'])->toBe('{ primary: string[]; secondary: string[] }')
         // Negative case: an undefined-constant reference degrades to unknown at read time
         // instead of throwing and aborting the whole generation run.
         ->and($props['broken_channels']['type'])->toBe('unknown')
-        // Negative case: one element past MAX_CONSTANT_ARRAY_ELEMENTS.
-        ->and($props['over_element_limit']['type'])->toBe('unknown')
+        // A flat list one past MAX_CONSTANT_ARRAY_ELEMENTS: the cap counts only arrays that inline a shape per element.
+        ->and($props['over_element_limit']['type'])->toBe('number[]')
         // Negative case: one level past MAX_CONSTANT_ARRAY_DEPTH.
         ->and($props['over_depth_limit']['type'])->toBe('unknown')
         // An enum case nested inside a keyed constant — the FQCN must survive embedding.
@@ -5779,10 +6028,10 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($analysis->directEnumFqcns)->toContain(OrderStatus::class)
         // An enum case nested inside a list constant — same requirement, list shape.
         ->and($props['status_list']['type'])->toBe('OrderStatusType[]')
-        // All-int, non-sequential keys: every member is dropped, not a regression.
-        ->and($props['all_int_keys']['type'])->toBe('Record<string, unknown>')
-        // A mixed string/int-keyed constant: the int-keyed member is silently dropped.
-        ->and($props['mixed_keys']['type'])->toBe('{ a: number }')
+        // All-int, non-sequential keys, kept as JSON writes them; the resource's publisher re-indexes them into a list.
+        ->and($props['all_int_keys']['type'])->toBe('{ "200": string; "404": string }')
+        // A mixed string/int-keyed constant keeps its keys, the int one written as JSON writes it.
+        ->and($props['mixed_keys']['type'])->toBe('{ a: number; "5": string }')
         // New behaviour: `Foo::class` now types as a plain string instead of unknown. The four
         // risky call sites never reach this branch — they resolve their ClassConstFetch argument
         // directly, without going through analyzeValueExpression() — so this is new behaviour, not a guard.
@@ -5791,6 +6040,30 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // pre-existing path (resolveEnumFromPropertyArg()) this feature does not touch.
         ->and($props['status_marker']['type'])->toContain('Status')
         ->and($analysis->enumResources)->toHaveKey('status_marker', Status::class);
+});
+
+describe('toResource() and toResourceCollection() after a `?->` that can end the chain', function () {
+    test('add null where a `?->` earlier in the same chain can end it, and only there', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(ShortCircuitedCategoryResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props->all())->toBe([
+            'grandparent' => 'CategoryResource | null',
+            'grandparent_proxy' => 'CategoryResource | null',
+            'grandparent_explicit' => 'CategoryResource | null',
+            'local_grandparent' => 'CategoryResource',
+            'siblings_static' => 'CategoryResource[]',
+        ]);
+    });
+
+    test('a sibling list read through a nullable parent publishes null, with or without its own `?->`', function () {
+        $props = collect(resolve(AstEngine::class)->analyze(CategoryLineageResource::class)->properties)
+            ->mapWithKeys(fn (array $p): array => [$p['name'] => $p['type']]);
+
+        expect($props['parent_siblings'])->toBe('CategoryResource[] | null')
+            ->and($props['parent_siblings_nullsafe'])->toBe('CategoryResource[] | null')
+            ->and($props['parent_nullsafe_resource'])->toBe('CategoryResource | null');
+    });
 });
 
 describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceCollection())', function () {
@@ -5802,13 +6075,13 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResource() resolves the related model by naming convention', function () {
-        expect($this->props['owner_via_closure']['type'])->toBe('UserResource')
+        expect($this->props['owner_via_closure']['type'])->toBe('UserResource | null')
             ->and($this->props['owner_via_closure']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('owner_via_closure', UserResource::class);
     });
 
     test('whenLoaded closure toResource(SomeResource::class) honours the explicit argument', function () {
-        expect($this->props['owner_explicit']['type'])->toBe('UserResource')
+        expect($this->props['owner_explicit']['type'])->toBe('UserResource | null')
             ->and($this->props['owner_explicit']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('owner_explicit', UserResource::class);
     });
@@ -5825,9 +6098,11 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
     });
 
     test('whenLoaded closure toResourceCollection() resolves the element model by convention', function () {
-        expect($this->props['staff_via_closure']['type'])->toBe('UserResource[]')
+        // UserCollection declares a toArray() of its own, whose keys Laravel sends for the guessed collection; over no
+        // rows the guess builds a plain ResourceCollection instead, nested as `[]`.
+        expect($this->props['staff_via_closure']['type'])->toBe('UserCollection | never[]')
             ->and($this->props['staff_via_closure']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('staff_via_closure', UserResource::class);
+            ->and($this->nested)->toHaveKey('staff_via_closure', UserCollection::class);
     });
 
     test('whenLoaded closure toResourceCollection(SomeResource::class) honours the explicit argument', function () {
@@ -5842,7 +6117,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // to it instead of EventLogResource, so this assertion can actually discriminate.
         expect(class_exists(AppTrackingEventResource::class))->toBeTrue();
 
-        expect($this->props['history_event']['type'])->toBe('EventLogResource')
+        expect($this->props['history_event']['type'])->toBe('EventLogResource | null')
             ->and($this->props['history_event']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('history_event', EventLogResource::class);
     })->skip(
@@ -5874,7 +6149,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // candidate order would resolve to it instead of RegistrarResource.
         expect(class_exists(BareRegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrar']['type'])->toBe('RegistrarResource')
+        expect($this->props['registrar']['type'])->toBe('RegistrarResource | null')
             ->and($this->props['registrar']['optional'])->toBeTrue()
             ->and($this->nested)->toHaveKey('registrar', RegistrarResource::class);
     });
@@ -5884,18 +6159,18 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // element than SupplierCollection does, so the two possible orderings are distinguishable.
         expect(class_exists(SupplierResource::class))->toBeTrue();
 
-        expect($this->props['suppliers']['type'])->toBe('SupplierSummaryResource[]')
+        expect($this->props['suppliers']['type'])->toBe('SupplierCollection | never[]')
             ->and($this->props['suppliers']['optional'])->toBeTrue()
-            ->and($this->nested)->toHaveKey('suppliers', SupplierSummaryResource::class);
+            ->and($this->nested)->toHaveKey('suppliers', SupplierCollection::class);
     });
 
-    test('toResourceCollection() degrades to unknown when #[UseResourceCollection]\'s element is undeterminable, without falling through', function () {
+    test('toResourceCollection() publishes the body of the #[UseResourceCollection] class naming no resource, without falling through', function () {
         // RegistrarResource exists and would be the WRONG fallback element type if the matched
         // #[UseResourceCollection] attribute fell through instead of stopping hard.
         expect(class_exists(RegistrarResource::class))->toBeTrue();
 
-        expect($this->props['registrars']['type'])->toBe('unknown')
-            ->and($this->nested)->not->toHaveKey('registrars');
+        expect($this->props['registrars']['type'])->toBe('RegistrarGroupCollection | never[]')
+            ->and($this->nested)->toHaveKey('registrars', RegistrarGroupCollection::class);
     })->skip(
         ! class_exists('Illuminate\Database\Eloquent\Attributes\UseResourceCollection'),
         'UseResourceCollection attribute requires Laravel 12.29+',
@@ -5926,10 +6201,10 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
         // with an empty registry. Failing closed there would strip every nested resource.
         expect(PublishedResourceRegistry::isEmpty())->toBeTrue();
 
-        expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource')
+        expect($this->props['unpublished_guess']['type'])->toBe('AttachmentResource | null')
             ->and($this->nested)->toHaveKey('unpublished_guess', AttachmentResource::class)
-            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentResource[]')
-            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentResource::class);
+            ->and($this->props['unpublished_guess_collection']['type'])->toBe('AttachmentCollection | never[]')
+            ->and($this->nested)->toHaveKey('unpublished_guess_collection', AttachmentCollection::class);
     });
 
     test('a convention-guessed resource outside the published set is not resolved', function () {
@@ -5952,7 +6227,7 @@ describe('ResourceAstAnalyzer with MerchantResource (toResource()/toResourceColl
             // Every convention branch is gated, not just the Attachment fixture's.
             ->and($props['owner_via_closure']['type'])->toBe('unknown')
             // An explicitly named resource is the developer's declaration and stays ungated.
-            ->and($props['owner_explicit']['type'])->toBe('UserResource')
+            ->and($props['owner_explicit']['type'])->toBe('UserResource | null')
             ->and($analysis->nestedResources)->toHaveKey('owner_explicit', UserResource::class);
 
         PublishedResourceRegistry::reset();
@@ -5967,12 +6242,13 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $analysis = (new ResourceAstAnalyzer($reflection))->analyze();
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
+        // Laravel's collects() takes the bare Ledger before LedgerResource whenever the bare class exists.
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('LedgerResource[]')
-            ->and($analysis->nestedResources)->toHaveKey('data', LedgerResource::class);
+            ->and($data['type'])->toBe('Ledger[]')
+            ->and($analysis->nestedResources)->toHaveKey('data', Ledger::class);
     });
 
-    test('the naming convention resolves its first, Resource-suffixed candidate when published', function () {
+    test('the naming convention resolves its Resource-suffixed candidate when published', function () {
         PublishedResourceRegistry::register([SupplierSummaryResource::class]);
 
         $reflection = new ReflectionClass(SupplierSummaryCollection::class);
@@ -5986,7 +6262,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('the naming convention falls through to its bare, unsuffixed candidate when published', function () {
+    test('the naming convention resolves its bare, unsuffixed candidate when published', function () {
         // Non-vacuous: Admin\StoreResource does not exist, so only the bare candidate can resolve.
         expect(class_exists('Workbench\App\Http\Resources\Admin\StoreResource'))->toBeFalse();
 
@@ -6003,8 +6279,8 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         PublishedResourceRegistry::reset();
     });
 
-    test('both naming-convention candidates are rejected when neither is published', function () {
-        // Non-vacuous: both losing candidates genuinely exist — only #[TsExclude] keeps them
+    test('the bare candidate decides, so neither is collected while it is unpublished', function () {
+        // Non-vacuous: both candidates genuinely exist — only #[TsExclude] keeps them
         // out of the published set, so class_exists() alone would accept either.
         expect(class_exists(LedgerResource::class))->toBeTrue()
             ->and(class_exists(Ledger::class))->toBeTrue();
@@ -6016,7 +6292,7 @@ describe('collectedResourceClass() naming-convention branch is gated on the publ
         $data = collect($analysis->properties)->firstWhere('name', 'data');
 
         expect($data)->not->toBeNull()
-            ->and($data['type'])->toBe('unknown')
+            ->and($data['type'])->toBe('unknown[]')
             ->and($analysis->nestedResources)->not->toHaveKey('data');
 
         PublishedResourceRegistry::reset();
@@ -6061,6 +6337,12 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
             ->and($this->props['members_collection_spread']['optional'])->toBeTrue()
             ->and($this->props['members_collection_spread']['type'])->not->toContain('Omit<')
             ->and($this->analysis->inlineModelFqcns['members_collection_spread'] ?? [])->toBe([User::class]);
+    });
+
+    test('a numeric-string key beside a collection spread keeps the intersection the body spells', function () {
+        // '0' is the key 0, which overwrites the first member; ResourceTransformerTest pins the list it sends.
+        expect($this->props['members_zero_key_spread']['type'])->toBe('Record<number, User> & { "0": boolean }')
+            ->and($this->analysis->inlineModelFqcns['members_zero_key_spread'] ?? [])->toBe([User::class]);
     });
 
     test('two resource spreads plus a sibling key intersect in order, each Omit<>\'d against what later overrides it', function () {
@@ -6245,11 +6527,12 @@ describe('ResourceTransformer with a #[TsCasts] entry that brings no import', fu
         expect($transformer->properties['status']['type'])->toBe('WorkbenchStatusType | null');
     });
 
-    test('a resource cast without an import, over its model\'s cast with an import, is aliased', function () {
+    // The cast spells one `User`, so only the first class the key read stays, and with no second `User` no alias.
+    test('a resource cast without an import, over its model\'s cast with an import, names the key\'s own class', function () {
         $transformer = new ResourceTransformer(CastOverModelCastResource::class);
 
-        expect($transformer->properties['reviewable']['type'])->toBe('CrmUser | null')
-            ->and($transformer->typeImports)->not->toHaveKey('@js/types/user');
+        expect($transformer->properties['reviewable']['type'])->toBe('User | null')
+            ->and($transformer->typeImports)->toBe(['../../../../../../workbench/crm/models' => ['User']]);
     });
 
     test('a class-level cast without an import, over a method-level one with an import, is aliased', function () {
@@ -6271,7 +6554,7 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
         $reflection = new ReflectionClass(BranchedCastSpreadResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
 
-        expect($analysis->importedCastKeys)->toBe(['reviewable' => true])
+        expect($analysis->casts)->toBe(['reviewable' => ['type' => 'UserResource | null', 'import' => '@js/types/user']])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
             ->toBe('UserResource | null');
     });
@@ -6310,7 +6593,7 @@ describe('ResourceTransformer aliasing an inline array in the order its type spe
         $transformer = new ResourceTransformer(SpreadModelBeforeMemberResource::class);
 
         expect($transformer->properties['manager']['type'])
-            ->toBe("Omit<WorkbenchUser, 'peer'> & { peer: CrmUser | null }");
+            ->toBe("Omit<WorkbenchUser, 'peer'> & { peer: CrmUser | null } | null");
     });
 
     test('a key declared twice queues its resources once, so a later member keeps its own alias', function () {
@@ -6409,17 +6692,137 @@ describe('ResourceAstAnalyzer with NestedMethodModelSpreadResource — $topLevel
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A model-delegated resource carries its cast classes' own #[TsType(import:)] paths —
-// ImageDelegatedResource
+// ProfileSummaryResource
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('ResourceAstAnalyzer with ImageDelegatedResource — the model-delegated custom-import channel', function () {
+describe('ResourceAstAnalyzer with ProfileSummaryResource — the model-delegated custom-import channel', function () {
     it("carries a cast class's #[TsType(import:)] path out on the analysis", function () {
-        $analysis = resolve(AstEngine::class)->analyzeMethod(ImageDelegatedResource::class);
-        $config = collect($analysis->properties)->firstWhere('name', 'config_from_docblock');
+        $analysis = resolve(AstEngine::class)->analyzeMethod(ProfileSummaryResource::class);
+        $settings = collect($analysis->properties)->firstWhere('name', 'menu_settings');
 
-        expect($config['type'])->toBe('MenuSettingsType')
+        expect($settings['type'])->toBe('MenuSettingsType | null')
             ->and($analysis->customImports)->toBe(['@js/types/settings' => ['MenuSettingsType']]);
     });
+});
+
+// JsonResource::toArray() returns Model::toArray(): attributesToArray() writes the columns and the appended accessors,
+// and relationsToArray() a loaded relation only, under its snake-cased name; exclude_hidden governs the visibility.
+describe('whole-model delegation publishes what Model::toArray() writes', function () {
+    $userColumns = [
+        'id', 'name', 'email', 'email_verified_at', 'password', 'options', 'remember_token', 'created_at', 'updated_at',
+        'role', 'membership_level', 'phone', 'avatar', 'bio', 'settings', 'last_login_at', 'last_login_ip',
+    ];
+    $userRelationKeys = [
+        'profile', 'posts', 'comments', 'orders', 'addresses', 'primary_address', 'teams', 'owned_teams', 'images',
+        'notifications',
+    ];
+
+    it('keeps $hidden columns while exclude_hidden is off, and leaves out accessors the model does not append', function () {
+        config()->set('ts-publish.models.exclude_hidden', false);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toContain('password', 'remember_token')
+            ->not->toContain('initials')
+            ->not->toContain('is_premium')
+            ->and($props['email'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    it('leaves out $hidden columns while exclude_hidden is on', function () {
+        config()->set('ts-publish.models.exclude_hidden', true);
+        $names = array_column(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties, 'name');
+
+        expect($names)->not->toContain('password')
+            ->not->toContain('remember_token');
+    });
+
+    it('publishes every column and relation past $visible while exclude_hidden is off', function () use ($userColumns, $userRelationKeys) {
+        config()->set('ts-publish.models.exclude_hidden', false);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationVisibilityResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toBe([...$userColumns, ...$userRelationKeys])
+            ->and($props->where('optional', true)->keys()->all())->toBe($userRelationKeys);
+    });
+
+    it('keeps only what $visible names, a relation by its method name, while exclude_hidden is on', function () {
+        config()->set('ts-publish.models.exclude_hidden', true);
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationVisibilityResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())->toBe(['id', 'owned_teams'])
+            ->and($props['id'])->toMatchArray(['type' => 'number', 'optional' => false])
+            ->and($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true]);
+    });
+
+    it('publishes every relation optional, under the key relationsToArray() writes', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(EmptyWithMixinResource::class)->properties)->keyBy('name');
+
+        expect($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true])
+            ->and($props['primary_address'])->toMatchArray(['type' => 'Address | null', 'optional' => true])
+            ->and($props['posts'])->toMatchArray(['type' => 'Post[]', 'optional' => true])
+            ->and($props->has('ownedTeams'))->toBeFalse();
+    });
+
+    it('keeps an appended accessor and drops one the model does not append', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(HandoverSummaryResource::class)->properties)->keyBy('name');
+
+        expect($props->has('parties'))->toBeTrue()
+            ->and($props->has('party'))->toBeFalse()
+            ->and($props->has('audience'))->toBeFalse()
+            ->and($props['crm_watchers']['optional'])->toBeTrue();
+    });
+
+    it('keeps the method name as the key while the model turns $snakeAttributes off', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(RelationKeyCaseResource::class)->properties)->keyBy('name');
+
+        expect($props['ownedTeams'])->toMatchArray(['type' => 'Team[]', 'optional' => true])
+            ->and($props->has('owned_teams'))->toBeFalse();
+    });
+
+    it('still publishes a relation and an accessor only() names, under the name it was given', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(UserOnlyRelationResource::class)->properties)->keyBy('name');
+
+        expect($props['ownedTeams'])->toMatchArray(['type' => 'Team[]', 'optional' => false])
+            ->and($props['initials'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    // array_merge() lets a loaded relation overwrite the column under the same key, which is always written.
+    it('publishes a relation keyed like a column once, required and typed with both', function () {
+        $properties = collect(resolve(AstEngine::class)->analyzeMethod(ShippingAddressOrderResource::class)->properties);
+
+        expect($properties->where('name', 'shipping_address')->values()->all())->toHaveCount(1)
+            ->and($properties->firstWhere('name', 'shipping_address'))
+            ->toMatchArray(['type' => 'string | Address | null', 'optional' => false])
+            ->and($properties->contains('name', 'shippingAddress'))->toBeFalse();
+    });
+
+    it("reads a model whose toArray() is Eloquent's own as what it serializes", function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(User::class, 'toArray', User::class)->properties)->keyBy('name');
+
+        expect($props->has('initials'))->toBeFalse()
+            ->and($props->has('ownedTeams'))->toBeFalse()
+            ->and($props['owned_teams'])->toMatchArray(['type' => 'Team[]', 'optional' => true]);
+    });
+
+    it('reads a variable built on parent::toArray() with the relations optional', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(ReturnedParentTagResource::class)->properties)->keyBy('name');
+
+        expect($props->keys()->all())
+            ->toBe(['id', 'name', 'slug', 'color', 'created_at', 'updated_at', 'posts', 'products', 'extra'])
+            ->and($props['posts'])->toMatchArray(['type' => 'Post[]', 'optional' => true])
+            ->and($props['products'])->toMatchArray(['type' => 'Product[]', 'optional' => true])
+            ->and($props['extra'])->toMatchArray(['type' => 'string', 'optional' => false]);
+    });
+
+    it('keeps a #[Hidden] column under the default exclude_hidden, and an #[Appends] accessor', function () {
+        $props = collect(resolve(AstEngine::class)->analyzeMethod(Laravel13AttributesSummaryResource::class)->properties)
+            ->mapWithKeys(fn (array $property): array => [$property['name'] => [$property['type'], $property['optional']]]);
+
+        expect($props->all())->toBe([
+            'id' => ['number', false],
+            'name' => ['string', false],
+            'secret_token' => ['string', false],
+            'label' => ['string', false],
+        ]);
+    })->skip(fn () => ! version_compare(app()->version(), '13', '>='));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6610,7 +7013,7 @@ describe('IndexSignatureConflictResource — a docblock-filled signature never c
         $props = ($this->shape)('nestedBranches');
 
         expect($props['[key: `${string}_tag`]']['type'])
-            ->toBe('string | { "[key: `${string}_tag`]": string | undefined } | number | undefined')
+            ->toBe('string | { [key: `${string}_tag`]: string | undefined } | number | undefined')
             ->and($props['box_tag']['optional'])->toBeTrue()
             ->and($props['price_tag']['optional'])->toBeTrue();
     });
@@ -6664,7 +7067,23 @@ test('a spread helper\'s `@return` publishes its literal types, and each union a
     'two arms typed alike' => ['amount', 'number'],
     'a name no class answers to' => ['custom', 'CustomObject'],
     'a class the shape cannot import' => ['text', 'unknown'],
+    'a quoted key spaced before its optional marker' => ['quoted-key', "'a' | 'b'"],
 ]);
+
+test('a helper declaring a list shape publishes the tuple, whether or not the resource preserves keys', function (string $resource) {
+    $props = collect(resolve(AstEngine::class)->analyze($resource, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['pair']['type'])->toBe('[number, string]');
+})->with([
+    'a re-indexing resource' => [DeclaredTupleHelperResource::class],
+    'a resource that preserves keys' => [KeptDeclaredTupleHelperResource::class],
+]);
+
+test('a call whose `@return` is conditional keeps its first-token reading', function () {
+    $props = collect(resolve(AstEngine::class)->analyze(DeclaredTupleHelperResource::class, 'toArray', Post::class)->properties)->keyBy('name');
+
+    expect($props['title_first']['type'])->toBe('string');
+});
 
 test('toArray()\'s own `@return` types its literals but never ships a class name its file does not import', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(DocShapePostResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -6683,10 +7102,526 @@ test('a spread helper\'s branches drop the values they cannot type, as a ternary
     'only null left once the untypable branch drops' => ['nothing', 'unknown'],
 ]);
 
-test('only a spread helper\'s branches drop an untypable value; other merges stay unknown', function () {
+test('only a spread helper\'s branches and a merge call\'s sides drop an untypable value; other merges stay unknown', function () {
     $branch = fn (string $type): ResourceAnalysis => new ResourceAnalysis(properties: [['name' => 'label', 'type' => $type, 'optional' => false, 'description' => '']]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(BranchedSpreadPostResource::class), Post::class);
 
     expect($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')])->properties[0]['type'])->toBe('unknown')
-        ->and($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('string');
+        ->and($analyzer->mergeReturnBranches([$branch('string'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('string')
+        ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true)->properties[0]['type'])->toBe('unknown')
+        ->and($analyzer->mergeReturnBranches([$branch('null'), $branch('unknown')], dropsUntypedBranches: true, keepsLoneNull: true)->properties[0]['type'])->toBe('null');
 });
+
+// A `timestamp` cast holds the Unix integer, so a Carbon method on it is no Carbon call: Laravel throws on `format()`.
+it('reflects a Carbon method on a date cast, never on a timestamp cast', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class);
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), ReceiverAttributeBaseModel::class, 'toArray', null, $scope)
+        ->resolve($expr)['type'])->toBe($type);
+})->with([
+    'an immutable_datetime cast' => ['$this->published_at->format("Y")', 'string'],
+    'a timestamp cast' => ['$this->deleted_at->format("Y")', 'unknown'],
+    'the timestamp cast itself' => ['$this->deleted_at', 'number | null'],
+]);
+
+// Printed bare, `[key: string]` would type every other key (TS2411) and the `\_x` text would sit beside the real
+// `\\_x` signature (TS2413); a literal key is never a signature, so it is left out.
+it('a literal key whose text reads as an index signature is left out with a warning, and the real signature stays', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['id', '[key: `${string}\\\\_x`]'])
+        ->and($properties['[key: `${string}\\\\_x`]']['type'])->toBe('string | undefined')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: `${string}\\_x`]" reads as an index signature, so it is left out; rename it.',
+            'The key "[key: number]" reads as an index signature, so it is left out; rename it.',
+        ])
+        ->and(array_unique(array_column(AnalysisWarnings::all(), 'subject')))->toBe([SignatureTextKeyResource::class]);
+
+    AnalysisWarnings::reset();
+});
+
+// A nested signature prints bare, so a nested literal key spelled like one must be left out as a top-level one is.
+it('leaves out a nested literal key that reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(NestedSignatureTextKeyResource::class)->properties;
+
+    expect($properties['box']['type'])->toBe('{ x: number }')
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
+
+    AnalysisWarnings::reset();
+});
+
+// A constant's text is a literal key too, so one spelled like a signature is left out as a written one is.
+it('leaves out a constant key whose text reads as an index signature', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(SignatureTextConstantKeyResource::class)->properties;
+
+    expect(array_keys($properties))->toBe(['x'])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The key "[key: string]" reads as an index signature, so it is left out; rename it.',
+        ]);
+
+    AnalysisWarnings::reset();
+});
+
+// Every reader of a key the array names twice reads its last entry, so the method's cast must retype each one.
+test('a toArray() cast retypes every entry of a key the returned array names twice', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(DuplicateKeyCastResource::class), Post::class)->analyze();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['state' => "'draft' | 'published'", 'title' => 'string'])
+        ->and(new ResourceTransformer(DuplicateKeyCastResource::class)->properties['state']['type'])->toBe("'draft' | 'published'");
+});
+
+test('a cast key that spells more than one index signature warns, retypes none and adds the key as it does any other', function () {
+    AnalysisWarnings::reset();
+
+    $properties = new ResourceTransformer(AmbiguousSpellingResource::class)->properties;
+
+    expect(array_column($properties, 'type'))->toBe(['number', 'number | undefined', 'number | undefined', 'string'])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => AmbiguousSpellingResource::class,
+            'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+        ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a toArray() cast key that spells more than one index signature warns once for the resource', function () {
+    AnalysisWarnings::reset();
+
+    new ResourceTransformer(AmbiguousMethodSpellingResource::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => AmbiguousMethodSpellingResource::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a model cast key that spells more than one index signature warns once for the resource', function () {
+    AnalysisWarnings::reset();
+
+    new ResourceTransformer(AmbiguousModelCastResource::class);
+
+    expect(AnalysisWarnings::all())->toBe([[
+        'subject' => AmbiguousModelCastResource::class,
+        'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+    ]]);
+
+    AnalysisWarnings::reset();
+});
+
+describe('a cast across its locations', function () {
+    test('a casts() spelling of a signature outranks the class\'s exact name', function () {
+        expect(new ResourceTransformer(SpellingsAcrossLocationsResource::class)->properties['[key: `${string}\\\\_x`]']['type'])
+            ->toBe('number');
+    });
+
+    // The fit joins the toArray() cast and the class casts on the key, so each must reach it under the published name.
+    test('a method cast and the class casts for one signature reach the fit as one entry, under its published key', function () {
+        $transformer = new class(SpellingsAcrossLocationsResource::class) extends ResourceTransformer
+        {
+            /** @return array<string, array{type: string, import: string|null}> */
+            public function exposedCastsInForce(): array
+            {
+                return $this->castsInForce;
+            }
+        };
+
+        expect($transformer->exposedCastsInForce())->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null]]);
+    });
+
+    test('a numeric cast key from a spread helper reaches the parent analysis on its own key', function () {
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericCastSpreadResource::class), Post::class)->analyze();
+
+        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
+    });
+});
+
+test('a keyless list literal publishes the list it encodes as, with the imports its elements name', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(HandoverListResource::class), Handover::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe([
+        'stages' => 'string[]',
+        'stamps' => '(number | string | null)[]',
+        'lanes' => 'number[]',
+        'route' => '{ stops: string[]; hops: number }',
+        'empty' => 'never[]',
+        'stops' => 'string[]',
+        'statuses' => 'OrderStatusType[]',
+        'senders' => '(UserResource | null)[]',
+        'legs' => '({ from: string; to: string } | { from: string; to: number })[]',
+        'grid' => 'number[][]',
+        'flags' => 'string[]',
+        'opaque' => 'unknown[]',
+        'collected' => '(number | string | null)[]',
+    ])->and($analysis->inlineEnumFqcns['statuses'] ?? [])->toBe([OrderStatus::class])
+        ->and($analysis->inlineResourceFqcns['senders'] ?? [])->toBe([UserResource::class]);
+});
+
+// #76: a member per enum where two share a name, each queued in the order the type spells them.
+test('a union of two same-named enums keeps a member and a queue entry per enum, in token order', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(WarehouseResource::class), Warehouse::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class])
+        ->and($result)->not->toHaveKey('directEnumFqcn');
+})->with([
+    'a shape beside a read' => ['$this->id > 0 ? ["s" => $this->status] : $this->current_crm_status', '{ s: StatusType | null } | StatusType | null'],
+    'two reads' => ['$this->id > 0 ? $this->status : $this->current_crm_status', 'StatusType | StatusType | null'],
+]);
+
+// An enum resource's token holds no queue entry, so a union holding one keeps the merge by text it had (#76, #108):
+// nested_mixed's `o` keeps that merge's CRM alias. With no enum resource, the nested union reads its enums by class.
+test('a union holding an enum resource beside two same-named enums keeps the merge by text it had', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(EnumWrapBesideSharedNameResource::class)->properties))
+        ->toBe([
+            'mixed' => 'WorkbenchStatusType | null',
+            'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
+            'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
+        ]);
+});
+
+// The body fallback flattens a helper's shape with no import, so the case declines and leaves its siblings their types.
+test('an enum case in a vague helper\'s body fallback leaves its siblings typed', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(EnumCaseShapeHelperResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all())->toBe(['shape' => '{ s: unknown; n: number }']);
+});
+
+test('a list of an enum case beside a read of the same enum publishes one element type, queued once per token', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostEnumCaseResource::class), Post::class)->analyze();
+
+    expect(collect($analysis->properties)->pluck('type', 'name')->all()['case_list'])->toBe('StatusType[]')
+        ->and($analysis->inlineEnumFqcns['case_list'] ?? [])->toBe([Status::class]);
+});
+
+test('+ on arrays publishes the array union in value position and as a whole return', function () {
+    $value = new ResourceAstAnalyzer(new ReflectionClass(HandoverUnionResource::class), Handover::class)->analyze();
+    $whole = new ResourceAstAnalyzer(new ReflectionClass(HandoverDefaultsResource::class), Handover::class)->analyze();
+
+    expect(collect($value->properties)->pluck('type', 'name')->all())->toBe([
+        'with_defaults' => '{ note: string; id: number; sender_id: number | null }',
+        'override' => '{ code: string; lane: number }',
+        'lanes' => 'number[]',
+        'chained' => '{ a: number; b: string; c: boolean }',
+        'total' => 'number',
+    ])->and(collect($whole->properties)->pluck('type', 'name')->all())->toBe([
+        'id' => 'number',
+        'sender_id' => 'number | null',
+        'note' => 'string',
+    ]);
+});
+
+// Review Focus 4: the parent's keys win a key both sides set, as `+=` keeps them.
+test('+ after a parent call publishes every parent key, the parent winning a key both set', function () {
+    $parent = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->analyze();
+    $union = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionResource::class), Post::class)->analyze();
+    $parentTypes = collect($parent->properties)->pluck('type', 'name')->all();
+
+    expect(collect($union->properties)->pluck('type', 'name')->all())->toBe([...$parentTypes, 'extra' => 'number'])
+        ->and($parentTypes['id'])->toBe('number');
+});
+
+test('a variable built from + is read whole beside a literal return, so only the keys both set stay required', function () {
+    $analysis = new ResourceAstAnalyzer(new ReflectionClass(PostParentUnionVariableResource::class), Post::class)->analyze();
+    $optional = collect($analysis->properties)->pluck('optional', 'name');
+
+    expect($optional['id'])->toBeFalse()
+        ->and($optional['title'])->toBeTrue()
+        ->and($optional['extra'])->toBeTrue();
+});
+
+/**
+ * Each analyzed key of a resource as its type, the name suffixed with `?` when the key is optional.
+ *
+ * @param  class-string  $resource
+ * @param  class-string  $model
+ * @return array<string, string>
+ */
+function resourceKeyTypes(string $resource, string $model): array
+{
+    $keys = [];
+
+    foreach (new ResourceAstAnalyzer(new ReflectionClass($resource), $model)->analyze()->properties as $property) {
+        $keys[$property['name'].($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $keys;
+}
+
+it('keeps a key optional when a MissingValue can pass through ??, a when*() default, a ternary or a match', function () {
+    expect(resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class))->toMatchArray([
+        'local_loaded_coalesce?' => 'User | string',
+        'declared_coalesce?' => 'User | string',
+        'local_when_coalesce?' => 'string',
+        'local_has_coalesce?' => 'string',
+        'direct_coalesce?' => 'User | string',
+        'coalesce_right_missing' => 'string | User',
+        'null_left_coalesce?' => 'User',
+        'when_wrap?' => 'User',
+        'when_wrap_default?' => 'User | string',
+        'when_true_default?' => 'User | string',
+        'unless_wrap_default?' => 'User | string',
+        'when_missing_default?' => 'string | User',
+        'when_closure_default?' => 'User | string',
+        'when_local_default?' => 'User | string',
+        'when_not_null_default?' => 'User | string',
+        'nested' => '{ inner?: User }',
+        'nested_coalesce' => '{ inner?: User | string }',
+        'ternary?' => 'User | string',
+        'match?' => 'User | string',
+        'kept' => 'number',
+    ]);
+});
+
+it('publishes required only keys that Laravel sends over an unloaded relation', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Hello']);
+    $sent = [
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '0'])),
+        ...new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])),
+    ];
+
+    foreach (resourceKeyTypes(MissingThroughOperatorsResource::class, Post::class) as $key => $type) {
+        if (! str_ends_with($key, '?') && ! in_array($key, ['nested', 'nested_coalesce'], true)) {
+            expect($sent)->toHaveKey($key);
+        }
+    }
+
+    $post->setRelation('author', new User);
+
+    expect(new MissingThroughOperatorsResource($post)->resolve(Request::create('/', 'GET', ['flag' => '1'])))
+        ->toHaveKey('when_wrap_default');
+});
+
+// Laravel sends none of the types these locals held before the rewrite; `shadowed`'s closure writes only its parameter.
+it('unbinds a local a catch, a by-reference argument, unset(), static or global rewrites', function () {
+    expect(resourceKeyTypes(UnseenWritesResource::class, Post::class))->toBe([
+        'caught' => 'unknown',
+        'declared_caught' => 'unknown',
+        'matches' => 'unknown',
+        'sorted' => 'unknown',
+        'static_filled' => 'unknown',
+        'instance_filled' => 'unknown',
+        'gone' => 'null',
+        'counter' => 'unknown',
+        'glob' => 'unknown',
+        'by_ref_loop' => 'unknown',
+        'shadowed' => 'string',
+        'doubled' => 'number[]',
+        'arrow_shadowed' => 'string',
+        'mapped' => 'number[]',
+        'key' => 'string',
+        'field' => 'string',
+        'items' => 'number[]',
+        'author' => 'User',
+    ]);
+});
+
+it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
+    expect(publishedResourceKeyTypes(LocalVarByReferenceResource::class, Post::class)[$key] ?? null)->toBe($type);
+})->with([
+    'sort() of a list' => ['sorted', 'string[]'],
+    'rsort() of a list' => ['reversed', 'number[]'],
+    'usort() of a list' => ['user_sorted', 'string[]'],
+    'sort() of a plucked list' => ['plucked', 'string[]'],
+    'ksort() of an object' => ['key_sorted', '{ b: number; a: number }'],
+    'ksort() of a list' => ['key_sorted_list', 'string[]'],
+    'uksort() of an object' => ['user_key_sorted', '{ b: number; a: number }'],
+    'krsort() of an object' => ['reverse_key_sorted', '{ a: number; b: number }'],
+    'asort() of an object' => ['value_sorted', '{ b: number; a: number }'],
+    'arsort() of an object' => ['reverse_value_sorted', '{ a: number; b: number }'],
+    'uasort() of an object' => ['user_value_sorted', '{ b: number; a: number }'],
+    'natsort() of an object' => ['natural_sorted', '{ b: string; a: string }'],
+    'natcasesort() of an object' => ['natural_case_sorted', '{ b: string; a: string }'],
+    'str_replace()\'s count' => ['replaced_count', 'number'],
+    'str_ireplace()\'s count' => ['case_replaced_count', 'number'],
+    'preg_replace()\'s count' => ['pattern_count', 'number'],
+    'preg_replace_callback()\'s count' => ['callback_count', 'number'],
+    'array_push() of the element type' => ['pushed', 'string[]'],
+    'array_unshift() of the element type' => ['unshifted', 'string[]'],
+    'array_walk() incrementing each element' => ['walked', '{ x: number }'],
+    'array_walk() writing the element type' => ['walked_list', 'string[]'],
+    'array_walk() by value' => ['read_only_walk', '{ b: number }'],
+    'array_walk_recursive() incrementing each leaf' => ['walked_nested', '{ a: { b: number } }'],
+    'sort() of a list member' => ['sorted_member', '{ x: number[] }'],
+    'sort() of a nested list member' => ['nested_sorted_member', '{ x: { y: number[] } }'],
+    'ksort() of an object member' => ['key_sorted_member', '{ x: { b: number; a: number } }'],
+    'a by-reference foreach writing the element type' => ['looped', 'string[]'],
+    'array_pop() of a list' => ['popped', 'string[]'],
+    'array_shift() of a list' => ['shifted', 'string[]'],
+    'array_splice() of a list with its element type' => ['spliced', 'string[]'],
+    'asort() of a list, which the resource re-indexes' => ['value_sorted_list', 'string[]'],
+    'asort() of a list member, which the resource re-indexes' => ['value_sorted_member', '{ x: string[] }'],
+    'asort() of a list member beside a collection, which keeps its keys' => ['mixed_member', '{ x: string[]; c: { "3": string } }'],
+    'asort() of a docblock tuple, re-indexed in sorted order' => ['sorted_tuple', '(string | number)[]'],
+    'array_walk() writing each key' => ['walked_keys', '{ a: string }'],
+    'array_walk() reading an import' => ['walked_import', 'string[]'],
+    'a by-reference foreach whose element is written only before it' => ['pre_written_loop', 'string[]'],
+    'array_walk() appending to each string' => ['concat_walked', 'string[]'],
+    'array_walk() adding to each number' => ['plus_walked', 'number[]'],
+    'a copy taken before sort() reshapes the original' => ['copied_before_sort', '{ k: number }'],
+    'a copy taken after sort() of a list' => ['list_copied_after_sort', 'string[]'],
+]);
+
+it('sends the type a local a by-reference built-in keeps publishes', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $comment = new Comment;
+    $comment->forceFill(['content' => 'x']);
+    $post->setRelation('comments', new EloquentCollection([$comment]));
+
+    $sent = json_decode((string) json_encode(new LocalVarByReferenceResource($post)->resolve(Request::create('/'))), true);
+
+    expect(json_encode($sent))->toBe(json_encode([
+        'sorted' => ['a', 'b'],
+        'reversed' => [3, 2, 1],
+        'user_sorted' => ['a', 'b'],
+        'plucked' => ['x'],
+        'key_sorted' => ['a' => 2, 'b' => 1],
+        'key_sorted_list' => ['b', 'a'],
+        'user_key_sorted' => ['a' => 2, 'b' => 1],
+        'reverse_key_sorted' => ['b' => 2, 'a' => 1],
+        'value_sorted' => ['a' => 1, 'b' => 2],
+        'reverse_value_sorted' => ['b' => 2, 'a' => 1],
+        'user_value_sorted' => ['a' => 1, 'b' => 2],
+        'natural_sorted' => ['a' => 'img10', 'b' => 'img12'],
+        'natural_case_sorted' => ['a' => 'img10', 'b' => 'IMG12'],
+        'replaced_count' => 3,
+        'case_replaced_count' => 3,
+        'pattern_count' => 3,
+        'callback_count' => 3,
+        'pushed' => ['a', 'b'],
+        'unshifted' => ['a', 'b'],
+        'walked' => ['x' => 2],
+        'walked_list' => ['A', 'B'],
+        'read_only_walk' => ['b' => 1],
+        'walked_nested' => ['a' => ['b' => 2]],
+        'sorted_member' => ['x' => [1, 3]],
+        'nested_sorted_member' => ['x' => ['y' => [1, 2]]],
+        'key_sorted_member' => ['x' => ['a' => 2, 'b' => 1]],
+        'looped' => ['a', 'b'],
+        'popped' => ['a'],
+        'shifted' => ['b'],
+        'spliced' => ['a', 'z'],
+        'value_sorted_list' => ['a', 'b'],
+        'value_sorted_member' => ['x' => ['a', 'b']],
+        'mixed_member' => ['x' => ['a', 'b'], 'c' => [3 => 'a']],
+        'sorted_tuple' => [1, 'b'],
+        'walked_keys' => ['a' => 'a'],
+        'walked_import' => ['!', '!'],
+        'pre_written_loop' => ['a', 'b'],
+        'concat_walked' => ['a!', 'b!'],
+        'plus_walked' => [2, 3],
+        'copied_before_sort' => ['k' => 1],
+        'list_copied_after_sort' => ['a', 'b'],
+    ]));
+});
+
+// O7: Laravel sends none of the types these locals were bound to, so each reads unknown but the contrasts. A resource
+// re-indexes a list a key-keeping sort reorders; shuffle() keeps a list, out of the workbench by preset.
+it('leaves unknown a local a by-reference built-in reshapes, or writes with a value the scan cannot follow', function () {
+    expect(publishedResourceKeyTypes(ByReferenceReshapedResource::class, Post::class))->toBe([
+        'object_sorted' => 'unknown',
+        'list_value_sorted' => 'string[]',
+        'list_reverse_key_sorted' => 'string[]',
+        'pushed_other' => 'unknown',
+        'pushed_object' => 'unknown',
+        'pushed_unpacked' => 'unknown',
+        'counted_string' => 'unknown',
+        'walked_other' => 'unknown',
+        'walked_key' => 'unknown',
+        'walked_named' => 'unknown',
+        'looped_other' => 'unknown',
+        'matched' => 'unknown',
+        'object_member_sorted' => 'unknown',
+        'dynamic_member_sorted' => 'unknown',
+        'walked_nested_other' => 'unknown',
+        'popped_object' => 'unknown',
+        'labels_by_key' => 'unknown',
+        'words_by_local' => 'unknown',
+        'post_written_loop' => 'unknown',
+        'round_written_loop' => 'unknown',
+        'copied_after_sort' => 'unknown',
+        'concat_numbers' => 'unknown',
+        // Known gap: a Collection the response never re-indexes sends the sorted list keyed, as an object.
+        'collected_sorted' => 'string[]',
+        'bitwise' => 'unknown',
+        'shifted' => 'unknown',
+        'kept_list' => 'string[]',
+        'key' => 'string',
+        'tmp' => 'string',
+        'shuffled' => 'number[]',
+    ]);
+});
+
+it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
+    expect(resourceKeyTypes(ReceiverOnlySpreadResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'name' => 'string',
+        'email' => 'string',
+        'nested' => "Omit<Pick<User, 'id'>, 'x'> & { x: number }",
+    ]);
+});
+
+it('a top-level only() spread flattens nothing on a receiver that holds no one concrete model', function (string $method, string $model) {
+    $keys = [];
+
+    foreach (resolve(AstEngine::class)->analyze(ReceiverOnlySpreadDeclinesResource::class, $method, $model)->properties as $property) {
+        $keys[$property['name']] = $property['type'];
+    }
+
+    expect($keys)->toBe(['x' => 'number']);
+})->with([
+    'a nullsafe call' => ['nullsafe', Post::class],
+    'a morphTo relation' => ['morphed', Image::class],
+    'a to-many relation' => ['toMany', Post::class],
+    'an abstract model' => ['abstractModel', Post::class],
+]);
+
+// Each own method's declaration is too vague to publish, so its returns type it, and never its model's namesake.
+test('a resource method whose own declaration is vague publishes what its returns hold', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeInvoiceResource::class), NamesakeInvoice::class)->analyze()->properties)->keyBy('name');
+
+    expect($props[$key]['type'])->toBe($type);
+})->with([
+    'a number the model\'s namesake formats as a string' => ['total', 'number'],
+    'a delegation to the model\'s string namesake' => ['reference', 'string'],
+    'the same method called statically' => ['static_total', 'number'],
+    'the model\'s own namesake' => ['model_total', 'string'],
+    'a vague array delegating to the model\'s shape' => ['summary', '{ a: number }'],
+    'a string or a number' => ['branchy', 'string | number'],
+]);
+
+// The last three need rules of their own: a conditional return type, a finder in this profile, keys() in a pipeline.
+test('a helper read as a value publishes what its returns hold, and three whenHas() callbacks stay unread', function (string $key, string $type) {
+    $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
+
+    expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
+})->with([
+    'an untyped helper inside whenHas()' => ['helper_untyped', '?string'],
+    'a first-class callable inside whenHas()' => ['fcc_method', '?string'],
+    'an untyped helper' => ['shout_untyped', 'string'],
+    'an untyped parameter, read as the string its call passes' => ['echoed_title', 'string'],
+    'the same parameter, read as the number another call passes' => ['echoed_count', 'number'],
+    'a list literal behind a vague array' => ['stages', 'string[]'],
+    'a map() pipeline behind a vague array' => ['history', 'string[]'],
+    'a pluck() behind a vague array' => ['ids', 'number[]'],
+    'an untyped attribute read' => ['untyped_title', 'string'],
+    'a variable returned after a closure\'s own return' => ['closure_first', '{ title: string; active: number }'],
+    'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
+    'Str::upper()' => ['str_static', '?unknown'],
+    'a finder' => ['find', '?unknown'],
+    'keys()' => ['keys', '?unknown'],
+]);

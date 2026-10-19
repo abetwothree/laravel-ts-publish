@@ -12,9 +12,9 @@ export interface Invoice
     user_id: number;
     number: string;
     status: InvoiceStatusType;
-    subtotal: number;
-    tax: number;
-    total: number;
+    subtotal: string;
+    tax: string;
+    total: string;
     due_at: string | null;
     issued_at: string | null;
     paid_at: string | null;

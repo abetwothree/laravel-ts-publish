@@ -3,11 +3,18 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\EnumResourceCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\HookedPropertiesEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\ReindexedValueEnum;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ConditionalEnumResource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Workbench\App\Enums\Color;
 use Workbench\App\Enums\Currency;
+use Workbench\App\Enums\FreightClass;
 use Workbench\App\Enums\MembershipLevel;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Season;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\PostResource;
@@ -180,6 +187,82 @@ describe('EnumResource with TsCase overrides', function () {
     });
 });
 
+describe('EnumResource sends what the published enum holds', function () {
+    it('sends each object a method returns as json_encode() writes it', function () {
+        expect((new EnumResource(FreightClass::Express))->response()->getContent())->toBe(
+            '{"name":"Express","value":"express","backed":true,"rateCard":{"amount":250},'
+            .'"cutoff":"2026-01-01T20:00:00.000000Z","tracking":{"code":"EXPRESS","carrier":"ups"},"zones":["north"],'
+            .'"firstPickup":{"date":"2026-01-01 09:00:00.000000","timezone_type":3,"timezone":"UTC"},"manifest":{},'
+            .'"defaultRate":{"amount":50}}',
+        );
+    });
+
+    it('sends a hooked object and a lazy object as json_encode() reads them', function () {
+        expect((new EnumResource(HookedPropertiesEnum::Dock))->response()->getContent())->toBe(
+            '{"name":"Dock","value":"dock","backed":true,'
+            .'"label":{"code":"DOCK","label":"dock-DOCK"},"rate":{"amount":9}}',
+        );
+    });
+
+    it('sends null for a method that throws for the case', function () {
+        expect((new EnumResource(Season::Winter))->response()->getContent())->toBe(
+            '{"name":"Winter","value":"winter","backed":true,"avgTemp":-5,"warmGreeting":null,"broken":null}',
+        );
+    });
+
+    it('sends an array keyed out of order as the published enum holds it', function () {
+        expect((new EnumResource(Priority::High))->response()->getContent())
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
+    });
+
+    it('sends every numeric-keyed value with its keys, at any depth', function () {
+        expect((new EnumResource(ReindexedValueEnum::Monthly))->response()->getContent())
+            ->toContain('"nestedTiers":{"tiers":{"2":"silver","5":"gold"}}')
+            ->toContain('"months":{"01":"Jan","02":"Feb"}')
+            ->toContain('"objectCodes":{"10":"Ten","20":{"2":"silver"}}')
+            ->toContain('"nestedObjectCodes":{"codes":{"10":"Ten","20":{"2":"silver"}}}')
+            ->toContain('"mixedKeys":{"1":"one","two":"two"}')
+            ->toContain('"sparse":{"3":"three","7":"seven"}');
+    });
+
+    it('lists a collection\'s items, each with its own keys', function () {
+        $raised = array_filter(Priority::cases(), fn (Priority $case): bool => $case->value >= 1);
+        $collection = EnumResource::collection($raised);
+        $content = (string) $collection->response()->getContent();
+
+        expect($collection)->toBeInstanceOf(EnumResourceCollection::class)
+            ->and($content)->toStartWith('{"data":[{"name":"Medium"')
+            ->and(substr_count($content, '"filterByMinimum":{"1":1,"2":2,"3":3}'))->toBe(3);
+    });
+
+    it('drops and merges a subclass\'s conditional attributes as Laravel does, keeping the enum\'s keys', function () {
+        $content = (string) (new ConditionalEnumResource(Priority::High))->response()->getContent();
+
+        expect($content)->not->toContain('"hidden"')
+            ->toContain('"shown":"sent"')
+            ->toContain('"merged":1')
+            ->not->toContain('"data"')
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
+    });
+
+    it('drops a subclass\'s conditional attributes in each item of its collection', function () {
+        $content = (string) ConditionalEnumResource::collection([Priority::High])->response()->getContent();
+
+        expect($content)->not->toContain('"hidden"')
+            ->toContain('"shown":"sent"')
+            ->toContain('"merged":1')
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
+    });
+
+    it('keeps each item\'s keys in a paginated collection', function () {
+        $page = new LengthAwarePaginator(Priority::cases(), 4, 2, 1);
+        $content = (string) EnumResource::collection($page)->response()->getContent();
+
+        expect(substr_count($content, '"filterByMinimum":{"1":1,"2":2,"3":3}'))->toBe(4)
+            ->and($content)->toContain('"meta":{');
+    });
+});
+
 describe('EnumResource with null resource', function () {
     it('returns null when the resource is null', function () {
         $result = (new EnumResource(null))->toArray(request());
@@ -225,6 +308,10 @@ describe('Integration of EnumResource in PostResource class', function () {
             ->toHaveKey('backed', true)
             ->toHaveKey('label', 'High Priority')
             ->toHaveKey('icon', 'arrow-up');
+
+        // The post's filter never walks into the EnumResource object, so the enum's own keys reach the response.
+        expect((new PostResource($post))->response()->getContent())
+            ->toContain('"filterByMinimum":{"1":1,"2":2,"3":3}');
     });
 
     it('returns null for nullable enum properties when they are null', function () {

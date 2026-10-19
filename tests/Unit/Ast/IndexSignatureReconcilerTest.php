@@ -8,7 +8,8 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
 
 /**
- * Reconcile an analysis built from the given entries, after an optional closure edits its channels.
+ * Reconcile an analysis built from the given entries, after an optional closure edits its channels. An entry with a
+ * body type is a fill, kept as ReturnShapeRefiner keeps one: its type is also its `fillType`.
  *
  * @param  list<array{0: string, 1: string, 2?: string}>  $entries  name, type, and the body type a fill replaced
  * @param  array<string, string>  $castKeys
@@ -21,7 +22,7 @@ function reconciled(array $entries, ?Closure $prepare = null, array $castKeys = 
             'type' => $e[1],
             'optional' => false,
             'description' => '',
-            ...(isset($e[2]) ? ['bodyType' => $e[2]] : []),
+            ...(isset($e[2]) ? ['bodyType' => $e[2], 'fillType' => $e[1]] : []),
         ],
         $entries,
     ));
@@ -234,4 +235,40 @@ test('unseen inherited keys put back every changed value and leave body values a
         TAG_SIGNATURE => UNTYPED_SIGNATURE_VALUE,
         '[key: `${string}_label`]' => 'string | undefined',
     ]);
+});
+
+test('a fill an earlier reconcile put back unions once the key beside it can join', function () {
+    $analysis = reconciled([[TAG_SIGNATURE, 'string | undefined', UNTYPED_SIGNATURE_VALUE], ['main_tag', 'unknown']]);
+
+    expect($analysis->properties[0])->toMatchArray(['type' => UNTYPED_SIGNATURE_VALUE, 'fillType' => 'string | undefined']);
+
+    resolve(IndexSignatureReconciler::class)->reconcile($analysis, ['main_tag' => 'number']);
+
+    expect(reconciledTypes($analysis)[TAG_SIGNATURE])->toBe('string | number | undefined');
+});
+
+test('a union re-unions from its own value, so a retyped key leaves no earlier arm behind', function () {
+    $analysis = reconciled([[TAG_SIGNATURE, 'string | undefined'], ['main_tag', 'number']]);
+    $analysis->properties[1]['type'] = 'boolean';
+
+    resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+    expect(reconciledTypes($analysis)[TAG_SIGNATURE])->toBe('string | boolean | undefined');
+});
+
+test('a put-back fold keeps the fills of every entry it folds, joined', function () {
+    $inner = reconciled([[TAG_SIGNATURE, 'string | undefined', UNTYPED_SIGNATURE_VALUE], [TAG_SIGNATURE, 'boolean | undefined']]);
+    $outer = new MethodAnalysis(properties: [
+        ...$inner->properties,
+        ['name' => TAG_SIGNATURE, 'type' => 'number | undefined', 'optional' => false, 'description' => ''],
+        ['name' => 'main_tag', 'type' => 'unknown', 'optional' => false, 'description' => ''],
+    ]);
+
+    resolve(IndexSignatureReconciler::class)->reconcile($outer);
+
+    expect($outer->properties)->toHaveCount(2)
+        ->and($outer->properties[0])->toMatchArray([
+            'type' => 'boolean | number | undefined',
+            'fillType' => 'string | boolean | number | undefined',
+        ]);
 });

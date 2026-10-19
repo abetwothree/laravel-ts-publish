@@ -5,13 +5,30 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BothSpellingsBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CastTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\CoalescingBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ConditionableBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DocShapePostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ExtendedTagSignatureBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FlaggedClassCastUnderCastsMethodBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MethodMissingKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullWrapBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericCastKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NumericPayloadKeyBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RawCrCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpellingsAcrossLocationsBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SpreadEscapedKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UncastEscapedKeyBroadcastEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UninitializedCastBroadcastEvent;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\BroadcastEventWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
 use Workbench\App\Events\EnumBroadcastEvent;
@@ -20,11 +37,14 @@ use Workbench\App\Events\MultiModelEvent;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Events\PostPublishedEvent;
+use Workbench\App\Events\PostStatusBroadcast;
 use Workbench\App\Events\PureEnumEvent;
 use Workbench\App\Events\ReportSynced;
 use Workbench\App\Events\SameBasenameModelEvent;
 use Workbench\App\Events\ServerCreated;
+use Workbench\App\Events\TaggedPayloadEvent;
 use Workbench\App\Events\TeamMessageSent;
+use Workbench\App\Events\TeamRosterSynced;
 use Workbench\App\Events\UserNotification;
 use Workbench\App\Events\UserRegisteredEvent;
 use Workbench\App\Models\Kpi;
@@ -321,6 +341,18 @@ describe('StatusSynced (two Status enums from different namespaces — import al
     });
 });
 
+test('a bare enum case in a payload publishes its enum, aliased beside a same-named one', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => PostStatusBroadcast::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'status' => 'AppStatusType',
+        'crm_status' => 'CrmStatusType',
+        'kept' => 'AppStatusType',
+    ])->and(array_merge(...array_values($transformer->typeImports)))
+        ->toContain('StatusType as AppStatusType')
+        ->toContain('StatusType as CrmStatusType');
+});
+
 describe('TsCasts overrides', function () {
     describe('OrderShipped (simple string overrides)', function () {
         it('applies #[TsCasts] string override for trackingNumber', function () {
@@ -500,7 +532,7 @@ describe('native engine cutover fixtures', function () {
 describe('ReportSynced (same basename and same parent segment — import aliasing)', function () {
     it('assigns distinct aliases to both Report models', function () {
         // Both Report models morphMany to Kpi under 'reportable'; their nearest namespace
-        // segment is identically 'Report', reproducing the eagle MailPrice collision at depth 1.
+        // segment is identically 'Report', reproducing a same-basename alias collision one namespace level deep.
         resolve(ModelAttributeResolver::class)->buildMorphTargetMap([
             Kpi::class,
             SalesReport::class,
@@ -600,4 +632,160 @@ test('globalTypeReferenceMap() maps each alias to the class it aliases', functio
         'AppUser' => 'workbench.app.models.User',
         'CrmUser' => 'workbench.crm.models.User',
     ]);
+});
+
+// toResource() is a model method, and a broadcast payload is JSON-encoded, so the key holds the resource's own shape.
+test('an event types toResource() as the resource it builds, and imports it', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => TeamRosterSynced::class]);
+
+    expect($transformer->properties)->toBe(['team' => ['type' => 'TeamResource', 'optional' => false]])
+        ->and($transformer->typeImports)->toBe(['../http/resources' => ['TeamResource']]);
+});
+
+// Only JsonResource::resolve() drops the MissingValue a resource's when() returns. Conditionable::when() returns the
+// callback's value or the event itself, so the key is always sent, and its value is not the callback's type alone.
+test('a non-resource subject reads $this->when() as its own method, not as a resource conditional', function () {
+    $properties = array_column(
+        resolve(AstEngine::class)->analyzeMethod(ConditionableBroadcastEvent::class, 'broadcastWith')->properties,
+        null,
+        'name',
+    );
+
+    expect($properties['label'])->toMatchArray(['type' => 'unknown', 'optional' => false])
+        ->and($properties['user'])->toMatchArray(['type' => 'UserResource', 'optional' => false]);
+});
+
+// No MissingValue reaches an event payload, so a `??` fallback there stays required.
+test('a ?? fallback in an event payload stays required', function () {
+    $properties = array_column(
+        resolve(AstEngine::class)->analyzeMethod(CoalescingBroadcastEvent::class, 'broadcastWith')->properties,
+        null,
+        'name',
+    );
+
+    expect($properties['x']['optional'])->toBeFalse();
+});
+
+// A key no payload property names adds none on an event, so its import would be unused (TS6196).
+it('imports nothing for an event cast that retypes no payload key', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => AmbiguousSpellingBroadcastEvent::class]);
+
+    expect($transformer->typeImports)->toBe([]);
+});
+
+test('an ambiguous spelling warns, retypes none and adds no key', function () {
+    AnalysisWarnings::reset();
+
+    $properties = app(BroadcastEventTransformer::class, ['findable' => AmbiguousSpellingBroadcastEvent::class])->properties;
+
+    expect(array_column($properties, 'type'))->toBe(['number', 'number | undefined', 'number | undefined'])
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => AmbiguousSpellingBroadcastEvent::class,
+            'message' => 'The #[TsCasts] key "[key: `${string}\\\\r`]" spells more than one index signature, so it retypes none; cast each by its exact name.',
+        ]]);
+
+    AnalysisWarnings::reset();
+});
+
+test('a broadcastWith() cast on a key the payload lacks adds the key and imports its type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => MethodMissingKeyBroadcastEvent::class]);
+
+    expect($transformer->properties['methodMissing'])->toMatchArray(['type' => 'Voucher', 'optional' => false])
+        ->and($transformer->typeImports)->toBe(['@/types/voucher' => ['Voucher']]);
+});
+
+// BroadcastEvent::getPayloadFromEvent() array_merge()s the payload with the socket, renumbering its int keys from 0.
+test('an event cast on a numeric key lands on the key Laravel renumbers it to, and warns', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => NumericCastKeyBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe([
+        'name' => ['type' => "'a' | 'b'", 'optional' => false],
+        0 => ['type' => 'boolean', 'optional' => false],
+    ])->and(AnalysisWarnings::all())->toBe([[
+        'subject' => NumericCastKeyBroadcastEvent::class,
+        'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a broadcast payload; use a string key.',
+    ]]);
+});
+
+test('a top-level int key of a payload publishes on the key Laravel renumbers it to, and a nested one keeps its own', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NumericPayloadKeyBroadcastEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain("    id: number;\n    \"0\": string;\n    codes: { \"7\": string };")
+        ->and(AnalysisWarnings::all())->toBe([[
+            'subject' => NumericPayloadKeyBroadcastEvent::class,
+            'message' => 'The key "42" is renumbered to "0" by Laravel at the top level of a broadcast payload; use a string key.',
+        ]]);
+});
+
+test('a collection keyed by numbers keeps its keys in a payload', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => NumericPayloadKeyBroadcastEvent::class])->properties;
+
+    expect($properties['statuses'])->toBe(['type' => '{ "200": string; "404": string }', 'optional' => false]);
+});
+
+// Only an API resource re-indexes; StatusCodesDefaultResource reads the same default as string[].
+test('an untyped default keeps its int keys in a payload', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => StatusCodesDefaultEvent::class])->properties;
+
+    expect($properties['codes'])->toBe(['type' => '{ "200": string }', 'optional' => false]);
+});
+
+// No attribute names the injected key, so it is decided last, and its single-backslash paste still finds the signature.
+it('lets a cast an event transformer subclass injects under another spelling of a signature retype it', function () {
+    $properties = app(InjectedSignatureCastEventTransformer::class, ['findable' => UncastEscapedKeyBroadcastEvent::class])->properties;
+
+    expect($properties['[key: `${string}\\\\_cast`]']['type'])->toBe('boolean')
+        ->and($properties)->not->toHaveKey('[key: `${string}\\_cast`]');
+});
+
+test('an event\'s casts() spelling of a signature outranks the class\'s exact name', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => SpellingsAcrossLocationsBroadcastEvent::class])->properties;
+
+    expect($properties['[key: `${string}\\\\_x`]']['type'])->toBe('number');
+});
+
+it('prints an event\'s index signature bare', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => TaggedPayloadEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain("    id: number;\n    [key: `\${string}_tag`]: string | undefined;")
+        ->not->toContain('"[key:');
+});
+
+it('prints an event signature holding a backslash bare, with two backslashes before the literal text', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => SpreadEscapedKeyBroadcastEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($content)->toContain('[key: `${string}\\\\unit`]: string | undefined;')
+        ->not->toContain('"[key:');
+});
+
+test('a type-only cast keeps an uninitialized property optional, and `optional => false` clears it', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => UninitializedCastBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe([
+        'id' => ['type' => 'number', 'optional' => false],
+        'note' => ['type' => "'a' | 'b'", 'optional' => true],
+        'label' => ['type' => "'c' | 'd'", 'optional' => false],
+    ]);
+});
+
+test('an event\'s casts() entry that says nothing about optional keeps the class cast\'s flag', function () {
+    $properties = app(BroadcastEventTransformer::class, ['findable' => FlaggedClassCastUnderCastsMethodBroadcastEvent::class])->properties;
+
+    expect($properties)->toBe(['note' => ['type' => "'c' | 'd'", 'optional' => true]]);
+});
+
+// Only JsonResource::filter() nulls a wrapper; new TagResource(null) throws at runtime.
+test('an event keeps a resource built around null as the resource', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NullWrapBroadcastEvent::class]);
+
+    expect($transformer->properties['tag']['type'])->toBe('TagResource');
 });

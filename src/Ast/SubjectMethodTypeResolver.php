@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use ReflectionClass;
+use ReflectionMethod;
 
 /**
- * Resolve a generic `$this->method()`/`$this::method()` call by reflecting its declared return
- * type: own methods, then the wrapped class, then the backing model, to cover calls delegated via
- * `__call`/`@mixin`.
+ * Resolve a generic `$this->method()`/`$this::method()` call by the one callable PHP runs: the subject's own
+ * declaration, else a macro registered under the name, else the declaration of the first class `$this->resource` holds
+ * that declares it, as `__call` forwards it there.
  *
  * Shared because more than one guard reflects a subject method the same way: StaticCallHandler's
  * `$this::staticMethod()` branch and RelationCollectionChainHandler's generic `$this->method()` guard.
@@ -22,43 +22,64 @@ use ReflectionClass;
  */
 final class SubjectMethodTypeResolver
 {
-    use InspectsResourceSubject;
+    /**
+     * Resolve a subject method call by its declaration, else its body read with what the call passes.
+     *
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
+     * @return ValueExpressionResult|null null when nothing in scope declares the method, or the declaration PHP runs
+     *                                    types nothing, so the handler declines and dispatch reaches the next claimant
+     */
+    public function resolve(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
+    {
+        // PHP runs the subject's own declaration, so a namesake it shadows never answers for it.
+        if ($scope->subjectReflection->hasMethod($methodName)) {
+            return $this->resolveOn($scope->subjectReflection, $methodName, $site);
+        }
+
+        // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
+        $macros = resolve(MacroCallResolver::class);
+
+        if ($macros->runsMacro($scope->subjectReflection, $methodName)) {
+            return $macros->resolve($scope, $methodName);
+        }
+
+        return $this->resolveForwarded($scope, $methodName, $site);
+    }
 
     /**
-     * @return ValueExpressionResult|null null when nothing in scope declares the method, or declares it
-     *                                    with a return type the acceptor rejects, so the handler
-     *                                    declines and dispatch reaches the next claimant
+     * What a call forwarded to `$this->resource` returns: the answer of ReceiverClassResolver::proxyCallTarget(), final
+     * even when it types nothing, so a model namesake never answers for the class that declares the method. A bare
+     * `$this->m()`, `$this::m()`, `$this->resource::m()` and `$this->resource->m()` all read this.
+     *
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
+     * @return ValueExpressionResult|null null as well for a resource collection's items, which the receiver rules type
      */
-    public function resolve(AnalysisScope $scope, string $methodName): ?array
+    public function resolveForwarded(AnalysisScope $scope, string $methodName, ?CallSite $site = null): ?array
     {
-        $own = $this->resolveOn($scope->subjectReflection, $methodName);
+        $target = resolve(ReceiverClassResolver::class)->proxyCallTarget($methodName, $scope);
 
-        if ($own !== null) {
-            return $own;
+        return $target === null ? null : $this->forwardedOn($target, $methodName, $scope, $site);
+    }
+
+    /**
+     * What a call forwarded to one class returns: the rules' answer for a model method they type, else the
+     * declaration-then-body read. A non-public method declines, as PHP sends it to `__call`.
+     *
+     * @param  class-string  $class
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
+     * @return ValueExpressionResult|null
+     */
+    public function forwardedOn(string $class, string $methodName, AnalysisScope $scope, ?CallSite $site = null): ?array
+    {
+        if (! method_exists($class, $methodName) || ! new ReflectionMethod($class, $methodName)->isPublic()) {
+            return null;
         }
 
-        $wrappedClass = $this->resolveWrappedClass($scope);
+        $receiverRules = resolve(ReceiverMethodReturnResolver::class);
 
-        if ($wrappedClass !== null && method_exists($wrappedClass, $methodName)) {
-            /** @var class-string $wrappedClass */
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($wrappedClass, $methodName);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        if ($scope->modelClass !== null && method_exists($scope->modelClass, $methodName)) {
-            /** @var class-string $modelClass */
-            $modelClass = $scope->modelClass;
-            $accepted = resolve(MethodReturnTypeResolver::class)->resolve($modelClass, $methodName);
-
-            if ($accepted !== null) {
-                return $accepted;
-            }
-        }
-
-        return null;
+        return $receiverRules->typesModelMethod($class, $methodName)
+            ? $receiverRules->resolve(ReceiverType::of($class), $methodName, $scope)
+            : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
     }
 
     /**
@@ -67,9 +88,10 @@ final class SubjectMethodTypeResolver
      * `$this->service->method()` — reflects it by exactly the same rules.
      *
      * @param  ReflectionClass<object>  $reflection
+     * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
      * @return ValueExpressionResult|null
      */
-    public function resolveOn(ReflectionClass $reflection, string $methodName): ?array
+    public function resolveOn(ReflectionClass $reflection, string $methodName, ?CallSite $site = null): ?array
     {
         if (! $reflection->hasMethod($methodName)) {
             return null;
@@ -78,6 +100,6 @@ final class SubjectMethodTypeResolver
         /** @var class-string $class */
         $class = $reflection->getName();
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
     }
 }

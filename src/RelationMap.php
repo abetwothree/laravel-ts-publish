@@ -23,6 +23,14 @@ class RelationMap
     protected static ?array $map = null;
 
     /**
+     * Forget the cached map, so the next gather() reads `relation_nullability_map` again.
+     */
+    public static function reset(): void
+    {
+        self::$map = null;
+    }
+
+    /**
      * @return array<class-string, string>
      */
     public function gather(): array

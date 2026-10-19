@@ -95,6 +95,81 @@ final class IndexSignatureConflictResource extends JsonResource
         return ['price_tag' => 5];
     }
 
+    /** A later number replaces the untyped `main_tag` a spread put beside its filled signature. */
+    public function laterKeyRestoresFill(): array
+    {
+        return [...$this->declinedKey(), 'main_tag' => 5];
+    }
+
+    /** The method's own `#[TsCasts]` types the untyped `main_tag` a spread put beside its filled signature. */
+    #[TsCasts(['main_tag' => 'boolean'])]
+    public function castRestoresFill(): array
+    {
+        return [...$this->declinedKey()];
+    }
+
+    /** The method's own `#[TsCasts]` retypes a `main_tag` the literal's union already joined to the body-typed keys. */
+    #[TsCasts(['main_tag' => 'boolean'])]
+    public function castReplacesUnionArm(): array
+    {
+        return [...$this->literalTags(), 'main_tag' => 5];
+    }
+
+    /** One branch spreads the filled signature alone; the other has a `_tag` key the fill can join. */
+    public function branchFillBesideKey(): array
+    {
+        if ($this->resource->exists) {
+            return [...$this->docTags()];
+        }
+
+        return ['main_tag' => 5];
+    }
+
+    /**
+     * `_tag` keys whose values name the signed-in user, a model no generated file may export; the docblock types them.
+     *
+     * @return array<string, string>
+     */
+    public function userTags(): array
+    {
+        $data = [];
+
+        foreach (['east', 'west'] as $name) {
+            $data["{$name}_tag"] = auth()->user();
+        }
+
+        return $data;
+    }
+
+    /** The user-valued `_tag` signature beside a `_tag` key nothing types. */
+    public function declinedUserTags(): array
+    {
+        return [...$this->userTags(), ...$this->opaqueTag()];
+    }
+
+    /**
+     * This method's own docblock over the signature a spread helper filled and the literal put back.
+     *
+     * @return array<string, int>
+     */
+    public function docblockOverHelperFill(): array
+    {
+        return [...$this->docTags(), ...$this->opaqueTag()];
+    }
+
+    /** A literal `_tag` entry after a spread whose own `#[TsCasts]` cast the signature. */
+    public function entryAfterCastSignature(): array
+    {
+        return [...$this->castSignatureTags(), "{$this->id}_tag" => 5];
+    }
+
+    /** The body-typed `_tag` signature, cast by this method's own `#[TsCasts]`. */
+    #[TsCasts(['[key: `${string}_tag`]' => 'string'])]
+    public function castSignatureTags(): array
+    {
+        return [...$this->literalTags()];
+    }
+
     /** Body-typed `_tag` keys. */
     public function literalTags(): array
     {

@@ -64,6 +64,12 @@ function variableHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
+        /** Calls no callable it reads. */
+        public function invokesCallables(): bool
+        {
+            return false;
+        }
+
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
         {
             throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -112,6 +118,12 @@ final class VariableHandlersLoopEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
+    }
+
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
     {
         throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
@@ -148,6 +160,12 @@ final class TernaryArmRecordingEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -381,7 +399,7 @@ it('resolves a nullsafe chain from a typed map-closure parameter', function () {
 it('keeps a typed map over a relation the model does not declare through a trailing values()->all()', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UserFeaturedPostsResource::class), User::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[]')
+    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[] | null')
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 
@@ -466,7 +484,7 @@ it('lets a map-closure parameter own its name over an outer binding of the same 
     'typed variable-receiver map under a morphTo whenLoaded parameter' => [
         '$this->whenLoaded("reviewable", fn ($c) => $rows->map(fn (\Workbench\App\Models\Comment $c) => $c->user?->name)->all())',
         Image::class,
-        '(string | null)[]',
+        '(string | null)[] | null',
     ],
 ]);
 
@@ -557,6 +575,17 @@ it('narrows the arm an instanceof condition proves: the false arm of a negated t
         ->and(variableHandlersResolveOn($either, Image::class, ternaryRecordScope())['type'])->toBe('Comment[] | null');
 });
 
+// The narrowed path resolves both arms itself and hands those results on: resolving them again would drop the
+// narrowing.
+it('records the arm shapes of a mixed enum ternary whose proven arm is narrowed, as the unnarrowed one does', function () {
+    $narrowed = '$this->resource instanceof \Workbench\App\Models\Team ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status';
+    $plain = '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status';
+
+    expect(variableHandlersResolveOn($narrowed, Team::class))
+        ->toMatchArray(['wrapIsCollection' => true, 'directIsArray' => false])
+        ->toBe(variableHandlersResolveOn($plain, Team::class));
+});
+
 it('does not narrow an arm that writes its subject, so a read after the write holds what the variable now does', function () {
     $written = '$record instanceof \Workbench\App\Models\Post ? ["r" => $record = $this->author, "t" => $record->title] : null';
     $unwritten = '$record instanceof \Workbench\App\Models\Post ? ["t" => $record->title] : null';
@@ -594,6 +623,12 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
     public function spreadAnalysis(string $methodName): ?MethodAnalysis
     {
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
+    }
+
+    /** Calls no callable it reads. */
+    public function invokesCallables(): bool
+    {
+        return false;
     }
 
     /** Fails the test: no array is analyzed in this case. */

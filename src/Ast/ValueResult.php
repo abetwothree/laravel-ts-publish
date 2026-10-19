@@ -9,9 +9,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -21,12 +23,14 @@ use ReflectionClass;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type CarriedMap from MethodAnalysis
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string>,
- *      customImports?: TypesImportMap
+ *      customImports?: TypesImportMap,
+ *      keepsKeys?: bool
  * }
  *
  * @internal
@@ -41,6 +45,19 @@ final class ValueResult
     public static function unknown(): array
     {
         return ['type' => 'unknown', 'optional' => false];
+    }
+
+    /**
+     * A value as a template-literal index signature publishes it: never optional, its type admitting `undefined`.
+     *
+     * `[key: T]?:` is a syntax error, and a key matching the pattern is not guaranteed present.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function asIndexSignatureValue(array $result): array
+    {
+        return [...$result, 'type' => TsTypeString::orUndefined($result['type']), 'optional' => false];
     }
 
     /**
@@ -61,6 +78,24 @@ final class ValueResult
     }
 
     /**
+     * Whether a type has a top-level `null` arm; one nested in a shape, a generic or an element type does not count.
+     */
+    public static function hasNullArm(string $type): bool
+    {
+        return in_array('null', TsTypeString::splitTopLevelUnion($type), true);
+    }
+
+    /**
+     * Append a top-level `| null` arm unless the type has one; `unknown` already admits null, so it stays as is.
+     *
+     * Never TsTypeString::hoistNull(): it de-duplicates members, so `User | User`, two classes, would lose one.
+     */
+    public static function withNullArm(string $type): string
+    {
+        return $type === 'unknown' || self::hasNullArm($type) ? $type : $type.' | null';
+    }
+
+    /**
      * Suffix a type with `[]`, parenthesizing a union or intersection first: TypeScript binds `[]`
      * tighter than both, so `A & B[]` parses as `A & (B[])`, not `(A & B)[]`.
      *
@@ -69,6 +104,15 @@ final class ValueResult
     public static function arrayWrapType(string $type): string
     {
         return str_contains($type, '|') || str_contains($type, '&') ? '('.$type.')[]' : $type.'[]';
+    }
+
+    /**
+     * A collected list of an element, as a resource collection sends it: `Record<string, R>` when the collection keeps
+     * its keys, else `R[]`. The one place that spells it, for `$this->collection` and `$this->resource`'s items alike.
+     */
+    public static function collectionListType(string $element, bool $keepsKeys): string
+    {
+        return $keepsKeys ? "Record<string, {$element}>" : $element.'[]';
     }
 
     /**
@@ -142,6 +186,41 @@ final class ValueResult
             $result['customImports'] = $attribute['customImports'];
         }
 
+        if ($attribute['keepsKeys'] ?? false) {
+            $result['keepsKeys'] = true;
+        }
+
+        return $result;
+    }
+
+    /**
+     * The result as a key a placeholder such as a MissingValue can drop: optional, and out of `??`'s reach, since the
+     * operator never meets the placeholder as null, so an absent request field's null no longer makes it required.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function missable(array $result): array
+    {
+        unset($result['absentReadsNull']);
+
+        return [...$result, 'optional' => true];
+    }
+
+    /**
+     * The result as `??` or a short `?:` receives its checked operand: a field absent from the request reads `null`,
+     * which the operator replaces, so only a placeholder that drops the key (a MissingValue) keeps it optional.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function checkedOperand(array $result): array
+    {
+        if ($result['absentReadsNull'] ?? false) {
+            unset($result['absentReadsNull']);
+            $result['optional'] = false;
+        }
+
         return $result;
     }
 
@@ -151,12 +230,18 @@ final class ValueResult
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
      * duplicate types are removed and import metadata is collected from all branches.
      *
+     * With $firstIsChecked, the first expression is the checked operand of a short `?:`.
+     *
      * @param  list<Expr>  $returns
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope): array
+    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope, bool $firstIsChecked = false): array
     {
         $results = array_map($engine->resolve(...), $returns);
+
+        if ($firstIsChecked) {
+            $results[0] = self::checkedOperand($results[0]);
+        }
 
         // Paired with their expressions here because unionResults() receives results only, and by then
         // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
@@ -175,6 +260,8 @@ final class ValueResult
      * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
+     *
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -196,16 +283,72 @@ final class ValueResult
         }
 
         $types = array_values(array_unique($types));
+        $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
 
         if ($types === []) {
-            return self::unknown();
+            return [...self::unknown(), 'optional' => $optional];
         }
 
         $result = self::mergeUnion($types, $branchResults);
 
         // Arms that spell one name for two classes cannot be told apart by their text, so the members are read again
         // arm by arm, one member per class.
-        return self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+        $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+
+        return [...$result, 'optional' => $optional];
+    }
+
+    /**
+     * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
+     *
+     * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union
+     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their
+     * shape. A Closure defers resolving the arms again until the union proves mixed, the only case worth the cost.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<ValueExpressionResult>|Closure(): list<ValueExpressionResult>  $arms
+     * @return ValueExpressionResult
+     */
+    public static function withEnumArmShapes(array $union, array|Closure $arms): array
+    {
+        if (! isset($union['enumFqcn'], $union['directEnumFqcn']) || $union['enumFqcn'] !== $union['directEnumFqcn']) {
+            return $union;
+        }
+
+        /** @var list<bool> $wrapIsList one entry per arm that wraps */
+        $wrapIsList = [];
+        /** @var list<bool> $directIsList one entry per arm that reads directly */
+        $directIsList = [];
+
+        foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
+            $wraps = isset($arm['enumFqcn']);
+            $reads = isset($arm['directEnumFqcn']);
+
+            // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
+            if ($wraps && $reads) {
+                return $union;
+            }
+
+            $isList = str_ends_with(rtrim(str_replace('| null', '', $arm['type'])), '[]');
+
+            if ($wraps) {
+                $wrapIsList[] = $isList;
+            } elseif ($reads) {
+                $directIsList[] = $isList;
+            }
+        }
+
+        $wrapShapes = array_values(array_unique($wrapIsList));
+        $directShapes = array_values(array_unique($directIsList));
+
+        if (count($wrapShapes) !== 1 || count($directShapes) !== 1) {
+            return $union;
+        }
+
+        $union['wrapIsCollection'] = $wrapShapes[0];
+        $union['directIsArray'] = $directShapes[0];
+
+        return $union;
     }
 
     /**
@@ -232,7 +375,16 @@ final class ValueResult
     }
 
     /**
-     * Whether one name spells two different models, or two different resources, among the given results.
+     * The name an enum's type is spelled with.
+     */
+    public static function enumTypeName(string $fqcn): string
+    {
+        return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+    }
+
+    /**
+     * Whether one name spells two different models, two different resources or two different enums read directly,
+     * among the given results.
      *
      * @param  list<ValueExpressionResult>  $results
      */
@@ -242,14 +394,18 @@ final class ValueResult
         $models = [];
         /** @var list<class-string> $resources */
         $resources = [];
+        /** @var list<class-string> $enums */
+        $enums = [];
 
         foreach ($results as $result) {
             array_push($models, ...self::modelChannelFqcns($result));
             array_push($resources, ...self::resourceChannelFqcns($result));
+            array_push($enums, ...self::directEnumChannelFqcns($result));
         }
 
         return self::sharesAName($models, class_basename(...))
-            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn));
+            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn))
+            || (! self::wrapsAnEnum($results) && self::sharesAName($enums, self::enumTypeName(...)));
     }
 
     /**
@@ -270,6 +426,28 @@ final class ValueResult
         }
 
         return false;
+    }
+
+    /**
+     * The FQCNs a result carries on its direct and embedded enum channels.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return list<class-string>
+     */
+    private static function directEnumChannelFqcns(array $result): array
+    {
+        return [...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...($result['embeddedEnumFqcns'] ?? [])];
+    }
+
+    /**
+     * Whether an arm wraps an enum resource. Its token holds no queue entry, since the AsEnum rewrite spells it by its
+     * own import channel, so the union's enums cannot be read by class.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     */
+    private static function wrapsAnEnum(array $results): bool
+    {
+        return array_any($results, fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']));
     }
 
     /**
@@ -312,6 +490,8 @@ final class ValueResult
         $embeddedResourceFqcns = [];
         /** @var TypesImportMap $customImports */
         $customImports = [];
+        /** @var CarriedMap $carried */
+        $carried = [];
 
         foreach ($branchResults as $inner) {
             // EnumResource branches are tracked apart from direct-access ones, so the result can
@@ -347,6 +527,10 @@ final class ValueResult
 
             foreach ($inner['customImports'] ?? [] as $path => $importTypes) {
                 $customImports[$path] = [...($customImports[$path] ?? []), ...$importTypes];
+            }
+
+            foreach ($inner['carriedFqcns'] ?? [] as $kind => $fqcns) {
+                $carried[$kind] = array_values(array_unique([...($carried[$kind] ?? []), ...$fqcns]));
             }
         }
 
@@ -402,6 +586,17 @@ final class ValueResult
             $result['customImports'] = $customImports;
         }
 
+        if ($carried !== []) {
+            $result['carriedFqcns'] = $carried;
+        }
+
+        // A resource's re-index skips the union only when every arm it could rewrite keeps its keys.
+        $keyed = array_filter($branchResults, fn (array $inner): bool => TsTypeShape::holdsKeyedObject($inner['type']));
+
+        if ($keyed !== [] && array_all($keyed, fn (array $inner): bool => $inner['keepsKeys'] ?? false)) {
+            $result['keepsKeys'] = true;
+        }
+
         return $result;
     }
 
@@ -423,6 +618,10 @@ final class ValueResult
         $modelFqcns = [];
         /** @var list<class-string> $resourceFqcns */
         $resourceFqcns = [];
+        /** @var list<class-string> $enumFqcns */
+        $enumFqcns = [];
+        // A union wrapping an enum resource keeps the enum queue mergeUnion() built for the AsEnum rewrite.
+        $wraps = self::wrapsAnEnum($arms);
 
         foreach ($arms as $arm) {
             $models = new ClassTokenQueue(self::modelChannelFqcns($arm), class_basename(...));
@@ -430,6 +629,7 @@ final class ValueResult
                 self::resourceChannelFqcns($arm),
                 static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
             );
+            $enums = new ClassTokenQueue($wraps ? [] : self::directEnumChannelFqcns($arm), self::enumTypeName(...));
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
                 if ($member === 'null') {
@@ -440,7 +640,8 @@ final class ValueResult
 
                 $memberModels = $models->take($member);
                 $memberResources = $resources->take($member);
-                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources]);
+                $memberEnums = $enums->take($member);
+                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources, '', ...$memberEnums]);
 
                 if (isset($members[$identity])) {
                     continue;
@@ -449,16 +650,21 @@ final class ValueResult
                 $members[$identity] = $member;
                 array_push($modelFqcns, ...$memberModels);
                 array_push($resourceFqcns, ...$memberResources);
+                array_push($enumFqcns, ...$memberEnums);
             }
 
             // An arm that queues a name for two classes more often than it spells it holds a class behind another's
             // token, and does not say which token is whose (a merge by text is such an arm): the merge by text stands.
-            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens()) {
+            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens() || $enums->outrunsItsTokens()) {
                 return $union;
             }
         }
 
         unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
+
+        if ($enumFqcns !== []) {
+            $union['embeddedEnumFqcns'] = $enumFqcns;
+        }
 
         $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
 

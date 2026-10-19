@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomBarrelWriter;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FailingModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\FailingModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Writers\CustomBarrelWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -262,7 +262,7 @@ test('ts:publish writes modular files to namespace-based directories', function 
     // Both candidates exist but are #[TsExclude]d, so the gate rejects both and no import leaks.
     $ledgerCollectionContent = file_get_contents("$outputDir/app/http/resources/ledger-collection.ts");
     expect($ledgerCollectionContent)
-        ->toContain('data: unknown;')
+        ->toContain('data: unknown[];')
         ->not->toContain('import type');
 });
 

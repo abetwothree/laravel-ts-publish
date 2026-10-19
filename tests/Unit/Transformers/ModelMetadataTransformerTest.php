@@ -4,37 +4,43 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedCastsAndInferredEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstEmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BoundModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\BranchedAstModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CircularJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CollidingCastAndInferredEnumMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ConfigurableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FreshObjectJsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InheritedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidMetadataPayloadProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\InvalidModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\JsonSerializableMetadataValue;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MismatchedModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingRequiredMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\OptionalModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\PrecedenceModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TemplateLiteralModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TupleShapeMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnimportableMetadataTypeProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerBackedStatus;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsafeIntegerMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnsupportedMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AliasedCastsAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstEmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BoundModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\BranchedAstModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingCastAndInferredEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ConfigurableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DecimalPriceMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InlineEnumCaseMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidMetadataPayloadProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InvalidModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MissingRequiredMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\PrecedenceModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TemplateLiteralModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnimportableMetadataTypeProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnsafeIntegerMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\CircularJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FreshObjectJsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\JsonSerializableMetadataValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\UnsupportedMetadataValue;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
 use Illuminate\Database\ClassMorphViolationException;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
 use Workbench\App\Providers\AstInferredModelMetadataProvider;
 
@@ -48,6 +54,7 @@ test('infers default metadata types from the provider return shape', function ()
 });
 
 test('falls back to body inference for a provider with a generic array declaration', function () {
+    config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.provider_class', AstInferredModelMetadataProvider::class);
 
     $data = (new ModelMetadataTransformer(User::class))->data();
@@ -60,14 +67,18 @@ test('falls back to body inference for a provider with a generic array declarati
             'maximum' => null,
         ],
         'role' => 'Admin',
+        'regions' => ['north', 'south'],
     ])->and($data->propertyTypes)->toBe([
         'morphClass' => 'string',
         'enabled' => 'boolean',
         'limits' => '{ minimum: number; maximum: null }',
         'role' => 'RoleType',
+        'regions' => 'string[]',
     ])->and($data->typeImports)->toBe([
         '../enums' => ['RoleType'],
-    ]);
+    ])->and((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
+        ->toContain("    regions: ['north', 'south'],")
+        ->toContain('    regions: string[];');
 });
 
 test('imports the enum a body-inferred value names', function () {
@@ -78,6 +89,17 @@ test('imports the enum a body-inferred value names', function () {
     expect($data->propertyTypes)->toBe(['role' => 'RoleType'])
         ->and($data->typeImports)->toBe(['../enums' => ['RoleType']])
         ->and($data->properties)->toBe(['role' => 'Admin']);
+});
+
+// JsEmitter writes a pure case's name, which the enum's alias spells; a backed case writes its value.
+test('types an enum case a provider writes inline', function () {
+    config()->set('ts-publish.model_metadata.provider_class', InlineEnumCaseMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['visibility' => 'Public', 'status' => 1])
+        ->and($data->propertyTypes)->toBe(['visibility' => 'VisibilityType', 'status' => 'StatusType'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusType', 'VisibilityType']]);
 });
 
 test('does not import a model for a model-typed value', function () {
@@ -130,6 +152,21 @@ test('uses only body-inferred keys present in the concrete model payload', funct
         ->and($user->propertyTypes)->toBe(['userModel' => 'boolean'])
         ->and($address->properties)->toBe(['otherModel' => 1])
         ->and($address->propertyTypes)->toBe(['otherModel' => 'number']);
+});
+
+// asDecimal() returns a string, so the value a `decimal:2` attribute emits and its `satisfies` type agree.
+test('types a decimal-cast attribute the provider returns as the string it holds', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.provider_class', DecimalPriceMetadataProvider::class);
+
+    expect(rtrim((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(Product::class))))
+        ->toBe(<<<'TYPESCRIPT'
+export const ProductModelMetadata = {
+    price: '9.99',
+} as const satisfies {
+    price: string;
+};
+TYPESCRIPT);
 });
 
 test('transforms configured morph map aliases', function () {
@@ -210,6 +247,14 @@ test('rejects metadata payloads without string property keys', function () {
         );
 });
 
+// A payload cannot hold an int key, so a required numeric shape key is one it always lacks; an optional one never errs.
+test('names a required numeric @return shape key the payload lacks instead of throwing a TypeError', function () {
+    config()->set('ts-publish.model_metadata.provider_class', NumericShapeKeyMetadataProvider::class);
+
+    expect(fn () => new ModelMetadataTransformer(User::class))
+        ->toThrow(InvalidArgumentException::class, 'model [Workbench\App\Models\User] is missing required keys: [7]');
+});
+
 test('rejects returned metadata keys without inferred or declared types', function () {
     config()->set('ts-publish.model_metadata.provider_class', MismatchedModelMetadataProvider::class);
 
@@ -282,7 +327,7 @@ test('rejects unsupported metadata values with the model and nested property pat
     expect(fn () => new ModelMetadataTransformer(User::class))
         ->toThrow(
             InvalidArgumentException::class,
-            'model [Workbench\\App\\Models\\User] property [value.nested] returned unsupported value [AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\UnsupportedMetadataValue]',
+            'model [Workbench\\App\\Models\\User] property [value.nested] returned unsupported value [AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\ValueObjects\\UnsupportedMetadataValue]',
         );
 });
 
@@ -477,7 +522,17 @@ test('spells a list member by the object literal key its type declares', functio
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
-    expect($data->propertyTypes['tuple'])->toBe('{ 0: Record<string, number>; 1: number[] }')
+    expect($data->propertyTypes['numeric_keys'])->toBe('{ 1: number[]; 0: Record<string, number> }')
+        ->and($data->properties['numeric_keys'][0])->toBeInstanceOf(stdClass::class)
+        ->and($data->properties['numeric_keys'][1])->toBe([]);
+});
+
+test('spells a tuple member by the type at its position', function () {
+    config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->propertyTypes['tuple'])->toBe('[Record<string, number>, number[]]')
         ->and($data->properties['tuple'][0])->toBeInstanceOf(stdClass::class)
         ->and($data->properties['tuple'][1])->toBe([]);
 });

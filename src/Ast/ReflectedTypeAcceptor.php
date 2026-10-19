@@ -59,6 +59,10 @@ final class ReflectedTypeAcceptor
             $result['customImports'] = $tsInfo['customImports'];
         }
 
+        if ($tsInfo['keepsKeys'] ?? false) {
+            $result['keepsKeys'] = true;
+        }
+
         return $result;
     }
 }

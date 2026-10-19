@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstEmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AstUnimportableModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CustomModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\EmptyValuesModelMetadataProvider;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TupleShapeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstEmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -116,10 +116,11 @@ test('renders body-inferred empty containers', function () {
         ->toContain('    flags: {},');
 });
 
-test('renders a list whose type declares numeric object keys', function () {
+test('renders a list whose type declares numeric object keys, and one whose type is a tuple', function () {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.model_metadata.provider_class', TupleShapeMetadataProvider::class);
 
     expect((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
+        ->toContain('    numeric_keys: [{}, []],')
         ->toContain('    tuple: [{}, []],');
 });

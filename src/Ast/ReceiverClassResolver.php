@@ -8,17 +8,25 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -38,14 +46,19 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use Throwable;
 
 /**
  * Answers which PHP class(es) an expression holds.
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
+ * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
+ * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool, nullable: bool}
+ *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type VarDocBinding from AnalysisScope
+ * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
  */
@@ -55,6 +68,43 @@ final class ReceiverClassResolver
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;
+
+    /** The class each value helper returns; KnownFunctionCallHandler types the helper by it too. */
+    public const array HELPER_CLASSES = [
+        'now' => Carbon::class,
+        'today' => Carbon::class,
+        'collect' => Collection::class,
+    ];
+
+    /** The Model methods whose result is a copy no row backs yet. */
+    private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
+
+    /** The query, relation and factory methods whose model may be one no row backs yet. */
+    private const array UNSAVED_QUERY_MODELS = [
+        'make',
+        'makeOne',
+        'newModelInstance',
+        'firstOrNew',
+        'getModel',
+        'newModel',
+        'newRelatedInstanceFor',
+    ];
+
+    /** The factory methods that build one model while no count is set, though each declares a collection too. */
+    private const array FACTORY_MODELS = ['make', 'makeOne', 'create', 'createOne'];
+
+    /** The factory methods that set a count, so make() and create() build a collection. */
+    private const array FACTORY_COUNTS = ['count', 'times', 'forEachSequence'];
+
+    /** The Support\Collection methods that return one item, or null where none matches and no default is passed. */
+    private const array COLLECTION_ELEMENTS = ['first', 'last', 'firstWhere'];
+
+    /** The docblock template each query, relation and factory class binds to the model it builds. */
+    private const array QUERY_MODEL_TEMPLATES = [
+        Builder::class => 'TModel',
+        Relation::class => 'TRelatedModel',
+        Factory::class => 'TModel',
+    ];
 
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
@@ -66,7 +116,7 @@ final class ReceiverClassResolver
             $expr instanceof PropertyFetch, $expr instanceof NullsafePropertyFetch => $this->fromPropertyFetch($expr, $scope),
             $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall => $this->fromMethodCall($expr, $scope),
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
-            $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope) : null,
+            $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope)?->asUnsaved() : null,
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
             $expr instanceof Ternary => $this->fromArms(
                 [$expr->if ?? $expr->cond, $expr->else],
@@ -80,12 +130,19 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve the classes a static call returns: `X::m()`, `self::`/`static::`/`parent::`, or `$expr::m()`.
+     * Resolve the classes a static call returns: `X::m()`, `self::`/`static::`/`parent::`, or `$expr::m()`; one the
+     * subject's `__call()` answers reads as `$this->m()`, and one a model lacks runs on a new query of the model.
      */
     public function resolveStaticClass(StaticCall $call, AnalysisScope $scope): ?ReceiverType
     {
         if (! $call->name instanceof Identifier || $call->isFirstClassCallable()) {
             return null;
+        }
+
+        $method = $call->name->toString();
+
+        if ($this->sendsToSubjectCall($call, $scope)) {
+            return $this->fromThisMethodCall($method, $scope);
         }
 
         $receiver = $this->resolveStaticReceiver($call, $scope);
@@ -94,18 +151,38 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $method = $call->name->toString();
         $fromInside = $call->class instanceof Name && $call->class->isSpecialClassName();
 
         return $this->merge(
             array_map(
                 fn (string $class): ?ReceiverType => $this->isCallable($class, $method, $fromInside)
-                    ? $this->typeOf($this->returnClasses($class, $method))
-                    : null,
+                    ? $this->modelFactory($class, $method, $call) ?? $this->returned($class, $method)
+                    : $this->forwardedStaticQuery($class, $method),
                 $receiver->classes,
             ),
             $receiver->shortCircuits,
         );
+    }
+
+    /**
+     * Whether PHP sends a static-syntax call to the subject's `__call()`, where a macro or the resource proxy answers
+     * it: `static::m()`, `self::m()`, `$this::m()` or the subject's own name, for a method the subject lacks.
+     */
+    public function sendsToSubjectCall(StaticCall $call, AnalysisScope $scope): bool
+    {
+        $subject = $scope->subjectReflection;
+
+        if (! $call->name instanceof Identifier || $subject->hasMethod($call->name->toString())) {
+            return false;
+        }
+
+        $class = $call->class;
+        $onSubject = $class instanceof Variable
+            ? $class->name === 'this'
+            : $class instanceof Name && $this->subjectClassName($class, $subject) === $subject->getName();
+
+        return $onSubject
+            && ($scope->hasResourceProxy() || resolve(MacroCallResolver::class)->runsMacro($subject, $call->name->toString()));
     }
 
     /**
@@ -128,6 +205,8 @@ final class ReceiverClassResolver
      */
     public function returnClasses(string $class, string $method): ?array
     {
+        DependencyRecorder::recordClass($class);
+
         if (! method_exists($class, $method)) {
             return null;
         }
@@ -180,17 +259,106 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The class a bare `$this->m()` runs on when the subject does not declare `m`: its proxy target, since
-     * `JsonResource::__call()` forwards it to `$this->resource`. The scope carries which subjects forward, so this
-     * resolver keeps to plain PHP semantics rather than one framework class's magic.
+     * The class a bare `$this->m()` runs on when the subject neither declares `m` nor has a macro by that name: what
+     * `$this->resource` holds, since `JsonResource::__call()` forwards it there. The scope carries which subjects
+     * forward, so this resolver keeps to plain PHP semantics rather than one framework class's magic.
      */
     public function forwardedThisReceiver(string $method, AnalysisScope $scope): ?ReceiverType
     {
-        $target = $scope->forwardsUndeclaredMembersTo;
+        // `__call()` runs a macro registered under the name before it forwards anything.
+        if ($scope->subjectReflection->hasMethod($method)
+            || resolve(MacroCallResolver::class)->runsMacro($scope->subjectReflection, $method)
+        ) {
+            return null;
+        }
 
-        return $target !== null && ! $scope->subjectReflection->hasMethod($method)
-            ? ReceiverType::of($target)
+        $held = $this->proxyHeld($scope);
+
+        if ($held !== null && $held->collectedItems) {
+            return $held;
+        }
+
+        $target = $this->proxyCallTarget($method, $scope);
+
+        return $target === null ? null : ReceiverType::of($target);
+    }
+
+    /**
+     * What `$this->resource` holds as a receiver: the classes an `instanceof` proof holds it to, else those the subject
+     * redeclares it as, or the backing class AnalysisScope::proxyReceiver() names when every one of them admits it, as
+     * `@var Model` admits a post; null without a resource proxy, or when a redeclared arm names no class.
+     */
+    public function proxyHeld(AnalysisScope $scope): ?ReceiverType
+    {
+        if (! $scope->hasResourceProxy()) {
+            return null;
+        }
+
+        $proxy = $scope->proxyReceiver();
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $classes = $scope->provenProxy ?? ($declared !== null && $declared['named'] ? $declared['classes'] : null);
+
+        // A collection's constructor always swaps in its items, so a proof or a redeclaration names only their holder.
+        if ($proxy !== null && $proxy->collectedItems) {
+            return $classes === null
+                ? $proxy
+                : new ReceiverType($classes, collectedItems: true, collectedElement: $proxy->collectedElement);
+        }
+
+        $backingNarrowsAll = $declared === null
+            || $this->admittedByEvery($declared['classes'], $scope->forwardsUndeclaredMembersTo);
+
+        return match (true) {
+            $scope->provenProxy === null && $backingNarrowsAll => $proxy,
+            $classes === null => null,
+            default => new ReceiverType($classes),
+        };
+    }
+
+    /**
+     * The backing model `$this->resource` publishes as when read whole with no `instanceof` proof in force: the backing
+     * model when the subject does not redeclare `$resource` or one class it names admits it; null otherwise.
+     *
+     * @return class-string<Model>|null
+     */
+    public function proxyModel(AnalysisScope $scope): ?string
+    {
+        if (! $scope->hasResourceProxy()) {
+            return null;
+        }
+
+        $backing = $scope->forwardsUndeclaredMembersTo;
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+
+        return $backing !== null
+            && is_a($backing, Model::class, true)
+            && ($declared === null || $this->admitting($declared['classes'], $backing) !== [])
+            ? $backing
             : null;
+    }
+
+    /**
+     * Whether the subject's own redeclaration of `$resource` admits null, as `@var Post|null` and `@var ?Post` do.
+     */
+    public function redeclaresNullableProxy(AnalysisScope $scope): bool
+    {
+        // An `if` on `$this->resource instanceof X` in toArray() may rule null out, and where its proof ends is unread.
+        if (! $scope->hasResourceProxy() || $scope->instanceOfWrappedClass !== null) {
+            return false;
+        }
+
+        return $this->redeclaredProxyArms($scope->subjectReflection)['nullable'] ?? false;
+    }
+
+    /**
+     * The class a call forwarded to `$this->resource` runs on: the first of proxyCallOrder() that declares the method;
+     * null when none does, or for a resource collection's items, which the receiver rules type.
+     *
+     * @return class-string|null
+     */
+    public function proxyCallTarget(string $method, AnalysisScope $scope): ?string
+    {
+        return array_find($this->proxyCallOrder($scope), fn (string $class): bool => method_exists($class, $method));
     }
 
     /**
@@ -204,27 +372,16 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
+     * The one published model Model::__get() gives for a name; null for a collection, a scalar or several models.
      *
-     * Public so ReceiverPropertyFetchHandler can decide its false-string rule one receiver class at a time. Asking
-     * `resolve()` about the whole expression instead answers `null` for a union as soon as one arm holds a builtin.
+     * @param  class-string<Model>  $model
+     * @return class-string<Model>|null
      */
-    public function memberProperty(string $class, string $name): ?ReceiverType
+    public function singleModelHeldBy(string $model, string $name): ?string
     {
-        if (is_a($class, Model::class, true)) {
-            return $this->modelMember($class, $name);
-        }
+        $held = $this->modelMember($model, $name)->classes ?? [];
 
-        if (! class_exists($class) || ! property_exists($class, $name)) {
-            return null;
-        }
-
-        $property = new ReflectionProperty($class, $name);
-
-        // A non-public property read from outside goes to __get(), not to the declaration.
-        return $property->isPublic() && ! $property->isStatic()
-            ? $this->typeOf($this->propertyClasses($property, $class))
-            : null;
+        return count($held) === 1 && is_a($held[0], Model::class, true) && $this->isNameable($held[0]) ? $held[0] : null;
     }
 
     /**
@@ -236,11 +393,48 @@ final class ReceiverClassResolver
      */
     public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): array
     {
-        return $this->narrowed($this->resolve($subject, $scope), $tested)->classes;
+        return $this->narrowed($this->narrowable($subject, $tested, $scope), $tested)->classes;
     }
 
     /**
-     * Resolve a variable through the scope's bindings; an unbound variable declines.
+     * Whether an `instanceof` test leaves `$this->resource` holding every class its redeclaration names, the backing
+     * class standing in for each it is or extends, and the redeclaration admits no null, so the test rules nothing out.
+     *
+     * @param  non-empty-list<class-string>  $proven
+     */
+    public function excludesNoNamedClass(array $proven, AnalysisScope $scope): bool
+    {
+        if (! $scope->hasResourceProxy() || $scope->provenProxy !== null) {
+            return false;
+        }
+
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+
+        // A builtin arm such as `string` names no class, so any class test rules it out.
+        return $declared !== null
+            && $declared['named']
+            && ! $declared['nullable']
+            && $proven === $this->backedArms($declared['classes'], $scope->forwardsUndeclaredMembersTo);
+    }
+
+    /**
+     * Resolve a variable an inline `@var` declares: the annotated assignment replaces what it held, so its own value is
+     * read, and the `@var` fills in only where that names no class the engine can use.
+     *
+     * @param  VarDocBinding  $span
+     */
+    public function resolveDeclared(string $name, array $span, AnalysisScope $scope): ?ReceiverType
+    {
+        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
+
+        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
+            ? $assigned
+            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+    }
+
+    /**
+     * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
+     * what the body assigned; an unbound variable declines.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
     {
@@ -252,7 +446,7 @@ final class ReceiverClassResolver
 
         // First, so a narrowing outranks the localVarBindings fallback a guarded variable normally reaches
         // through; varModelBindings is the same concern for a narrowed closure param or loop variable.
-        if (isset($scope->varClassBindings[$name])) {
+        if (isset($scope->varClassBindings[$name]) && $scope->holdsBinding($variable)) {
             return new ReceiverType($scope->varClassBindings[$name]);
         }
 
@@ -266,16 +460,16 @@ final class ReceiverClassResolver
         $span = $scope->declaredAt($variable);
 
         if ($span === null) {
-            return $this->fromBindings($name, $scope);
+            if ($scope->holdsBinding($variable)) {
+                return $this->fromBindings($name, $scope);
+            }
+
+            $gap = $scope->gapAt($variable);
+
+            return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($name, $gap, $scope);
         }
 
-        // The annotated assignment replaces what the variable held, so its own value is read; the `@var` fills in only
-        // where that names no class the engine can use.
-        $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
-
-        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
-            ? $assigned
-            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+        return $this->resolveDeclared($name, $span, $scope);
     }
 
     /**
@@ -291,12 +485,17 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a variable through its model, collection, request, closure-parameter or local-assignment binding.
+     * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
+     * local-assignment binding.
      */
     private function fromBindings(string $name, AnalysisScope $scope): ?ReceiverType
     {
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
+        }
+
+        if (isset($scope->varDeclaredBindings[$name])) {
+            return new ReceiverType($scope->varDeclaredBindings[$name]);
         }
 
         if (isset($scope->varCollectionBindings[$name])) {
@@ -307,7 +506,51 @@ final class ReceiverClassResolver
             return ReceiverType::of($scope->requestVarNames[$name]);
         }
 
-        $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
+        $enum = $scope->varValueBindings[$name]['directEnumFqcn'] ?? null;
+
+        // A value bound to one enum case, such as a parameter's default, is that enum.
+        if ($enum !== null && $scope->varValueBindings[$name]['type'] === LaravelTsPublish::toTsType($enum)['type']) {
+            return ReceiverType::of($enum);
+        }
+
+        $bound = $scope->closureParamExprBindings[$name] ?? null;
+
+        return $bound === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $bound, $scope);
+    }
+
+    /**
+     * Resolve a variable inside a gap through the values its writes assigned, joined with the binding the name came in
+     * with where that may still hold; null when one of them names no class.
+     *
+     * @param  BindingGap  $gap
+     */
+    private function fromGap(string $name, array $gap, AnalysisScope $scope): ?ReceiverType
+    {
+        $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $value): ?ReceiverType => $this->fromBoundExpression($name, $value, $scope),
+            $gap[2] ?? [],
+        ));
+        $receivers = $gap[3] ? [$this->fromBindings($name, $scope), ...$written] : $written;
+
+        if ($gap[2] === null || $receivers === [] || in_array(null, $receivers, true)) {
+            return null;
+        }
+
+        /** @var non-empty-list<ReceiverType> $receivers */
+        return count($receivers) === 1
+            ? $receivers[0]
+            : new ReceiverType(array_values(array_unique(array_merge(...array_map(
+                fn (ReceiverType $receiver): array => $receiver->classes,
+                $receivers,
+            )))));
+    }
+
+    /**
+     * Resolve a variable through its body's single-write assignment, re-read so the value keeps every flag it carries.
+     */
+    private function fromLocal(string $name, AnalysisScope $scope): ?ReceiverType
+    {
+        $bound = $scope->literalLocalBindings()[$name] ?? null;
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }
@@ -372,10 +615,13 @@ final class ReceiverClassResolver
     private function fromThisProperty(string $name, AnalysisScope $scope): ?ReceiverType
     {
         $subject = $scope->subjectReflection;
-        $backing = $scope->modelClass ?? $scope->instanceOfWrappedClass;
+
+        if ($name === 'resource' && $scope->hasResourceProxy()) {
+            return $this->proxyHeld($scope);
+        }
 
         if (! $subject->hasProperty($name)) {
-            return $backing === null ? null : $this->memberProperty($backing, $name);
+            return $this->forwardedMember($name, $scope);
         }
 
         $property = $subject->getProperty($name);
@@ -384,24 +630,31 @@ final class ReceiverClassResolver
             return null;
         }
 
-        // A subject that redeclares a framework name still names its own class (`/** @var MediaType|null */
-        // public $resource`); `@var mixed` on JsonResource::$resource names nothing, so a plain
-        // `$this->resource` falls through to the backing model below.
-        $declared = str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
+        return str_starts_with($property->getDeclaringClass()->getName(), 'Illuminate\\')
             ? null
             : $this->typeOf($this->propertyClasses($property, $subject->getName()));
-
-        if ($declared !== null || resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($subject, $name)) {
-            return $declared;
-        }
-
-        return $name === 'resource' && $scope->forwardsUndeclaredMembersTo !== null
-            ? ReceiverType::of($scope->forwardsUndeclaredMembersTo)
-            : null;
     }
 
     /**
-     * Resolve `$this->m()`, `<receiver>->m()`, or `<receiver>?->m()`.
+     * Resolve `$this->prop` the subject does not declare: a member of what `$this->resource` holds, as
+     * `JsonResource::__get()` reads it, else of the scope's model.
+     */
+    private function forwardedMember(string $name, AnalysisScope $scope): ?ReceiverType
+    {
+        $held = match (true) {
+            $scope->hasResourceProxy() => $this->proxyHeld($scope),
+            $scope->modelClass !== null => ReceiverType::of($scope->modelClass),
+            default => null,
+        };
+
+        return $held === null ? null : $this->merge(
+            array_map(fn (string $class): ?ReceiverType => $this->memberProperty($class, $name), $held->classes),
+            false,
+        );
+    }
+
+    /**
+     * Resolve `$this->m()`, `<receiver>->m()`, or `<receiver>?->m()`, marking a model copy as one no row backs yet.
      */
     private function fromMethodCall(MethodCall|NullsafeMethodCall $call, AnalysisScope $scope): ?ReceiverType
     {
@@ -411,10 +664,20 @@ final class ReceiverClassResolver
 
         $method = $call->name->toString();
 
-        if ($call->var instanceof Variable && $call->var->name === 'this') {
-            return $this->fromThisMethodCall($method, $scope);
-        }
+        $result = $call->var instanceof Variable && $call->var->name === 'this'
+            ? $this->fromThisMethodCall($method, $scope)
+            : $this->fromReceiverMethodCall($call, $method, $scope);
 
+        return $result !== null && in_array($method, self::UNSAVED_COPIES, true) && $result->models() !== []
+            ? $result->asUnsaved()
+            : $result;
+    }
+
+    /**
+     * Resolve `<receiver>->m()` or `<receiver>?->m()`.
+     */
+    private function fromReceiverMethodCall(MethodCall|NullsafeMethodCall $call, string $method, AnalysisScope $scope): ?ReceiverType
+    {
         $receiver = $this->resolve($call->var, $scope);
 
         if ($receiver === null) {
@@ -423,7 +686,7 @@ final class ReceiverClassResolver
 
         $shortCircuits = $receiver->shortCircuits || $call instanceof NullsafeMethodCall;
 
-        if ($method === 'getRelated' && $receiver->relatedModel !== null) {
+        if ($method === 'getRelated' && $receiver->relatedModel !== null && $receiver->within([Relation::class])) {
             return ReceiverType::of($receiver->relatedModel, $shortCircuits);
         }
 
@@ -439,14 +702,27 @@ final class ReceiverClassResolver
             return ReceiverType::of($authModel, $shortCircuits);
         }
 
-        return $this->merge(
-            array_map(fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false), $receiver->classes),
+        $element = $this->collectedElement($call, $method, $receiver);
+
+        if ($element !== null) {
+            return ReceiverType::of($element, $shortCircuits);
+        }
+
+        $result = $this->merge(
+            array_map(
+                fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false, $receiver->relatedModel),
+                $receiver->classes,
+            ),
             $shortCircuits,
         );
+
+        // A fluent call such as fill() hands the same model back, so no row backs it yet either.
+        return $result !== null && $receiver->unsaved && $this->returnsItself($receiver, $method) ? $result->asUnsaved() : $result;
     }
 
     /**
-     * Resolve `$this->m()`: the subject's own method, else the backing class's, since JsonResource forwards `__call()`.
+     * Resolve `$this->m()`: the subject's own method, else that of what `$this->resource` holds, since JsonResource
+     * forwards `__call()` there, else, where forwardedThisReceiver() leaves the call to a macro, what it returns.
      */
     private function fromThisMethodCall(string $method, AnalysisScope $scope): ?ReceiverType
     {
@@ -458,7 +734,46 @@ final class ReceiverClassResolver
 
         $forwarded = $this->forwardedThisReceiver($method, $scope);
 
-        return $forwarded === null ? null : $this->memberMethod($forwarded->classes[0], $method, false);
+        if ($forwarded === null) {
+            $macro = resolve(MacroCallResolver::class)->macroFor($subject, $method);
+
+            return $this->typeOf($this->macroReturnClasses($macro, $subject->getName()));
+        }
+
+        return $this->merge(
+            array_map(fn (string $class): ?ReceiverType => $this->memberMethod($class, $method, false), $forwarded->classes),
+            false,
+        );
+    }
+
+    /**
+     * The classes a macro returns: its native return type, else its `@return`; `static` and `self` name the subject a
+     * closure is bound to.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    private function macroReturnClasses(mixed $macro, string $subjectClass): ?array
+    {
+        $function = resolve(MacroCallResolver::class)->reflect($macro);
+
+        if ($function instanceof ReflectionMethod) {
+            return $this->returnClasses($function->getDeclaringClass()->getName(), $function->getName());
+        }
+
+        if ($function === null) {
+            return null;
+        }
+
+        if ($function->hasReturnType()) {
+            return $this->nativeClasses($function->getReturnType(), $subjectClass, $subjectClass);
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $function->getDocComment());
+        $context = $function->getClosureScopeClass();
+
+        return $docblock === null || $context === null
+            ? null
+            : $this->docblockClasses($docblock, $context, $subjectClass, $subjectClass);
     }
 
     /**
@@ -470,10 +785,11 @@ final class ReceiverClassResolver
             return null;
         }
 
-        return match ($call->name->toLowerString()) {
-            'now', 'today' => ReceiverType::of(Carbon::class),
-            'collect' => ReceiverType::of(Collection::class),
-            'resolve', 'app' => $this->containerClass($call),
+        $name = $call->name->toLowerString();
+
+        return match (true) {
+            isset(self::HELPER_CLASSES[$name]) => ReceiverType::of(self::HELPER_CLASSES[$name]),
+            $name === 'resolve', $name === 'app' => $this->containerClass($call),
             default => null,
         };
     }
@@ -519,7 +835,7 @@ final class ReceiverClassResolver
     private function provenArm(Expr $arm, Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
     {
         if ($this->isSameReadPath($subject, $arm)) {
-            return $this->narrowed($this->resolve($arm, $scope), $tested);
+            return $this->narrowed($this->narrowable($arm, $tested, $scope), $tested);
         }
 
         $narrowed = $this->readsThrough($arm, $subject)
@@ -571,7 +887,7 @@ final class ReceiverClassResolver
         // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
         return $classes === []
             ? $arm
-            : new ReceiverType(array_values(array_unique($classes)), $arm->shortCircuits, $arm->elementModel, $arm->relatedModel);
+            : $arm->withClasses(array_values(array_unique($classes)));
     }
 
     /**
@@ -606,15 +922,82 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a model attribute or relation property holds.
+     * What a property holds on a receiver other than `$this`: a model's attribute or relation, or a public property.
+     */
+    private function memberProperty(string $class, string $name): ?ReceiverType
+    {
+        if (is_a($class, Model::class, true)) {
+            return $this->modelMember($class, $name);
+        }
+
+        DependencyRecorder::recordClass($class);
+
+        if (! class_exists($class) || ! property_exists($class, $name)) {
+            return null;
+        }
+
+        $property = new ReflectionProperty($class, $name);
+
+        // A non-public property read from outside goes to __get(), not to the declaration.
+        return $property->isPublic() && ! $property->isStatic()
+            ? $this->typeOf($this->propertyClasses($property, $class))
+            : null;
+    }
+
+    /**
+     * What a model member read holds: an attribute the model lists, else its relation, the order Model::__get() reads.
      *
      * @param  class-string<Model>  $model
      */
     private function modelMember(string $model, string $name): ?ReceiverType
     {
-        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $name);
+        $attribute = $this->listedAttributeName($model, $name);
 
-        return $attributeClass === null ? $this->relationMember($model, $name) : ReceiverType::of($attributeClass);
+        // A name only an `@property` tag types holds what a dynamic or a set relation puts there.
+        if ($attribute === null) {
+            return $this->relationMember($model, $name) ?? $this->typedModel($model, $name);
+        }
+
+        $attributeClass = resolve(ModelAttributeResolver::class)->resolveAttributeClass($model, $attribute);
+
+        // The attribute hides a relation of the same name, so one holding no class names none.
+        return $attributeClass === null ? $this->typedModel($model, $attribute) : ReceiverType::of($attributeClass);
+    }
+
+    /**
+     * The one model a member's type names where no declaration does, as an untyped getter or an `@property` tag can.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function typedModel(string $model, string $name): ?ReceiverType
+    {
+        $type = resolve(ModelAttributeResolver::class)->resolveAttribute($model, $name);
+        $held = $type['classFqcns'];
+
+        // A list of the model, or a union of it with another type, holds no single model.
+        return count($held) === 1 && is_a($held[0], Model::class, true) && preg_match('/^\w+( \| null)?$/', $type['type']) === 1
+            ? ReceiverType::of($held[0])
+            : null;
+    }
+
+    /**
+     * The name the model lists the attribute Model::__get() reads under, or null when it lists none.
+     *
+     * @param  class-string<Model>  $model
+     */
+    private function listedAttributeName(string $model, string $name): ?string
+    {
+        $attributes = resolve(ModelAttributeResolver::class)->getAttributes($model);
+
+        if ($attributes?->firstWhere('name', $name) !== null) {
+            return $name;
+        }
+
+        // Eloquent camel-cases a key only to find an accessor method, never to read a column.
+        $snake = Str::snake($name);
+        $accessor = $attributes?->firstWhere('name', $snake);
+
+        return in_array($accessor['cast'] ?? null, ['attribute', 'accessor'], true) ? $snake : null;
     }
 
     /**
@@ -673,11 +1056,18 @@ final class ReceiverClassResolver
      * What a method call returns on one class; a relation method on a model also remembers its related model.
      *
      * @param  bool  $fromInside  the call is on `$this`, so a non-public method is reachable
+     * @param  class-string<Model>|null  $queried  the model the receiver, a query, relation or factory, builds
      */
-    private function memberMethod(string $class, string $method, bool $fromInside): ?ReceiverType
+    private function memberMethod(string $class, string $method, bool $fromInside, ?string $queried = null): ?ReceiverType
     {
         if (! $this->isCallable($class, $method, $fromInside)) {
             return null;
+        }
+
+        $built = $queried === null ? null : $this->queriedModel($class, $method, $queried);
+
+        if ($built !== null) {
+            return $built;
         }
 
         $related = is_a($class, Model::class, true)
@@ -688,7 +1078,114 @@ final class ReceiverClassResolver
             return new ReceiverType($this->returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
         }
 
-        return $this->typeOf($this->returnClasses($class, $method));
+        return $this->returned($class, $method);
+    }
+
+    /**
+     * What a static call a concrete model does not declare returns: Model::__callStatic() runs it on a new query.
+     */
+    private function forwardedStaticQuery(string $class, string $method): ?ReceiverType
+    {
+        if (! is_subclass_of($class, Model::class) || method_exists($class, $method) || new ReflectionClass($class)->isAbstract()) {
+            return null;
+        }
+
+        return $this->memberMethod(Builder::class, $method, false, $class);
+    }
+
+    /**
+     * What a method returns on one class, remembering the model a model's own query builds, as `query()`'s
+     * `Builder<static>` does.
+     */
+    private function returned(string $class, string $method): ?ReceiverType
+    {
+        $classes = $this->returnClasses($class, $method);
+
+        if ($classes !== [Builder::class] || ! is_a($class, Model::class, true)) {
+            return $this->typeOf($classes);
+        }
+
+        $declared = $this->declaredReturn($class, $method);
+        $ownQuery = $declared !== null && preg_match('/^[^|<>]+<(?:static|\$this)>$/', $declared) === 1;
+
+        return new ReceiverType($classes, relatedModel: $ownQuery ? $class : null);
+    }
+
+    /**
+     * What a query, relation or factory method returns for the model it builds: that model where the docblock returns
+     * the class's model template, as Builder::make()'s `TModel` does, or the same query where it returns `$this`.
+     *
+     * @param  class-string<Model>  $queried
+     */
+    private function queriedModel(string $class, string $method, string $queried): ?ReceiverType
+    {
+        $template = array_find(
+            self::QUERY_MODEL_TEMPLATES,
+            fn (string $name, string $queryClass): bool => is_a($class, $queryClass, true),
+        );
+        $factory = is_a($class, Factory::class, true);
+
+        if ($template === null || ($factory && in_array($method, self::FACTORY_COUNTS, true))) {
+            return null;
+        }
+
+        if ($this->declaredReturn($class, $method) === $template || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
+            $model = ReceiverType::of($queried);
+
+            return in_array($method, self::UNSAVED_QUERY_MODELS, true) ? $model->asUnsaved() : $model;
+        }
+
+        $classes = $this->returnClasses($class, $method);
+
+        return $classes === [$class] ? new ReceiverType($classes, relatedModel: $queried) : null;
+    }
+
+    /**
+     * The factory `X::factory()` returns, remembering X; none for a spread, or a count, which builds a collection.
+     *
+     * Asks the model itself, as newFactory(), `#[UseFactory]` or the naming convention decides the class; a factory
+     * class that cannot be resolved or built declines.
+     */
+    private function modelFactory(string $class, string $method, StaticCall $call): ?ReceiverType
+    {
+        if ($method !== 'factory' || ! is_subclass_of($class, Model::class) || ! in_array(HasFactory::class, class_uses_recursive($class), true)) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod($class, $method));
+        $count = $arguments->named('count')?->value;
+
+        // Laravel reads an array or callable first argument as state, not a count.
+        if ($arguments->hasUnpack()
+            || ($count !== null && ! $count instanceof Array_ && ! $count instanceof ClosureExpr && ! $count instanceof ArrowFunction)
+        ) {
+            return null;
+        }
+
+        $factory = [$class, $method];
+
+        try {
+            $built = is_callable($factory) ? $factory() : null;
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $built instanceof Factory) {
+            return null;
+        }
+
+        DependencyRecorder::recordClass($built::class);
+
+        return new ReceiverType([$built::class], relatedModel: $class);
+    }
+
+    /**
+     * A method's `@return` docblock type as written, or null when it has none.
+     */
+    private function declaredReturn(string $class, string $method): ?string
+    {
+        return resolve(PropertyDocblockTypeReader::class)
+            ->extractReturnType((string) new ReflectionMethod($class, $method)->getDocComment());
     }
 
     /**
@@ -760,6 +1257,122 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The class arms of a subject's own redeclaration of `$resource`, as in `@var MediaType|string`, whether each arm
+     * but `null` names a class, and whether it admits null; null for JsonResource's own `@var mixed`, or for one that
+     * names no class.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return ProxyArms|null
+     */
+    private function redeclaredProxyArms(ReflectionClass $subject): ?array
+    {
+        $property = $subject->getProperty('resource');
+        $declaring = $property->getDeclaringClass();
+
+        // JsonResource declares `$resource` untyped, so a subclass can only type it in a docblock.
+        $docComment = str_starts_with($declaring->getName(), 'Illuminate\\') ? false : $property->getDocComment();
+        $declared = $docComment === false ? null : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+
+        if ($declared === null || $declared === '') {
+            return null;
+        }
+
+        $arms = $this->docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
+
+        return $arms['classes'] === [] ? null : $arms;
+    }
+
+    /**
+     * The declared classes a backing class is, or is a subtype of.
+     *
+     * @param  list<class-string>  $declared
+     * @return list<class-string>
+     */
+    private function admitting(array $declared, ?string $backing): array
+    {
+        return $backing === null
+            ? []
+            : array_values(array_filter($declared, fn (string $class): bool => is_a($backing, $class, true)));
+    }
+
+    /**
+     * Whether a backing class is, or is a subtype of, every declared class, so it narrows them all.
+     *
+     * @param  list<class-string>  $declared
+     */
+    private function admittedByEvery(array $declared, ?string $backing): bool
+    {
+        return $this->admitting($declared, $backing) === $declared;
+    }
+
+    /**
+     * The declared classes with the backing class standing in for each it is or extends, as `@var Model` holds a post.
+     *
+     * @param  non-empty-list<class-string>  $declared
+     * @return non-empty-list<class-string>
+     */
+    private function backedArms(array $declared, ?string $backing): array
+    {
+        return array_values(array_unique(array_map(
+            fn (string $class): string => $backing !== null && is_a($backing, $class, true) ? $backing : $class,
+            $declared,
+        )));
+    }
+
+    /**
+     * What an `instanceof` test on an expression narrows: on `$this->resource`, the proof already in force, else the
+     * classes it is redeclared as with the backing class standing in, or the bare declaration once the test rules out
+     * every one of those, as `instanceof Image` does a post; else the classes it holds.
+     *
+     * @param  non-empty-list<class-string>  $tested
+     */
+    private function narrowable(Expr $subject, array $tested, AnalysisScope $scope): ?ReceiverType
+    {
+        $isProxy = $this->isProxyFetch($subject, $scope);
+
+        if ($isProxy && $scope->provenProxy !== null) {
+            return new ReceiverType($scope->provenProxy);
+        }
+
+        $declared = $isProxy ? $this->redeclaredProxyArms($scope->subjectReflection)['classes'] ?? null : null;
+
+        if ($declared === null) {
+            return $this->resolve($subject, $scope);
+        }
+
+        $backed = $this->backedArms($declared, $scope->forwardsUndeclaredMembersTo);
+
+        return new ReceiverType(
+            array_any($backed, fn (string $class): bool => $this->narrowedClass($class, $tested) !== []) ? $backed : $declared,
+        );
+    }
+
+    /**
+     * The classes a call forwarded to `$this->resource` may run on, in the order they answer: those an `instanceof`
+     * proof holds it to, then those the subject redeclares it as, each the backing model is or extends standing for it,
+     * then the guard's class and the backing class, unless the redeclaration names a class other than a model.
+     *
+     * @return list<class-string>
+     */
+    private function proxyCallOrder(AnalysisScope $scope): array
+    {
+        $proxy = $scope->proxyReceiver();
+
+        if (! $scope->hasResourceProxy() || ($proxy !== null && $proxy->collectedItems)) {
+            return [];
+        }
+
+        $backing = $scope->forwardsUndeclaredMembersTo;
+        $declared = $this->redeclaredProxyArms($scope->subjectReflection);
+        $backed = $declared === null ? [] : $this->backedArms($declared['classes'], $backing);
+        $fallback = array_any($backed, fn (string $class): bool => ! is_a($class, Model::class, true))
+            ? []
+            : [$scope->instanceOfWrappedClass, $backing];
+
+        return array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
+    }
+
+    /**
      * The classes a native type names; null when it is absent, an intersection, or has any builtin arm but `null`.
      *
      * @return non-empty-list<class-string>|null
@@ -804,18 +1417,39 @@ final class ReceiverClassResolver
      */
     private function docblockClasses(string $type, ReflectionClass $context, string $staticClass, string $selfClass): ?array
     {
+        $arms = $this->docblockArms($type, $context, $staticClass, $selfClass);
+
+        return $arms['named'] && $arms['classes'] !== [] ? $arms['classes'] : null;
+    }
+
+    /**
+     * The class arms a docblock union names, resolved against the declaring file's imports, whether every arm but
+     * `null` names one, and whether a `null` arm or a `?` prefix admits null.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @return DocblockArms
+     */
+    private function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
+    {
         $useMap = LaravelTsPublish::parseFileUseStatements($context);
         $classes = [];
+        $named = true;
+        $nullable = false;
 
         foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
             // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
             if (! preg_match('/^\??([\\\\\w$]+)(?:<.*>)?$/s', $part, $match)) {
-                return null;
+                $named = false;
+
+                continue;
             }
 
             $name = $match[1];
+            $nullable = $nullable || str_starts_with($part, '?');
 
             if (strtolower($name) === 'null') {
+                $nullable = true;
+
                 continue;
             }
 
@@ -825,20 +1459,20 @@ final class ReceiverClassResolver
                 default => LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $context->getNamespaceName()),
             };
 
-            if (! $this->isClassLike($class)) {
-                return null;
+            if ($this->isClassLike($class)) {
+                $classes[] = $class;
+            } else {
+                $named = false;
             }
-
-            $classes[] = $class;
         }
 
-        return $classes === [] ? null : array_values(array_unique($classes));
+        return ['classes' => array_values(array_unique($classes)), 'named' => $named, 'nullable' => $nullable];
     }
 
     /**
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
-     * An element or related model survives only when every part agrees on it.
+     * An element or related model, and a resource collection's items, survive only when every part agrees on them.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -847,6 +1481,9 @@ final class ReceiverClassResolver
         $classes = [];
         $elementModels = [];
         $relatedModels = [];
+        $collectedElements = [];
+        $collectedItems = true;
+        $unsaved = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -856,6 +1493,9 @@ final class ReceiverClassResolver
             $classes = [...$classes, ...$type->classes];
             $elementModels[$type->elementModel ?? ''] = $type->elementModel;
             $relatedModels[$type->relatedModel ?? ''] = $type->relatedModel;
+            $collectedElements[$type->collectedElement['fqcn'] ?? ''] = $type->collectedElement;
+            $collectedItems = $collectedItems && $type->collectedItems;
+            $unsaved = $unsaved || $type->unsaved;
         }
 
         if ($classes === []) {
@@ -863,10 +1503,13 @@ final class ReceiverClassResolver
         }
 
         return new ReceiverType(
-            array_values(array_unique($classes)),
-            $shortCircuits,
-            count($elementModels) === 1 ? reset($elementModels) : null,
-            count($relatedModels) === 1 ? reset($relatedModels) : null,
+            classes: array_values(array_unique($classes)),
+            shortCircuits: $shortCircuits,
+            elementModel: count($elementModels) === 1 ? reset($elementModels) : null,
+            relatedModel: count($relatedModels) === 1 ? reset($relatedModels) : null,
+            unsaved: $unsaved,
+            collectedItems: $collectedItems,
+            collectedElement: count($collectedElements) === 1 ? reset($collectedElements) : null,
         );
     }
 
@@ -888,6 +1531,34 @@ final class ReceiverClassResolver
     private function isCallable(string $class, string $method, bool $fromInside): bool
     {
         return method_exists($class, $method) && ($fromInside || new ReflectionMethod($class, $method)->isPublic());
+    }
+
+    /**
+     * The element model a collection's first(), last() or firstWhere() hands back; none where the call passes a
+     * default, which Laravel returns where no item matches.
+     *
+     * @return class-string<Model>|null
+     */
+    private function collectedElement(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): ?string
+    {
+        if ($receiver->elementModel === null
+            || ! in_array($method, self::COLLECTION_ELEMENTS, true)
+            || ! $receiver->within([Collection::class])
+        ) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
+
+        return $arguments->hasUnpack() || $arguments->named('default') !== null ? null : $receiver->elementModel;
+    }
+
+    /**
+     * Whether a method returns each class the receiver holds as that same class, as `$this` or `static` does.
+     */
+    private function returnsItself(ReceiverType $receiver, string $method): bool
+    {
+        return array_all($receiver->classes, fn (string $class): bool => $this->returnClasses($class, $method) === [$class]);
     }
 
     /**

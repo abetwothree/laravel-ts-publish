@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -28,6 +30,10 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -47,6 +53,7 @@ use ReflectionMethod;
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use CollectsLocalVarBindings;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use ResolvesMapProxyElementModels;
@@ -90,7 +97,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
+            $boundModel = $this->boundModel($expr->var, $scope);
 
             if ($boundModel !== null) {
                 return $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
@@ -115,6 +122,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'pluck'
+            && $scope->holdsBinding($expr->var)
         ) {
             return $this->analyzeVariablePluckCall($expr, $scope);
         }
@@ -129,10 +137,17 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $this->callsAttributeFilter($expr)
         ) {
-            $boundModel = $scope->varModelBindings[$expr->var->name] ?? $this->ambientModel($expr->var, $scope);
+            $boundModel = $this->boundModel($expr->var, $scope);
+            $method = $expr->name->toString();
 
-            if ($boundModel !== null) {
-                return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope, $boundModel);
+            // A rule types what reflection reads loosely, and the receiver order reads what it cannot, such as an
+            // untyped method's body, so both go on to ReceiverMethodCallHandler.
+            if ($boundModel !== null && ! resolve(ReceiverMethodReturnResolver::class)->typesByRule($boundModel, $method)) {
+                $result = $this->analyzeRelatedModelMethodCall($method, $scope, $boundModel);
+
+                if ($result['type'] !== 'unknown') {
+                    return $result;
+                }
             }
         }
 
@@ -141,18 +156,67 @@ final class VariableHandler implements ExpressionHandler
         }
 
         $span = $scope->declaredAt($expr);
-
-        return $span === null
-            ? $this->boundValue($expr->name, $scope, $engine)
+        $value = $span === null
+            ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
+
+        return $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
     }
 
     /**
-     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding.
+     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it,
+     * else the ambient whenLoaded model.
+     *
+     * @return class-string<Model>|null
+     */
+    private function boundModel(Variable $variable, AnalysisScope $scope): ?string
+    {
+        $own = is_string($variable->name) && $scope->holdsBinding($variable)
+            ? $scope->varModelBindings[$variable->name] ?? null
+            : null;
+
+        return $own ?? $this->ambientModel($variable, $scope);
+    }
+
+    /**
+     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding; past
+     * the write that ended its parameter binding, from the local assignment alone, or inside a gap from the value its
+     * write assigned, joined with the old binding where that may still hold.
      *
      * @return ValueExpressionResult|null
      */
-    private function boundValue(string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if ($scope->holdsBinding($variable)) {
+            return $this->heldValue($name, $scope, $engine);
+        }
+
+        $gap = $scope->gapAt($variable);
+
+        if ($gap === null) {
+            $local = $scope->localVarBindings[$name] ?? null;
+
+            return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
+        }
+
+        // The old binding may still hold past a write nested in a block that falls through, so both are read.
+        $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $written): ?array => $this->boundExpressionValue($name, $written, $scope, $engine),
+            $gap[2] ?? [],
+        ));
+        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : $values;
+
+        return $gap[2] === null || $gap[2] === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
+            ? null
+            : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
+    }
+
+    /**
+     * A bare variable's value from the binding its name came into the body with, or its local assignment.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function heldValue(string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
         // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
@@ -241,9 +305,128 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
+     * A variable's bound value past the by-reference calls before the read that keep it only in some forms, or null, as
+     * for a variable written twice, when it lacks one of them. A cyclic read, such as `array_push($a, $a)`, keeps
+     * nothing, and a read the source does not place, such as one the engine builds, takes every call's form.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult|null
+     */
+    private function keptByReference(
+        Variable $read,
+        string $name,
+        array $value,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): ?array {
+        $position = $read->getStartFilePos();
+        $forms = array_filter(
+            $scope->byReferenceForms[$name] ?? [],
+            fn (array $form): bool => $position < 0
+                || ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])),
+        );
+
+        if ($forms === []) {
+            return $value;
+        }
+
+        if (isset($scope->resolvingLocalVars[$name])) {
+            return null;
+        }
+
+        $scope->resolvingLocalVars[$name] = true;
+        $type = $value['type'];
+
+        try {
+            foreach ($forms as $form) {
+                $read = [];
+                $written = function (string $element, string $key) use ($form, &$read, $scope, $engine): array {
+                    $callback = $form['callback'];
+                    $at = $callback === null ? '' : $element."\0".$key;
+
+                    return $read[$at] ??= $callback === null
+                        ? array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $form['values'])
+                        : $this->writtenByCallback($callback, $form['values'], $element, $key, $scope, $engine);
+                };
+                $type = $form['effect']->left($type, $written, $form['path'], $scope->reindexesNumericKeys);
+
+                if ($type === null) {
+                    return null;
+                }
+            }
+        } finally {
+            unset($scope->resolvingLocalVars[$name]);
+        }
+
+        return [...$value, 'type' => $type];
+    }
+
+    /**
+     * The types a walk's callback writes into an element of one type under a key of another, each read in the
+     * callback's own scope: its first parameter bound to the element and its second to the key, beside what a closure
+     * imports, or all an arrow function captures, and the body's own locals. No other outer binding reaches it.
+     *
+     * @param  list<Expr>  $values
+     * @return list<string>
+     */
+    private function writtenByCallback(
+        ArrowFunction|ClosureExpr $callback,
+        array $values,
+        string $element,
+        string $key,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): array {
+        $caller = $scope->nameBindings();
+        $ambient = $scope->closureRelationModelClass;
+
+        try {
+            if ($callback instanceof ClosureExpr) {
+                $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
+                $scope->closureRelationModelClass = null;
+
+                foreach ($callback->uses as $use) {
+                    if (is_string($use->var->name)) {
+                        $scope->copyBindings($use->var, $use->var->name, $caller);
+                    }
+                }
+            } else {
+                $scope->releaseUnclaimedParameters($callback);
+            }
+
+            foreach ([$element, $key] as $index => $type) {
+                $parameter = $callback->params[$index] ?? null;
+
+                if ($parameter !== null && $parameter->var instanceof Variable && is_string($parameter->var->name)) {
+                    $scope->varValueBindings[$parameter->var->name] = ['type' => $type, 'optional' => false];
+                }
+            }
+
+            if ($callback instanceof ClosureExpr) {
+                $this->seedBody($callback->stmts, $scope);
+            }
+
+            return array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values);
+        } finally {
+            $scope->restoreNameBindings($caller);
+            $scope->closureRelationModelClass = $ambient;
+        }
+    }
+
+    /**
+     * The type a write puts in an element: an increment or a decrement leaves a number, any other value its own type.
+     */
+    private function writtenType(Expr $written, ExpressionEngine $engine): string
+    {
+        return $written instanceof PreInc || $written instanceof PostInc || $written instanceof PreDec || $written instanceof PostDec
+            ? 'number'
+            : $engine->resolve($written)['type'];
+    }
+
+    /**
      * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
      * only where it is, or extends, one of the classes the receiver path reads it as: its assigned value's, else the
-     * `@var`'s.
+     * `@var`'s. A variable past the write that ended its parameter binding holds what that write assigned instead.
      *
      * @return class-string<Model>|null
      */
@@ -251,7 +434,11 @@ final class VariableHandler implements ExpressionHandler
     {
         $ambient = $scope->closureRelationModelClass;
 
-        if ($ambient === null || $scope->declaredAt($variable) === null) {
+        if ($ambient === null || ! $scope->holdsBinding($variable)) {
+            return null;
+        }
+
+        if ($scope->declaredAt($variable) === null) {
             return $ambient;
         }
 
@@ -317,6 +504,11 @@ final class VariableHandler implements ExpressionHandler
             // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
             if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
                 $scope->varModelBindings[$firstParam->var->name] = $paramClass;
+            }
+
+            // The body's returns resolve here, never through ClosureHandler, so its reassignments end bindings here.
+            if ($closureArg instanceof ClosureExpr) {
+                $this->endBindingsAtWrites($closureArg->stmts, $scope);
             }
 
             $returnExprs = $this->resolveClosureReturnExpressions($closureArg);

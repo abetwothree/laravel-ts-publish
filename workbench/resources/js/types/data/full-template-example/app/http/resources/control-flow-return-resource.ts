@@ -15,6 +15,6 @@ export interface ControlFlowReturnResource
     archived?: boolean;
     inline_enum_branch?: { method: AsEnum<typeof PaymentMethod> | null };
     draft?: boolean;
-    total?: number;
+    total?: string;
     status?: OrderStatusType;
 }

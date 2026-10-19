@@ -6,6 +6,7 @@ namespace Workbench\App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
 /**
@@ -34,9 +35,19 @@ final class WhenHasValueResource extends JsonResource
             // $this->comments_exists, and only the right flag name publishes its boolean.
             'comments_exists_flag' => $this->whenExistsLoaded('comments', fn ($exists) => $exists),
 
-            // json_decode() returns mixed, so the value resolves to unknown and the named attribute
-            // still answers — the value rule may never trade a real type for a fresh `unknown`.
+            // json_decode() returns mixed, so the value stays `unknown`: the attribute's own `string` would
+            // claim a type the key does not hold, since a plain title decodes to null.
             'title_unresolvable' => $this->whenHas('title', fn ($title) => json_decode($title)),
+
+            // A match types from its arms, never from the enum the attribute holds.
+            'status_label' => $this->whenHas('status', fn ($status) => match ($status) {
+                Status::Published => 'live',
+                default => 'draft',
+            }),
+            'appended_status_label' => $this->whenAppended('title_display', fn () => match ($this->status) {
+                Status::Published => 'live',
+                default => 0,
+            }),
         ];
     }
 }

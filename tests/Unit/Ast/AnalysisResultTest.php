@@ -13,14 +13,25 @@ use Workbench\App\Events\PayloadDiffersEvent;
 use Workbench\App\Http\Resources\ApiPostResource;
 use Workbench\App\Http\Resources\BadgeResource;
 use Workbench\App\Http\Resources\CommentResource;
+use Workbench\App\Http\Resources\DepotTierKeyedResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageReviewResource;
+use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
 describe('AstEngine::analyze()', function () {
+    // ts:publish re-indexes these at the resource publisher, and analyze() must agree with what it publishes.
+    test('re-indexes an API resource\'s numeric-keyed arrays, unless the resource preserves keys', function () {
+        $tiers = fn (string $class): string => collect(resolve(AstEngine::class)->analyze($class)->properties)
+            ->firstWhere('name', 'tiers')['type'];
+
+        expect($tiers(ServiceReturnResource::class))->toBe('string[]')
+            ->and($tiers(DepotTierKeyedResource::class))->toBe('{ "1": string; "2": string }');
+    });
+
     test('wraps an EnumResource property, so the value import it emits is the one the type reads', function () {
         // buildValueImports() short-circuits to [] when this is off, which would make the value-import
         // assertion vacuous rather than a statement about the wrap.
@@ -88,9 +99,7 @@ describe('AstEngine::analyze()', function () {
         expect(collect($result->properties)->firstWhere('name', 'reviewable')['type'])
             ->toBe('CrmUser | WorkbenchUser | null')
             ->and($result->typeImports)->toBe([
-                '@js/types/settings' => ['MenuSettingsType'],
                 '../../../crm/models' => ['User as CrmUser'],
-                '../../enums' => ['SizeType', 'StatusType'],
                 '../../models' => ['User as WorkbenchUser'],
             ]);
     });

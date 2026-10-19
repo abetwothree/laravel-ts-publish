@@ -13,8 +13,8 @@ export interface TernaryResourceProbe
     status_type_or_resource: AsEnum<typeof Status> | StatusType;
     status_or_visibility: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;
     category_or_null: CategoryResource | null;
-    category_or_category: CategoryResource;
-    category_or_user: CategoryResource | UserResource;
+    category_or_category: CategoryResource | null;
+    category_or_user: CategoryResource | UserResource | null;
     image_or_null: ImageResource | null;
     comments_or_null: CommentResource[] | null;
     comments_or_comments: CommentResource[];

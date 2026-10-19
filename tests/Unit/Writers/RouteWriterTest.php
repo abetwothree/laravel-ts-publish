@@ -8,7 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Writers\RouteWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\View;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
+use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Controllers\CustomKeyController;
 use Workbench\App\Http\Controllers\Delete;
 use Workbench\App\Http\Controllers\DeleteController;
@@ -524,6 +527,98 @@ test('route output emits annotatePageProps annotation for single-component no-ar
     expect($generator->content)
         ->toContain('export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({')
         ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
+});
+
+// `typeof Role` reads only the const, which a type-only import declares, and AsEnum comes with defineRoute.
+test('route output imports AsEnum and the enum const a page prop wrapped in an EnumResource reads', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { role: AsEnum<typeof Role>, status: StatusType }',
+                    'classFqcns' => [Status::class],
+                    'enumConstFqcns' => [Role::class],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import { defineRoute, annotatePageProps, type AsEnum } from '@tolki/ts';")
+        ->toContain("import type { Role, StatusType } from '../../enums';")
+        ->not->toContain("import type { AsEnum } from '@tolki/ts';");
+});
+
+// A `#[TsCasts]` import from @tolki/ts reaches the page's imports, so AsEnum joins it rather than replacing it.
+test('route output imports AsEnum beside another @tolki/ts type a page prop\'s override imports', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { role: AsEnum<typeof Role>, status: CaseValue<typeof Status> }',
+                    'classFqcns' => [],
+                    'enumConstFqcns' => [Role::class, Status::class],
+                    'externalImports' => ['@tolki/ts' => ['CaseValue']],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)
+        ->toContain("import { defineRoute, annotatePageProps, type AsEnum, type CaseValue } from '@tolki/ts';")
+        ->toContain("import type { Role, Status } from '../../enums';");
+});
+
+// A template customised before AsEnum reached page types still imports it, through the type imports it loops over.
+test('a custom route template that keeps the type imports loop imports AsEnum from @tolki/ts', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+    View::addNamespace('ts-publish-tests', __DIR__.'/../../views');
+    config()->set('ts-publish.routes.template', 'ts-publish-tests::route-custom-imports');
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(function (array $action) {
+            if (str_contains($action['uses'], 'InertiaController@dashboard')) {
+                return [
+                    'component' => 'Dashboard',
+                    'pageType' => 'Inertia.SharedData & { role: AsEnum<typeof Role> }',
+                    'classFqcns' => [],
+                    'enumConstFqcns' => [Role::class],
+                ];
+            }
+
+            return null;
+        });
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
+
+    expect($generator->content)->toBe(implode("\n", [
+        "import { defineRoute } from '@tolki/ts';",
+        "import type { AsEnum } from '@tolki/ts';",
+        "import type { Role } from '../../enums';",
+        'export type DashboardPageProps = Inertia.SharedData & { role: AsEnum<typeof Role> };',
+        '',
+    ]));
 });
 
 test('route output does not emit annotatePageProps for non-inertia routes', function () {

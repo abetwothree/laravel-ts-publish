@@ -1,19 +1,26 @@
 # ModelAttributeResolver
 
 [`ModelAttributeResolver`](../../src/ModelAttributeResolver.php) types a model's attributes and relations for the model
-transformer, the resource analyzer and the AST engine. `resolveAttribute()` tries the accessor, then the cast, then
-the database column type, and `resolveRelation()` and `resolveMorphToTargets()` type relations. The
-PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../src/LaravelTsPublish.php), chiefly
+transformer, the resource analyzer and the AST engine. `resolveAttribute()` tries the accessor, then the cast through
+`castToTsType()`, then the database column type, and `resolveRelation()` and `resolveMorphToTargets()` type relations.
+The PHP-type and docblock resolution underneath lives on [`LaravelTsPublish`](../../src/LaravelTsPublish.php), chiefly
 `toTsType()` and `methodOrDocblockReturnTypes()`, and its rules are on this page too. Usage is on the tolki
 [Models](https://tolki.abe.dev/ts/models.html) page.
+
+`connectionDriver()` reads the driver of a model's connection from its config, for the aggregate types
+`whenAggregated()` publishes and for an uncast DECIMAL column, which pdo_mysql and pdo_pgsql return as a string. A
+`custom_ts_mappings` entry for the column type keeps its own type on every driver. A model the run has not resolved yet
+is inspected first, which queries its schema.
 
 ## Where things live
 
 The attribute waterfall spans these classes:
 
 - [`ModelAttributeResolver`](../../src/ModelAttributeResolver.php): the attribute waterfall, relation and `morphTo`
-  types, the column-name lists, and `@property` refinement. It is a singleton, so each model's context is cached for
-  the run.
+  types, the column-name lists, and `@property` refinement. It is a singleton, so each model's context, and the
+  `inspect()` answer `ModelTransformer` shares, are cached until `reset()`, which `BaseRunner::resetRunState()` calls
+  when a run starts. Every context read records the model as a cache dependency before that cache, and
+  `resolveAttributeClass()` replays the files its cached answer read.
 - [`Concerns\ResolvesAccessorType`](../../src/Concerns/ResolvesAccessorType.php): the accessor step, shared with
   `ModelTransformer`.
 - [`AccessorBodyAnalyzer`](../../src/Analyzers/Model/AccessorBodyAnalyzer.php): types an accessor from its getter
@@ -55,10 +62,46 @@ then falls through to a real column's type, and `ModelTransformer::transformMuta
 To assert that a name is left out, use `isOmittedMutator()`, which reads the accessor step's `omit` flag.
 `resolveAttribute()` returns `unknown` both for an omitted mutator and for an attribute it cannot type.
 
+## A cast name is not a column type
+
+A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer `asTimestamp()` returns, which
+`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()`, the
+`ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
+
+1. A `custom_ts_mappings` key for the cast, or for the type `getCastType()` reads it as (`decimal` for `decimal:N`),
+   goes to `toTsType()` under that name, so the user's entry wins.
+2. `decimal:N`, by the case-sensitive prefix `isDecimalCast()` reads, publishes `string`, as `asDecimal()` returns.
+3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
+4. A `Castable` whose `castUsing()` casters, read without calling it, all serialize publishes their `serialize()`
+   type, as step 4 below does for a caster. `toTsType()` never does, since a Castable is also a value a resource sends.
+5. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+
+`isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
+where the call throws.
+
 ## Class types in `toTsType()`
 
 `LaravelTsPublish::toTsType()` numbers its resolution steps in its source comments, and this section uses those
 numbers.
+
+Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
+`@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
+import. A `SerializesCastableAttributes` caster publishes what its `serialize()` declares instead, since
+`Model::toArray()` writes that; one that declares nothing leaves `get()` to type it.
+
+### Steps 4b to 4d publish a date, an interval and a period as `json_encode()` writes them
+
+- **4b**: a `DateTime` or `DateTimeImmutable` that is not `JsonSerializable` publishes
+  `LaravelTsPublish::DATE_TIME_OBJECT_TYPE`. `DateTimeInterface` publishes the date type or that object.
+- **The date type** is the `Carbon\Carbon` map entry: `string`, or `Date` under `timestamps_as_date`.
+- **The `datetime` collision**: the `DateTime` class lowercases to the `datetime` column key, so step 1 skips that one
+  hit for it (`isPlainDateClass()`). A `custom_ts_mappings` entry for any other date class still applies.
+- **Model context**: a class cast's `get()` or a new-style accessor's getter publishes each date it declares as the date
+  type. That is what `Model::toArray()` writes, since it runs `serializeDate()` there; a resource reading the attribute
+  directly sends the object. An old-style `getXAttribute()` keeps the object. A user's entry for the date's own class,
+  read by its lowercased name, wins, so a `DateTime` takes the `datetime` entry a date column does.
+- **4c**: a `CarbonInterval` that is not `JsonSerializable` publishes `CARBON_INTERVAL_OBJECT_TYPE`.
+- **4d**: a `CarbonPeriod` that keeps its own `jsonSerialize()` publishes a list of the date type.
 
 ### Arrayable and JsonSerializable take their shape differently
 
@@ -73,6 +116,18 @@ nor defaulted, because `json_encode()` omits a typed property that was never ass
 enum degrades to `unknown`, since a shape string has no import channel. `$shapeExpansionStack` guards docblock shapes
 and property shapes under separate keys, so a self-referencing or mutual DTO degrades its inner reference instead of
 exhausting memory.
+
+### Steps 5b and 5d publish what `json_encode()` writes, never `__toString()`
+
+`json_encode()` never calls `__toString()`. Step 5b publishes `string`, or `string | null`, only where
+`StringSerialization::jsonStringType()` reads one from `jsonSerialize()`, or where a `jsonSerialize()` declaring `mixed`
+or nothing says so in its `@return`, and PHP's date object where that `@return` names `DateTime`. Step 5d publishes
+the object `stringableObjectType()` reads for a `__toString()` class: its public properties, an untyped one as
+`unknown`, or `TsTypeString::EMPTY_OBJECT` for none, such as an exception or `HtmlString`, and `Record<string, unknown>`
+where an instance can gain keys, as an `ArrayObject` or a `#[AllowDynamicProperties]` class can. Only a `__toString()`
+class qualifies, so a sentinel such as `MissingValue` keeps its token. One with typed public properties publishes its
+step 5c shape first, and one whose `jsonSerialize()` declares `array` with no `@return` shape publishes
+`unknown[] | Record<string, unknown>`, `| null` for `?array`, at step 5a-bis.
 
 ### Step 5c inlines a plain class's typed properties
 
@@ -99,10 +154,11 @@ Know these five points before you change it:
 
 Laravel's `AsEnumCollection::of()`, `AsCollection::of()` and `AsCollection::using()` build cast strings of the form
 `CastClass:arguments`. Step 1b handles one only when the text before the first colon is an existing class, so
-`decimal:2` and `encrypted:array` fall through to the later steps. `AsEnumCollection` publishes a list of the
-enum's type, with the enum's import. `AsCollection` publishes a list of its map class when that class resolves to an
-inline shape or an enum, and `unknown[]` otherwise, because a bare class token has no import channel. Any other cast
-class resolves as the bare class, arguments ignored.
+`decimal:2` and `encrypted:array` fall through to the later steps, though a model's `decimal:2` cast never reaches them:
+`castToTsType()` answers it first. `AsEnumCollection` publishes a list of the enum's type, with the enum's import.
+`AsCollection` publishes a list of its map class when that class resolves to an inline shape or an enum, and `unknown[]`
+otherwise, because a bare class token has no import channel. Any other cast class resolves as the bare class, arguments
+ignored.
 
 ### Database types come from the schema grammar
 
@@ -142,8 +198,9 @@ the class that wrote the shape. A definition spanning several docblock lines is 
 brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias give `unknown`.
 
 The alias resolves against its defining class's imports and namespace, not the referencing class's.
-`resolveDocblockTypePartOrAlias()` expands a hit through the plain pipeline, never alias-aware again, so two local
-aliases naming each other cannot recurse outside the `$seen` guard. A nullable `?Alias` resolves the bare name and then
+An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
+property's `@var`, against the class whose docblock is read; one already being expanded, as in
+`@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
 appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
 `filters?:`.
 
@@ -181,6 +238,9 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
+A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
+`null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+
 ## MorphTo targets
 
 `resolveMorphToTargets()` is the one source of a `morphTo`'s target union. `resolveRelation()` and
@@ -210,8 +270,10 @@ The reverse map follows four rules:
 - **Stale analyses**: `buildMorphTargetMap()` clears `AnalysisMemo`, so no analysis typed under an older map is reused.
 
 An unresolved `morphTo` publishes bare `unknown`, never `unknown | null`, since `unknown` already admits `null`.
-`buildMorphUnionInfo()` and `transformRelations()` each apply that guard to their own nullable suffix, and they must
-agree.
+`typesRelationNullable()` (with `isToManyRelation()` and `isMorphToRelation()`) decides a relation's `| null` for
+`resolveRelation()`, `buildMorphUnionInfo()` and `relationLoadsNull()`, which is tri-state: `null` means undeclared or
+unreadable. `ModelTransformer::transformRelations()` keeps its own copy without the to-many exemption, so a model
+interface can publish `Post[] | null` where a resource publishes `Post[]`.
 
 ## Models a run publishes
 
@@ -257,22 +319,43 @@ complement from it; see
 
 A call site that asks whether a name is a real column uses `databaseColumnNames()` and applies the hidden rule itself.
 The `except()` branch of `resolveFilteredRelationType()` does, so an inlined `except()` expands to columns only, as
-`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` does too, so `isOmittedMutator()` never drops a real
-column.
+`HasAttributes::except()` does. `buildModelDelegatedAnalysis()` and `buildModelSerializedAnalysis()` do too, so
+`isOmittedMutator()` never drops a real column.
 
-The two lists differ only when `ts-publish.models.exclude_hidden` is on, and it defaults to `false`.
-`excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with the per-model
-context, because the context is fixed for the model while the config can change between calls, as it does in tests.
+`serializedAttributeNames()` lists what `toArray()` writes: the published columns, then the appends, within `$visible`
+and less `$hidden`, whatever `exclude_hidden` says. Whole-model delegation reads `delegatedAttributeNames()` and
+`delegatedRelationKeys()` instead, which apply `$visible` and `$hidden`, a relation's by its method name, only while
+`exclude_hidden` is on. So `delegatedAttributeNames()` equals `serializedAttributeNames()` while the option is on, and
+differs only while it is off, the default. A relation's key is snake-cased while the model's `$snakeAttributes` is on,
+as `relationsToArray()` writes it.
+
+`databaseColumnNames()` and `publishedColumnNames()` differ only when `ts-publish.models.exclude_hidden` is on, and it
+defaults to `false`. `excludeHiddenAttributes()` is the only reader of that flag, for every site. It is not cached with
+the per-model context, because the context is fixed for the model while the config can change between calls, as it does
+in tests.
 
 ## Laravel 13 model attributes need instance reads
 
-Laravel 13's `#[Table]`, `#[Connection]`, `#[Hidden]`, `#[Visible]` and `#[Appends]` need no code here. Laravel
-applies them in `Model::__construct()`, and the package reads the results through instance calls: `getTable()`,
-`getConnection()` and `getAppends()` in `ModelTransformer::initInstance()` and `databaseColumnNames()`, and
-`attributeIsHidden()` on the instance the inspector makes. A refactor that reads these attributes through
-`ReflectionClass::getAttributes()` would break all five, and the failing `ModelTransformerTest` cases would not point
-back here. Keep the reads on an instance. The test-only version guards they need, and why the workbench fixtures may
-still `use`-import them, are in [Version-guarded Laravel classes](../laravel-version-guards.md).
+Laravel 13's `#[Table]`, `#[Connection]`, `#[Hidden]`, `#[Visible]` and `#[Appends]` need no code here, but the key read
+in [Key types](#key-types). Laravel applies them in `Model::__construct()`, and the package reads the results through
+instance calls: `getTable()`, `getConnection()` and `getAppends()` in `ModelTransformer::initInstance()` and
+`databaseColumnNames()`, and `attributeIsHidden()` on the instance the inspector makes. A refactor that reads these
+attributes through `ReflectionClass::getAttributes()` would break all five, and the failing `ModelTransformerTest` cases
+would not point back here. Keep the reads on an instance. The test-only version guards they need, and why the workbench
+fixtures may still `use`-import them, are in [Version-guarded Laravel classes](../laravel-version-guards.md).
+
+## Key types
+
+`keyTsType()` reads a model's key type from its instance, built without its table when that cannot be read. With no
+instance at all, `declaredKeyTsType()` reads `$primaryKey`, `$keyType`, Laravel 13's `#[Table]` and
+`HasUuids`/`HasUlids` from the class, with the list a `uniqueIds()` override returns as a literal, and declines where
+code decides the key. For an abstract model, `subclassKeyTsType()` unions in each published concrete subclass's type and
+records every published model, since any of them could become a subclass. `tableKeyDeclaration()` is the one place
+`#[Table]` is read through reflection, because no constructor runs there.
+
+`authIdentifierTsType()` types what `Authenticatable::getAuthIdentifier()` returns, for `Auth::id()` and the
+[receiver rule](receiver-types.md#receiver-rules): the key type, or the type of the column a literal
+`getAuthIdentifierName()` return names, when that type needs no import.
 
 ## A missing table is reported, not guessed
 

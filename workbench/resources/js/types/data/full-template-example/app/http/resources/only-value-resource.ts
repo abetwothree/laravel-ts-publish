@@ -15,7 +15,7 @@ export interface OnlyValueResource
     id: number;
     comments_count: number;
     summary?: Pick<Post, 'id' | 'title'>;
-    category?: Pick<Category, 'id' | 'name'>;
+    category?: Pick<Category, 'id' | 'name'> | null;
     dynamic: Record<string, unknown>;
-    dynamic_category?: Record<string, unknown>;
+    dynamic_category?: Record<string, unknown> | null;
 }

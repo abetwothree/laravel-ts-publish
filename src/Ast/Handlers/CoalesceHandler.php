@@ -34,8 +34,11 @@ final class CoalesceHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof BinaryOp\Coalesce) {
-            $leftResult = $engine->resolve($expr->left);
+            $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
             $rightResult = $engine->resolve($expr->right);
+            // A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null.
+            $optional = $leftResult['optional']
+                || ($rightResult['optional'] && ($leftResult['type'] === 'unknown' || ValueResult::hasNullArm($leftResult['type'])));
 
             // Strip `| null` from the left: with a non-null fallback, null is never the final result.
             $leftResult['type'] = ValueResult::stripNullArm($leftResult['type']);
@@ -50,7 +53,7 @@ final class CoalesceHandler implements ExpressionHandler
 
             // Two arms that render alike are one member, unless they spell one name for two classes, which
             // unionResults() keeps apart.
-            return ValueResult::unionResults([$leftResult, $rightResult]);
+            return [...ValueResult::unionResults([$leftResult, $rightResult]), 'optional' => $optional];
         }
 
         return null;

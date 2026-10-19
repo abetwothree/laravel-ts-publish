@@ -2,39 +2,83 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\AliasedSubjectModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CastablePost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingCastable;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityAlias;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MissingTableModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InvalidPivotClassParent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\InverseMorphToManyParent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\MorphPivot\NotAModelPivot;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeBaseModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ReceiverAttributeChildModel;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\UnconstructableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\CountingCastable;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractComputedUniqueIdsModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractConstructorKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInheritedTableKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractInitializeKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyNameOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractNullKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractStringKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTableKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractTraitTableKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUlidKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueIdsKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUniqueKeyListedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractUuidKeyModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AliasedSubjectModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastablePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityAlias;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\KeyOverrideKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MissingTableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InvalidPivotClassParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\InverseMorphToManyParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\MorphPivot\NotAModelPivot;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineConstructorKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PropertyDocblockShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TypeAliasShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UncastDecimalOrderItem;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnconstructableModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UniqueIdsKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UuidKeyedModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationHiddenUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationKeyCaseUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\RelationVisibilityUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\VisibleFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Eloquent\Casts\AsCollection;
+use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Workbench\App\Casts\ConsignmentLegsCast;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\ShirtSize;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Activity;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store;
 use Workbench\App\Models\ArrayObjectCastFixture;
 use Workbench\App\Models\Artist;
 use Workbench\App\Models\ArtistReview;
 use Workbench\App\Models\Attachment;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\CompositeComment;
 use Workbench\App\Models\DocblockGenericsFixture;
@@ -293,6 +337,67 @@ test('publishedColumnNames tracks the exclude_hidden setting', function () {
     expect($resolver->publishedColumnNames(User::class))->not->toContain('password');
 });
 
+describe('delegatedAttributeNames()', function () {
+    it('lists $hidden columns while exclude_hidden is off, and not while it is on', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        config()->set('ts-publish.models.exclude_hidden', false);
+        expect($resolver->delegatedAttributeNames(User::class))->toContain('password');
+
+        config()->set('ts-publish.models.exclude_hidden', true);
+        expect($resolver->delegatedAttributeNames(User::class))->not->toContain('password');
+    });
+
+    it('lists an appended accessor, and not one the model does not append', function () {
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(Address::class))
+            ->toContain('full_address')
+            ->not->toContain('has_coordinates');
+    });
+
+    // VisibleFilterOverrideModel appends `name`, a column, and hides `color`, which `$visible` lists.
+    it('lists the columns, then the appends, each name once, past $visible and $hidden only while exclude_hidden is off', function (bool $excludeHidden, array $names) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedAttributeNames(VisibleFilterOverrideModel::class))
+            ->toBe($names);
+    })->with([
+        'exclude_hidden off' => [false, ['id', 'name', 'slug', 'color', 'created_at', 'updated_at', 'label', 'shade']],
+        'exclude_hidden on' => [true, ['id', 'name', 'label']],
+    ]);
+});
+
+// relationsToArray() writes a loaded relation under its name, snake-cased while $snakeAttributes is on, and
+// getArrayableRelations() matches `$visible` and `$hidden` against the method name; exclude_hidden gates both lists.
+describe('delegatedRelationKeys()', function () {
+    $userKeys = [
+        'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+        'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams',
+        'ownedTeams' => 'owned_teams', 'images' => 'images', 'notifications' => 'notifications',
+    ];
+
+    it('keys each relation as toArray() writes it', function (string $model, bool $excludeHidden, array $keys) {
+        config()->set('ts-publish.models.exclude_hidden', $excludeHidden);
+
+        expect(resolve(ModelAttributeResolver::class)->delegatedRelationKeys($model))->toBe($keys);
+    })->with([
+        'snake-cased' => [User::class, false, $userKeys],
+        'snake-cased, no relation hidden, exclude_hidden on' => [User::class, true, $userKeys],
+        '$snakeAttributes off' => [RelationKeyCaseUser::class, false, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primaryAddress', 'teams' => 'teams',
+            'ownedTeams' => 'ownedTeams', 'images' => 'images', 'notifications' => 'notifications',
+        ]],
+        '$visible, exclude_hidden off' => [RelationVisibilityUser::class, false, $userKeys],
+        '$visible names the method, exclude_hidden on' => [RelationVisibilityUser::class, true, ['ownedTeams' => 'owned_teams']],
+        '$hidden, exclude_hidden off' => [RelationHiddenUser::class, false, $userKeys],
+        '$hidden names the method, exclude_hidden on' => [RelationHiddenUser::class, true, [
+            'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
+            'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams', 'images' => 'images',
+            'notifications' => 'notifications',
+        ]],
+    ]);
+});
+
 test('buildMorphTargetMap builds map from MorphMany inverse relations', function () {
     $resolver = resolve(ModelAttributeResolver::class);
 
@@ -423,9 +528,8 @@ test('a bare @return MorphTo<Model, $this> generic is not narrowing and falls th
 
 describe('morphTo docblock generics', function () {
     test('a concrete generic types the relation without any reverse relation', function () {
-        // causer() is declared on the HasRelatableLinkedRecord trait (mirroring eagle's own
-        // shape) with no reverse morphMany anywhere pointing at Activity — only the docblock
-        // generic can type it.
+        // causer() is a morphTo declared in the HasRelatableLinkedRecord trait, not on the model, with no reverse
+        // morphMany anywhere pointing at Activity — only the docblock generic can type it.
         $info = resolve(ModelAttributeResolver::class)->resolveRelation(Activity::class, 'causer');
 
         expect($info['type'])->toContain('User')
@@ -546,7 +650,7 @@ test('bare @return Attribute docblock does not override a usable closure signatu
 test('attributeDocblockReturnTypes resolves Attribute<> written as a fully-qualified class name', function () {
     // A `.php.stub` fixture because Pint's fully_qualified_strict_types fixer would rewrite the
     // literal FQCN in the docblock down to a short auto-imported name; its finder only sees `*.php`.
-    require_once __DIR__.'/../Fixtures/FqcnAttributeDocblockFixture.php.stub';
+    require_once __DIR__.'/../Fixtures/Stubs/FqcnAttributeDocblockFixture.php.stub';
 
     $method = new ReflectionMethod(FqcnAttributeDocblockFixture::class, 'sortedByFqcnDocblock');
     $info = app(LaravelTsPublishService::class)->attributeDocblockReturnTypes($method);
@@ -676,6 +780,47 @@ describe('@property docblock refinement', function () {
         expect($info['type'])->toBe('Record<string, unknown> | null');
     });
 });
+
+test('a @property tag spelling a tuple, an object shape, a quoted key or a nested nullable shape types its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PropertyDocblockShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'a tuple' => ['tags', '[number, string] | null'],
+    'an object shape on an object cast' => ['meta_info', '{ a: number } | null'],
+    'a quoted key' => ['related_users', '{ theme: string; size: number } | null'],
+    'a nested nullable shape' => ['owner_snapshot', '{ a: { b: number } | null } | null'],
+]);
+
+test('a cast sends a NULL column as null only when it is a database type, a primitive or an enum', function (?string $cast, bool $expected) {
+    expect(ModelAttributeResolver::sendsNullAsIs($cast))->toBe($expected);
+})->with([
+    'no cast' => [null, true],
+    'an empty cast' => ['', true],
+    'array' => ['array', true],
+    'collection' => ['collection', true],
+    'a dated cast' => ['date:Y-m-d', true],
+    'a decimal cast' => ['decimal:2', true],
+    'an enum' => [Status::class, true],
+    'an attribute accessor' => ['attribute', false],
+    'a plain accessor' => ['accessor', false],
+    'AsCollection' => [AsCollection::class, false],
+    'AsEnumCollection' => [AsEnumCollection::class.':'.Status::class, false],
+    'a CastsAttributes class' => [ConsignmentLegsCast::class, false],
+]);
+
+test('a nullable column keeps its own null beside a nested null on a primitive cast, never on a class cast', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(NestedNullShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'a primitive cast' => ['owner_snapshot', '{ a: number | null } | null'],
+    'a class cast that never returns null' => ['meta_info', '{ a: number | null }'],
+]);
+
+test('a @property tag naming a @phpstan-type alias whole, inside a list or inside a shape types its column', function (string $column, string $type) {
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(TypeAliasShapeModel::class, $column)['type'])->toBe($type);
+})->with([
+    'the alias whole' => ['owner_snapshot', '{ a: number } | null'],
+    'the alias inside a list' => ['tags', '{ a: number }[] | null'],
+    'the alias inside a shape' => ['meta_info', '{ row: { a: number } } | null'],
+]);
 
 test('an AsArrayObject cast resolves to the array-or-record union', function () {
     $resolver = resolve(ModelAttributeResolver::class);
@@ -1103,5 +1248,203 @@ describe('a morphTo docblock that names a class_alias', function () {
 
         expect($result['morphFqcns'])->toBe([Facility::class])
             ->and($result['type'])->toBe('Facility | null');
+    });
+});
+
+// One rule decides whether a relation can load as null: the one resolveRelation() types its `| null` arm with.
+describe('relationLoadsNull()', function () {
+    it('tells whether a relation can be loaded as null', function (string $model, string $relation, ?bool $expected) {
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull($model, $relation))->toBe($expected);
+    })->with([
+        'a BelongsTo whose foreign key is nullable' => [Category::class, 'parent', true],
+        'a BelongsTo whose foreign key is required' => [Comment::class, 'user', false],
+        'a HasOne' => [User::class, 'profile', true],
+        'a nullable MorphTo' => [Image::class, 'reviewable', true],
+        'a required MorphTo' => [Image::class, 'imageable', false],
+        'a HasMany' => [User::class, 'posts', false],
+        'a relation the model does not declare' => [User::class, 'featuredPosts', null],
+    ]);
+
+    it('answers false for every relation while nullable_relations is off', function () {
+        config()->set('ts-publish.models.nullable_relations', false);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(Category::class, 'parent'))->toBeFalse()
+            ->and(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'featuredPosts'))->toBeFalse();
+    });
+
+    // A loaded to-many relation is a collection, so a nullability map that calls it nullable cannot make it load null.
+    it('answers false for a to-many relation its strategy calls nullable', function () {
+        config()->set('ts-publish.models.relation_nullability_map', [HasMany::class => 'nullable']);
+
+        expect(resolve(ModelAttributeResolver::class)->relationLoadsNull(User::class, 'posts'))->toBeFalse();
+    });
+});
+
+// pdo_mysql and pdo_pgsql return a DECIMAL column as a string and pdo_sqlite as a number; an integer column stays put.
+it('types an uncast decimal column as the connection\'s driver returns it', function (string $driver, string $decimal) {
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver($driver));
+    $resolver = resolve(ModelAttributeResolver::class);
+
+    expect($resolver->resolveAttribute(UncastDecimalOrderItem::class, 'unit_price')['type'])->toBe($decimal)
+        ->and($resolver->resolveAttribute(UncastDecimalOrderItem::class, 'quantity')['type'])->toBe('number');
+})->with([
+    'sqlite' => ['sqlite', 'number'],
+    'mysql' => ['mysql', 'string'],
+    'mariadb' => ['mariadb', 'string'],
+    'pgsql' => ['pgsql', 'string'],
+    'sqlsrv, which proves no type' => ['sqlsrv', 'number'],
+]);
+
+// Only a `number` moves: a date column, which every driver returns as text, keeps the Date timestamps_as_date gives it.
+it('moves only a number column to the string its driver returns', function () {
+    config()->set('ts-publish.timestamps_as_date', true);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UncastDecimalOrderItem::class, 'created_at')['type'])
+        ->toBe('Date | null');
+});
+
+// A user's entry wins over the driver as it does over the built-in map; SQLite's schema reports the column `numeric`.
+it('keeps a custom_ts_mappings entry for an uncast column\'s type over the driver', function () {
+    config()->set('ts-publish.custom_ts_mappings', ['numeric' => 'number']);
+    app()->instance(ModelAttributeResolver::class, new DriverOverrideModelAttributeResolver('mysql'));
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(UncastDecimalOrderItem::class, 'unit_price')['type'])
+        ->toBe('number');
+});
+
+describe('keyTsType()', function () {
+    test('reads the key type an abstract model declares, without instantiating it', function (string $model, string $type) {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBe($type);
+    })->with([
+        'Model\'s own `id` and `int`' => [AbstractKeyedModel::class, 'number'],
+        '$keyType' => [AbstractStringKeyModel::class, 'string'],
+        'HasUuids' => [AbstractUuidKeyModel::class, 'string'],
+        'HasUlids' => [AbstractUlidKeyModel::class, 'string'],
+        'a null $primaryKey' => [AbstractNullKeyModel::class, 'null'],
+        'a uniqueIds() list leaving the key out' => [AbstractUniqueIdsKeyModel::class, 'number'],
+        'a uniqueIds() list naming the key' => [AbstractUniqueKeyListedModel::class, 'string'],
+    ]);
+
+    test('reads an abstract model\'s #[Table] key type, which Laravel applies to every subclass', function (string $model) {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBe('string');
+    })->with([
+        'on the model' => [AbstractTableKeyModel::class],
+        'on a trait it uses' => [AbstractTraitTableKeyModel::class],
+        'on its parent' => [AbstractInheritedTableKeyModel::class],
+    ])->skip(! class_exists('Illuminate\Database\Eloquent\Attributes\Table'), 'Table attribute requires Laravel 13+');
+
+    // HasUniqueStringIds::getKeyType() runs the override on an instance, so a concrete model's key was always read.
+    test('reads a concrete model\'s uniqueIds() override through its instance', function () {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(UniqueIdsKeyPost::class))->toBe('number');
+    });
+
+    test('declines Model itself, and an abstract model whose key code decides', function (string $model) {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType($model))->toBeNull();
+    })->with([
+        'Model' => [Model::class],
+        'getKeyType() override' => [AbstractKeyTypeOverrideModel::class],
+        'getKeyName() override' => [AbstractKeyNameOverrideModel::class],
+        'a uniqueIds() override with no literal list' => [AbstractComputedUniqueIdsModel::class],
+        'a constructor naming the key' => [AbstractConstructorKeyModel::class],
+    ]);
+
+    test('declines an abstract model whose #[Initialize] method names the key', function () {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(AbstractInitializeKeyModel::class))->toBeNull();
+    })->skip(! class_exists('Illuminate\\Database\\Eloquent\\Attributes\\Initialize'), 'Initialize attribute requires Laravel 12.22+');
+
+    test('declines an abstract model whose constructor has no source on disk to read', function () {
+        eval('abstract class EvalKeyModel extends \Illuminate\Database\Eloquent\Model { public function __construct(array $a = []) { parent::__construct($a); } }');
+
+        expect(resolve(ModelAttributeResolver::class)->keyTsType('EvalKeyModel'))->toBeNull();
+    });
+
+    test('publishes null for a model with no primary key, whose getKey() is always null', function () {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(NullKeyPost::class))->toBe('null');
+    });
+
+    test('reads the key of a concrete model whose table cannot be read from an instance built without it', function () {
+        $resolver = resolve(ModelAttributeResolver::class);
+
+        expect($resolver->getInstance(OfflineKeyUser::class))->toBeNull()
+            ->and($resolver->keyTsType(OfflineKeyUser::class))->toBe('number')
+            ->and($resolver->keyTsType(OfflineConstructorKeyUser::class))->toBe('string');
+    });
+
+    test('reads the declared key of a model whose constructor throws', function () {
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(UnconstructableModel::class))->toBe('number');
+    });
+
+    test('unions an abstract model\'s key type with each published concrete subclass\'s', function (?array $published, ?string $type) {
+        if ($published !== null) {
+            PublishedModelRegistry::register([...$published, Post::class]);
+        }
+
+        expect(resolve(ModelAttributeResolver::class)->keyTsType(AbstractKeyedModel::class))->toBe($type);
+    })->with([
+        'no published set to read' => [null, 'number'],
+        'every subclass agrees' => [[IntKeyedModel::class], 'number'],
+        'a subclass keys by UUID' => [[IntKeyedModel::class, UuidKeyedModel::class], 'number | string'],
+        'a subclass overrides getKey()' => [[IntKeyedModel::class, KeyOverrideKeyedModel::class], null],
+    ]);
+
+    test('records every published model while reading an abstract model\'s subclasses, as any may become one', function () {
+        PublishedModelRegistry::register([IntKeyedModel::class, UuidKeyedModel::class, Post::class]);
+        DependencyRecorder::start();
+        resolve(ModelAttributeResolver::class)->keyTsType(AbstractKeyedModel::class);
+        $paths = DependencyRecorder::paths();
+        DependencyRecorder::stop();
+
+        expect($paths)->toContain((string) new ReflectionClass(UuidKeyedModel::class)->getFileName())
+            ->toContain((string) new ReflectionClass(Post::class)->getFileName());
+    });
+});
+
+describe('authIdentifierTsType()', function () {
+    test('reads the type of the column Authenticatable::getAuthIdentifier() returns', function (string $model, string $type) {
+        expect(resolve(ModelAttributeResolver::class)->authIdentifierTsType($model))->toBe($type);
+    })->with([
+        'the key, by default' => [User::class, 'number'],
+        'a literal getAuthIdentifierName() column' => [EmailIdentifierUser::class, 'string'],
+    ]);
+
+    // The auth result carries no import, so a column whose type names an enum or a class cannot be spelled there.
+    test('declines where code computes the identifier or its column, or the column\'s type needs an import', function (string $model) {
+        expect(resolve(ModelAttributeResolver::class)->authIdentifierTsType($model))->toBeNull();
+    })->with([
+        'a computed identifier' => [ComputedIdentifierUser::class],
+        'a configured identifier column' => [ConfiguredIdentifierUser::class],
+        'an enum-cast identifier column' => [EnumIdentifierUser::class],
+    ]);
+});
+
+describe('ModelAttributeResolver::inspect()', function () {
+    // The morph map reads every model's context before the model publisher reads the same inspection.
+    test('a model is inspected once a run, by the context and by the model publisher alike', function () {
+        $inspector = new class(app()) extends ModelInspector
+        {
+            public int $reads = 0;
+
+            public function inspect($model, $connection = null): Arrayable
+            {
+                $this->reads++;
+
+                return parent::inspect($model, $connection);
+            }
+        };
+        app()->instance(ModelInspector::class, $inspector);
+
+        $resolver = resolve(ModelAttributeResolver::class);
+        $resolver->getAttributes(Post::class);
+        $inspection = $resolver->inspect(Post::class);
+        $published = new ModelTransformer(Post::class);
+
+        expect($inspector->reads)->toBe(1)
+            ->and($published->modelInspect)->toBe($inspection);
+
+        $resolver->reset();
+        $resolver->inspect(Post::class);
+
+        expect($inspector->reads)->toBe(2);
     });
 });

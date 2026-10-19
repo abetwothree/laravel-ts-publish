@@ -14,11 +14,9 @@ export interface HandoverSummaryResource
     receiver_id: number | null;
     created_at: string | null;
     updated_at: string | null;
-    party: WorkbenchUser | CrmUser | null;
     parties: { first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null };
-    audience: WorkbenchUser[] | CrmUser[];
-    sender: WorkbenchUser | null;
-    receiver: CrmUser | null;
-    watchers: WorkbenchUser[];
-    crmWatchers: CrmUser[];
+    sender?: WorkbenchUser | null;
+    receiver?: CrmUser | null;
+    watchers?: WorkbenchUser[];
+    crm_watchers?: CrmUser[];
 }

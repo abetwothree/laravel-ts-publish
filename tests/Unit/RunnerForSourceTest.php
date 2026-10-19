@@ -18,10 +18,10 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Runners\RunnerForSource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\CountingTsTypeString;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\FacilityRoster;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RecordingModelAttributeResolver;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\RosterEntry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\FacilityRoster;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\RosterEntry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 
@@ -48,6 +48,15 @@ test('generates single enum from FQCN', function () {
         ->and($runner->enumGenerators->first())->toBeInstanceOf(EnumGenerator::class)
         ->and($runner->enumGenerators->first()->transformer->enumName)->toBe('Status')
         ->and($runner->modelGenerators)->toHaveCount(0);
+});
+
+test('never warns of an enum method value\'s keys, since an EnumResource response keeps them', function () {
+    (new RunnerForSource('Workbench\App\Enums\Priority'))->run();
+
+    expect(array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'EnumResource response re-indexes'),
+    ))->toBe([]);
 });
 
 test('generates single model from FQCN', function () {
@@ -280,7 +289,7 @@ test('throws when broadcast event publishing is disabled', function () {
 })->throws(InvalidArgumentException::class, 'broadcast events are disabled');
 
 test('a --source run clears a full run\'s stale registry instead of narrowing against it', function () {
-    config()->set('ts-publish.resources.excluded', [UserResource::class]);
+    config()->set('ts-publish.resources.excluded', [...config()->array('ts-publish.resources.excluded'), UserResource::class]);
 
     $fullRunner = new Runner;
     $fullRunner->run();
@@ -293,7 +302,7 @@ test('a --source run clears a full run\'s stale registry instead of narrowing ag
     expect($sourceRunner->resourceGenerators->first())->toBeInstanceOf(ResourceGenerator::class);
 
     expect($sourceRunner->resourceGenerators->first()->content)
-        ->toContain('owner_via_closure?: UserResource;')
+        ->toContain('owner_via_closure?: UserResource | null;')
         ->not->toContain('owner_via_closure?: unknown;');
 });
 
@@ -423,11 +432,12 @@ test('a --source run publishes a model on a database view when a collected model
         ->and($runner->modelGenerators->first()->content)->toContain('entries: RosterEntry[];');
 });
 
-test('a --source run starts with an empty analysis memo, pinned answers included', function () {
+test('a --source run starts with an empty analysis memo', function () {
     $memo = resolve(AnalysisMemo::class);
-    $memo->remember('an-earlier-run', fn (): string => 'stale', pin: true);
+    $memo->remember('an-earlier-run', fn (): string => 'stale');
 
     (new RunnerForSource('Workbench\\App\\Enums\\Status'))->run();
 
-    expect($memo->remember('an-earlier-run', fn (): string => 'fresh', pin: true))->toBe('fresh');
+    // The registry versions alone reject a stale answer, so only a dropped entry proves reset().
+    expect((fn (): array => $this->entries)->call($memo))->not->toHaveKey('an-earlier-run');
 });

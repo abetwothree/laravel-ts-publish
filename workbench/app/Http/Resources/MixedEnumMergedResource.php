@@ -32,7 +32,7 @@ class MixedEnumMergedResource extends JsonResource
                     ? EnumResource::collection($this->status_history)
                     : $this->latest_status,
             ]),
-            // ResourceAstAnalyzer::collectVariableArrayAssignments(), reached through a spread
+            // ReadsReturnedVariables::collectVariableArrayAssignments(), reached through a spread
             // method that builds its array in a local variable and assigns keys onto it.
             ...$this->assignedMixed($request),
         ];
