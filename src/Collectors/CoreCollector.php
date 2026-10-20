@@ -127,6 +127,15 @@ abstract class CoreCollector
     }
 
     /**
+     * @param  array<mixed>  $setting
+     * @return list<string>
+     */
+    protected function sanitizeAllowSetting(array $setting): array
+    {
+        return array_values(array_filter($setting, 'is_string'));
+    }
+
+    /**
      * Class map for one directory, scanned once per process.
      *
      * @return array<class-string, string>
@@ -185,14 +194,5 @@ abstract class CoreCollector
             })
             ->values()
             ->all();
-    }
-
-    /**
-     * @param  array<mixed>  $setting
-     * @return list<string>
-     */
-    protected function sanitizeAllowSetting(array $setting): array
-    {
-        return array_values(array_filter($setting, 'is_string'));
     }
 }

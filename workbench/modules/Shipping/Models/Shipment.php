@@ -24,6 +24,16 @@ class Shipment extends Model
         'delivered_at',
     ];
 
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function trackingEvents(): HasMany
+    {
+        return $this->hasMany(TrackingEvent::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -34,15 +44,5 @@ class Shipment extends Model
             'shipped_at' => 'datetime',
             'delivered_at' => 'datetime',
         ];
-    }
-
-    public function order(): BelongsTo
-    {
-        return $this->belongsTo(Order::class);
-    }
-
-    public function trackingEvents(): HasMany
-    {
-        return $this->hasMany(TrackingEvent::class);
     }
 }

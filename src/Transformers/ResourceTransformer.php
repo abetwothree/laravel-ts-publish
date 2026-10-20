@@ -83,6 +83,12 @@ class ResourceTransformer extends CoreTransformer
     /** @var ValuesImportMap */
     public protected(set) array $valueImports = [];
 
+    /** @var list<string> TypeScript extends clauses */
+    public protected(set) array $tsExtends = [];
+
+    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
+    public protected(set) ?string $typeAlias = null;
+
     /** @var array<array-key, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
 
@@ -171,12 +177,6 @@ class ResourceTransformer extends CoreTransformer
     /** @var array<array-key, bool> property name => optional flag from model's #[TsCasts] */
     protected array $modelTsCastsOptionalOverrides = [];
 
-    /** @var list<string> TypeScript extends clauses */
-    public protected(set) array $tsExtends = [];
-
-    /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
-    public protected(set) ?string $typeAlias = null;
-
     #[Override]
     public function transform(): self
     {
@@ -223,6 +223,71 @@ class ResourceTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->resourceName);
+    }
+
+    /**
+     * Build a map of per-file enum const aliases to namespace-qualified type names, walking
+     * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
+     * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
+     *
+     * @return array<string, string> constAlias => 'namespace.TypeName'
+     */
+    public function globalEnumConstMap(): array
+    {
+        $map = [];
+
+        foreach ($this->enumPropertyFqcns() as $fqcn) {
+            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
+
+            // rewriteEnumResourceTypes() may have cleared enumFqcnMap; enumConstMap is never cleared.
+            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
+
+            if ($constAlias === null || $originalConstName === null) {
+                continue; // @codeCoverageIgnore
+            }
+
+            $typeName = $originalConstName.'Type';
+            $ns = TsNaming::globalNamespace($fqcn);
+
+            $map[$constAlias] = $ns.'.'.$typeName;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->resourceFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Map every type name this resource's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
     }
 
     protected function initReflection(): self
@@ -1286,71 +1351,6 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $merged;
-    }
-
-    /**
-     * Build a map of per-file enum const aliases to namespace-qualified type names, walking
-     * enumPropertyFqcns() so an inline-only EnumResource FQCN qualifies too, not just top-level
-     * and multi ones — otherwise its bare AsEnum<typeof X> leaks into declare global {}.
-     *
-     * @return array<string, string> constAlias => 'namespace.TypeName'
-     */
-    public function globalEnumConstMap(): array
-    {
-        $map = [];
-
-        foreach ($this->enumPropertyFqcns() as $fqcn) {
-            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
-
-            // rewriteEnumResourceTypes() may have cleared enumFqcnMap; enumConstMap is never cleared.
-            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
-
-            if ($constAlias === null || $originalConstName === null) {
-                continue; // @codeCoverageIgnore
-            }
-
-            $typeName = $originalConstName.'Type';
-            $ns = TsNaming::globalNamespace($fqcn);
-
-            $map[$constAlias] = $ns.'.'.$typeName;
-        }
-
-        return $map;
-    }
-
-    /**
-     * Build a map of per-file import aliases → namespace-qualified global names.
-     *
-     * @return array<string, string> alias => 'namespace.OriginalName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->resourceFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->resourceFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type name this resource's file imports, as the file spells it, to its globally-qualified name.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->resourceFqcnMap, $this->modelFqcnMap);
     }
 
     /** @return list<string> */

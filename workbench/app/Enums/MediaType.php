@@ -18,6 +18,18 @@ enum MediaType: string
     case Document = 'document';
     case Archive = 'archive';
 
+    #[TsEnumStaticMethod(description: 'Get the MIME type prefixes')]
+    public static function mimePrefixes(): array
+    {
+        return [
+            'image' => 'image/',
+            'video' => 'video/',
+            'audio' => 'audio/',
+            'document' => 'application/',
+            'archive' => 'application/',
+        ];
+    }
+
     #[TsEnumMethod(description: 'Allowed file extensions for this media type')]
     public function extensions(): array
     {
@@ -52,17 +64,5 @@ enum MediaType: string
             self::Document => 'document-text',
             self::Archive => 'archive-box',
         };
-    }
-
-    #[TsEnumStaticMethod(description: 'Get the MIME type prefixes')]
-    public static function mimePrefixes(): array
-    {
-        return [
-            'image' => 'image/',
-            'video' => 'video/',
-            'audio' => 'audio/',
-            'document' => 'application/',
-            'archive' => 'application/',
-        ];
     }
 }

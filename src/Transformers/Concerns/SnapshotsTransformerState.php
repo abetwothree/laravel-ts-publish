@@ -7,15 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 trait SnapshotsTransformerState
 {
     /**
-     * Property names that must NOT be serialized (Reflection handles, live
-     * Eloquent models, injected services). They are intermediates of the
-     * transform step and are never read by writers/aggregates.
-     *
-     * @return list<string>
-     */
-    abstract protected function transientProperties(): array;
-
-    /**
      * @return array<string, mixed>
      */
     public function __serialize(): array
@@ -40,4 +31,13 @@ trait SnapshotsTransformerState
             $this->{$name} = $value;
         }
     }
+
+    /**
+     * Property names that must NOT be serialized (Reflection handles, live
+     * Eloquent models, injected services). They are intermediates of the
+     * transform step and are never read by writers/aggregates.
+     *
+     * @return list<string>
+     */
+    abstract protected function transientProperties(): array;
 }

@@ -186,97 +186,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The runtime class: the class `$this` is when the body runs, whose collects(), `$wrap` and keys every ancestor
-     * body it runs reads. The subject, unless this analyzer reads an ancestor's body for a subclass.
-     *
-     * @return ReflectionClass<object>
-     */
-    private function runtimeClass(): ReflectionClass
-    {
-        return $this->runtimeClass ?? $this->scope->subjectReflection;
-    }
-
-    /**
-     * Locate the subject's own declaration of the analyzed method, a trait's included.
-     *
-     * A body in a trait's file reads its `@var` tags against that file's imports, as a spread helper's does.
-     */
-    private function locateSubjectMethod(): ?MethodContext
-    {
-        $subject = $this->scope->subjectReflection;
-        $context = resolve(MethodLocator::class)->locateDeclared($subject->getName(), $this->methodName);
-
-        if ($context === null) {
-            return null;
-        }
-
-        $method = $subject->getMethod($this->methodName);
-
-        if ($method->getFileName() !== $subject->getFileName()) {
-            $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
-        }
-
-        return $context;
-    }
-
-    /**
-     * Whether this analysis reads a collection's toArray(), and the subject's toArray() sends the collected list.
-     */
-    private function toArraySendsCollectedList(): bool
-    {
-        return $this->readsCollectionToArray()
-            && resolve(ResourceCollectionBody::class)->sendsCollectedList($this->scope->subjectReflection);
-    }
-
-    /**
-     * Whether this analysis reads a collection's toArray() and the body returns its collected list whole.
-     */
-    private function toArrayReturnsCollectedList(Expr $returned): bool
-    {
-        return $this->readsCollectionToArray()
-            && resolve(ResourceCollectionBody::class)->returnsCollectedList($returned, $this->scope->subjectReflection);
-    }
-
-    /**
-     * Whether the analyzed method is a resource collection's toArray(), the one whose collected list Laravel wraps.
-     */
-    private function readsCollectionToArray(): bool
-    {
-        return $this->methodName === 'toArray' && $this->isResourceCollection($this->scope);
-    }
-
-    /**
-     * Whether this analysis reads the response of a plain resource that runs as itself and overrides toAttributes(),
-     * which resolve() sends in toArray()'s place once JsonResource declares it; a collection's items are no attributes,
-     * and a call to toArray() returns its own body.
-     */
-    private function sendsOwnToAttributes(): bool
-    {
-        $runtime = $this->runtimeClass();
-
-        return $this->methodName === 'toArray'
-            && $this->context === null
-            && ! $this->readsCall
-            && $runtime->getName() === $this->scope->subjectReflection->getName()
-            && JsonApiResources::shipped()
-            && $runtime->isSubclassOf(JsonResource::class)
-            && ! JsonApiResources::declaredByFramework($runtime->getMethod('toAttributes')->getDeclaringClass()->getName())
-            && ! $this->isResourceCollection($this->scope);
-    }
-
-    /**
-     * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
-     * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
-     *
-     * @param  class-string  $className
-     * @return ReflectionClass<object>
-     */
-    private static function genericReflection(string $className): ReflectionClass
-    {
-        return new ReflectionClass($className);
-    }
-
-    /**
      * Rewrite each property type to the list a resource sends a numeric-keyed array as, unless the resource preserves
      * keys; a key a method cast types keeps the cast's text, and a value the filter never enters keeps its keys.
      *
@@ -405,29 +314,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Lay the analyzed method's own `@return` shape and `#[TsCasts]` over what its body returns.
-     */
-    private function ownMethodShaped(ResourceAnalysis $analysis): ResourceAnalysis
-    {
-        if (! $this->scope->subjectReflection->hasMethod($this->methodName)) {
-            return $analysis;
-        }
-
-        $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
-
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
-
-        // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
-        if (! $this->isInertiaShare($ownMethod)) {
-            $this->applyTsCastsFromMethod($ownMethod, $analysis);
-        }
-
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
-
-        return $analysis;
-    }
-
-    /**
      * Resolve a single expression to its TypeScript type. ExpressionEngine entry point for handlers.
      *
      * @return ValueExpressionResult
@@ -464,6 +350,106 @@ class ResourceAstAnalyzer implements ExpressionEngine
         return $this->invokingProfile ??= array_any(
             $this->handlers(),
             fn (ExpressionHandler $handler): bool => $handler instanceof FirstClassCallableHandler && $handler->invokesCallables(),
+        );
+    }
+
+    /**
+     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, a
+     * cast survives only where every branch setting its key casts it alike, and flatTypeAlias is the first non-null.
+     *
+     * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
+     * only a merge call keeps the `null` left alone ($keepsLoneNull).
+     *
+     * @param  list<ResourceAnalysis>  $analyses
+     */
+    public function mergeReturnBranches(
+        array $analyses,
+        bool $dropsUntypedBranches = false,
+        bool $keepsLoneNull = false,
+    ): ResourceAnalysis {
+        $branchCount = count($analyses);
+
+        /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
+        $propertyMap = [];
+
+        // Only the channels collapse onto merge(): a property name several branches set has to be
+        // union-typed from $propertyMap below, which a field-by-field merge cannot express.
+        $channels = new ResourceAnalysis;
+        $flatTypeAlias = null;
+        $flatTypeAliasFqcn = null;
+
+        foreach ($analyses as $analysis) {
+            foreach ($analysis->properties as $prop) {
+                $propertyMap[$prop['name']][] = $prop;
+            }
+
+            $channels->merge($analysis);
+            $channels->properties = [];
+
+            $flatTypeAlias ??= $analysis->flatTypeAlias;
+            $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
+        }
+
+        /** @var AnalyzedPropertyList */
+        $properties = [];
+
+        foreach ($propertyMap as $name => $entries) {
+            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
+            $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
+            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
+            // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
+            // type is a fill, and a reconcile that puts it back must find it again.
+            $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
+            $fillType = array_column($entries, 'fillType') === []
+                ? null
+                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
+
+            $presentInAll = count($entries) === $branchCount;
+            $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
+            $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
+            // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
+            // error — regardless of whether every branch produced it.
+            $optional = ! JsEmitter::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
+
+            // Use the first non-empty description found
+            $description = '';
+
+            foreach ($entries as $entry) {
+                if ($entry['description'] !== '') { // @codeCoverageIgnoreStart
+                    $description = $entry['description'];
+
+                    break; // @codeCoverageIgnoreEnd
+                }
+            }
+
+            $properties[] = [
+                'name' => (string) $name,
+                'type' => $type,
+                'optional' => $optional,
+                'description' => $description,
+                ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
+                ...($fillType === null ? [] : ['fillType' => $fillType]),
+                ...($keepsKeys ? ['keepsKeys' => true] : []),
+            ];
+        }
+
+        return new ResourceAnalysis(
+            properties: $properties,
+            enumResources: $channels->enumResources,
+            nestedResources: $channels->nestedResources,
+            customImports: $channels->customImports,
+            directEnumFqcns: $channels->directEnumFqcns,
+            modelFqcns: $channels->modelFqcns,
+            inlineEnumFqcns: $channels->inlineEnumFqcns,
+            inlineModelFqcns: $channels->inlineModelFqcns,
+            inlineResourceFqcns: $channels->inlineResourceFqcns,
+            multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
+            inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
+            enumResourceArmShapes: $channels->enumResourceArmShapes,
+            casts: $this->castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
+            carried: $channels->carried,
+            flatTypeAlias: $flatTypeAlias,
+            flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
     }
 
@@ -640,6 +626,636 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $analysis = $this->analyzeReturnArrayItems($array, $topLevel, $readsAttributeNames);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
+        }
+
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * Analyze an `array_merge(...)` returned directly or through a variable, as the array-literal it is equivalent to.
+     *
+     * Declines the whole call when an argument is neither a literal nor `parent::{$this->methodName}()`.
+     */
+    protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
+    {
+        $merged = $this->mergedArrayLiteral($call, $this->scope->subjectReflection, $this->methodName);
+
+        return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
+    }
+
+    /**
+     * The ordered handler chain: the injected profile when one was supplied, else the subject's own, which
+     * ResourceExpressionHandlers::forSubject() picks — see that class for the lists and their ordering contract.
+     *
+     * @return list<ExpressionHandler>
+     */
+    protected function handlers(): array
+    {
+        return $this->handlerProfile
+            ?? ResourceExpressionHandlers::forSubject($this->scope->subjectReflection->getName(), $this);
+    }
+
+    /**
+     * Lazily build the dispatcher once per instance — a per-call rebuild would defeat its memo.
+     */
+    protected function dispatcher(): ExpressionDispatcher
+    {
+        return $this->dispatcher ??= new ExpressionDispatcher($this->handlers());
+    }
+
+    /**
+     * Analyze a value expression and return its type + optional status.
+     *
+     * @return ValueExpressionResult
+     */
+    protected function analyzeValueExpression(Expr $expr): array
+    {
+        $lenientReads = $this->lenientReads;
+        $result = $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+
+        // A value read partly types its own key and hides none, so it never makes a variable unreadable.
+        $this->lenientReads = $lenientReads;
+
+        return $result;
+    }
+
+    /**
+     * Analyze $this->merge(...), mergeWhen(...) or mergeUnless(...) with each array the call can merge as a branch.
+     *
+     * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
+     * some branches set publishes optional, and a key every branch sets is required. Their types union as a ternary's
+     * arms do, leaving out a side the engine cannot type.
+     */
+    protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
+    {
+        $isMerge = $this->isThisMethodCall($call, 'merge');
+        $isMergeWhen = $this->isThisMethodCall($call, 'mergeWhen');
+        $isMergeUnless = $this->isThisMethodCall($call, 'mergeUnless');
+
+        if (! $isMerge && ! $isMergeWhen && ! $isMergeUnless) {
+            return new ResourceAnalysis;
+        }
+
+        if ($call->isFirstClassCallable()) {
+            return new ResourceAnalysis; // @codeCoverageIgnore
+        }
+
+        $method = $isMerge ? 'merge' : ($isMergeWhen ? 'mergeWhen' : 'mergeUnless');
+        $args = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method));
+        $value = $args->named('value');
+
+        if ($value === null) {
+            return new ResourceAnalysis;
+        }
+
+        // mergeWhen() merges its value only where the condition holds, and mergeUnless() only where it fails.
+        $condition = $args->named('condition')?->value;
+        $branches = $this->resolveProvenNonNull(
+            $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
+            $this->scope,
+            fn (): array => $this->resolveMergedBranches($value->value),
+        );
+
+        if (! $isMerge) {
+            $default = $args->named('default')?->value;
+
+            // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
+            $defaultBranches = $default === null || $this->closureRequiresArguments($default)
+                ? []
+                : $this->resolveMergedBranches($default);
+
+            // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
+            $branches = [
+                ...($branches === [] ? [new ResourceAnalysis] : $branches),
+                ...($defaultBranches === [] ? [new ResourceAnalysis] : $defaultBranches),
+            ];
+        }
+
+        return match (count($branches)) {
+            0 => new ResourceAnalysis,
+            1 => $branches[0],
+            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
+        };
+    }
+
+    /**
+     * The arrays a merge argument can merge, one analysis each: a literal, a value, or each array a closure returns.
+     *
+     * mergedValueAnalysis() reads a value; an argument the analysis cannot read counts as a lenient read.
+     *
+     * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
+     */
+    protected function resolveMergedBranches(Expr $expr): array
+    {
+        if ($expr instanceof Array_) {
+            return [$this->mergedArrayAnalysis($expr)];
+        }
+
+        // Laravel merges value($value), so a value passed as it is merges as a closure returning it would.
+        if (! $expr instanceof ClosureExpr && ! $expr instanceof ArrowFunction) {
+            $branch = $this->mergedValueBranch($expr);
+
+            if ($branch === null) {
+                $this->lenientReads++;
+            }
+
+            return $branch === null ? [] : [$branch];
+        }
+
+        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
+        $previousNameBindings = $this->scope->nameBindings();
+
+        try {
+            $this->scope->claimParameters($expr);
+            $this->scope->bindUnpassedParameters($expr, 0, $this);
+            $this->proveClosureGuards($expr, $this->scope);
+
+            return $this->closureReturnBranches($expr);
+        } finally {
+            $this->scope->restoreNameBindings($previousNameBindings);
+        }
+    }
+
+    /**
+     * Resolve and analyze what the parent class's declaration of a method hands a `parent::` call to it.
+     *
+     * A whole read is the method's own return, which takes the collected list flat; a spread or variable builds on it.
+     */
+    protected function analyzeParentCall(string $method, bool $whole = false): ?ResourceAnalysis
+    {
+        $parentClass = $this->scope->subjectReflection->getParentClass();
+
+        if ($parentClass === false) {
+            return null;
+        }
+
+        if (in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($parentClass, $method)) {
+            return $this->frameworkMethodAnalysis($method, $whole);
+        }
+
+        if ($parentClass->getName() === JsonResource::class) {
+            return $method === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
+        }
+
+        // Read before a parent analyzer is built, which would answer the collected list's response instead.
+        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection)) {
+            return $this->collectedListAnalysis();
+        }
+
+        return $this->nestedAnalysis($parentClass, $method, $whole);
+    }
+
+    /**
+     * The method a `parent::` call names when the analyzer reads it: the analyzed method itself, or, in an API
+     * resource, one of FRAMEWORK_READS.
+     */
+    protected function readParentCall(Expr $expr): ?string
+    {
+        if (! $expr instanceof StaticCall || ! $expr->name instanceof Identifier || ! $this->isParentCallTo($expr)) {
+            return null;
+        }
+
+        $method = $expr->name->toString();
+        $readsFramework = in_array($method, self::FRAMEWORK_READS, true)
+            && $this->runtimeClass()->isSubclassOf(JsonResource::class);
+
+        return $method === $this->methodName || $readsFramework ? $method : null;
+    }
+
+    /**
+     * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
+     * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. The
+     * caller's state it sets aside is restored in a `finally`.
+     */
+    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
+    {
+        if (! $this->scope->subjectReflection->hasMethod($methodName)) {
+            return null; // @codeCoverageIgnore
+        }
+
+        if (isset($this->scope->visitedSpreadMethods[$methodName])) {
+            return null;
+        }
+
+        if ($this->thisRunsFrameworkBody($methodName)) {
+            return $this->frameworkMethodAnalysis($methodName);
+        }
+
+        $method = $this->scope->subjectReflection->getMethod($methodName);
+        $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
+        $targetMethod = $context?->method;
+
+        if ($targetMethod === null || $targetMethod->stmts === null) {
+            return null;
+        }
+
+        // Read in the caller's tables, before they are set aside.
+        $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
+        $caller = $this->scope->enterSubjectMethod(
+            $methodName,
+            LaravelTsPublish::methodDeclaringFileClass($method),
+            $this->proofsAcrossCall($this->scope, $call),
+        );
+
+        $readsAttributeNames = $this->readsKeylessAttributeNames;
+
+        try {
+            $this->seedVarBindings($method, $targetMethod->stmts, $passed);
+
+            // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
+            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
+            $branches = [];
+
+            foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
+                $branches[] = match (true) {
+                    $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
+                    $returned instanceof Array_ => $this->analyzeReturnArray($returned, $topLevel),
+                    $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returned->name, $topLevel),
+                    default => null,
+                };
+            }
+
+            // Every branch classified: each is a shape the method can return, so a key missing from
+            // one publishes optional. Anything unclassifiable falls back to the first-return path.
+            $analysis = $branches !== [] && ! in_array(null, $branches, true)
+                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
+                : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
+        } finally {
+            $this->readsKeylessAttributeNames = $readsAttributeNames;
+            $this->scope->leaveSubjectMethod($methodName, $caller);
+        }
+
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
+        $this->applyTsCastsFromMethod($method, $analysis);
+
+        // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
+        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * The method's own first return, never a closure's: the fallback whenever the branch sweep above cannot classify
+     * every return a method makes, so it is always a lenient read.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function analyzeFirstReturn(array $stmts, bool $topLevel = true): ResourceAnalysis
+    {
+        $this->lenientReads++;
+
+        $returned = $this->collectReturnExpressions($stmts)[0] ?? null;
+
+        if ($returned instanceof Array_) {
+            $analysis = $this->analyzeReturnArray($returned, $topLevel);
+        } elseif ($returned instanceof Variable && is_string($returned->name)) {
+            $analysis = $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel);
+        } elseif ($returned instanceof MethodCall) {
+            $filtered = $this->analyzeThisAttributeFilter($returned);
+
+            if ($filtered !== null) {
+                $analysis = $filtered;
+            } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
+                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? new ResourceAnalysis;
+            } else {
+                $analysis = new ResourceAnalysis;
+            }
+        } else {
+            $analysis = new ResourceAnalysis;
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * Build a ResourceAnalysis for a ResourceCollection subclass whose toArray() sends its collected list, all of it
+     * the runtime class's: its collected element, its live wrap key and its keys.
+     *
+     * The wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the class
+     * preserves keys; with no key that same list is the flatTypeAlias directly. Raw items without an element are an
+     * `unknown` list.
+     */
+    protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
+    {
+        /** @var class-string<ResourceCollection> $runtimeName */
+        $runtimeName = $this->runtimeClass()->getName();
+        $wrapKey = ResourceWrapping::key($runtimeName);
+
+        if ($wrapKey === null) {
+            return $this->flatCollectedListAnalysis();
+        }
+
+        $list = $this->collectedListValue();
+        $analysis = new ResourceAnalysis;
+
+        if ($list !== null) {
+            $analysis->addProperty($wrapKey, $list);
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * Analyze all direct Return_ statements yielding an Array_ literal or a variable, merging multiple branches with
+     * union semantics: properties present in only some become optional.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function analyzeAllReturnBranches(array $stmts): ?ResourceAnalysis
+    {
+        /** @var list<Return_> $candidates */
+        $candidates = [];
+
+        $this->collectDirectReturns($stmts, $candidates);
+
+        // A variable the walk does not read completely is skipped like any other non-literal return, so its unread keys
+        // never turn a sibling's optional.
+        /** @var array<string, ResourceAnalysis|null> $variables */
+        $variables = [];
+        /** @var array<string, ResourceAnalysis> $partlyRead */
+        $partlyRead = [];
+
+        foreach ($candidates as $return) {
+            if ($return->expr instanceof Variable && is_string($return->expr->name)
+                && ! array_key_exists($return->expr->name, $variables)) {
+                $read = $this->readVariable($stmts, $return->expr->name);
+                $variables[$return->expr->name] = $read !== null && $read[1] ? $read[0] : null;
+
+                if ($read !== null && ! $read[1]) {
+                    $partlyRead[$return->expr->name] = $read[0];
+                }
+            }
+        }
+
+        $returns = count($this->collectReturnExpressions($stmts));
+        $literalHasItems = array_any(
+            $candidates,
+            fn (Return_ $return): bool => $return->expr instanceof Array_ && $return->expr->items !== [],
+        );
+        $variableHasItems = array_any(
+            $variables,
+            fn (?ResourceAnalysis $branch): bool => $branch !== null && $branch->properties !== [],
+        );
+
+        // With no key read completely and every return a literal or a variable, a skipped variable is read leniently
+        // instead, so a lone one still gets analyze()'s refiner and casts. A return of any other kind is read by the
+        // first-return fallback, as before.
+        $lenient = ! $literalHasItems && ! $variableHasItems && count($candidates) === $returns;
+
+        if ($lenient) {
+            foreach ($variables as $name => $branch) {
+                $variables[$name] = $branch ?? $this->resolveVariableReturnAnalysis($stmts, $name);
+            }
+        }
+
+        /** @var list<Array_|ResourceAnalysis> $branches */
+        $branches = [];
+        $taken = 0;
+
+        foreach ($candidates as $return) {
+            $expr = $return->expr;
+            $branch = match (true) {
+                $expr instanceof Array_ => $expr,
+                $expr instanceof Variable && is_string($expr->name) => $variables[$expr->name],
+                default => null,
+            };
+
+            if ($branch === null) {
+                continue;
+            }
+
+            $taken++;
+
+            if (! in_array($branch, $branches, true)) {
+                $branches[] = $branch;
+            }
+        }
+
+        // A `return []` guard is a branch like any other: the keys its siblings set are absent on that path, so they
+        // publish optional. Without a key read completely, only a lenient read of a variable keeps the sweep going.
+        $proceeds = $literalHasItems || $variableHasItems || ($lenient && $variables !== []);
+
+        // A return no branch stands for, or one the first-return fallback leaves beside the one it reads, is unread.
+        // The published shape stays, but a child that builds on it cannot trust its key set.
+        if ($proceeds ? $taken < $returns : $returns > 1) {
+            $this->lenientReads++;
+        }
+
+        if (! $proceeds) {
+            return null;
+        }
+
+        $analyses = array_map(fn (Array_|ResourceAnalysis $branch): ResourceAnalysis => match (true) {
+            $branch instanceof ResourceAnalysis => $branch,
+            $branch->items === [] => new ResourceAnalysis,
+            default => $this->analyzeReturnArray($branch),
+        }, $branches);
+
+        $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+
+        // A variable skipped only for a lenient read still returns on its path: a key no read branch sets may be there.
+        foreach ($partlyRead as $name => $branch) {
+            if ($variables[$name] === null) {
+                $this->addKeysOnlySkippedBranchSets($merged, $branch);
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Recursively collect Return_ statements with Array_ or Variable expressions from
+     * the given statements, descending into control-flow structures (if, foreach, etc.)
+     * but NOT into closures, arrow functions, or anonymous classes.
+     *
+     * @param  array<Node\Stmt|Node>  $stmts
+     * @param  list<Return_>  $candidates
+     */
+    protected function collectDirectReturns(array $stmts, array &$candidates): void
+    {
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof Return_ && ($stmt->expr instanceof Array_ || $stmt->expr instanceof Variable)) {
+                $candidates[] = $stmt;
+
+                continue;
+            }
+
+            if ($stmt instanceof If_) {
+                $this->collectDirectReturns($stmt->stmts, $candidates);
+
+                foreach ($stmt->elseifs as $elseif) {
+                    $this->collectDirectReturns($elseif->stmts, $candidates);
+                }
+
+                if ($stmt->else !== null) {
+                    $this->collectDirectReturns($stmt->else->stmts, $candidates);
+                }
+
+                continue;
+            }
+
+            if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_ || $stmt instanceof Do_) {
+                $this->collectDirectReturns($stmt->stmts, $candidates);
+            }
+
+            // Do NOT descend into closures, arrow functions, or anonymous classes
+        }
+    }
+
+    /**
+     * Extract an instanceof type hint from a guard clause in toArray(), positive or negated —
+     * e.g. `if (! $this->resource instanceof ClassName) { return []; }`.
+     *
+     * @return class-string|null
+     */
+    protected function resolveInstanceOfType(ClassMethod $method, NodeFinder $finder): ?string
+    {
+        /** @var list<If_> $ifNodes */
+        $ifNodes = $finder->find($method->stmts ?? [], function (Node $node): bool {
+            return $node instanceof If_;
+        });
+
+        foreach ($ifNodes as $ifNode) {
+            $cond = $ifNode->cond;
+
+            // Match: if (!$this->resource instanceof ClassName)
+            if ($cond instanceof BooleanNot && $cond->expr instanceof Instanceof_) {
+                $instanceOf = $cond->expr;
+            } elseif ($cond instanceof Instanceof_) {
+                // Match: if ($this->resource instanceof ClassName) — positive guard
+                $instanceOf = $cond;
+            } else {
+                continue;
+            }
+
+            if (! $this->isResourceFetch($instanceOf->expr)) {
+                continue; // @codeCoverageIgnore
+            }
+
+            if (! $instanceOf->class instanceof Name) {
+                continue; // @codeCoverageIgnore
+            }
+
+            // After NameResolver traversal, the class name is already a FQCN
+            $fqcn = $instanceOf->class->toString();
+
+            if (class_exists($fqcn) || enum_exists($fqcn)) {
+                return $fqcn;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * `ReflectionClass`'s template is invariant, so a caller's `ReflectionClass<JsonResource>` cannot
+     * be assigned into `AnalysisScope`'s `<object>` slot; re-reflecting by name erases the generic.
+     *
+     * @param  class-string  $className
+     * @return ReflectionClass<object>
+     */
+    private static function genericReflection(string $className): ReflectionClass
+    {
+        return new ReflectionClass($className);
+    }
+
+    /**
+     * The runtime class: the class `$this` is when the body runs, whose collects(), `$wrap` and keys every ancestor
+     * body it runs reads. The subject, unless this analyzer reads an ancestor's body for a subclass.
+     *
+     * @return ReflectionClass<object>
+     */
+    private function runtimeClass(): ReflectionClass
+    {
+        return $this->runtimeClass ?? $this->scope->subjectReflection;
+    }
+
+    /**
+     * Locate the subject's own declaration of the analyzed method, a trait's included.
+     *
+     * A body in a trait's file reads its `@var` tags against that file's imports, as a spread helper's does.
+     */
+    private function locateSubjectMethod(): ?MethodContext
+    {
+        $subject = $this->scope->subjectReflection;
+        $context = resolve(MethodLocator::class)->locateDeclared($subject->getName(), $this->methodName);
+
+        if ($context === null) {
+            return null;
+        }
+
+        $method = $subject->getMethod($this->methodName);
+
+        if ($method->getFileName() !== $subject->getFileName()) {
+            $this->scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        }
+
+        return $context;
+    }
+
+    /**
+     * Whether this analysis reads a collection's toArray(), and the subject's toArray() sends the collected list.
+     */
+    private function toArraySendsCollectedList(): bool
+    {
+        return $this->readsCollectionToArray()
+            && resolve(ResourceCollectionBody::class)->sendsCollectedList($this->scope->subjectReflection);
+    }
+
+    /**
+     * Whether this analysis reads a collection's toArray() and the body returns its collected list whole.
+     */
+    private function toArrayReturnsCollectedList(Expr $returned): bool
+    {
+        return $this->readsCollectionToArray()
+            && resolve(ResourceCollectionBody::class)->returnsCollectedList($returned, $this->scope->subjectReflection);
+    }
+
+    /**
+     * Whether the analyzed method is a resource collection's toArray(), the one whose collected list Laravel wraps.
+     */
+    private function readsCollectionToArray(): bool
+    {
+        return $this->methodName === 'toArray' && $this->isResourceCollection($this->scope);
+    }
+
+    /**
+     * Whether this analysis reads the response of a plain resource that runs as itself and overrides toAttributes(),
+     * which resolve() sends in toArray()'s place once JsonResource declares it; a collection's items are no attributes,
+     * and a call to toArray() returns its own body.
+     */
+    private function sendsOwnToAttributes(): bool
+    {
+        $runtime = $this->runtimeClass();
+
+        return $this->methodName === 'toArray'
+            && $this->context === null
+            && ! $this->readsCall
+            && $runtime->getName() === $this->scope->subjectReflection->getName()
+            && JsonApiResources::shipped()
+            && $runtime->isSubclassOf(JsonResource::class)
+            && ! JsonApiResources::declaredByFramework($runtime->getMethod('toAttributes')->getDeclaringClass()->getName())
+            && ! $this->isResourceCollection($this->scope);
+    }
+
+    /**
+     * Lay the analyzed method's own `@return` shape and `#[TsCasts]` over what its body returns.
+     */
+    private function ownMethodShaped(ResourceAnalysis $analysis): ResourceAnalysis
+    {
+        if (! $this->scope->subjectReflection->hasMethod($this->methodName)) {
+            return $analysis;
+        }
+
+        $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
+
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false);
+
+        // InertiaSharedDataAnalyzer lays this share()'s casts over the props itself, with the docblock and `?`.
+        if (! $this->isInertiaShare($ownMethod)) {
+            $this->applyTsCastsFromMethod($ownMethod, $analysis);
         }
 
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
@@ -1000,151 +1616,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze an `array_merge(...)` returned directly or through a variable, as the array-literal it is equivalent to.
-     *
-     * Declines the whole call when an argument is neither a literal nor `parent::{$this->methodName}()`.
-     */
-    protected function analyzeReturnArrayMerge(FuncCall $call, bool $topLevel = true): ?ResourceAnalysis
-    {
-        $merged = $this->mergedArrayLiteral($call, $this->scope->subjectReflection, $this->methodName);
-
-        return $merged === null ? null : $this->analyzeReturnArray($merged, $topLevel);
-    }
-
-    /**
-     * The ordered handler chain: the injected profile when one was supplied, else the subject's own, which
-     * ResourceExpressionHandlers::forSubject() picks — see that class for the lists and their ordering contract.
-     *
-     * @return list<ExpressionHandler>
-     */
-    protected function handlers(): array
-    {
-        return $this->handlerProfile
-            ?? ResourceExpressionHandlers::forSubject($this->scope->subjectReflection->getName(), $this);
-    }
-
-    /**
-     * Lazily build the dispatcher once per instance — a per-call rebuild would defeat its memo.
-     */
-    protected function dispatcher(): ExpressionDispatcher
-    {
-        return $this->dispatcher ??= new ExpressionDispatcher($this->handlers());
-    }
-
-    /**
-     * Analyze a value expression and return its type + optional status.
-     *
-     * @return ValueExpressionResult
-     */
-    protected function analyzeValueExpression(Expr $expr): array
-    {
-        $lenientReads = $this->lenientReads;
-        $result = $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
-
-        // A value read partly types its own key and hides none, so it never makes a variable unreadable.
-        $this->lenientReads = $lenientReads;
-
-        return $result;
-    }
-
-    /**
-     * Analyze $this->merge(...), mergeWhen(...) or mergeUnless(...) with each array the call can merge as a branch.
-     *
-     * A failed mergeWhen()/mergeUnless() condition merges the default when one is passed, else nothing, so a key only
-     * some branches set publishes optional, and a key every branch sets is required. Their types union as a ternary's
-     * arms do, leaving out a side the engine cannot type.
-     */
-    protected function analyzeMergeExpression(MethodCall $call): ResourceAnalysis
-    {
-        $isMerge = $this->isThisMethodCall($call, 'merge');
-        $isMergeWhen = $this->isThisMethodCall($call, 'mergeWhen');
-        $isMergeUnless = $this->isThisMethodCall($call, 'mergeUnless');
-
-        if (! $isMerge && ! $isMergeWhen && ! $isMergeUnless) {
-            return new ResourceAnalysis;
-        }
-
-        if ($call->isFirstClassCallable()) {
-            return new ResourceAnalysis; // @codeCoverageIgnore
-        }
-
-        $method = $isMerge ? 'merge' : ($isMergeWhen ? 'mergeWhen' : 'mergeUnless');
-        $args = CallArguments::for($call, new ReflectionMethod(JsonResource::class, $method));
-        $value = $args->named('value');
-
-        if ($value === null) {
-            return new ResourceAnalysis;
-        }
-
-        // mergeWhen() merges its value only where the condition holds, and mergeUnless() only where it fails.
-        $condition = $args->named('condition')?->value;
-        $branches = $this->resolveProvenNonNull(
-            $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
-            $this->scope,
-            fn (): array => $this->resolveMergedBranches($value->value),
-        );
-
-        if (! $isMerge) {
-            $default = $args->named('default')?->value;
-
-            // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
-            $defaultBranches = $default === null || $this->closureRequiresArguments($default)
-                ? []
-                : $this->resolveMergedBranches($default);
-
-            // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
-            $branches = [
-                ...($branches === [] ? [new ResourceAnalysis] : $branches),
-                ...($defaultBranches === [] ? [new ResourceAnalysis] : $defaultBranches),
-            ];
-        }
-
-        return match (count($branches)) {
-            0 => new ResourceAnalysis,
-            1 => $branches[0],
-            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
-        };
-    }
-
-    /**
-     * The arrays a merge argument can merge, one analysis each: a literal, a value, or each array a closure returns.
-     *
-     * mergedValueAnalysis() reads a value; an argument the analysis cannot read counts as a lenient read.
-     *
-     * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
-     */
-    protected function resolveMergedBranches(Expr $expr): array
-    {
-        if ($expr instanceof Array_) {
-            return [$this->mergedArrayAnalysis($expr)];
-        }
-
-        // Laravel merges value($value), so a value passed as it is merges as a closure returning it would.
-        if (! $expr instanceof ClosureExpr && ! $expr instanceof ArrowFunction) {
-            $branch = $this->mergedValueBranch($expr);
-
-            if ($branch === null) {
-                $this->lenientReads++;
-            }
-
-            return $branch === null ? [] : [$branch];
-        }
-
-        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
-        $previousNameBindings = $this->scope->nameBindings();
-
-        try {
-            $this->scope->claimParameters($expr);
-            $this->scope->bindUnpassedParameters($expr, 0, $this);
-            $this->proveClosureGuards($expr, $this->scope);
-
-            return $this->closureReturnBranches($expr);
-        } finally {
-            $this->scope->restoreNameBindings($previousNameBindings);
-        }
-    }
-
-    /**
      * The keys one merged array literal sets, each required within its own branch.
      */
     private function mergedArrayAnalysis(Array_ $array): ResourceAnalysis
@@ -1167,52 +1638,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return $this->analyzeArrayExpression($expr, topLevel: false);
-    }
-
-    /**
-     * Resolve and analyze what the parent class's declaration of a method hands a `parent::` call to it.
-     *
-     * A whole read is the method's own return, which takes the collected list flat; a spread or variable builds on it.
-     */
-    protected function analyzeParentCall(string $method, bool $whole = false): ?ResourceAnalysis
-    {
-        $parentClass = $this->scope->subjectReflection->getParentClass();
-
-        if ($parentClass === false) {
-            return null;
-        }
-
-        if (in_array($method, self::FRAMEWORK_READS, true) && $this->runsFrameworkRead($parentClass, $method)) {
-            return $this->frameworkMethodAnalysis($method, $whole);
-        }
-
-        if ($parentClass->getName() === JsonResource::class) {
-            return $method === 'toArray' ? $this->buildModelSerializedAnalysis() : null;
-        }
-
-        // Read before a parent analyzer is built, which would answer the collected list's response instead.
-        if (resolve(ResourceCollectionBody::class)->parentCallSendsCollectedList($method, $this->scope->subjectReflection)) {
-            return $this->collectedListAnalysis();
-        }
-
-        return $this->nestedAnalysis($parentClass, $method, $whole);
-    }
-
-    /**
-     * The method a `parent::` call names when the analyzer reads it: the analyzed method itself, or, in an API
-     * resource, one of FRAMEWORK_READS.
-     */
-    protected function readParentCall(Expr $expr): ?string
-    {
-        if (! $expr instanceof StaticCall || ! $expr->name instanceof Identifier || ! $this->isParentCallTo($expr)) {
-            return null;
-        }
-
-        $method = $expr->name->toString();
-        $readsFramework = in_array($method, self::FRAMEWORK_READS, true)
-            && $this->runtimeClass()->isSubclassOf(JsonResource::class);
-
-        return $method === $this->methodName || $readsFramework ? $method : null;
     }
 
     /**
@@ -1417,111 +1842,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
-     * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. The
-     * caller's state it sets aside is restored in a `finally`.
-     */
-    protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
-    {
-        if (! $this->scope->subjectReflection->hasMethod($methodName)) {
-            return null; // @codeCoverageIgnore
-        }
-
-        if (isset($this->scope->visitedSpreadMethods[$methodName])) {
-            return null;
-        }
-
-        if ($this->thisRunsFrameworkBody($methodName)) {
-            return $this->frameworkMethodAnalysis($methodName);
-        }
-
-        $method = $this->scope->subjectReflection->getMethod($methodName);
-        $context = resolve(MethodLocator::class)->locate($this->scope->subjectReflection->getName(), $methodName);
-        $targetMethod = $context?->method;
-
-        if ($targetMethod === null || $targetMethod->stmts === null) {
-            return null;
-        }
-
-        // Read in the caller's tables, before they are set aside.
-        $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
-        $caller = $this->scope->enterSubjectMethod(
-            $methodName,
-            LaravelTsPublish::methodDeclaringFileClass($method),
-            $this->proofsAcrossCall($this->scope, $call),
-        );
-
-        $readsAttributeNames = $this->readsKeylessAttributeNames;
-
-        try {
-            $this->seedVarBindings($method, $targetMethod->stmts, $passed);
-
-            // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
-            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
-            $branches = [];
-
-            foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
-                $branches[] = match (true) {
-                    $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
-                    $returned instanceof Array_ => $this->analyzeReturnArray($returned, $topLevel),
-                    $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returned->name, $topLevel),
-                    default => null,
-                };
-            }
-
-            // Every branch classified: each is a shape the method can return, so a key missing from
-            // one publishes optional. Anything unclassifiable falls back to the first-return path.
-            $analysis = $branches !== [] && ! in_array(null, $branches, true)
-                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
-                : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
-        } finally {
-            $this->readsKeylessAttributeNames = $readsAttributeNames;
-            $this->scope->leaveSubjectMethod($methodName, $caller);
-        }
-
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
-        $this->applyTsCastsFromMethod($method, $analysis);
-
-        // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
-
-        return $analysis;
-    }
-
-    /**
-     * The method's own first return, never a closure's: the fallback whenever the branch sweep above cannot classify
-     * every return a method makes, so it is always a lenient read.
-     *
-     * @param  array<Node\Stmt>  $stmts
-     */
-    protected function analyzeFirstReturn(array $stmts, bool $topLevel = true): ResourceAnalysis
-    {
-        $this->lenientReads++;
-
-        $returned = $this->collectReturnExpressions($stmts)[0] ?? null;
-
-        if ($returned instanceof Array_) {
-            $analysis = $this->analyzeReturnArray($returned, $topLevel);
-        } elseif ($returned instanceof Variable && is_string($returned->name)) {
-            $analysis = $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel);
-        } elseif ($returned instanceof MethodCall) {
-            $filtered = $this->analyzeThisAttributeFilter($returned);
-
-            if ($filtered !== null) {
-                $analysis = $filtered;
-            } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
-                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? new ResourceAnalysis;
-            } else {
-                $analysis = new ResourceAnalysis;
-            }
-        } else {
-            $analysis = new ResourceAnalysis;
-        }
-
-        return $analysis;
-    }
-
-    /**
      * The class declaring the share() InertiaSharedDataAnalyzer reads the casts of, own or inherited by the analyzed
      * middleware; an empty string for any other subject.
      */
@@ -1625,34 +1945,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Build a ResourceAnalysis for a ResourceCollection subclass whose toArray() sends its collected list, all of it
-     * the runtime class's: its collected element, its live wrap key and its keys.
-     *
-     * The wrap key names the one property, `{ data: R[] }` by default, keyed as `Record<string, R>` when the class
-     * preserves keys; with no key that same list is the flatTypeAlias directly. Raw items without an element are an
-     * `unknown` list.
-     */
-    protected function buildCollectionDelegatedAnalysis(): ResourceAnalysis
-    {
-        /** @var class-string<ResourceCollection> $runtimeName */
-        $runtimeName = $this->runtimeClass()->getName();
-        $wrapKey = ResourceWrapping::key($runtimeName);
-
-        if ($wrapKey === null) {
-            return $this->flatCollectedListAnalysis();
-        }
-
-        $list = $this->collectedListValue();
-        $analysis = new ResourceAnalysis;
-
-        if ($list !== null) {
-            $analysis->addProperty($wrapKey, $list);
-        }
-
-        return $analysis;
-    }
-
-    /**
      * The collected list as a whole value, the bare list `resolve()` returns: the flatTypeAlias, on its element's
      * import channel; empty where Laravel throws.
      */
@@ -1682,114 +1974,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze all direct Return_ statements yielding an Array_ literal or a variable, merging multiple branches with
-     * union semantics: properties present in only some become optional.
-     *
-     * @param  array<Node\Stmt>  $stmts
-     */
-    protected function analyzeAllReturnBranches(array $stmts): ?ResourceAnalysis
-    {
-        /** @var list<Return_> $candidates */
-        $candidates = [];
-
-        $this->collectDirectReturns($stmts, $candidates);
-
-        // A variable the walk does not read completely is skipped like any other non-literal return, so its unread keys
-        // never turn a sibling's optional.
-        /** @var array<string, ResourceAnalysis|null> $variables */
-        $variables = [];
-        /** @var array<string, ResourceAnalysis> $partlyRead */
-        $partlyRead = [];
-
-        foreach ($candidates as $return) {
-            if ($return->expr instanceof Variable && is_string($return->expr->name)
-                && ! array_key_exists($return->expr->name, $variables)) {
-                $read = $this->readVariable($stmts, $return->expr->name);
-                $variables[$return->expr->name] = $read !== null && $read[1] ? $read[0] : null;
-
-                if ($read !== null && ! $read[1]) {
-                    $partlyRead[$return->expr->name] = $read[0];
-                }
-            }
-        }
-
-        $returns = count($this->collectReturnExpressions($stmts));
-        $literalHasItems = array_any(
-            $candidates,
-            fn (Return_ $return): bool => $return->expr instanceof Array_ && $return->expr->items !== [],
-        );
-        $variableHasItems = array_any(
-            $variables,
-            fn (?ResourceAnalysis $branch): bool => $branch !== null && $branch->properties !== [],
-        );
-
-        // With no key read completely and every return a literal or a variable, a skipped variable is read leniently
-        // instead, so a lone one still gets analyze()'s refiner and casts. A return of any other kind is read by the
-        // first-return fallback, as before.
-        $lenient = ! $literalHasItems && ! $variableHasItems && count($candidates) === $returns;
-
-        if ($lenient) {
-            foreach ($variables as $name => $branch) {
-                $variables[$name] = $branch ?? $this->resolveVariableReturnAnalysis($stmts, $name);
-            }
-        }
-
-        /** @var list<Array_|ResourceAnalysis> $branches */
-        $branches = [];
-        $taken = 0;
-
-        foreach ($candidates as $return) {
-            $expr = $return->expr;
-            $branch = match (true) {
-                $expr instanceof Array_ => $expr,
-                $expr instanceof Variable && is_string($expr->name) => $variables[$expr->name],
-                default => null,
-            };
-
-            if ($branch === null) {
-                continue;
-            }
-
-            $taken++;
-
-            if (! in_array($branch, $branches, true)) {
-                $branches[] = $branch;
-            }
-        }
-
-        // A `return []` guard is a branch like any other: the keys its siblings set are absent on that path, so they
-        // publish optional. Without a key read completely, only a lenient read of a variable keeps the sweep going.
-        $proceeds = $literalHasItems || $variableHasItems || ($lenient && $variables !== []);
-
-        // A return no branch stands for, or one the first-return fallback leaves beside the one it reads, is unread.
-        // The published shape stays, but a child that builds on it cannot trust its key set.
-        if ($proceeds ? $taken < $returns : $returns > 1) {
-            $this->lenientReads++;
-        }
-
-        if (! $proceeds) {
-            return null;
-        }
-
-        $analyses = array_map(fn (Array_|ResourceAnalysis $branch): ResourceAnalysis => match (true) {
-            $branch instanceof ResourceAnalysis => $branch,
-            $branch->items === [] => new ResourceAnalysis,
-            default => $this->analyzeReturnArray($branch),
-        }, $branches);
-
-        $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
-
-        // A variable skipped only for a lenient read still returns on its path: a key no read branch sets may be there.
-        foreach ($partlyRead as $name => $branch) {
-            if ($variables[$name] === null) {
-                $this->addKeysOnlySkippedBranchSets($merged, $branch);
-            }
-        }
-
-        return $merged;
-    }
-
-    /**
      * Add each key and signature entry only a skipped branch sets, optional; a key the read branches set keeps
      * their type and presence.
      */
@@ -1802,106 +1986,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         $merged->merge($skipped);
-    }
-
-    /**
-     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, a
-     * cast survives only where every branch setting its key casts it alike, and flatTypeAlias is the first non-null.
-     *
-     * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
-     * only a merge call keeps the `null` left alone ($keepsLoneNull).
-     *
-     * @param  list<ResourceAnalysis>  $analyses
-     */
-    public function mergeReturnBranches(
-        array $analyses,
-        bool $dropsUntypedBranches = false,
-        bool $keepsLoneNull = false,
-    ): ResourceAnalysis {
-        $branchCount = count($analyses);
-
-        /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
-        $propertyMap = [];
-
-        // Only the channels collapse onto merge(): a property name several branches set has to be
-        // union-typed from $propertyMap below, which a field-by-field merge cannot express.
-        $channels = new ResourceAnalysis;
-        $flatTypeAlias = null;
-        $flatTypeAliasFqcn = null;
-
-        foreach ($analyses as $analysis) {
-            foreach ($analysis->properties as $prop) {
-                $propertyMap[$prop['name']][] = $prop;
-            }
-
-            $channels->merge($analysis);
-            $channels->properties = [];
-
-            $flatTypeAlias ??= $analysis->flatTypeAlias;
-            $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
-        }
-
-        /** @var AnalyzedPropertyList */
-        $properties = [];
-
-        foreach ($propertyMap as $name => $entries) {
-            $type = $this->branchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull);
-            $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $this->branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull);
-            // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
-            // type is a fill, and a reconcile that puts it back must find it again.
-            $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
-            $fillType = array_column($entries, 'fillType') === []
-                ? null
-                : $this->branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull);
-
-            $presentInAll = count($entries) === $branchCount;
-            $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
-            $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
-            // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
-            // error — regardless of whether every branch produced it.
-            $optional = ! JsEmitter::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
-
-            // Use the first non-empty description found
-            $description = '';
-
-            foreach ($entries as $entry) {
-                if ($entry['description'] !== '') { // @codeCoverageIgnoreStart
-                    $description = $entry['description'];
-
-                    break; // @codeCoverageIgnoreEnd
-                }
-            }
-
-            $properties[] = [
-                'name' => (string) $name,
-                'type' => $type,
-                'optional' => $optional,
-                'description' => $description,
-                ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
-                ...($fillType === null ? [] : ['fillType' => $fillType]),
-                ...($keepsKeys ? ['keepsKeys' => true] : []),
-            ];
-        }
-
-        return new ResourceAnalysis(
-            properties: $properties,
-            enumResources: $channels->enumResources,
-            nestedResources: $channels->nestedResources,
-            customImports: $channels->customImports,
-            directEnumFqcns: $channels->directEnumFqcns,
-            modelFqcns: $channels->modelFqcns,
-            inlineEnumFqcns: $channels->inlineEnumFqcns,
-            inlineModelFqcns: $channels->inlineModelFqcns,
-            inlineResourceFqcns: $channels->inlineResourceFqcns,
-            multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
-            inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
-            enumResourceArmShapes: $channels->enumResourceArmShapes,
-            casts: $this->castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
-            carried: $channels->carried,
-            flatTypeAlias: $flatTypeAlias,
-            flatTypeAliasFqcn: $flatTypeAliasFqcn,
-        );
     }
 
     /**
@@ -1983,89 +2067,5 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return TsTypeString::hoistNull($types);
-    }
-
-    /**
-     * Recursively collect Return_ statements with Array_ or Variable expressions from
-     * the given statements, descending into control-flow structures (if, foreach, etc.)
-     * but NOT into closures, arrow functions, or anonymous classes.
-     *
-     * @param  array<Node\Stmt|Node>  $stmts
-     * @param  list<Return_>  $candidates
-     */
-    protected function collectDirectReturns(array $stmts, array &$candidates): void
-    {
-        foreach ($stmts as $stmt) {
-            if ($stmt instanceof Return_ && ($stmt->expr instanceof Array_ || $stmt->expr instanceof Variable)) {
-                $candidates[] = $stmt;
-
-                continue;
-            }
-
-            if ($stmt instanceof If_) {
-                $this->collectDirectReturns($stmt->stmts, $candidates);
-
-                foreach ($stmt->elseifs as $elseif) {
-                    $this->collectDirectReturns($elseif->stmts, $candidates);
-                }
-
-                if ($stmt->else !== null) {
-                    $this->collectDirectReturns($stmt->else->stmts, $candidates);
-                }
-
-                continue;
-            }
-
-            if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_ || $stmt instanceof Do_) {
-                $this->collectDirectReturns($stmt->stmts, $candidates);
-            }
-
-            // Do NOT descend into closures, arrow functions, or anonymous classes
-        }
-    }
-
-    /**
-     * Extract an instanceof type hint from a guard clause in toArray(), positive or negated —
-     * e.g. `if (! $this->resource instanceof ClassName) { return []; }`.
-     *
-     * @return class-string|null
-     */
-    protected function resolveInstanceOfType(ClassMethod $method, NodeFinder $finder): ?string
-    {
-        /** @var list<If_> $ifNodes */
-        $ifNodes = $finder->find($method->stmts ?? [], function (Node $node): bool {
-            return $node instanceof If_;
-        });
-
-        foreach ($ifNodes as $ifNode) {
-            $cond = $ifNode->cond;
-
-            // Match: if (!$this->resource instanceof ClassName)
-            if ($cond instanceof BooleanNot && $cond->expr instanceof Instanceof_) {
-                $instanceOf = $cond->expr;
-            } elseif ($cond instanceof Instanceof_) {
-                // Match: if ($this->resource instanceof ClassName) — positive guard
-                $instanceOf = $cond;
-            } else {
-                continue;
-            }
-
-            if (! $this->isResourceFetch($instanceOf->expr)) {
-                continue; // @codeCoverageIgnore
-            }
-
-            if (! $instanceOf->class instanceof Name) {
-                continue; // @codeCoverageIgnore
-            }
-
-            // After NameResolver traversal, the class name is already a FQCN
-            $fqcn = $instanceOf->class->toString();
-
-            if (class_exists($fqcn) || enum_exists($fqcn)) {
-                return $fqcn;
-            }
-        }
-
-        return null;
     }
 }

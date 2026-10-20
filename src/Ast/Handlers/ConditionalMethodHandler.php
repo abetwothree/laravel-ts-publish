@@ -301,44 +301,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
-     *
-     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
-     *
-     * @return ValueExpressionResult
-     */
-    private function analyzeAttributeRead(string $attribute, CallArguments $args, AnalysisScope $scope): array
-    {
-        $info = $this->resolveModelAttributeTypeInfo($attribute, $scope);
-        $result = ['type' => $info['type'], 'optional' => false];
-        $valueExpr = $args->named('value')?->value;
-
-        if ($info['enumFqcn'] === null || $valueExpr === null || ! $this->isEnumResourceWrapCall($valueExpr)) {
-            return ValueResult::withAttributeChannels($result, $info);
-        }
-
-        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
-    }
-
-    /**
-     * Whether a whenHas()/whenAppended() value argument is EnumResource::make()/::collection() —
-     * including the first-class-callable form — signalling the named attribute is EnumResource-
-     * wrapped rather than read directly.
-     */
-    private function isEnumResourceWrapCall(Expr $value): bool
-    {
-        if (! $value instanceof StaticCall || ! $value->name instanceof Identifier) {
-            return false;
-        }
-
-        $className = $this->resolveStaticCallClassName($value);
-
-        return $className !== null
-            && $this->isEnumResourceClass($className)
-            && in_array($value->name->toString(), ['make', 'collection'], true);
-    }
-
-    /**
      * Analyze $this->whenExistsLoaded('relation', $value, $default): Laravel returns `value($value, $flag)`, where
      * $flag is the snaked relation's `_exists` attribute, so a resolvable value types the arm with a closure's first
      * parameter bound to that flag; the generated `{relation}_exists` boolean answers when no value can.
@@ -607,6 +569,44 @@ final class ConditionalMethodHandler implements ExpressionHandler
         $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $previousNameBindings];
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
+    }
+
+    /**
+     * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
+     *
+     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
+     *
+     * @return ValueExpressionResult
+     */
+    private function analyzeAttributeRead(string $attribute, CallArguments $args, AnalysisScope $scope): array
+    {
+        $info = $this->resolveModelAttributeTypeInfo($attribute, $scope);
+        $result = ['type' => $info['type'], 'optional' => false];
+        $valueExpr = $args->named('value')?->value;
+
+        if ($info['enumFqcn'] === null || $valueExpr === null || ! $this->isEnumResourceWrapCall($valueExpr)) {
+            return ValueResult::withAttributeChannels($result, $info);
+        }
+
+        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
+    }
+
+    /**
+     * Whether a whenHas()/whenAppended() value argument is EnumResource::make()/::collection() —
+     * including the first-class-callable form — signalling the named attribute is EnumResource-
+     * wrapped rather than read directly.
+     */
+    private function isEnumResourceWrapCall(Expr $value): bool
+    {
+        if (! $value instanceof StaticCall || ! $value->name instanceof Identifier) {
+            return false;
+        }
+
+        $className = $this->resolveStaticCallClassName($value);
+
+        return $className !== null
+            && $this->isEnumResourceClass($className)
+            && in_array($value->name->toString(), ['make', 'collection'], true);
     }
 
     /**

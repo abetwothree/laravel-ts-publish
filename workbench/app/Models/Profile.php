@@ -45,6 +45,12 @@ class Profile extends Model
         return $this->belongsTo(User::class);
     }
 
+    /** Old-style mutator for avatar URL capitalization */
+    public function getFormattedBioAttribute(): string // @phpstan-ignore missingType.parameter
+    {
+        return ucfirst((string) $this->bio);
+    }
+
     /** Computed age from date_of_birth */
     protected function age(): Attribute
     {
@@ -67,11 +73,5 @@ class Profile extends Model
         return Attribute::make(
             set: fn (string $value): string => preg_replace('/[^0-9+]/', '', $value) ?? $value,
         );
-    }
-
-    /** Old-style mutator for avatar URL capitalization */
-    public function getFormattedBioAttribute(): string // @phpstan-ignore missingType.parameter
-    {
-        return ucfirst((string) $this->bio);
     }
 }

@@ -179,27 +179,6 @@ class FormRequestRulesAnalyzer
     }
 
     /**
-     * Stub an authenticated user so `Auth::user()->anyMethod()` inside `rules()` returns false instead of throwing.
-     */
-    private function stubAuthUser(): void
-    {
-        if (Auth::check()) {
-            return;
-        }
-
-        $stub = new class(['id' => null]) extends GenericUser
-        {
-            /** @param array<int, mixed> $arguments */
-            public function __call(string $name, array $arguments): mixed
-            {
-                return false;
-            }
-        };
-
-        Auth::setUser($stub);
-    }
-
-    /**
      * Normalize a raw rules array into a list of `FormRequestRuleNode` objects.
      *
      * Builds a dot-path trie and collapses it bottom-up, so `parent.*.child`/`parent.child` rules
@@ -978,6 +957,27 @@ class FormRequestRulesAnalyzer
         }
 
         return $metadata;
+    }
+
+    /**
+     * Stub an authenticated user so `Auth::user()->anyMethod()` inside `rules()` returns false instead of throwing.
+     */
+    private function stubAuthUser(): void
+    {
+        if (Auth::check()) {
+            return;
+        }
+
+        $stub = new class(['id' => null]) extends GenericUser
+        {
+            /** @param array<int, mixed> $arguments */
+            public function __call(string $name, array $arguments): mixed
+            {
+                return false;
+            }
+        };
+
+        Auth::setUser($stub);
     }
 
     /**

@@ -18,6 +18,27 @@ enum ExcludableEnum: string
     case Beta = 'beta';
 
     /** Included — no exclusion attribute */
+    public static function allLabels(): array
+    {
+        return array_map(fn (self $case) => $case->label(), self::cases());
+    }
+
+    /** Excluded via #[TsExclude] — should not appear in TS output */
+    #[TsExclude]
+    public static function internalOnly(): array
+    {
+        return ['internal'];
+    }
+
+    /** Excluded — #[TsExclude] wins over #[TsEnumStaticMethod] */
+    #[TsEnumStaticMethod]
+    #[TsExclude]
+    public static function overriddenStatic(): array
+    {
+        return ['should not appear'];
+    }
+
+    /** Included — no exclusion attribute */
     public function label(): string
     {
         return match ($this) {
@@ -39,26 +60,5 @@ enum ExcludableEnum: string
     public function overridden(): string
     {
         return 'should not appear';
-    }
-
-    /** Included — no exclusion attribute */
-    public static function allLabels(): array
-    {
-        return array_map(fn (self $case) => $case->label(), self::cases());
-    }
-
-    /** Excluded via #[TsExclude] — should not appear in TS output */
-    #[TsExclude]
-    public static function internalOnly(): array
-    {
-        return ['internal'];
-    }
-
-    /** Excluded — #[TsExclude] wins over #[TsEnumStaticMethod] */
-    #[TsEnumStaticMethod]
-    #[TsExclude]
-    public static function overriddenStatic(): array
-    {
-        return ['should not appear'];
     }
 }

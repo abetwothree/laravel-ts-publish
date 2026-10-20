@@ -15,16 +15,6 @@ class SchedulePost extends Model
     protected $table = 'posts';
 
     /**
-     * The metadata and options columns' casts.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return ['metadata' => WeekScheduleCast::class, 'options' => WeekRotaCast::class];
-    }
-
-    /**
      * Another post, so a resource can spread a related model's toArray().
      *
      * @return BelongsTo<self, $this>
@@ -32,5 +22,15 @@ class SchedulePost extends Model
     public function sibling(): BelongsTo
     {
         return $this->belongsTo(self::class, 'user_id');
+    }
+
+    /**
+     * The metadata and options columns' casts.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return ['metadata' => WeekScheduleCast::class, 'options' => WeekRotaCast::class];
     }
 }

@@ -12,6 +12,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /** Static calls on a named class and calls to the resource's own methods. */
 final class CallPathSubjectResource extends JsonResource
 {
+    /** A static framework base model. */
+    public static function ownStaticBaseModel(): Model
+    {
+        return new AuthUser;
+    }
+
     /**
      * The payload.
      *
@@ -45,12 +51,6 @@ final class CallPathSubjectResource extends JsonResource
 
     /** A concrete framework model. */
     public function ownAuthUser(): AuthUser
-    {
-        return new AuthUser;
-    }
-
-    /** A static framework base model. */
-    public static function ownStaticBaseModel(): Model
     {
         return new AuthUser;
     }

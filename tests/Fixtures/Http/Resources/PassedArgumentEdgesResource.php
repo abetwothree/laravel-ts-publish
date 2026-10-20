@@ -104,6 +104,22 @@ final class PassedArgumentEdgesResource extends JsonResource
     }
 
     /**
+     * A closure, an arrow function and a first-class callable passed to untyped helpers a spread holds them in.
+     *
+     * @return array<string, mixed>
+     */
+    public function spreadCallables(): array
+    {
+        return [
+            ...$this->hold(fn () => 5),
+            ...$this->holdClosure(function (): int {
+                return 5;
+            }),
+            ...$this->holdCallable($this->headline(...)),
+        ];
+    }
+
+    /**
      * @param  mixed  $subject
      * @return array<string, mixed>
      */
@@ -132,22 +148,6 @@ final class PassedArgumentEdgesResource extends JsonResource
         $post = $post->author;
 
         return ['author_name' => $post->name];
-    }
-
-    /**
-     * A closure, an arrow function and a first-class callable passed to untyped helpers a spread holds them in.
-     *
-     * @return array<string, mixed>
-     */
-    public function spreadCallables(): array
-    {
-        return [
-            ...$this->hold(fn () => 5),
-            ...$this->holdClosure(function (): int {
-                return 5;
-            }),
-            ...$this->holdCallable($this->headline(...)),
-        ];
     }
 
     /**

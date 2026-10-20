@@ -99,6 +99,12 @@ class ModelTransformer extends CoreTransformer
     /** @var TsTypeOverrides */
     public protected(set) array $tsTypeOverrides = [];
 
+    /** @var array<string, list<string>> */
+    public protected(set) array $customImports = [];
+
+    /** @var list<string> TypeScript extends clauses */
+    public protected(set) array $tsExtends = [];
+
     /** @var array<string, bool> */
     protected array $optionalOverrides = [];
 
@@ -122,9 +128,6 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> relation_name => target FQCNs, one per occurrence, in type-string order */
     protected array $relationFqcns = [];
 
-    /** @var array<string, list<string>> */
-    public protected(set) array $customImports = [];
-
     /** @var array<string, EnumFqcnInfo> column_name => enum property info */
     protected array $enumColumnProperties = [];
 
@@ -136,9 +139,6 @@ class ModelTransformer extends CoreTransformer
 
     /** @var list<string> Attribute names from model's array */
     protected array $appendedAttributes = [];
-
-    /** @var list<string> TypeScript extends clauses */
-    public protected(set) array $tsExtends = [];
 
     #[Override]
     public function transform(): self
@@ -275,6 +275,38 @@ class ModelTransformer extends CoreTransformer
     public function relationExistsKeys(): array
     {
         return $this->freeRelationKeys('_exists');
+    }
+
+    /**
+     * Build a map of per-file import aliases → namespace-qualified global names.
+     *
+     * @return array<string, string> alias => 'namespace.OriginalName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Map every type name this model's file imports, as the file spells it, to its globally-qualified name.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     protected function initInstance(): self
@@ -923,38 +955,6 @@ class ModelTransformer extends CoreTransformer
             'combinedTypeImports' => $this->deduplicateAndSortImports($combinedTypeImports),
             'combinedValueImports' => $this->deduplicateAndSortImports($combinedValueImports),
         ];
-    }
-
-    /**
-     * Build a map of per-file import aliases → namespace-qualified global names.
-     *
-     * @return array<string, string> alias => 'namespace.OriginalName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type name this model's file imports, as the file spells it, to its globally-qualified name.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /** @return list<string> */

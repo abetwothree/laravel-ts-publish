@@ -9,22 +9,16 @@ final class NamesakeStatusCard
 {
     public function __construct(public int $code = 1) {}
 
-    /** A label computed from the code. */
-    public function status(): mixed
-    {
-        return $this->code === 1 ? 'open' : 'closed';
-    }
-
     /** A static kind label. */
     public static function kind(): mixed
     {
         return 'card';
     }
 
-    /** Protected: a forwarded call from the resource cannot reach it. */
-    protected function isFirst(): bool
+    /** A label computed from the code. */
+    public function status(): mixed
     {
-        return true;
+        return $this->code === 1 ? 'open' : 'closed';
     }
 
     /** An untyped reference string. */
@@ -43,5 +37,11 @@ final class NamesakeStatusCard
     public function opaque(): mixed
     {
         return json_decode('{"a":1}');
+    }
+
+    /** Protected: a forwarded call from the resource cannot reach it. */
+    protected function isFirst(): bool
+    {
+        return true;
     }
 }

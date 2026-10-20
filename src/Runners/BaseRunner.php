@@ -43,12 +43,6 @@ use Throwable;
  */
 abstract class BaseRunner
 {
-    protected BarrelWriter $barrelWriter;
-
-    protected GlobalsWriter $globalsWriter;
-
-    protected ?GenerationManifest $manifest = null;
-
     /** Control flags (set by TsPublishCommand before run()) */
     public bool $shouldPublishEnums = true;
 
@@ -129,6 +123,12 @@ abstract class BaseRunner
      * Live task logger for per-phase status output during a run.
      */
     public protected(set) ?Logger $logger = null;
+
+    protected BarrelWriter $barrelWriter;
+
+    protected GlobalsWriter $globalsWriter;
+
+    protected ?GenerationManifest $manifest = null;
 
     abstract public function run(): void;
 

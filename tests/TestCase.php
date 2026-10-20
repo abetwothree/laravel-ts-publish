@@ -73,14 +73,6 @@ class TestCase extends Orchestra
         );
     }
 
-    protected function getPackageProviders($app)
-    {
-        return [
-            LaravelTsPublishServiceProvider::class,
-            WorkbenchServiceProvider::class,
-        ];
-    }
-
     public function getEnvironmentSetUp($app)
     {
         if (! self::$configSynced) {
@@ -145,5 +137,13 @@ class TestCase extends Orchestra
             'ts-publish.form_requests.additional_directories' => $modules,
             'ts-publish.broadcast_events.additional_directories' => $modules,
         ]);
+    }
+
+    protected function getPackageProviders($app)
+    {
+        return [
+            LaravelTsPublishServiceProvider::class,
+            WorkbenchServiceProvider::class,
+        ];
     }
 }

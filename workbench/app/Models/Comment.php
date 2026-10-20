@@ -48,16 +48,6 @@ class Comment extends Model
         ];
     }
 
-    #[TsCasts(['metadata' => 'Record<string, unknown>'])]
-    protected function casts(): array
-    {
-        return [
-            'metadata' => 'array',
-            'is_flagged' => 'boolean',
-            'flagged_at' => 'datetime',
-        ];
-    }
-
     public function post(): BelongsTo
     {
         return $this->belongsTo(Post::class);
@@ -72,6 +62,16 @@ class Comment extends Model
     public function replies(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    #[TsCasts(['metadata' => 'Record<string, unknown>'])]
+    protected function casts(): array
+    {
+        return [
+            'metadata' => 'array',
+            'is_flagged' => 'boolean',
+            'flagged_at' => 'datetime',
+        ];
     }
 
     /** Short preview of the comment */

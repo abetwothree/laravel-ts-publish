@@ -11,12 +11,12 @@ class ClosureNamesakeAuthor extends User
 {
     protected $table = 'users';
 
-    public function format(): int
+    public static function label(): int
     {
         return 1;
     }
 
-    public static function label(): int
+    public function format(): int
     {
         return 1;
     }

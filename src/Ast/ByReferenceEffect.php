@@ -78,64 +78,6 @@ enum ByReferenceEffect
     }
 
     /**
-     * What the call leaves in the whole value.
-     *
-     * @param  Written  $written
-     */
-    private function leftWhole(string $type, Closure $written, bool $reindexed): ?string
-    {
-        if ($this === self::KeepsNumber) {
-            return $type === 'number' ? $type : null;
-        }
-
-        $arms = TsTypeShape::splitTopLevel($type, ['|']);
-
-        if (! array_any($arms, static fn (string $arm): bool => $arm !== 'null')) {
-            return $this === self::KeepsAny ? $type : null;
-        }
-
-        $left = [];
-
-        foreach ($arms as $arm) {
-            $kept = $arm === 'null' ? $arm : $this->leftArm($arm, $written, $reindexed);
-
-            if ($kept === null) {
-                return null;
-            }
-
-            $left[] = $kept;
-        }
-
-        return $left === $arms ? $type : implode(' | ', array_values(array_unique($left)));
-    }
-
-    /**
-     * What the call leaves in one arm that is not `null`.
-     *
-     * @param  Written  $written
-     */
-    private function leftArm(string $arm, Closure $written, bool $reindexed): ?string
-    {
-        return match ($this) {
-            self::KeepsAny => $arm,
-            self::KeepsList => self::listElements($arm) === null ? null : $arm,
-            self::KeepsObject => match (true) {
-                TsTypeShape::isObjectLike($arm) => $arm,
-                $reindexed && self::listElements($arm) !== null => $arm,
-                // A re-indexed tuple lists its members in sorted order, never in the declared one.
-                $reindexed && $arm !== '[]' && TsTypeShape::isWrapped($arm, '[', ']') => TsTypeShape::listType(
-                    array_column(self::elements($arm) ?? [], 0),
-                ),
-                default => self::keyedOutOfOrder($arm),
-            },
-            self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
-            self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
-            self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,
-            self::KeepsNumber, self::Replaces => null,
-        };
-    }
-
-    /**
      * The one element type of a list type such as `T[]`, or null for a tuple or any other type.
      *
      * @return list<string>|null
@@ -330,5 +272,63 @@ enum ByReferenceEffect
 
         return in_array('unknown', $held, true)
             || array_all(TsTypeShape::splitTopLevel($type, ['|']), static fn (string $arm): bool => in_array($arm, $held, true));
+    }
+
+    /**
+     * What the call leaves in the whole value.
+     *
+     * @param  Written  $written
+     */
+    private function leftWhole(string $type, Closure $written, bool $reindexed): ?string
+    {
+        if ($this === self::KeepsNumber) {
+            return $type === 'number' ? $type : null;
+        }
+
+        $arms = TsTypeShape::splitTopLevel($type, ['|']);
+
+        if (! array_any($arms, static fn (string $arm): bool => $arm !== 'null')) {
+            return $this === self::KeepsAny ? $type : null;
+        }
+
+        $left = [];
+
+        foreach ($arms as $arm) {
+            $kept = $arm === 'null' ? $arm : $this->leftArm($arm, $written, $reindexed);
+
+            if ($kept === null) {
+                return null;
+            }
+
+            $left[] = $kept;
+        }
+
+        return $left === $arms ? $type : implode(' | ', array_values(array_unique($left)));
+    }
+
+    /**
+     * What the call leaves in one arm that is not `null`.
+     *
+     * @param  Written  $written
+     */
+    private function leftArm(string $arm, Closure $written, bool $reindexed): ?string
+    {
+        return match ($this) {
+            self::KeepsAny => $arm,
+            self::KeepsList => self::listElements($arm) === null ? null : $arm,
+            self::KeepsObject => match (true) {
+                TsTypeShape::isObjectLike($arm) => $arm,
+                $reindexed && self::listElements($arm) !== null => $arm,
+                // A re-indexed tuple lists its members in sorted order, never in the declared one.
+                $reindexed && $arm !== '[]' && TsTypeShape::isWrapped($arm, '[', ']') => TsTypeShape::listType(
+                    array_column(self::elements($arm) ?? [], 0),
+                ),
+                default => self::keyedOutOfOrder($arm),
+            },
+            self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
+            self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
+            self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,
+            self::KeepsNumber, self::Replaces => null,
+        };
     }
 }

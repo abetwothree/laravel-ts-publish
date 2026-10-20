@@ -19,6 +19,12 @@ trait ResolvesImportConflicts
     protected array $constImportAliases = [];
 
     /**
+     * Rewrite property type references to use aliased names; each transformer implements this
+     * against its own property shape.
+     */
+    abstract protected function rewriteTypeReferences(): void;
+
+    /**
      * The name a file gives an imported type: the alias the registries chose for it, else the type's own name.
      */
     protected function localImportName(string $fqcn, string $typeName): string
@@ -76,12 +82,6 @@ trait ResolvesImportConflicts
 
         return $map;
     }
-
-    /**
-     * Rewrite property type references to use aliased names; each transformer implements this
-     * against its own property shape.
-     */
-    abstract protected function rewriteTypeReferences(): void;
 
     /**
      * Resolve a type registry and its sibling const registry, then apply both, the types first.

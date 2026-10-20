@@ -6,6 +6,7 @@ namespace Workbench\App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Throwable;
 use Workbench\App\Models\Order;
 
 /**
@@ -51,7 +52,7 @@ class ClosureControlFlowResource extends JsonResource
             'safe_total' => $this->whenLoaded('user', function () {
                 try {
                     return ['amount' => (float) $this->total];
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     return ['amount' => 0];
                 } finally {
                     return ['amount' => -1];

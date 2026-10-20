@@ -36,14 +36,17 @@ final class AnalysisComposer
     use BuildsImportMaps;
     use ResolvesImportConflicts;
 
+    /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
+    protected array $enumConstMap = [];
+
+    /** The importing file's namespace path; BuildsImportMaps computes relative paths from it. */
+    protected string $namespacePath = '';
+
     /** @var array<array-key, ComposedProperty> property name => the property being rewritten */
     private array $properties = [];
 
     /** @var array<string, string> FQCN => bare TypeScript enum type name */
     private array $enumFqcnMap = [];
-
-    /** @var array<string, string> FQCN => TypeScript const name; formatConstImportName() reads it. */
-    protected array $enumConstMap = [];
 
     /** @var array<string, string> FQCN => resource type name */
     private array $resourceFqcnMap = [];
@@ -53,9 +56,6 @@ final class AnalysisComposer
 
     /** @var array<array-key, list<class-string>> property name => positional FQCN queue for aliasing */
     private array $propertyFqcnQueues = [];
-
-    /** The importing file's namespace path; BuildsImportMaps computes relative paths from it. */
-    protected string $namespacePath = '';
 
     /**
      * Compose one analysis into properties, type imports and value imports that agree.

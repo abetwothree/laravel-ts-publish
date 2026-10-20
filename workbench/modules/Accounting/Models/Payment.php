@@ -24,6 +24,11 @@ class Payment extends Model
         'paid_at',
     ];
 
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -33,11 +38,6 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'paid_at' => 'datetime',
         ];
-    }
-
-    public function invoice(): BelongsTo
-    {
-        return $this->belongsTo(Invoice::class);
     }
 
     protected function dueNotice(): Attribute

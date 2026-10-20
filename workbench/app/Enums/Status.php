@@ -36,24 +36,6 @@ enum Status: int
         return self::Draft;
     }
 
-    #[TsEnumMethod(description: 'Get the icon name for the status')]
-    public function icon(): string
-    {
-        return match ($this) {
-            self::Draft => 'pencil',
-            self::Published => 'check',
-        };
-    }
-
-    #[TsEnumMethod]
-    public function color(): string
-    {
-        return match ($this) {
-            self::Draft => 'gray',
-            self::Published => 'green',
-        };
-    }
-
     #[TsEnumStaticMethod(description: 'Get the key-value pair options for the status')]
     public static function valueLabelPair(): array
     {
@@ -81,5 +63,23 @@ enum Status: int
     public static function options(): array
     {
         return self::parentOptions();
+    }
+
+    #[TsEnumMethod(description: 'Get the icon name for the status')]
+    public function icon(): string
+    {
+        return match ($this) {
+            self::Draft => 'pencil',
+            self::Published => 'check',
+        };
+    }
+
+    #[TsEnumMethod]
+    public function color(): string
+    {
+        return match ($this) {
+            self::Draft => 'gray',
+            self::Published => 'green',
+        };
     }
 }

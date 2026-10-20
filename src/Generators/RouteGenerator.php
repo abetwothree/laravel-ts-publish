@@ -21,6 +21,18 @@ class RouteGenerator extends CoreGenerator implements ProvidesCacheSignature
 
     public protected(set) RouteTransformer $transformer;
 
+    /**
+     * Signature of every route definition mapped to this controller.
+     *
+     * URIs, methods, names, domains and middleware live in route files, not the controller class,
+     * so they are folded in here to bust the cache when a route changes.
+     */
+    #[Override]
+    public static function cacheSignature(string $fqcn): string
+    {
+        return RouteCacheSignature::for($fqcn);
+    }
+
     #[Override]
     public function generate(): string
     {
@@ -40,17 +52,5 @@ class RouteGenerator extends CoreGenerator implements ProvidesCacheSignature
     public function filename(): string
     {
         return $this->cachedFilename ?? $this->transformer->filename();
-    }
-
-    /**
-     * Signature of every route definition mapped to this controller.
-     *
-     * URIs, methods, names, domains and middleware live in route files, not the controller class,
-     * so they are folded in here to bust the cache when a route changes.
-     */
-    #[Override]
-    public static function cacheSignature(string $fqcn): string
-    {
-        return RouteCacheSignature::for($fqcn);
     }
 }

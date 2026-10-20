@@ -44,6 +44,38 @@ class Order extends Model
         'user_agent',
     ];
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    /** @return array{value: int, label: string} */
+    public function asAutoCompleteOption(): array
+    {
+        return ['value' => (int) $this->getKey(), 'label' => (string) $this->notes];
+    }
+
+    /** @return list<array{key: string, label: string}> */
+    public function presetSummaries(): array
+    {
+        return [['key' => 'a', 'label' => 'A']];
+    }
+
+    /**
+     * A vague `: array` signature must not override a docblock that only narrows a single key.
+     *
+     * @return array{value: int, label: string}
+     */
+    public function primaryLabel(): string
+    {
+        return (string) $this->notes;
+    }
+
     #[TsCasts([
         'shipping_address' => '{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }',
         'billing_address' => '{ line_1: string; line_2?: string; city: string; state?: string; postal_code: string; country_code: string }',
@@ -66,16 +98,6 @@ class Order extends Model
             'delivered_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
-    }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function items(): HasMany
-    {
-        return $this->hasMany(OrderItem::class);
     }
 
     /** Number of line items in this order */
@@ -177,28 +199,6 @@ class Order extends Model
     protected function unsortedItems(): Attribute
     {
         return Attribute::get(fn (): Collection => $this->items);
-    }
-
-    /** @return array{value: int, label: string} */
-    public function asAutoCompleteOption(): array
-    {
-        return ['value' => (int) $this->getKey(), 'label' => (string) $this->notes];
-    }
-
-    /** @return list<array{key: string, label: string}> */
-    public function presetSummaries(): array
-    {
-        return [['key' => 'a', 'label' => 'A']];
-    }
-
-    /**
-     * A vague `: array` signature must not override a docblock that only narrows a single key.
-     *
-     * @return array{value: int, label: string}
-     */
-    public function primaryLabel(): string
-    {
-        return (string) $this->notes;
     }
 
     /** @return Attribute<?array<int, int>, never> */

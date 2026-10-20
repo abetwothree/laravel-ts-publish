@@ -24,6 +24,13 @@ abstract class CoreTransformer
         $this->transform();
     }
 
+    /** @return static */
+    abstract public function transform(): self;
+
+    abstract public function filename(): string;
+
+    abstract public function data(): Datable;
+
     /**
      * Get the fully qualified class name being transformed.
      *
@@ -41,13 +48,6 @@ abstract class CoreTransformer
     {
         return TsNaming::globalNamespace($this->findable);
     }
-
-    /** @return static */
-    abstract public function transform(): self;
-
-    abstract public function filename(): string;
-
-    abstract public function data(): Datable;
 
     protected function resolveRelativePath(string $absolutePath): string
     {

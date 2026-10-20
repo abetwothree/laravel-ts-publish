@@ -15,6 +15,12 @@ enum MembershipLevel
     case Premium;
     case Enterprise;
 
+    /** Should NOT be published — no TsEnumStaticMethod attribute */
+    public static function paidLevels(): array
+    {
+        return [self::Basic, self::Premium, self::Enterprise];
+    }
+
     /** Should NOT be published — no TsEnumMethod attribute */
     public function monthlyPriceCents(): int
     {
@@ -24,11 +30,5 @@ enum MembershipLevel
             self::Premium => 2999,
             self::Enterprise => 9999,
         };
-    }
-
-    /** Should NOT be published — no TsEnumStaticMethod attribute */
-    public static function paidLevels(): array
-    {
-        return [self::Basic, self::Premium, self::Enterprise];
     }
 }

@@ -21,6 +21,16 @@ trait TracksEnumImports
     protected array $enumConstMap = [];
 
     /**
+     * Return the enum property info array for this transformer.
+     *
+     * `isCollection` and `alsoBare` are only present on implementations that tell a single enum value from a list
+     * of it, or from a list beside it (e.g. ModelTransformer); others omit the keys.
+     *
+     * @return EnumPropertyFqcnMap
+     */
+    abstract protected function enumProperties(): array;
+
+    /**
      * Whether the transformer should generate HasEnums value imports.
      *
      * Checks that the tolki package setting is on AND that at least one
@@ -30,16 +40,6 @@ trait TracksEnumImports
     {
         return Config::boolean('ts-publish.enums.use_tolki_package') && $this->enumProperties() !== [];
     }
-
-    /**
-     * Return the enum property info array for this transformer.
-     *
-     * `isCollection` and `alsoBare` are only present on implementations that tell a single enum value from a list
-     * of it, or from a list beside it (e.g. ModelTransformer); others omit the keys.
-     *
-     * @return EnumPropertyFqcnMap
-     */
-    abstract protected function enumProperties(): array;
 
     /**
      * Return unique FQCNs from the enum property info array.

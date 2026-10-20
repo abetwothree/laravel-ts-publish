@@ -40,18 +40,6 @@ class Team extends Model
         'grid_configs',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'is_active' => 'boolean',
-            'settings' => 'array',
-            'grid_config' => 'array',
-            'grid_preset' => 'array',
-            'week_days' => AsEnumCollection::class.':'.WeekDays::class,
-            'grid_configs' => AsCollection::of(GridConfigDto::class),
-        ];
-    }
-
     /** The user who owns this team */
     public function owner(): BelongsTo
     {
@@ -70,6 +58,18 @@ class Team extends Model
         return $this->belongsToMany(User::class)
             ->withPivot('role', 'joined_at')
             ->withTimestamps();
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'settings' => 'array',
+            'grid_config' => 'array',
+            'grid_preset' => 'array',
+            'week_days' => AsEnumCollection::class.':'.WeekDays::class,
+            'grid_configs' => AsCollection::of(GridConfigDto::class),
+        ];
     }
 
     /** Whether the team has any members */

@@ -20,16 +20,16 @@ class Attachment extends Model
         'internal_notes',
     ];
 
+    /** Polymorphic parent (Post and friends) */
+    public function attachable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
     protected function casts(): array
     {
         return [
             'size_bytes' => 'integer',
         ];
-    }
-
-    /** Polymorphic parent (Post and friends) */
-    public function attachable(): MorphTo
-    {
-        return $this->morphTo();
     }
 }

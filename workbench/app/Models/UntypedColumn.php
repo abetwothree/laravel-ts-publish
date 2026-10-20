@@ -13,9 +13,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 class UntypedColumn extends Model
 {
-    protected $table = 'untyped_columns';
-
     public $timestamps = false;
+
+    protected $table = 'untyped_columns';
 
     protected $fillable = [
         'accessor_col',

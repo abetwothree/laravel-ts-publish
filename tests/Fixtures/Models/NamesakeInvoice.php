@@ -13,6 +13,12 @@ class NamesakeInvoice extends Model
 
     protected $guarded = [];
 
+    /** A static kind code. */
+    public static function kind(): int
+    {
+        return 1;
+    }
+
     /** The total, formatted. */
     public function total(): string
     {
@@ -27,12 +33,6 @@ class NamesakeInvoice extends Model
 
     /** A status code. */
     public function status(): int
-    {
-        return 1;
-    }
-
-    /** A static kind code. */
-    public static function kind(): int
     {
         return 1;
     }

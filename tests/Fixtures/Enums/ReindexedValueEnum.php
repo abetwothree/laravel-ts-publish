@@ -14,6 +14,17 @@ enum ReindexedValueEnum: string
     case Monthly = 'monthly';
 
     /**
+     * A static value keyed out of order.
+     *
+     * @return array<int, string>
+     */
+    #[TsEnumStaticMethod]
+    public static function sparse(): array
+    {
+        return [3 => 'three', 7 => 'seven'];
+    }
+
+    /**
      * Tiers keyed out of order inside an array, which the response keeps too.
      *
      * @return array{tiers: array<int, string>}
@@ -62,16 +73,5 @@ enum ReindexedValueEnum: string
     public function mixedKeys(): array
     {
         return [1 => 'one', 'two' => 'two'];
-    }
-
-    /**
-     * A static value keyed out of order.
-     *
-     * @return array<int, string>
-     */
-    #[TsEnumStaticMethod]
-    public static function sparse(): array
-    {
-        return [3 => 'three', 7 => 'seven'];
     }
 }

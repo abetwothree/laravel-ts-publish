@@ -7,6 +7,7 @@ namespace Workbench\App\Enums;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumMethod;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnumStaticMethod;
+use RuntimeException;
 
 /**
  * Doc block description that should be overridden by the attribute description.
@@ -18,6 +19,16 @@ enum Season: string
     case Summer = 'summer';
     case Autumn = 'autumn';
     case Winter = 'winter';
+
+    /**
+     * Static method that always throws.
+     * Used to test the catch branch in transformStaticMethods.
+     */
+    #[TsEnumStaticMethod(description: 'This always throws')]
+    public static function broken(): never
+    {
+        throw new RuntimeException('Always fails');
+    }
 
     #[TsEnumMethod(description: 'Average temperature in Celsius')]
     public function avgTemp(): int
@@ -38,7 +49,7 @@ enum Season: string
     public function warmGreeting(): string
     {
         if ($this === self::Winter) {
-            throw new \RuntimeException('Winter has no warm greeting');
+            throw new RuntimeException('Winter has no warm greeting');
         }
 
         return match ($this) {
@@ -47,15 +58,5 @@ enum Season: string
             self::Autumn => 'Enjoy the leaves!',
             default => '',
         };
-    }
-
-    /**
-     * Static method that always throws.
-     * Used to test the catch branch in transformStaticMethods.
-     */
-    #[TsEnumStaticMethod(description: 'This always throws')]
-    public static function broken(): never
-    {
-        throw new \RuntimeException('Always fails');
     }
 }

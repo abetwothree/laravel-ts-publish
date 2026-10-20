@@ -2805,15 +2805,15 @@ class ArrayableShapeSubclassValueObject extends ArrayableShapeBaseValueObject {}
  */
 class ArrayableAndStringableValueObject implements Arrayable, Stringable
 {
+    public function __toString(): string
+    {
+        return 'hello';
+    }
+
     /** @return array{value: string} */
     public function toArray(): array
     {
         return ['value' => 'hello'];
-    }
-
-    public function __toString(): string
-    {
-        return 'hello';
     }
 }
 

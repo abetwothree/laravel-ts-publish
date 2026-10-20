@@ -39,6 +39,8 @@ class RouteTransformer extends CoreTransformer
     use FiltersRoutes;
     use SnapshotsTransformerState;
 
+    protected const INVOKE = '__invoke';
+
     public protected(set) string $controllerName;
 
     public protected(set) string $filePath;
@@ -68,8 +70,6 @@ class RouteTransformer extends CoreTransformer
 
     protected ?InertiaPageAnalyzer $inertiaPageAnalyzer = null;
 
-    protected const INVOKE = '__invoke';
-
     /** Whether any actions have page types that require the annotatePageProps import. */
     protected bool $hasPageTypes = false;
 
@@ -78,6 +78,14 @@ class RouteTransformer extends CoreTransformer
 
     /** Whether this controller is invokable (an action maps to __invoke). */
     protected bool $isInvokable = false;
+
+    /**
+     * Clear the static model instance cache.
+     */
+    public static function clearModelInstanceCache(): void
+    {
+        self::$modelInstanceCache = [];
+    }
 
     #[Override]
     public function transform(): self
@@ -641,11 +649,70 @@ class RouteTransformer extends CoreTransformer
     }
 
     /**
-     * Clear the static model instance cache.
+     * Normalize Inertia component data for the route action.
+     *
+     * @param  string|list<string>  $component
+     * @return string|array<string, string>
      */
-    public static function clearModelInstanceCache(): void
+    protected function normalizeComponent(string|array $component): string|array
     {
-        self::$modelInstanceCache = [];
+        if (is_string($component)) {
+            return $component;
+        }
+
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $path) {
+            $normalized[$keyMap[$path]] = $path;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize Inertia page type data, reusing normalizeComponent()'s keys so variants stay aligned.
+     *
+     * @param  string|list<string>  $component  Raw component list from the analyzer.
+     * @param  string|list<string>  $pageType  Parallel page type list from the analyzer.
+     * @return string|array<string, string>
+     */
+    protected function normalizePageType(string|array $component, string|array $pageType): string|array
+    {
+        if (is_string($component)) {
+            return is_string($pageType) ? $pageType : $pageType[0];
+        }
+
+        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
+        $paths = $component;
+        $types = is_array($pageType) ? $pageType : [$pageType];
+        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
+        $normalized = [];
+
+        foreach ($paths as $index => $path) {
+            $normalized[$keyMap[$path]] = $types[$index] ?? 'Inertia.SharedData';
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Resolve the TypeScript type annotation for an Inertia page type, based on the method name and page type data.
+     *
+     * @param  string|array<string, string>  $pageType
+     */
+    protected function resolvePageTypeAnnotation(string $methodName, string|array $pageType): string
+    {
+        if (is_string($pageType)) {
+            return Str::studly($methodName).'PageProps';
+        }
+
+        return implode(' | ', array_map(
+            fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
+            array_keys($pageType)
+        ));
     }
 
     /**
@@ -732,73 +799,6 @@ class RouteTransformer extends CoreTransformer
         }
 
         return TsNaming::sortImportPaths($imports);
-    }
-
-    /**
-     * Normalize Inertia component data for the route action.
-     *
-     * @param  string|list<string>  $component
-     * @return string|array<string, string>
-     */
-    protected function normalizeComponent(string|array $component): string|array
-    {
-        if (is_string($component)) {
-            return $component;
-        }
-
-        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
-        $paths = $component;
-        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
-        $normalized = [];
-
-        foreach ($paths as $path) {
-            $normalized[$keyMap[$path]] = $path;
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * Normalize Inertia page type data, reusing normalizeComponent()'s keys so variants stay aligned.
-     *
-     * @param  string|list<string>  $component  Raw component list from the analyzer.
-     * @param  string|list<string>  $pageType  Parallel page type list from the analyzer.
-     * @return string|array<string, string>
-     */
-    protected function normalizePageType(string|array $component, string|array $pageType): string|array
-    {
-        if (is_string($component)) {
-            return is_string($pageType) ? $pageType : $pageType[0];
-        }
-
-        $casing = Config::string('ts-publish.inertia.component_casing', 'camel');
-        $paths = $component;
-        $types = is_array($pageType) ? $pageType : [$pageType];
-        $keyMap = $this->computeUniqueComponentKeys($paths, $casing);
-        $normalized = [];
-
-        foreach ($paths as $index => $path) {
-            $normalized[$keyMap[$path]] = $types[$index] ?? 'Inertia.SharedData';
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * Resolve the TypeScript type annotation for an Inertia page type, based on the method name and page type data.
-     *
-     * @param  string|array<string, string>  $pageType
-     */
-    protected function resolvePageTypeAnnotation(string $methodName, string|array $pageType): string
-    {
-        if (is_string($pageType)) {
-            return Str::studly($methodName).'PageProps';
-        }
-
-        return implode(' | ', array_map(
-            fn ($key) => Str::studly($methodName).Str::studly($key).'PageProps',
-            array_keys($pageType)
-        ));
     }
 
     /**

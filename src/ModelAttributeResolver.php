@@ -246,110 +246,6 @@ class ModelAttributeResolver
     }
 
     /**
-     * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
-     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number. A user's `custom_ts_mappings` entry for the
-     * column type wins over the driver, as it does over the built-in map.
-     *
-     * @param  class-string  $modelFqcn
-     * @return TypeScriptTypeInfo
-     */
-    protected function columnTsType(string $modelFqcn, string $columnType): array
-    {
-        $tsInfo = LaravelTsPublish::toTsType($columnType);
-        $driver = $tsInfo['type'] === 'number' && ! (new TypeScriptMap)->isCustomMapped($columnType)
-            ? $this->connectionDriver($modelFqcn)
-            : null;
-
-        return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
-            ? [...$tsInfo, 'type' => 'string']
-            : $tsInfo;
-    }
-
-    /**
-     * Resolve names that are not literal attributes: camelCase aliases, and withCount()/withExists() virtuals.
-     *
-     * The snake_case fallback is tried first because a same-named accessor is a declared type, while the
-     * suffix fallbacks are a fixed number/boolean guess.
-     *
-     * @param  class-string  $modelFqcn
-     * @param  array{
-     *     attributes: Collection<int, AttributeInfo>,
-     *     relations: Collection<int, RelationInfo>,
-     *     reflection: ReflectionClass<Model>,
-     *     ...
-     * }  $ctx
-     * @return TypeScriptTypeInfo
-     */
-    protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName, bool $carriesImports): array
-    {
-        $empty = LaravelTsPublish::emptyTypeScriptInfo();
-
-        // Guarded on the snake form being a literal attribute, so the recursive call always lands on
-        // resolveAttribute()'s exact-match branch and can never re-enter this method.
-        $snake = Str::snake($attributeName);
-        $snakeAttr = $snake === $attributeName ? null : $ctx['attributes']->firstWhere('name', $snake);
-
-        // Only accessors: Eloquent camel-cases the key when looking for a mutator method, but never when
-        // reading $attributes, so $order->placedAt on a plain placed_at column is null at runtime.
-        if ($snakeAttr !== null && ($snakeAttr['cast'] === 'attribute' || $snakeAttr['cast'] === 'accessor')) {
-            return $this->resolveAttribute($modelFqcn, $snake, $carriesImports);
-        }
-
-        // Requires a matching relation, so a real column ending in "_count" is never guessed at here.
-        foreach (['_count' => 'number', '_exists' => 'boolean'] as $suffix => $tsType) {
-            if (! str_ends_with($attributeName, $suffix)) {
-                continue;
-            }
-
-            $base = Str::camel(substr($attributeName, 0, -strlen($suffix)));
-
-            if ($ctx['relations']->firstWhere('name', $base) !== null) {
-                return [...$empty, 'type' => $tsType];
-            }
-        }
-
-        // A relation name (or its camel alias) is excluded so an ide-helper @property-read tag that
-        // merely documents a relation is never mistaken for a query-selected virtual attribute.
-        $isRelation = $ctx['relations']->contains(
-            fn (array $relation): bool => $relation['name'] === $attributeName || $relation['name'] === Str::camel($attributeName),
-        );
-
-        if (! $isRelation) {
-            foreach ($this->propertyDocblockClasses($ctx['reflection']) as $class) {
-                $refined = $this->refineFromClassDocblock($class, $attributeName, $empty);
-
-                if ($refined !== null) {
-                    return $refined;
-                }
-            }
-        }
-
-        return $empty;
-    }
-
-    /**
-     * Refine an accessor's vague type from an `@property` tag. Without imports a vague spelling can stand for a
-     * precise published type (`unknown[]` for `Comment[]`) that no tag refines, so a tag naming a class leaves it
-     * alone; a token-free tag refines it as it refines any vague type.
-     *
-     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
-     * @param  TypeScriptTypeInfo  $accessorInfo
-     * @return TypeScriptTypeInfo
-     */
-    protected function refineAccessorType(array $ctx, string $attributeName, array $accessorInfo, bool $carriesImports): array
-    {
-        $refined = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
-
-        if ($carriesImports || $refined === $accessorInfo || ! TsTypeString::shapeValueHasUnimportableToken($refined['type'])) {
-            return $refined;
-        }
-
-        $published = $this->accessorType($ctx, $attributeName);
-
-        return $this->isVagueTsType($published['type']) ? $refined : $accessorInfo;
-    }
-
-    /**
      * Refine a vague resolved type using class-level @property/@property-read docblock tags
      * (Larastan/ide-helper convention).
      *
@@ -374,117 +270,6 @@ class ModelAttributeResolver
         }
 
         return $tsInfo;
-    }
-
-    /**
-     * Classes to search for an @property tag, in priority order: the class/parent chain first
-     * (child wins), then every trait used anywhere in that chain, recursively.
-     *
-     * @param  ReflectionClass<Model>  $reflection
-     * @return list<ReflectionClass<object>>
-     */
-    protected function propertyDocblockClasses(ReflectionClass $reflection): array
-    {
-        /** @var list<ReflectionClass<object>> $chain */
-        $chain = [];
-
-        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
-            $chain[] = $class;
-        }
-
-        $traits = [];
-
-        foreach ($chain as $class) {
-            $traits = [...$traits, ...$this->collectTraitsRecursively($class)];
-        }
-
-        return [...$chain, ...$traits];
-    }
-
-    /**
-     * Every trait used by a class, and every trait those traits themselves use.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @return list<ReflectionClass<object>>
-     */
-    protected function collectTraitsRecursively(ReflectionClass $class): array
-    {
-        $traits = [];
-
-        foreach ($class->getTraits() as $trait) {
-            $traits[] = $trait;
-            $traits = [...$traits, ...$this->collectTraitsRecursively($trait)];
-        }
-
-        return $traits;
-    }
-
-    /**
-     * Attempt a refinement from a single class's own @property/@property-read docblock tag; null if none.
-     *
-     * Also matches a `$`-less `@property Type name` form some vendor traits use, but only when undescribed —
-     * otherwise a trailing description's last word could be mistaken for the property name, yielding a wrong type.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @param  TypeScriptTypeInfo  $current
-     * @return TypeScriptTypeInfo|null
-     */
-    protected function refineFromClassDocblock(ReflectionClass $class, string $attributeName, array $current): ?array
-    {
-        $doc = $class->getDocComment();
-
-        // Both patterns need the name verbatim, and most attributes a run asks about go unnamed in the docblock.
-        if ($doc === false || ! str_contains($doc, $attributeName)) {
-            return null;
-        }
-
-        $name = preg_quote($attributeName, '/');
-
-        $matched = preg_match('/@property(?:-read)?[ \t]+([^$\r\n]+?)[ \t]+\$'.$name.'\b/', $doc, $m)
-            || preg_match('/@property(?:-read)?[ \t]+((?:[^$\r\n \t,]|,[ \t]*)+)[ \t]+'.$name.'\b(?=[ \t]*(?:\r?\n|\*\/|$))/', $doc, $m);
-
-        if (! $matched) {
-            return null;
-        }
-
-        $useMap = LaravelTsPublish::parseFileUseStatements($class);
-        $namespace = $class->getNamespaceName();
-
-        $infos = [];
-
-        foreach (LaravelTsPublish::splitPhpDocUnionType($m[1]) as $part) {
-            $infos[] = LaravelTsPublish::resolveDocblockTypePartOrAlias($part, $useMap, $namespace, $class);
-        }
-
-        $resolved = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
-
-        return $this->isStrictlyMoreStructured($resolved['type'], $current['type']) ? $resolved : null;
-    }
-
-    /**
-     * Whether a docblock-derived refinement is more structured than the type it would replace.
-     *
-     * A refinement still naming 'unknown' is accepted only when the replaced type is entirely vague
-     * and the refinement isn't equally vague — e.g. `Record<string, unknown>` beats `unknown[]`, but neither wins.
-     */
-    protected function isStrictlyMoreStructured(string $candidate, string $current): bool
-    {
-        if (! TsTypeString::isVagueTsType($candidate)) {
-            return true;
-        }
-
-        return $this->isEntirelyVagueTsType($current) && ! $this->isEntirelyVagueTsType($candidate);
-    }
-
-    /**
-     * Whether a type carries no structure at all, as opposed to merely containing 'unknown'
-     * somewhere within an otherwise structured shape (e.g. `Record<string, unknown>`).
-     */
-    protected function isEntirelyVagueTsType(string $type): bool
-    {
-        $bare = str_ends_with($type, ' | null') ? substr($type, 0, -strlen(' | null')) : $type;
-
-        return in_array($bare, ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
     }
 
     /**
@@ -560,184 +345,6 @@ class ModelAttributeResolver
             'date', 'datetime', 'custom_datetime',
             'immutable_date', 'immutable_datetime', 'immutable_custom_datetime',
         ], true);
-    }
-
-    /**
-     * Resolve an attribute's value class uncached, asking Castable before CastsAttributes as resolveCasterClass() does.
-     *
-     * @param  class-string  $modelFqcn
-     * @return class-string|null
-     */
-    protected function findAttributeClass(string $modelFqcn, string $attributeName): ?string
-    {
-        $ctx = $this->resolveContext($modelFqcn);
-        $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
-
-        if ($ctx === null || $attr === null) {
-            return null;
-        }
-
-        $cast = (string) $attr['cast'];
-
-        if ($cast === 'attribute' || $cast === 'accessor') {
-            return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
-        }
-
-        if ($this->isDateFamilyCast($cast)) {
-            return str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
-        }
-
-        $head = Str::before($cast, ':');
-
-        if (is_a($head, Castable::class, true)) {
-            return $this->castableValueClass($head);
-        }
-
-        if (is_a($head, CastsAttributes::class, true)) {
-            return $this->methodReturnClass($head, 'get');
-        }
-
-        return enum_exists($head) ? $head : null;
-    }
-
-    /**
-     * The class an accessor's getter returns: its closure's native type, its `Attribute<Get, Set>` docblock's Get,
-     * or an old-style `getXAttribute()`'s native type.
-     *
-     * @param  ReflectionClass<Model>  $reflection
-     * @return class-string|null
-     */
-    protected function accessorReturnClass(ReflectionClass $reflection, Model $instance, string $attributeName): ?string
-    {
-        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($attributeName);
-
-        try {
-            $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
-        } catch (Throwable) {
-            $attribute = null;
-        }
-
-        if ($attribute instanceof Attribute) {
-            $getter = $attribute->get instanceof Closure ? new ReflectionFunction($attribute->get) : null;
-
-            // A native getter type is authoritative even when builtin; only an untyped getter defers to the docblock.
-            if ($getter !== null && $getter->hasReturnType()) {
-                return $this->singleClass(
-                    $getter->getReturnType(),
-                    $getter->getClosureCalledClass()?->getName() ?? $reflection->getName(),
-                    $getter->getClosureScopeClass()?->getName() ?? $reflection->getName(),
-                );
-            }
-
-            return $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
-        }
-
-        return $reflection->hasMethod($oldStyle) ? $this->methodReturnClass($reflection->getName(), $oldStyle) : null;
-    }
-
-    /**
-     * The one class an `Attribute<Get, Set>` docblock's Get argument names, ignoring a `null` arm and generic args.
-     *
-     * @return class-string|null
-     */
-    protected function attributeDocblockGetClass(ReflectionMethod $method): ?string
-    {
-        $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
-
-        if ($returnType === null
-            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*<(.+)>$/s', trim($returnType), $m)
-        ) {
-            return null;
-        }
-
-        $get = LaravelTsPublish::splitAtTopLevelCommas($m[1])[0] ?? '';
-        $names = array_values(array_filter(
-            LaravelTsPublish::splitPhpDocUnionType(ltrim($get, '?')),
-            fn (string $part): bool => strtolower($part) !== 'null',
-        ));
-
-        // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
-        if (count($names) !== 1 || ! preg_match('/^([\\\\\w]+)(?:<.*>)?$/s', $names[0], $match)) {
-            return null;
-        }
-
-        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
-        $class = LaravelTsPublish::resolveDocblockTypeName(
-            $match[1],
-            LaravelTsPublish::parseFileUseStatements($declaringClass),
-            $declaringClass->getNamespaceName(),
-        );
-
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
-    }
-
-    /**
-     * The class a `Castable` cast's value is: the native `get()` return of the caster its `castUsing()` names, read
-     * from its declared return, then its returns, and never called, since it is application code. Laravel's own
-     * casters are anonymous classes, so they answer null, never the Castable itself, which the value never is.
-     *
-     * @param  class-string<Castable>  $castable
-     * @return class-string|null
-     */
-    protected function castableValueClass(string $castable): ?string
-    {
-        $receivers = resolve(ReceiverClassResolver::class);
-
-        return $this->castersValueClass($receivers->returnClasses($castable, 'castUsing'))
-            ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
-    }
-
-    /**
-     * The one class every caster's native `get()` return names; null when one is no `CastsAttributes` or they differ.
-     *
-     * @param  list<class-string>|null  $casters
-     * @return class-string|null
-     */
-    protected function castersValueClass(?array $casters): ?string
-    {
-        $classes = array_unique(array_map(
-            fn (string $caster): ?string => is_a($caster, CastsAttributes::class, true)
-                ? $this->methodReturnClass($caster, 'get')
-                : null,
-            $casters ?? [],
-        ));
-
-        return count($classes) === 1 ? reset($classes) : null;
-    }
-
-    /**
-     * The one class a method's native return type names, with `static` as the class and `self` as its declarer.
-     *
-     * @return class-string|null
-     */
-    protected function methodReturnClass(string $class, string $method): ?string
-    {
-        DependencyRecorder::recordClass($class);
-        $reflection = new ReflectionMethod($class, $method);
-
-        return $this->singleClass($reflection->getReturnType(), $class, $reflection->getDeclaringClass()->getName());
-    }
-
-    /**
-     * The class a reflected type names, or null for a builtin, union, or intersection type.
-     *
-     * `static` names the class the value was read through; `self` names the class that declared the type.
-     *
-     * @return class-string|null
-     */
-    protected function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
-    {
-        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
-            return null;
-        }
-
-        $class = match ($type->getName()) {
-            'static' => $staticClass,
-            'self' => $selfClass,
-            default => $type->getName(),
-        };
-
-        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
     }
 
     /**
@@ -1233,137 +840,6 @@ class ModelAttributeResolver
     }
 
     /**
-     * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
-     *
-     * @param  list<class-string>  $modelFqcns
-     */
-    private function buildMorphTargetMapFrom(array $modelFqcns, bool $withoutTables): void
-    {
-        /** @var array<string, list<class-string>> $map */
-        $map = [];
-
-        foreach ($modelFqcns as $parentFqcn) {
-            $ctx = $this->contextFor($parentFqcn, $withoutTables);
-
-            if ($ctx === null) {
-                continue;
-            }
-
-            foreach ($ctx['relations'] as $relation) {
-                if (str_contains($relation['type'], 'MorphToMany')) {
-                    $pivotKey = $this->morphPivotKey($ctx['instance'], $relation['name']);
-
-                    if ($pivotKey !== null && ! in_array($parentFqcn, $map[$pivotKey] ?? [], true)) {
-                        $map[$pivotKey][] = $parentFqcn;
-                    }
-
-                    continue;
-                }
-
-                if (! $this->isMorphParentRelation($parentFqcn, $relation)) {
-                    continue;
-                }
-
-                $childFqcn = $relation['related'];
-
-                DependencyRecorder::recordClass($childFqcn);
-
-                // Written under both keys: the morph-name-specific bucket so two differently-named
-                // morphTos on one child don't share a union, and the plain childFqcn bucket as the
-                // legacy aggregate a child relation falls back to when its own name can't be read.
-                $keys = [$childFqcn];
-                $morphName = $this->relationMorphName($ctx['instance'], $relation['name']);
-
-                if ($morphName !== null) {
-                    $keys[] = $childFqcn.'|'.$morphName;
-                }
-
-                foreach ($keys as $key) {
-                    if (! isset($map[$key])) {
-                        $map[$key] = [];
-                    }
-
-                    if (! in_array($parentFqcn, $map[$key], true)) {
-                        $map[$key][] = $parentFqcn;
-                    }
-                }
-            }
-        }
-
-        // Sorted so the generated union type is stable across runs.
-        foreach ($map as $key => $parents) {
-            sort($parents);
-            $map[$key] = $parents;
-        }
-
-        $this->morphTargetMap = $map;
-
-        // An analysis the old map typed a morph relation for would otherwise be reused under the new one.
-        resolve(AnalysisMemo::class)->reset();
-    }
-
-    /**
-     * Whether a relation is a morph parent, counting custom subclasses of MorphOne/MorphMany.
-     *
-     * @param  class-string  $parentFqcn
-     * @param  RelationInfo  $relation
-     */
-    protected function isMorphParentRelation(string $parentFqcn, array $relation): bool
-    {
-        if ($relation['type'] === 'MorphOne' || $relation['type'] === 'MorphMany') {
-            return true;
-        }
-
-        $reflection = new ReflectionClass($parentFqcn);
-
-        if (! $reflection->hasMethod($relation['name'])) {
-            return false;
-        }
-
-        $returnType = $reflection->getMethod($relation['name'])->getReturnType();
-
-        if (! $returnType instanceof ReflectionNamedType || $returnType->isBuiltin()) {
-            return false;
-        }
-
-        $fqcn = $returnType->getName();
-
-        return is_a($fqcn, MorphOne::class, true)
-            || is_a($fqcn, MorphMany::class, true);
-    }
-
-    /**
-     * The `Pivot|morphName` map key for a morphToMany whose custom pivot model carries the morphTo back.
-     */
-    protected function morphPivotKey(Model $instance, string $relationName): ?string
-    {
-        try {
-            $relation = $instance->{$relationName}();
-        } catch (Throwable) {
-            return null;
-        }
-
-        if (! $relation instanceof MorphToMany || $relation->getInverse()) {
-            return null;
-        }
-
-        $pivot = $relation->getPivotClass();
-
-        // getPivotClass()'s class-string<Pivot> bound is docblock-only — using() takes no native
-        // parameter type — so a caller can still hand it an unrelated class at runtime.
-        /** @phpstan-ignore function.alreadyNarrowedType */
-        if (in_array($pivot, [Pivot::class, MorphPivot::class], true) || ! is_a($pivot, Model::class, true)) {
-            return null;
-        }
-
-        DependencyRecorder::recordClass($pivot);
-
-        $morphType = $relation->getMorphType();
-
-        return $pivot.'|'.(str_ends_with($morphType, '_type') ? substr($morphType, 0, -5) : $morphType);
-    }
-
-    /**
      * The parent model FQCNs that morphTo the given child under the given morph name: that name's bucket, else the
      * legacy childFqcn-only one, plus any parent targeting a subclass of the child under that name, since those rows
      * still satisfy the base child's morphTo.
@@ -1443,6 +919,460 @@ class ModelAttributeResolver
         }
 
         return Model::class;
+    }
+
+    /**
+     * An uncast column's type, narrowed to what the connection's driver returns: pdo_mysql and pdo_pgsql return a
+     * DECIMAL or NUMERIC column as a string, and pdo_sqlite as a number. A user's `custom_ts_mappings` entry for the
+     * column type wins over the driver, as it does over the built-in map.
+     *
+     * @param  class-string  $modelFqcn
+     * @return TypeScriptTypeInfo
+     */
+    protected function columnTsType(string $modelFqcn, string $columnType): array
+    {
+        $tsInfo = LaravelTsPublish::toTsType($columnType);
+        $driver = $tsInfo['type'] === 'number' && ! (new TypeScriptMap)->isCustomMapped($columnType)
+            ? $this->connectionDriver($modelFqcn)
+            : null;
+
+        return $driver !== null && AggregateValueType::column($columnType, $driver) === 'string'
+            ? [...$tsInfo, 'type' => 'string']
+            : $tsInfo;
+    }
+
+    /**
+     * Resolve names that are not literal attributes: camelCase aliases, and withCount()/withExists() virtuals.
+     *
+     * The snake_case fallback is tried first because a same-named accessor is a declared type, while the
+     * suffix fallbacks are a fixed number/boolean guess.
+     *
+     * @param  class-string  $modelFqcn
+     * @param  array{
+     *     attributes: Collection<int, AttributeInfo>,
+     *     relations: Collection<int, RelationInfo>,
+     *     reflection: ReflectionClass<Model>,
+     *     ...
+     * }  $ctx
+     * @return TypeScriptTypeInfo
+     */
+    protected function resolveAttributeFallbacks(string $modelFqcn, array $ctx, string $attributeName, bool $carriesImports): array
+    {
+        $empty = LaravelTsPublish::emptyTypeScriptInfo();
+
+        // Guarded on the snake form being a literal attribute, so the recursive call always lands on
+        // resolveAttribute()'s exact-match branch and can never re-enter this method.
+        $snake = Str::snake($attributeName);
+        $snakeAttr = $snake === $attributeName ? null : $ctx['attributes']->firstWhere('name', $snake);
+
+        // Only accessors: Eloquent camel-cases the key when looking for a mutator method, but never when
+        // reading $attributes, so $order->placedAt on a plain placed_at column is null at runtime.
+        if ($snakeAttr !== null && ($snakeAttr['cast'] === 'attribute' || $snakeAttr['cast'] === 'accessor')) {
+            return $this->resolveAttribute($modelFqcn, $snake, $carriesImports);
+        }
+
+        // Requires a matching relation, so a real column ending in "_count" is never guessed at here.
+        foreach (['_count' => 'number', '_exists' => 'boolean'] as $suffix => $tsType) {
+            if (! str_ends_with($attributeName, $suffix)) {
+                continue;
+            }
+
+            $base = Str::camel(substr($attributeName, 0, -strlen($suffix)));
+
+            if ($ctx['relations']->firstWhere('name', $base) !== null) {
+                return [...$empty, 'type' => $tsType];
+            }
+        }
+
+        // A relation name (or its camel alias) is excluded so an ide-helper @property-read tag that
+        // merely documents a relation is never mistaken for a query-selected virtual attribute.
+        $isRelation = $ctx['relations']->contains(
+            fn (array $relation): bool => $relation['name'] === $attributeName || $relation['name'] === Str::camel($attributeName),
+        );
+
+        if (! $isRelation) {
+            foreach ($this->propertyDocblockClasses($ctx['reflection']) as $class) {
+                $refined = $this->refineFromClassDocblock($class, $attributeName, $empty);
+
+                if ($refined !== null) {
+                    return $refined;
+                }
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * Refine an accessor's vague type from an `@property` tag. Without imports a vague spelling can stand for a
+     * precise published type (`unknown[]` for `Comment[]`) that no tag refines, so a tag naming a class leaves it
+     * alone; a token-free tag refines it as it refines any vague type.
+     *
+     * @param  array{instance: Model, reflection: ReflectionClass<Model>, ...}  $ctx
+     * @param  TypeScriptTypeInfo  $accessorInfo
+     * @return TypeScriptTypeInfo
+     */
+    protected function refineAccessorType(array $ctx, string $attributeName, array $accessorInfo, bool $carriesImports): array
+    {
+        $refined = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $accessorInfo);
+
+        if ($carriesImports || $refined === $accessorInfo || ! TsTypeString::shapeValueHasUnimportableToken($refined['type'])) {
+            return $refined;
+        }
+
+        $published = $this->accessorType($ctx, $attributeName);
+
+        return $this->isVagueTsType($published['type']) ? $refined : $accessorInfo;
+    }
+
+    /**
+     * Classes to search for an @property tag, in priority order: the class/parent chain first
+     * (child wins), then every trait used anywhere in that chain, recursively.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @return list<ReflectionClass<object>>
+     */
+    protected function propertyDocblockClasses(ReflectionClass $reflection): array
+    {
+        /** @var list<ReflectionClass<object>> $chain */
+        $chain = [];
+
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            $chain[] = $class;
+        }
+
+        $traits = [];
+
+        foreach ($chain as $class) {
+            $traits = [...$traits, ...$this->collectTraitsRecursively($class)];
+        }
+
+        return [...$chain, ...$traits];
+    }
+
+    /**
+     * Every trait used by a class, and every trait those traits themselves use.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return list<ReflectionClass<object>>
+     */
+    protected function collectTraitsRecursively(ReflectionClass $class): array
+    {
+        $traits = [];
+
+        foreach ($class->getTraits() as $trait) {
+            $traits[] = $trait;
+            $traits = [...$traits, ...$this->collectTraitsRecursively($trait)];
+        }
+
+        return $traits;
+    }
+
+    /**
+     * Attempt a refinement from a single class's own @property/@property-read docblock tag; null if none.
+     *
+     * Also matches a `$`-less `@property Type name` form some vendor traits use, but only when undescribed —
+     * otherwise a trailing description's last word could be mistaken for the property name, yielding a wrong type.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  TypeScriptTypeInfo  $current
+     * @return TypeScriptTypeInfo|null
+     */
+    protected function refineFromClassDocblock(ReflectionClass $class, string $attributeName, array $current): ?array
+    {
+        $doc = $class->getDocComment();
+
+        // Both patterns need the name verbatim, and most attributes a run asks about go unnamed in the docblock.
+        if ($doc === false || ! str_contains($doc, $attributeName)) {
+            return null;
+        }
+
+        $name = preg_quote($attributeName, '/');
+
+        $matched = preg_match('/@property(?:-read)?[ \t]+([^$\r\n]+?)[ \t]+\$'.$name.'\b/', $doc, $m)
+            || preg_match('/@property(?:-read)?[ \t]+((?:[^$\r\n \t,]|,[ \t]*)+)[ \t]+'.$name.'\b(?=[ \t]*(?:\r?\n|\*\/|$))/', $doc, $m);
+
+        if (! $matched) {
+            return null;
+        }
+
+        $useMap = LaravelTsPublish::parseFileUseStatements($class);
+        $namespace = $class->getNamespaceName();
+
+        $infos = [];
+
+        foreach (LaravelTsPublish::splitPhpDocUnionType($m[1]) as $part) {
+            $infos[] = LaravelTsPublish::resolveDocblockTypePartOrAlias($part, $useMap, $namespace, $class);
+        }
+
+        $resolved = count($infos) === 1 ? $infos[0] : LaravelTsPublish::mergeTypeScriptInfos($infos);
+
+        return $this->isStrictlyMoreStructured($resolved['type'], $current['type']) ? $resolved : null;
+    }
+
+    /**
+     * Whether a docblock-derived refinement is more structured than the type it would replace.
+     *
+     * A refinement still naming 'unknown' is accepted only when the replaced type is entirely vague
+     * and the refinement isn't equally vague — e.g. `Record<string, unknown>` beats `unknown[]`, but neither wins.
+     */
+    protected function isStrictlyMoreStructured(string $candidate, string $current): bool
+    {
+        if (! TsTypeString::isVagueTsType($candidate)) {
+            return true;
+        }
+
+        return $this->isEntirelyVagueTsType($current) && ! $this->isEntirelyVagueTsType($candidate);
+    }
+
+    /**
+     * Whether a type carries no structure at all, as opposed to merely containing 'unknown'
+     * somewhere within an otherwise structured shape (e.g. `Record<string, unknown>`).
+     */
+    protected function isEntirelyVagueTsType(string $type): bool
+    {
+        $bare = str_ends_with($type, ' | null') ? substr($type, 0, -strlen(' | null')) : $type;
+
+        return in_array($bare, ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
+    }
+
+    /**
+     * Resolve an attribute's value class uncached, asking Castable before CastsAttributes as resolveCasterClass() does.
+     *
+     * @param  class-string  $modelFqcn
+     * @return class-string|null
+     */
+    protected function findAttributeClass(string $modelFqcn, string $attributeName): ?string
+    {
+        $ctx = $this->resolveContext($modelFqcn);
+        $attr = $ctx === null ? null : $ctx['attributes']->firstWhere('name', $attributeName);
+
+        if ($ctx === null || $attr === null) {
+            return null;
+        }
+
+        $cast = (string) $attr['cast'];
+
+        if ($cast === 'attribute' || $cast === 'accessor') {
+            return $this->accessorReturnClass($ctx['reflection'], $ctx['instance'], $attributeName);
+        }
+
+        if ($this->isDateFamilyCast($cast)) {
+            return str_starts_with($cast, 'immutable_') ? CarbonImmutable::class : Carbon::class;
+        }
+
+        $head = Str::before($cast, ':');
+
+        if (is_a($head, Castable::class, true)) {
+            return $this->castableValueClass($head);
+        }
+
+        if (is_a($head, CastsAttributes::class, true)) {
+            return $this->methodReturnClass($head, 'get');
+        }
+
+        return enum_exists($head) ? $head : null;
+    }
+
+    /**
+     * The class an accessor's getter returns: its closure's native type, its `Attribute<Get, Set>` docblock's Get,
+     * or an old-style `getXAttribute()`'s native type.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @return class-string|null
+     */
+    protected function accessorReturnClass(ReflectionClass $reflection, Model $instance, string $attributeName): ?string
+    {
+        ['newStyle' => $newStyle, 'oldStyle' => $oldStyle] = $this->accessorMethodNames($attributeName);
+
+        try {
+            $attribute = $reflection->hasMethod($newStyle) ? $reflection->getMethod($newStyle)->invoke($instance) : null;
+        } catch (Throwable) {
+            $attribute = null;
+        }
+
+        if ($attribute instanceof Attribute) {
+            $getter = $attribute->get instanceof Closure ? new ReflectionFunction($attribute->get) : null;
+
+            // A native getter type is authoritative even when builtin; only an untyped getter defers to the docblock.
+            if ($getter !== null && $getter->hasReturnType()) {
+                return $this->singleClass(
+                    $getter->getReturnType(),
+                    $getter->getClosureCalledClass()?->getName() ?? $reflection->getName(),
+                    $getter->getClosureScopeClass()?->getName() ?? $reflection->getName(),
+                );
+            }
+
+            return $this->attributeDocblockGetClass($reflection->getMethod($newStyle));
+        }
+
+        return $reflection->hasMethod($oldStyle) ? $this->methodReturnClass($reflection->getName(), $oldStyle) : null;
+    }
+
+    /**
+     * The one class an `Attribute<Get, Set>` docblock's Get argument names, ignoring a `null` arm and generic args.
+     *
+     * @return class-string|null
+     */
+    protected function attributeDocblockGetClass(ReflectionMethod $method): ?string
+    {
+        $returnType = LaravelTsPublish::extractReturnTypeFromDocblock((string) $method->getDocComment());
+
+        if ($returnType === null
+            || ! preg_match('/^\\\\?(?:Illuminate\\\\Database\\\\Eloquent\\\\Casts\\\\)?Attribute\s*<(.+)>$/s', trim($returnType), $m)
+        ) {
+            return null;
+        }
+
+        $get = LaravelTsPublish::splitAtTopLevelCommas($m[1])[0] ?? '';
+        $names = array_values(array_filter(
+            LaravelTsPublish::splitPhpDocUnionType(ltrim($get, '?')),
+            fn (string $part): bool => strtolower($part) !== 'null',
+        ));
+
+        // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
+        if (count($names) !== 1 || ! preg_match('/^([\\\\\w]+)(?:<.*>)?$/s', $names[0], $match)) {
+            return null;
+        }
+
+        $declaringClass = LaravelTsPublish::methodDeclaringFileClass($method);
+        $class = LaravelTsPublish::resolveDocblockTypeName(
+            $match[1],
+            LaravelTsPublish::parseFileUseStatements($declaringClass),
+            $declaringClass->getNamespaceName(),
+        );
+
+        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+    }
+
+    /**
+     * The class a `Castable` cast's value is: the native `get()` return of the caster its `castUsing()` names, read
+     * from its declared return, then its returns, and never called, since it is application code. Laravel's own
+     * casters are anonymous classes, so they answer null, never the Castable itself, which the value never is.
+     *
+     * @param  class-string<Castable>  $castable
+     * @return class-string|null
+     */
+    protected function castableValueClass(string $castable): ?string
+    {
+        $receivers = resolve(ReceiverClassResolver::class);
+
+        return $this->castersValueClass($receivers->returnClasses($castable, 'castUsing'))
+            ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
+    }
+
+    /**
+     * The one class every caster's native `get()` return names; null when one is no `CastsAttributes` or they differ.
+     *
+     * @param  list<class-string>|null  $casters
+     * @return class-string|null
+     */
+    protected function castersValueClass(?array $casters): ?string
+    {
+        $classes = array_unique(array_map(
+            fn (string $caster): ?string => is_a($caster, CastsAttributes::class, true)
+                ? $this->methodReturnClass($caster, 'get')
+                : null,
+            $casters ?? [],
+        ));
+
+        return count($classes) === 1 ? reset($classes) : null;
+    }
+
+    /**
+     * The one class a method's native return type names, with `static` as the class and `self` as its declarer.
+     *
+     * @return class-string|null
+     */
+    protected function methodReturnClass(string $class, string $method): ?string
+    {
+        DependencyRecorder::recordClass($class);
+        $reflection = new ReflectionMethod($class, $method);
+
+        return $this->singleClass($reflection->getReturnType(), $class, $reflection->getDeclaringClass()->getName());
+    }
+
+    /**
+     * The class a reflected type names, or null for a builtin, union, or intersection type.
+     *
+     * `static` names the class the value was read through; `self` names the class that declared the type.
+     *
+     * @return class-string|null
+     */
+    protected function singleClass(?ReflectionType $type, string $staticClass, string $selfClass): ?string
+    {
+        if (! $type instanceof ReflectionNamedType || ($type->isBuiltin() && $type->getName() !== 'static')) {
+            return null;
+        }
+
+        $class = match ($type->getName()) {
+            'static' => $staticClass,
+            'self' => $selfClass,
+            default => $type->getName(),
+        };
+
+        return class_exists($class) || interface_exists($class) || enum_exists($class) ? $class : null;
+    }
+
+    /**
+     * Whether a relation is a morph parent, counting custom subclasses of MorphOne/MorphMany.
+     *
+     * @param  class-string  $parentFqcn
+     * @param  RelationInfo  $relation
+     */
+    protected function isMorphParentRelation(string $parentFqcn, array $relation): bool
+    {
+        if ($relation['type'] === 'MorphOne' || $relation['type'] === 'MorphMany') {
+            return true;
+        }
+
+        $reflection = new ReflectionClass($parentFqcn);
+
+        if (! $reflection->hasMethod($relation['name'])) {
+            return false;
+        }
+
+        $returnType = $reflection->getMethod($relation['name'])->getReturnType();
+
+        if (! $returnType instanceof ReflectionNamedType || $returnType->isBuiltin()) {
+            return false;
+        }
+
+        $fqcn = $returnType->getName();
+
+        return is_a($fqcn, MorphOne::class, true)
+            || is_a($fqcn, MorphMany::class, true);
+    }
+
+    /**
+     * The `Pivot|morphName` map key for a morphToMany whose custom pivot model carries the morphTo back.
+     */
+    protected function morphPivotKey(Model $instance, string $relationName): ?string
+    {
+        try {
+            $relation = $instance->{$relationName}();
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $relation instanceof MorphToMany || $relation->getInverse()) {
+            return null;
+        }
+
+        $pivot = $relation->getPivotClass();
+
+        // getPivotClass()'s class-string<Pivot> bound is docblock-only — using() takes no native
+        // parameter type — so a caller can still hand it an unrelated class at runtime.
+        /** @phpstan-ignore function.alreadyNarrowedType */
+        if (in_array($pivot, [Pivot::class, MorphPivot::class], true) || ! is_a($pivot, Model::class, true)) {
+            return null;
+        }
+
+        DependencyRecorder::recordClass($pivot);
+
+        $morphType = $relation->getMorphType();
+
+        return $pivot.'|'.(str_ends_with($morphType, '_type') ? substr($morphType, 0, -5) : $morphType);
     }
 
     /**
@@ -1925,6 +1855,76 @@ class ModelAttributeResolver
         $visible = $instance->getVisible();
 
         return ($visible === [] || in_array($name, $visible, true)) && ! in_array($name, $instance->getHidden(), true);
+    }
+
+    /**
+     * Build the child → parents morph target map, reading each model's relations through the given pass's reader.
+     *
+     * @param  list<class-string>  $modelFqcns
+     */
+    private function buildMorphTargetMapFrom(array $modelFqcns, bool $withoutTables): void
+    {
+        /** @var array<string, list<class-string>> $map */
+        $map = [];
+
+        foreach ($modelFqcns as $parentFqcn) {
+            $ctx = $this->contextFor($parentFqcn, $withoutTables);
+
+            if ($ctx === null) {
+                continue;
+            }
+
+            foreach ($ctx['relations'] as $relation) {
+                if (str_contains($relation['type'], 'MorphToMany')) {
+                    $pivotKey = $this->morphPivotKey($ctx['instance'], $relation['name']);
+
+                    if ($pivotKey !== null && ! in_array($parentFqcn, $map[$pivotKey] ?? [], true)) {
+                        $map[$pivotKey][] = $parentFqcn;
+                    }
+
+                    continue;
+                }
+
+                if (! $this->isMorphParentRelation($parentFqcn, $relation)) {
+                    continue;
+                }
+
+                $childFqcn = $relation['related'];
+
+                DependencyRecorder::recordClass($childFqcn);
+
+                // Written under both keys: the morph-name-specific bucket so two differently-named
+                // morphTos on one child don't share a union, and the plain childFqcn bucket as the
+                // legacy aggregate a child relation falls back to when its own name can't be read.
+                $keys = [$childFqcn];
+                $morphName = $this->relationMorphName($ctx['instance'], $relation['name']);
+
+                if ($morphName !== null) {
+                    $keys[] = $childFqcn.'|'.$morphName;
+                }
+
+                foreach ($keys as $key) {
+                    if (! isset($map[$key])) {
+                        $map[$key] = [];
+                    }
+
+                    if (! in_array($parentFqcn, $map[$key], true)) {
+                        $map[$key][] = $parentFqcn;
+                    }
+                }
+            }
+        }
+
+        // Sorted so the generated union type is stable across runs.
+        foreach ($map as $key => $parents) {
+            sort($parents);
+            $map[$key] = $parents;
+        }
+
+        $this->morphTargetMap = $map;
+
+        // An analysis the old map typed a morph relation for would otherwise be reused under the new one.
+        resolve(AnalysisMemo::class)->reset();
     }
 
     /**

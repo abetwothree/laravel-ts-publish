@@ -50,21 +50,9 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    #[TsCasts([
-        'settings' => '{ theme: "light" | "dark"; notifications: boolean; locale: string } | null',
-        'options' => 'Record<string, unknown> | null',
-    ])]
-    protected function casts(): array
+    public static function morphValue(): string
     {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'role' => Role::class,
-            'membership_level' => MembershipLevel::class,
-            'settings' => 'array',
-            'options' => 'array',
-            'last_login_at' => 'datetime',
-        ];
+        return (new self)->getMorphClass();
     }
 
     public function profile(): HasOne
@@ -116,6 +104,28 @@ class User extends Authenticatable
         return $this->morphMany(Image::class, 'imageable');
     }
 
+    public function nameTitled(): string
+    {
+        return Str::headline($this->name);
+    }
+
+    #[TsCasts([
+        'settings' => '{ theme: "light" | "dark"; notifications: boolean; locale: string } | null',
+        'options' => 'Record<string, unknown> | null',
+    ])]
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'role' => Role::class,
+            'membership_level' => MembershipLevel::class,
+            'settings' => 'array',
+            'options' => 'array',
+            'last_login_at' => 'datetime',
+        ];
+    }
+
     /** User name formatted with first letter capitalized */
     protected function name(): Attribute
     {
@@ -140,15 +150,5 @@ class User extends Authenticatable
         return Attribute::make(
             get: fn (): bool => in_array($this->membership_level, [MembershipLevel::Premium, MembershipLevel::Enterprise]),
         );
-    }
-
-    public function nameTitled(): string
-    {
-        return Str::headline($this->name);
-    }
-
-    public static function morphValue(): string
-    {
-        return (new self)->getMorphClass();
     }
 }

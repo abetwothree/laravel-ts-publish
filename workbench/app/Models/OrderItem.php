@@ -22,6 +22,16 @@ class OrderItem extends Model
         'options',
     ];
 
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
     #[TsCasts(['options' => 'Record<string, string | number | boolean> | null'])]
     protected function casts(): array
     {
@@ -31,16 +41,6 @@ class OrderItem extends Model
             'total_price' => 'decimal:2',
             'options' => 'array',
         ];
-    }
-
-    public function order(): BelongsTo
-    {
-        return $this->belongsTo(Order::class);
-    }
-
-    public function product(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
     }
 
     /** Line item subtotal computed from quantity × unit_price */

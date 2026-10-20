@@ -61,6 +61,20 @@ class BroadcastEventTransformer extends CoreTransformer
     public protected(set) array $properties = [];
 
     /**
+     * Resolved type imports: import path => list of type names.
+     *
+     * @var TypesImportMap
+     */
+    public protected(set) array $typeImports = [];
+
+    /**
+     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
+     *
+     * @var list<string>
+     */
+    public protected(set) array $tsExtends = [];
+
+    /**
      * Model FQCNs found in properties (FQCN => short TS type name).
      *
      * @var array<class-string, string>
@@ -73,13 +87,6 @@ class BroadcastEventTransformer extends CoreTransformer
      * @var array<class-string, string>
      */
     protected array $enumFqcnMap = [];
-
-    /**
-     * Resolved type imports: import path => list of type names.
-     *
-     * @var TypesImportMap
-     */
-    public protected(set) array $typeImports = [];
 
     /**
      * Imports the analysis channels the enum and model maps do not cover need (nested resources,
@@ -132,13 +139,6 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $optionalOverrides = [];
 
     /**
-     * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
-     *
-     * @var list<string>
-     */
-    public protected(set) array $tsExtends = [];
-
-    /**
      * Import entries from TsExtends to be merged into typeImports.
      *
      * @var array<string, list<string>>
@@ -147,12 +147,6 @@ class BroadcastEventTransformer extends CoreTransformer
 
     /** @var ReflectionClass<ShouldBroadcast> */
     protected ReflectionClass $reflection;
-
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflection'];
-    }
 
     #[Override]
     public function transform(): self
@@ -167,6 +161,69 @@ class BroadcastEventTransformer extends CoreTransformer
             ->renumberTopLevelKeys();
 
         return $this;
+    }
+
+    #[Override]
+    public function filename(): string
+    {
+        return $this->eventName;
+    }
+
+    #[Override]
+    public function data(): TsBroadcastEventDto
+    {
+        return new TsBroadcastEventDto(
+            eventName: $this->eventName,
+            broadcastName: $this->broadcastName,
+            fqcn: $this->fqcn(),
+            description: '@see '.$this->fqcn(),
+            filename: $this->filename(),
+            namespacePath: $this->namespacePath,
+            properties: $this->properties,
+            typeImports: $this->typeImports,
+            tsExtends: $this->tsExtends,
+        );
+    }
+
+    /**
+     * Build a map of import aliases to their globally-qualified names.
+     *
+     * @return array<string, string> alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalAliasMap(): array
+    {
+        $map = [];
+
+        foreach ($this->importAliases as $fqcn => $alias) {
+            if (isset($this->enumFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
+            } elseif (isset($this->modelFqcnMap[$fqcn])) {
+                $ns = TsNaming::globalNamespace($fqcn);
+                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Map every type token appearing in this event's properties to its globally-qualified name.
+     *
+     * Name-based qualification alone is ambiguous when one short name exists in several namespaces
+     * (App\Models\User vs Crm\Models\User), so GlobalsWriter resolves through this map instead.
+     *
+     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
+     */
+    public function globalTypeReferenceMap(): array
+    {
+        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflection'];
     }
 
     /**
@@ -272,28 +329,6 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->optionalOverrides = $result['optionalOverrides'];
 
         return $this;
-    }
-
-    #[Override]
-    public function filename(): string
-    {
-        return $this->eventName;
-    }
-
-    #[Override]
-    public function data(): TsBroadcastEventDto
-    {
-        return new TsBroadcastEventDto(
-            eventName: $this->eventName,
-            broadcastName: $this->broadcastName,
-            fqcn: $this->fqcn(),
-            description: '@see '.$this->fqcn(),
-            filename: $this->filename(),
-            namespacePath: $this->namespacePath,
-            properties: $this->properties,
-            typeImports: $this->typeImports,
-            tsExtends: $this->tsExtends,
-        );
     }
 
     /**
@@ -620,41 +655,6 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->properties = TopLevelRenumbering::rekey($this->properties, $renumbered);
 
         return $this;
-    }
-
-    /**
-     * Build a map of import aliases to their globally-qualified names.
-     *
-     * @return array<string, string> alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalAliasMap(): array
-    {
-        $map = [];
-
-        foreach ($this->importAliases as $fqcn => $alias) {
-            if (isset($this->enumFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->enumFqcnMap[$fqcn];
-            } elseif (isset($this->modelFqcnMap[$fqcn])) {
-                $ns = TsNaming::globalNamespace($fqcn);
-                $map[$alias] = $ns.'.'.$this->modelFqcnMap[$fqcn];
-            }
-        }
-
-        return $map;
-    }
-
-    /**
-     * Map every type token appearing in this event's properties to its globally-qualified name.
-     *
-     * Name-based qualification alone is ambiguous when one short name exists in several namespaces
-     * (App\Models\User vs Crm\Models\User), so GlobalsWriter resolves through this map instead.
-     *
-     * @return array<string, string> typeName|alias => 'dot.separated.namespace.TypeName'
-     */
-    public function globalTypeReferenceMap(): array
-    {
-        return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap);
     }
 
     /**

@@ -22,15 +22,6 @@ class Deal extends Model
         'value',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'status' => Status::class,
-            'crm_status' => CrmStatus::class,
-            'value' => 'decimal:2',
-        ];
-    }
-
     /**
      * The CRM customer this deal belongs to.
      */
@@ -45,5 +36,14 @@ class Deal extends Model
     public function admin(): BelongsTo
     {
         return $this->belongsTo(\Workbench\App\Models\User::class, 'admin_id');
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'status' => Status::class,
+            'crm_status' => CrmStatus::class,
+            'value' => 'decimal:2',
+        ];
     }
 }

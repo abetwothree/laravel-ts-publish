@@ -36,6 +36,9 @@ class EnumTransformer extends CoreTransformer
 {
     use SnapshotsTransformerState;
 
+    /** @var list<string> */
+    private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
+
     public protected(set) string $enumName;
 
     public protected(set) string $description = '';
@@ -64,15 +67,6 @@ class EnumTransformer extends CoreTransformer
 
     /** @var CaseTypesList */
     public protected(set) array $caseTypes = [];
-
-    /** @var list<string> */
-    private const array BUILT_IN_ENUM_METHODS = ['cases', 'from', 'tryFrom'];
-
-    /** @return list<string> */
-    protected function transientProperties(): array
-    {
-        return ['reflectionEnum'];
-    }
 
     #[Override]
     public function transform(): self
@@ -112,6 +106,12 @@ class EnumTransformer extends CoreTransformer
     public function filename(): string
     {
         return Str::kebab($this->enumName);
+    }
+
+    /** @return list<string> */
+    protected function transientProperties(): array
+    {
+        return ['reflectionEnum'];
     }
 
     protected function initInstance(): self

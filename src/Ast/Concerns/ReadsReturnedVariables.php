@@ -95,6 +95,20 @@ trait ReadsReturnedVariables
     abstract protected function appendedKey(Expr $value): ?array;
 
     /**
+     * The analysis of one array literal a closure returns, each key it sets required within that branch.
+     *
+     * @return TAnalysis
+     */
+    abstract private function mergedArrayAnalysis(Array_ $array): MethodAnalysis;
+
+    /**
+     * The analysis of a merged value other than an array literal or a variable, or null for one the host does not read.
+     *
+     * @return TAnalysis|null
+     */
+    abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
+
+    /**
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
@@ -320,20 +334,6 @@ trait ReadsReturnedVariables
         // A guard's `return []` merges nothing, so beside a branch that sets a key it is a branch like any other.
         return array_any($branches, fn (MethodAnalysis $branch): bool => $branch->properties !== []) ? $branches : [];
     }
-
-    /**
-     * The analysis of one array literal a closure returns, each key it sets required within that branch.
-     *
-     * @return TAnalysis
-     */
-    abstract private function mergedArrayAnalysis(Array_ $array): MethodAnalysis;
-
-    /**
-     * The analysis of a merged value other than an array literal or a variable, or null for one the host does not read.
-     *
-     * @return TAnalysis|null
-     */
-    abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
 
     /**
      * A merged value's branch, or null when the host does not read it completely, as variableBranch() decides.

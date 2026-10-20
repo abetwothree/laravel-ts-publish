@@ -24,6 +24,28 @@ class ModelMetadataGenerator extends CoreGenerator implements ProvidesCacheSigna
     public protected(set) ModelMetadataTransformer $transformer;
 
     /**
+     * Build a signature from the provider's runtime metadata payload.
+     */
+    #[Override]
+    public static function cacheSignature(string $fqcn): string
+    {
+        $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
+
+        /** @var Model $model */
+        $model = resolve($fqcn);
+
+        // Outside the try on purpose: a provider that throws is a real failure the runner must see.
+        $metadata = $provider->provide($model);
+
+        try {
+            return hash('xxh128', serialize([$provider::class, $metadata]));
+        } catch (Throwable) {
+            // Unserializable payload → force a miss every run rather than trust a hash we cannot compute.
+            return hash('xxh128', $provider::class.random_bytes(16));
+        }
+    }
+
+    /**
      * Generate the model metadata content.
      */
     #[Override]
@@ -49,27 +71,5 @@ class ModelMetadataGenerator extends CoreGenerator implements ProvidesCacheSigna
     public function filename(): string
     {
         return $this->cachedFilename ?? $this->transformer->filename();
-    }
-
-    /**
-     * Build a signature from the provider's runtime metadata payload.
-     */
-    #[Override]
-    public static function cacheSignature(string $fqcn): string
-    {
-        $provider = resolve(ModelMetadataProviderResolver::class)->resolve();
-
-        /** @var Model $model */
-        $model = resolve($fqcn);
-
-        // Outside the try on purpose: a provider that throws is a real failure the runner must see.
-        $metadata = $provider->provide($model);
-
-        try {
-            return hash('xxh128', serialize([$provider::class, $metadata]));
-        } catch (Throwable) {
-            // Unserializable payload → force a miss every run rather than trust a hash we cannot compute.
-            return hash('xxh128', $provider::class.random_bytes(16));
-        }
     }
 }

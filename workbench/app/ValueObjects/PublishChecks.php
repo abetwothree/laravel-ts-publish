@@ -10,6 +10,11 @@ namespace Workbench\App\ValueObjects;
  */
 final readonly class PublishChecks
 {
+    public static function label(): string
+    {
+        return 'checks';
+    }
+
     /** @return list<array{message: string, route?: string}> */
     public function toArray(): array
     {
@@ -20,10 +25,5 @@ final readonly class PublishChecks
     public function commentsCount(): string
     {
         return 'none';
-    }
-
-    public static function label(): string
-    {
-        return 'checks';
     }
 }

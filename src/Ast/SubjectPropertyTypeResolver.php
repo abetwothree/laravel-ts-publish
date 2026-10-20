@@ -155,6 +155,26 @@ final class SubjectPropertyTypeResolver
     }
 
     /**
+     * The expressions a node writes, or for a call the arguments it might pass by reference; empty for any other node.
+     *
+     * @return list<Expr|Arg>
+     */
+    private static function writeTargets(Node $node): array
+    {
+        $targets = match (true) {
+            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PreDec,
+            $node instanceof PostInc, $node instanceof PostDec => [$node->var],
+            $node instanceof AssignRef => [$node->var, $node->expr],
+            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar, $node->byRef ? $node->expr : null],
+            $node instanceof Unset_ => $node->vars,
+            $node instanceof CallLike => $node->isFirstClassCallable() ? [] : $node->getArgs(),
+            default => [],
+        };
+
+        return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
+    }
+
+    /**
      * The type of an untyped property's default, typed as a parameter default's value is, while no method the class
      * runs writes the property, so a read still holds the default.
      *
@@ -262,26 +282,6 @@ final class SubjectPropertyTypeResolver
         }
 
         return $declarations;
-    }
-
-    /**
-     * The expressions a node writes, or for a call the arguments it might pass by reference; empty for any other node.
-     *
-     * @return list<Expr|Arg>
-     */
-    private static function writeTargets(Node $node): array
-    {
-        $targets = match (true) {
-            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PreDec,
-            $node instanceof PostInc, $node instanceof PostDec => [$node->var],
-            $node instanceof AssignRef => [$node->var, $node->expr],
-            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar, $node->byRef ? $node->expr : null],
-            $node instanceof Unset_ => $node->vars,
-            $node instanceof CallLike => $node->isFirstClassCallable() ? [] : $node->getArgs(),
-            default => [],
-        };
-
-        return array_values(array_filter($targets, fn (Expr|Arg|null $target): bool => $target !== null));
     }
 
     /**
