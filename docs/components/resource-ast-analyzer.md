@@ -67,7 +67,10 @@ every profile, the order handlers run in decides which one answers; see
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
   entry no read branch sets. Otherwise, with no branch read completely holding a key, the sweep declines and the first
-  `return` is read; any other return is skipped.
+  `return` is read; any other return is skipped. "Read completely" is `MethodAnalysis::$readsCompletely`, which
+  `merge()` ANDs, so a base, spread helper, merge or ancestor body read only partly leaves the variable built on it
+  read only partly. A value read types only its own key, and a spread resource's published keys stand as given, so
+  neither clears it.
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first

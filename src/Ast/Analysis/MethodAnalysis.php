@@ -51,6 +51,9 @@ class MethodAnalysis
 {
     use DispatchesFqcnResults;
 
+    /** Whether every read behind these keys was followed; a returned variable built on one that was not is skipped. */
+    public bool $readsCompletely = true;
+
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
@@ -167,13 +170,14 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning,
-     * and a key the source sets without a cast loses its entry. The four inline maps append WITHOUT deduping:
-     * aliasPropertyType() consumes each as a positional queue against the rendered type. `carried` unions per kind.
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key the
+     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
+     * consumes each as a positional queue against the rendered type. `carried` unions per kind; `readsCompletely` ANDs.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
+        $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);

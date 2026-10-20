@@ -243,22 +243,21 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
             // Model/collection delegation only makes sense for toArray(); a generic method with no
             // body anywhere in the chain is simply empty, not a model dump.
-            if ($this->methodName !== 'toArray') {
-                return new ResourceAnalysis;
-            }
-
-            if ($this->isResourceCollection($this->scope)) {
-                return $this->buildCollectionDelegatedAnalysis();
-            }
-
-            $delegated = $this->buildModelSerializedAnalysis();
+            $delegated = match (true) {
+                $this->methodName !== 'toArray' => new ResourceAnalysis,
+                $this->isResourceCollection($this->scope) => $this->buildCollectionDelegatedAnalysis(),
+                default => $this->buildModelSerializedAnalysis(),
+            };
 
             // With no model behind it, the delegation publishes none of the keys the response carries.
-            if ($delegated === null) {
-                $this->lenientReads++;
+            $delegated ??= ResourceAnalysis::unreadAnalysis();
+
+            // An ancestor read only partly leaves the method it stands in for read only partly.
+            if ($inherited !== null && ! $inherited->readsCompletely) {
+                $delegated->readsCompletely = false;
             }
 
-            return $delegated ?? new ResourceAnalysis;
+            return $delegated;
         }
 
         $finder = new NodeFinder;
@@ -290,7 +289,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // Fallback: the method's own first return for non-array returns (parent::toArray, $this->only, etc.); a
         // closure's return is the closure's value, never the method's.
-        $returned = $this->collectReturnExpressions($toArrayMethod->stmts)[0] ?? null;
+        $returns = $this->collectReturnExpressions($toArrayMethod->stmts);
+        $returned = $returns[0] ?? null;
 
         if ($returned === null) {
             return new ResourceAnalysis; // @codeCoverageIgnore
@@ -306,11 +306,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             default => $this->analyzeArrayExpression($returned),
         };
 
-        if ($analysis === null) {
-            $this->lenientReads++;
+        $analysis ??= ResourceAnalysis::unreadAnalysis();
+
+        // The fallback reads one return of several, so the others are unread.
+        if (count($returns) > 1) {
+            $analysis->readsCompletely = false;
         }
 
-        return $this->ownMethodShaped($analysis ?? new ResourceAnalysis);
+        return $this->ownMethodShaped($analysis);
     }
 
     /**
@@ -433,7 +436,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             ];
         }
 
-        return new ResourceAnalysis(
+        $merged = new ResourceAnalysis(
             properties: $properties,
             enumResources: $channels->enumResources,
             nestedResources: $channels->nestedResources,
@@ -451,6 +454,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
             flatTypeAlias: $flatTypeAlias,
             flatTypeAliasFqcn: $flatTypeAliasFqcn,
         );
+        $merged->readsCompletely = $channels->readsCompletely;
+
+        return $merged;
     }
 
     /**
@@ -672,13 +678,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
-        $lenientReads = $this->lenientReads;
-        $result = $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
-
-        // A value read partly types its own key and hides none, so it never makes a variable unreadable.
-        $this->lenientReads = $lenientReads;
-
-        return $result;
+        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
     }
 
     /**
@@ -712,7 +712,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // mergeWhen() merges its value only where the condition holds, and mergeUnless() only where it fails.
         $condition = $args->named('condition')?->value;
-        $branches = $this->resolveProvenNonNull(
+        [$branches, $complete] = $this->resolveProvenNonNull(
             $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
             $this->scope,
             fn (): array => $this->resolveMergedBranches($value->value),
@@ -722,9 +722,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $default = $args->named('default')?->value;
 
             // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
-            $defaultBranches = $default === null || $this->closureRequiresArguments($default)
-                ? []
+            [$defaultBranches, $defaultComplete] = $default === null || $this->closureRequiresArguments($default)
+                ? [[], true]
                 : $this->resolveMergedBranches($default);
+            $complete = $complete && $defaultComplete;
 
             // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
             $branches = [
@@ -733,35 +734,37 @@ class ResourceAstAnalyzer implements ExpressionEngine
             ];
         }
 
-        return match (count($branches)) {
+        $merged = match (count($branches)) {
             0 => new ResourceAnalysis,
             1 => $branches[0],
             default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
         };
+        $merged->readsCompletely = $merged->readsCompletely && $complete;
+
+        return $merged;
     }
 
     /**
      * The arrays a merge argument can merge, one analysis each: a literal, a value, or each array a closure returns.
      *
-     * mergedValueAnalysis() reads a value; an argument the analysis cannot read counts as a lenient read.
+     * mergedValueAnalysis() reads a value; an argument the analysis cannot read is not read completely.
      *
-     * @return list<ResourceAnalysis> empty when the argument merges no array the analysis reads
+     * @return array{list<ResourceAnalysis>, bool} the branches, empty when the argument merges no array the analysis
+     *                                             reads, and whether every one was read completely
      */
     protected function resolveMergedBranches(Expr $expr): array
     {
         if ($expr instanceof Array_) {
-            return [$this->mergedArrayAnalysis($expr)];
+            $branch = $this->mergedArrayAnalysis($expr);
+
+            return [[$branch], $branch->readsCompletely];
         }
 
         // Laravel merges value($value), so a value passed as it is merges as a closure returning it would.
         if (! $expr instanceof ClosureExpr && ! $expr instanceof ArrowFunction) {
             $branch = $this->mergedValueBranch($expr);
 
-            if ($branch === null) {
-                $this->lenientReads++;
-            }
-
-            return $branch === null ? [] : [$branch];
+            return $branch === null ? [[], false] : [[$branch], true];
         }
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
@@ -898,14 +901,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The method's own first return, never a closure's: the fallback whenever the branch sweep above cannot classify
-     * every return a method makes, so it is always a lenient read.
+     * every return a method makes, so it is never read completely.
      *
      * @param  array<Node\Stmt>  $stmts
      */
     protected function analyzeFirstReturn(array $stmts, bool $topLevel = true): ResourceAnalysis
     {
-        $this->lenientReads++;
-
         $returned = $this->collectReturnExpressions($stmts)[0] ?? null;
 
         if ($returned instanceof Array_) {
@@ -925,6 +926,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
         } else {
             $analysis = new ResourceAnalysis;
         }
+
+        $analysis->readsCompletely = false;
 
         return $analysis;
     }
@@ -1037,12 +1040,6 @@ class ResourceAstAnalyzer implements ExpressionEngine
         // publish optional. Without a key read completely, only a lenient read of a variable keeps the sweep going.
         $proceeds = $literalHasItems || $variableHasItems || ($lenient && $variables !== []);
 
-        // A return no branch stands for, or one the first-return fallback leaves beside the one it reads, is unread.
-        // The published shape stays, but a child that builds on it cannot trust its key set.
-        if ($proceeds ? $taken < $returns : $returns > 1) {
-            $this->lenientReads++;
-        }
-
         if (! $proceeds) {
             return null;
         }
@@ -1054,6 +1051,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }, $branches);
 
         $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
+
+        // A return no branch stands for is unread: the published shape stays, but a child that builds on it cannot
+        // trust its key set.
+        if ($taken < $returns) {
+            $merged->readsCompletely = false;
+        }
 
         // A variable skipped only for a lenient read still returns on its path: a key no read branch sets may be there.
         foreach ($partlyRead as $name => $branch) {
@@ -1519,6 +1522,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         $analysis = resolve(AstEngine::class)->analyzeMethod($resourceFqcn, 'toArray');
 
+        // The spread takes the resource's published keys as given, as a value read takes its type.
+        $analysis->readsCompletely = true;
+
         // resolve() runs the spread resource's own filter.
         self::reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
 
@@ -1742,8 +1748,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze a method of the subject's parent or of the runtime class in an analyzer of its own, whose lenient reads
-     * count as this one's; a whole read there stays whole only when this one's is.
+     * Analyze a method of the subject's parent or of the runtime class in an analyzer of its own, whose analysis says
+     * whether it was read completely; a whole read there stays whole only when this one's is.
      *
      * @param  ReflectionClass<object>  $class
      */
@@ -1752,10 +1758,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         $analyzer = $this->nestedAnalyzer($class, $method, $this->scope->modelClass);
         $analyzer->returnedWhole = $whole;
 
-        $analysis = $analyzer->analyze();
-        $this->lenientReads += $analyzer->lenientReads;
-
-        return $analysis;
+        return $analyzer->analyze();
     }
 
     /**

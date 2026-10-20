@@ -29,7 +29,7 @@ use ReflectionClass;
  * The resource object a `JsonApiResource` sends as `data`, composed from the analyzer's own reads of the runtime class:
  * `id`, `type`, `attributes`, and the `relationships`, `links` and `meta` Laravel sends only when they hold a key.
  *
- * The host also holds `$methodName`, `$context`, `$readsCall`, `$scope`, `$methodsOnStack` and `$lenientReads`.
+ * The host also holds `$methodName`, `$context`, `$readsCall`, `$scope` and `$methodsOnStack`.
  *
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type JsonApiRelationship from JsonApiResources
@@ -159,6 +159,9 @@ trait BuildsJsonApiResourceObject
         // Laravel drops an empty attributes object, so it is sure to be sent only while one member always is.
         $analysis->addProperty('attributes', $this->inlineObject($attributes), optional: ! self::sendsMemberAlways($attributes));
 
+        // A member read only partly leaves the whole object read only partly.
+        $analysis->readsCompletely = $attributes->readsCompletely;
+
         $relationships = JsonApiResources::relationships($runtime->getName(), $this->scope->modelClass);
 
         if ($relationships !== []) {
@@ -172,6 +175,7 @@ trait BuildsJsonApiResourceObject
 
             if ($member !== null) {
                 $analysis->addProperty($key, $this->inlineObject($member), optional: true);
+                $analysis->readsCompletely = $analysis->readsCompletely && $member->readsCompletely;
             }
         }
 
@@ -198,6 +202,7 @@ trait BuildsJsonApiResourceObject
 
         $analysis = new ResourceAnalysis;
         $analysis->addProperty('data', $this->inlineObject($object));
+        $analysis->readsCompletely = $object->readsCompletely;
 
         return $analysis;
     }
@@ -303,10 +308,7 @@ trait BuildsJsonApiResourceObject
             return new ResourceAnalysis;
         }
 
-        $analysis = $analyzer->analyze();
-        $this->lenientReads += $analyzer->lenientReads;
-
-        return $analysis;
+        return $analyzer->analyze();
     }
 
     /**
