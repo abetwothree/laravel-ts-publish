@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverMethodReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverType;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverPairArchiveResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverPairResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverPairArchive;

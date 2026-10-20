@@ -10,10 +10,10 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 
 | Class | Min Laravel | Guarded at | Tests skipped at | Convert when floor ≥ |
 | --- | --- | --- | --- | --- |
-| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/ModelClassResolver.php`, `src/Ast/Concerns/GuessesModelResources.php`, `src/Ast/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/Resources/ModelClassResolver.php`, `src/Ast/Concerns/GuessesModelResources.php`, `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Ast/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php`, `tests/Unit/Analyzers/CollectionWrapAndCollectsTest.php` (see below) | `13.0.0` |
-| `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Ast/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
+| `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php`, `tests/Unit/Analyzers/CollectionWrapAndCollectsTest.php` (see below) | `13.0.0` |
+| `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Hidden` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
@@ -22,7 +22,7 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\Initialize` | `12.22.0` | `src/ModelAttributeResolver.php` (`setsKeyInCode()`) | `tests/Unit/ModelAttributeResolverTest.php` | `12.22.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
-| `Illuminate\Http\Resources\JsonApi\JsonApiResource` | `12.45.0` | `src/Ast/JsonApiResources.php` | `tests/Unit/Analyzers/JsonApiResourceTest.php` (a `beforeEach()` skip), `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php` | `12.45.0` |
+| `Illuminate\Http\Resources\JsonApi\JsonApiResource` | `12.45.0` | `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Analyzers/JsonApiResourceTest.php` (a `beforeEach()` skip), `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php` | `12.45.0` |
 
 The `PreserveKeys` guard covers only the `#[PreserveKeys]` attribute, which `ResourceCollections::preservesKeys()` reads
 through `ReflectionClass::getAttributes()`. The older `public $preserveKeys = true;` property is read through
@@ -106,7 +106,7 @@ These string FQCNs exist for reasons other than version support, so never conver
 - `src/Ast/Handlers/ModelFinderHandler.php` names
   `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` in its `PAGINATORS` map, the same
   always-present-class-by-name shape as `TolkiTypes.php`.
-- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/InertiaRenderLocator.php` name the dev-only
+- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/Parsing/InertiaRenderLocator.php` name the dev-only
   `Inertia\ResponseFactory` by string behind `class_exists()`. That is not a Laravel version guard, but the same rule
   applies for the same reason. Importing a `require-dev` package from `src/` would declare a hard dependency this
   package does not have.

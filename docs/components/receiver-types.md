@@ -407,15 +407,15 @@ These pages cover the neighbors of receiver resolution:
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that catch a regression to `unknown` or an
   unimportable token.
 
-[`MacroCallResolver`]: ../../src/Ast/MacroCallResolver.php
-[`MethodReturnTypeResolver`]: ../../src/Ast/MethodReturnTypeResolver.php
+[`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
+[`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
-[`ReceiverClassResolver`]: ../../src/Ast/ReceiverClassResolver.php
+[`ReceiverClassResolver`]: ../../src/Ast/Receivers/ReceiverClassResolver.php
 [`ReceiverMethodCallHandler`]: ../../src/Ast/Handlers/ReceiverMethodCallHandler.php
-[`ReceiverMethodReturnResolver`]: ../../src/Ast/ReceiverMethodReturnResolver.php
+[`ReceiverMethodReturnResolver`]: ../../src/Ast/Receivers/ReceiverMethodReturnResolver.php
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/ReceiverPropertyFetchHandler.php
-[`ReceiverType`]: ../../src/Ast/ReceiverType.php
+[`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [params]: ast-engine.md#a-called-methods-parameters

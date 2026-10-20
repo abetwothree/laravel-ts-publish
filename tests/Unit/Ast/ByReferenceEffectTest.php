@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 
 /**
  * What an effect leaves in a value of a type, when the call writes the given value types whatever the element.

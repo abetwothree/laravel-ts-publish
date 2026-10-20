@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\SubjectPropertyTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DynamicDefaultsSubject;

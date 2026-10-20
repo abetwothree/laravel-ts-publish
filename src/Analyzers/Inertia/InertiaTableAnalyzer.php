@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallChainWalker;
-use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallChainWalker;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Support\PackageJson;
 use Illuminate\Database\Eloquent\Model;

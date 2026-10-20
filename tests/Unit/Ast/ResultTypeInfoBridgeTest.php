@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\ResultTypeInfoBridge;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;

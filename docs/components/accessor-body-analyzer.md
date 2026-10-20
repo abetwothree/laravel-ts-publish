@@ -17,7 +17,7 @@ The body step spans these classes:
   shared by `ModelAttributeResolver` and `ModelTransformer`, including the choice between body and annotation.
 - [`AstEngine`](../../src/Ast/AstEngine.php): `analyzeModelClosure()` seeds the scope and runs the getter on the
   `ResourceExpressionHandlers::forModelClosures()` profile.
-- [`AnalysisMemo`](../../src/Ast/AnalysisMemo.php): the cycle guard and the memo for the run.
+- [`AnalysisMemo`](../../src/Ast/Analysis/AnalysisMemo.php): the cycle guard and the memo for the run.
 
 ## When the body is read
 

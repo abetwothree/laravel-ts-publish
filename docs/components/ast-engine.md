@@ -8,6 +8,23 @@ body's return branches, and [`ExpressionDispatcher`] for how one expression reac
 
 ## Where things live
 
+The `src/Ast/` root holds only the public surface, [`AstEngine`] and [`AnalysisResult`]. Every other class sits in a
+folder by role, and a new class joins the folder whose role it shares:
+
+| Folder | Holds |
+| --- | --- |
+| `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record |
+| `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
+| `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
+| `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
+| `Dispatch/` | The dispatcher and its ordered handler profiles |
+| `Handlers/` | One handler per expression family |
+| `Members/` | Typing a class's own methods and properties |
+| `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
+| `Receivers/` | Which class an expression holds, and the methods called on it |
+| `Resources/` | API resource facts: backing model, collections, response body, JSON:API |
+| `Values/` | Value results and the readers that type a value: constants, reflection, `@var` docblocks, aggregates |
+
 These are the classes a change to the engine usually touches:
 
 | Class | Owns |
@@ -592,30 +609,30 @@ These pages cover the engine's neighbors:
 - [ADR: freeze Laravel Surveyor/Ranger and exit in stages](../decisions/2026-08-31-surveyor-staged-exit.md): why every
   inference feature moved onto this engine.
 
-[`AggregateValueType`]: ../../src/Ast/AggregateValueType.php
-[`AnalysisComposer`]: ../../src/Ast/AnalysisComposer.php
-[`AnalysisImports`]: ../../src/Ast/AnalysisImports.php
-[`AnalysisMemo`]: ../../src/Ast/AnalysisMemo.php
+[`AggregateValueType`]: ../../src/Ast/Values/AggregateValueType.php
+[`AnalysisComposer`]: ../../src/Ast/Composition/AnalysisComposer.php
+[`AnalysisImports`]: ../../src/Ast/Composition/AnalysisImports.php
+[`AnalysisMemo`]: ../../src/Ast/Analysis/AnalysisMemo.php
 [`AnalysisResult`]: ../../src/Ast/AnalysisResult.php
-[`AnalysisScope`]: ../../src/Ast/AnalysisScope.php
+[`AnalysisScope`]: ../../src/Ast/Analysis/AnalysisScope.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
-[`AstParser`]: ../../src/Ast/AstParser.php
-[`ByReferenceArguments`]: ../../src/Ast/ByReferenceArguments.php
-[`ByReferenceEffect`]: ../../src/Ast/ByReferenceEffect.php
+[`AstParser`]: ../../src/Ast/Parsing/AstParser.php
+[`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
+[`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/CollectsInstanceofGuards.php
-[`ControllerExpressionHandlers`]: ../../src/Ast/ControllerExpressionHandlers.php
-[`DroppedUnionArms`]: ../../src/Ast/DroppedUnionArms.php
-[`ExpressionDispatcher`]: ../../src/Ast/ExpressionDispatcher.php
+[`ControllerExpressionHandlers`]: ../../src/Ast/Dispatch/ControllerExpressionHandlers.php
+[`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
+[`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
-[`MethodAnalysis`]: ../../src/Ast/MethodAnalysis.php
-[`MethodLocator`]: ../../src/Ast/MethodLocator.php
-[`ParameterBinder`]: ../../src/Ast/ParameterBinder.php
+[`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
+[`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
+[`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/ReadsReturnedVariables.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
-[`ResourceExpressionHandlers`]: ../../src/Ast/ResourceExpressionHandlers.php
-[`ReturnLiteralReader`]: ../../src/Ast/ReturnLiteralReader.php
-[`SubjectPropertyTypeResolver`]: ../../src/Ast/SubjectPropertyTypeResolver.php
+[`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
+[`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
+[`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
 [body-fallback]: receiver-types.md#the-body-fallback-carries-no-fqcn-channel

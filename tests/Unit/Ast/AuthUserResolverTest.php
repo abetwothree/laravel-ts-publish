@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AuthUserResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use Workbench\App\Models\User;
 
 it('resolves the default guard provider model', function () {

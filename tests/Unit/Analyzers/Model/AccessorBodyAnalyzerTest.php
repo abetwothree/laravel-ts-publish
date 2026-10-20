@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;

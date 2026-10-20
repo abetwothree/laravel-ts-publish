@@ -7,12 +7,12 @@ import. This page owns how the sources rank, what a cast does to the key's impor
 
 | File | Role |
 | --- | --- |
-| [`TsCastsReader`](../../src/Ast/TsCastsReader.php) | Unpacks `#[TsCasts]` instances into types, import paths and optional flags, a later one winning. |
+| [`TsCastsReader`](../../src/Ast/Composition/TsCastsReader.php) | Unpacks `#[TsCasts]` instances into types, import paths and optional flags, a later one winning. |
 | [`ParsesTsCasts`](../../src/Concerns/ParsesTsCasts.php) | Reads a class's three locations: the class, `$casts` and `casts()`. |
 | [`ResourceAstAnalyzer::applyTsCastsFromMethod()`](../../src/Analyzers/ResourceAstAnalyzer.php) | Applies a method's own casts during analysis and records each one. |
-| [`MethodAnalysis::$casts`](../../src/Ast/MethodAnalysis.php) | Each method cast's text, its import path and its `optional` flag, if any; `merge()` lets the later one win. |
-| [`MethodAnalysis::$carried`](../../src/Ast/MethodAnalysis.php) | The classes a cast displaced and its text does not spell, kept apart from every queue. |
-| [`CastChannels`](../../src/Ast/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
+| [`MethodAnalysis::$casts`](../../src/Ast/Analysis/MethodAnalysis.php) | Each method cast's text, its import path and its `optional` flag, if any; `merge()` lets the later one win. |
+| [`MethodAnalysis::$carried`](../../src/Ast/Analysis/MethodAnalysis.php) | The classes a cast displaced and its text does not spell, kept apart from every queue. |
+| [`CastChannels`](../../src/Ast/Composition/CastChannels.php) | Fits each cast key's import channels to the cast in force. |
 | [`ResourceTransformer::collectCastsInForce()`](../../src/Transformers/ResourceTransformer.php) | Picks the cast in force per key from the method, model and resource casts. |
 | [`JsEmitter::castTargets()`](../../src/Support/JsEmitter.php) | Decides which published key a cast key retypes. |
 

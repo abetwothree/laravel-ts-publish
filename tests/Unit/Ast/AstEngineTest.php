@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\ModelClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AttributedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;

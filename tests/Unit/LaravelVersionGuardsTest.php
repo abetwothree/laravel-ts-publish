@@ -54,8 +54,8 @@ it('registers every version-guarded Laravel class reference', function () {
 
     // A walk that reaches zero files (or the wrong ones) would pass vacuously below. Proving this
     // known, nested reference was found is proof the recursive walk actually ran.
-    expect($guardedByFile)->toHaveKey('src/Ast/ResourceCollections.php')
-        ->and($guardedByFile['src/Ast/ResourceCollections.php'])
+    expect($guardedByFile)->toHaveKey('src/Ast/Resources/ResourceCollections.php')
+        ->and($guardedByFile['src/Ast/Resources/ResourceCollections.php'])
         ->toContain('Illuminate\Http\Resources\Attributes\Collects');
 
     $allGuarded = array_unique(array_merge(...array_values($guardedByFile)));

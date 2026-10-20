@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;

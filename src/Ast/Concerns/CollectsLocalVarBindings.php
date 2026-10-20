@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\PropertyDocblockTypeReader;
-use AbeTwoThree\LaravelTsPublish\Ast\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node;
 use PhpParser\Node\Arg;

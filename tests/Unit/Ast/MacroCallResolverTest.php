@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\MacroCallResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroScopeLeakResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingCollection;

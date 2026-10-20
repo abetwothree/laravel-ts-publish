@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\CastChannels;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedModelEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedSpelledEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastModelEvent;

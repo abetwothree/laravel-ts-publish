@@ -3,17 +3,17 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\PostReceiverController;
 use PhpParser\Node\Arg;

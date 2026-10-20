@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ArrayMergeHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\BinaryOpHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
@@ -34,8 +36,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;

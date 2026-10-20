@@ -20,20 +20,20 @@ These are the classes a change to resource analysis usually touches:
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
 | [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
 | [`BuildsJsonApiResourceObject`](../../src/Analyzers/Concerns/BuildsJsonApiResourceObject.php) | A JSON:API resource's resource object, composed from the analyzer's reads of the runtime class |
-| [`JsonApiResources`](../../src/Ast/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
-| [`ResourceCollections`](../../src/Ast/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
-| [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
-| [`ResourceExpressionHandlers`](../../src/Ast/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
+| [`JsonApiResources`](../../src/Ast/Resources/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
+| [`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
+| [`ResourceCollectionBody`](../../src/Ast/Resources/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
+| [`ResourceExpressionHandlers`](../../src/Ast/Dispatch/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
 | [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
 | [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
 | [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
-| [`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
+| [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
-| [`IndexSignatureReconciler`](../../src/Ast/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
-| [`ReflectedTypeAcceptor`](../../src/Ast/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
-| [`MethodAnalysis`](../../src/Ast/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
+| [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
+| [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
+| [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
 
 The controller profile drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`, the
 model-getter profile drops the first two, and any other non-resource subject drops `ConditionalMethodHandler` alone. In
@@ -48,12 +48,12 @@ every profile, the order handlers run in decides which one answers; see
   ([below](#jsonapi-resources)), unless a caller located the body or the read is an ancestor's for a subclass. A plain
   resource that overrides `toAttributes()` publishes it, whatever its `toArray()`, since Laravel sends it from 12.45.
 - **A `toArray()` that sends the collected list is the collection's body-less response in return position, and the
-  bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/ResourceCollectionBody.php) says which bodies
+  bare list anywhere else**: [`ResourceCollectionBody`](../../src/Ast/Resources/ResourceCollectionBody.php) says which bodies
   send it, and `buildCollectionDelegatedAnalysis()` publishes the response under the method's own `@return` and casts
   ([below](#a-stacked-body-less-collection-collects-what-its-own-class-names)). Code that builds on the list reads it
   as `[key: number]: R` (`collectedListAnalysis()`).
 - **The class's own declaration counts, a trait it uses included**:
-  [`MethodLocator::locateDeclared()`](../../src/Ast/MethodLocator.php); a method only an ancestor declares still walks
+  [`MethodLocator::locateDeclared()`](../../src/Ast/Parsing/MethodLocator.php); a method only an ancestor declares still walks
   `analyzeParentCall()`. An ancestor's analysis wins only when it has properties or a flat type. An empty one falls
   through to `buildCollectionDelegatedAnalysis()` or `buildModelSerializedAnalysis()`.
 - **A `parent::` or `$this->` call reaching JsonResource's own `with()`, `resolve()` or `jsonSerialize()` reads that
@@ -124,7 +124,7 @@ facts (`ResourceAstAnalyzer::$runtimeClass`), so its `$this->collection` reads `
 ### An inherited shape needs an inherited model
 
 A subclass's inherited analysis types its columns only when a model backs it.
-[`ModelClassResolver::resolve()`](../../src/Ast/ModelClassResolver.php) reads the nearest ancestor's `@mixin` or
+[`ModelClassResolver::resolve()`](../../src/Ast/Resources/ModelClassResolver.php) reads the nearest ancestor's `@mixin` or
 `@extends` when the class has none of its own; its docblock lists the full precedence. That step runs for any resource
 without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
 
@@ -157,7 +157,7 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
 
 - **[`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php)**: a relation or model accessor read as
   `$this->relation` or `$this->resource->relation`, and the `map` proxy, as in `$this->comments->map->only([...])`.
-- **[`ReceiverMethodReturnResolver::attributeFilterRule()`](../../src/Ast/ReceiverMethodReturnResolver.php)**: every
+- **[`ReceiverMethodReturnResolver::attributeFilterRule()`](../../src/Ast/Receivers/ReceiverMethodReturnResolver.php)**: every
   other receiver holding one model class, such as a bare `$this->only([...])` the resource forwards to its model, a
   `whenLoaded()` closure parameter or a local variable.
 
@@ -386,7 +386,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **A `whenAggregated()` aggregate follows the driver, and takes `| null` unless the model's declaration rules it
   out**: the model's own declaration of `{relation}_{function}_{column}` types it, else for `MIN()` and `MAX()` a
   user's `custom_ts_mappings` entry for the related column's type, else
-  [`AggregateValueType`](../../src/Ast/AggregateValueType.php) reads the related column's type and the connection's
+  [`AggregateValueType`](../../src/Ast/Values/AggregateValueType.php) reads the related column's type and the connection's
   driver, so a decimal `SUM()` is `number` on SQLite and `string` on MySQL, else it is `number`. Any aggregate but a
   count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call
   computes takes no arm.
@@ -430,7 +430,7 @@ since the elements could come from either arm. Each handler tracks in its own `m
 `SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
 [`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
 is its element types. A list literal, bare or collected, is typed by
-[`ValueResolver::resolveListLiteral()`](../../src/Ast/ValueResolver.php).
+[`ValueResolver::resolveListLiteral()`](../../src/Ast/Values/ValueResolver.php).
 
 The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
 a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:
@@ -545,7 +545,7 @@ token, and `InlineArrayHandler` builds the same queue for an inline array. `Imag
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
-[`ResourceCollections`](../../src/Ast/ResourceCollections.php) holds a collection's facts for the analyzer and the
+[`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) holds a collection's facts for the analyzer and the
 handlers alike: `collectedElement()`, `preservesKeys()`, `listValue()`, `listType()` and `reindexesNumericKeys()`.
 `collectedElement()` reads `Illuminate\Http\Resources\Attributes\Collects` behind `class_exists()`, because Laravel 12
 has no such class; see [version-guarded Laravel classes](../laravel-version-guards.md). It follows Laravel's
@@ -569,13 +569,13 @@ A `ResourceCollection` subclass nested by `new`, `make()` or a guessed `toResour
 `ResourceCollectionBody::nestedValue()`. While the run publishes it and its `toArray()` does not send the collected
 list, it publishes its own type, the body Laravel sends; otherwise the list over its `collectedElement()`, keyed by
 its own `preservesKeys()`. An excluded one keeps that list, so no import names a missing file. Over an empty receiver
-the guess builds a plain `ResourceCollection` first, so [`EmptyReceiverGuess`](../../src/Ast/EmptyReceiverGuess.php)
+the guess builds a plain `ResourceCollection` first, so [`EmptyReceiverGuess`](../../src/Ast/Resources/EmptyReceiverGuess.php)
 adds `never[]` beside a guessed collection's own type, and in a prop or shared value that plain collection's response,
 unless the guessed one's response is the plain list under the same wrap key.
 
 `InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
 lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
-key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/ResourceResponseBody.php) finds the body
+key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
 publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
 `import type`. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and
@@ -741,7 +741,7 @@ the enum half of `Order|SomeDto` would still leak the unimportable `SomeDto`.
 
 ### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
 
-[`ResultTypeInfoBridge::toTypeInfo()`](../../src/Ast/ResultTypeInfoBridge.php) is the inverse, for a consumer such as
+[`ResultTypeInfoBridge::toTypeInfo()`](../../src/Ast/Values/ResultTypeInfoBridge.php) is the inverse, for a consumer such as
 `AccessorBodyAnalyzer` that needs an engine result in the model layer's `TypeScriptTypeInfo`. It reads only the five
 channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
 `customImports`. It unions `customImports` rather than replacing them. Reading any other channel, such as a resource
@@ -892,7 +892,7 @@ to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that
 list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
 in every subject: an enum branch returns before `resourceWrapType()`.
 
-[`SubjectHelperReturnResolver`](../../src/Ast/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
+[`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
 ternary of those, and one wraps. It seeds the body as a spread's is: the caller's name tables and relation model are set
 aside, but for its proofs of `$this` reads, its parameters bind by what they declare and what the call passes, and its

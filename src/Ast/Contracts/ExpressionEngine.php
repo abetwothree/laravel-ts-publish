@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 
-use AbeTwoThree\LaravelTsPublish\Ast\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 

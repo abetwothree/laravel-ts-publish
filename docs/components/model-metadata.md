@@ -76,7 +76,7 @@ handler profile, whose handlers mean nothing in a provider. It reads `#[TsCasts]
 
 ### Inferred imports
 
-`ModelMetadataAnalyzer::inferredTypeImports()` passes `Ast\AnalysisImports::build()` only the channels the inferred
+`ModelMetadataAnalyzer::inferredTypeImports()` passes `AnalysisImports::build()` only the channels the inferred
 types need, in four steps:
 
 1. It strips the `customImports` that `ResourceAstAnalyzer::applyTsCastsFromMethod()` added for `provide()`'s own

@@ -67,7 +67,7 @@ publishes an empty interface instead of `PostResource[]`. An empty interface acc
 12 either, and the package mirrors the framework rather than guessing. Set `public $collects = PostResource::class;`,
 which works on both versions. The `FooCollection` to `FooResource` convention also works while the run publishes
 `FooResource` and no class `Foo` sits beside the collection, since Laravel takes `Foo` first
-([`ResourceCollections`](../src/Ast/ResourceCollections.php)), and
+([`ResourceCollections`](../src/Ast/Resources/ResourceCollections.php)), and
 [Laravel version guards](./laravel-version-guards.md) records the version floor.
 
 ### A collection that collects through an overridden `collects()` or a `$collects` set in its constructor publishes an empty interface
@@ -403,7 +403,7 @@ sent. Until the package types `Conditionable::when()`, write the key as a ternar
 
 ### An aggregate's type follows the database of the machine that publishes
 
-[`AggregateValueType`](../src/Ast/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
+[`AggregateValueType`](../src/Ast/Values/AggregateValueType.php) types a `whenAggregated()` aggregate by the driver of the
 model's connection on the machine that publishes, as column types follow that machine's schema. A `SUM()` of a decimal
 column publishes `number | null` from SQLite and `string | null` from MySQL, and a DECIMAL column with no cast follows
 the same rule, so publishing against SQLite for an app that runs MySQL keeps a `number` the response does not hold.
@@ -749,7 +749,7 @@ The type-inference gates list their own blind spots in
 
 ### Handler ordering is pinned pairwise, corpus-bounded
 
-Several handlers in [`ResourceExpressionHandlers`](../src/Ast/ResourceExpressionHandlers.php) claim `MethodCall`, so
+Several handlers in [`ResourceExpressionHandlers`](../src/Ast/Dispatch/ResourceExpressionHandlers.php) claim `MethodCall`, so
 registration order decides which one answers `$this->foo()`. `tests/Unit/Ast/MethodCallOrderingMatrixTest.php` runs
 every pair in both orders over a corpus of expressions. A pair that disagrees is pinned in `METHOD_CALL_PINNED`, and
 every other pair is proven inert against that corpus only. A pair can still disagree on a shape the corpus lacks, so

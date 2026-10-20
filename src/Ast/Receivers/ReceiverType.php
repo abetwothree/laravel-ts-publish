@@ -1,0 +1,118 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
+ *
+ * @phpstan-import-type CollectedElement from ResourceCollections
+ *
+ * @internal
+ */
+final readonly class ReceiverType
+{
+    /**
+     * @param  non-empty-list<class-string>  $classes  every class the value may be an instance of
+     * @param  bool  $shortCircuits  a `?->` earlier in the chain can end the whole expression as null
+     * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
+     * @param  class-string<Model>|null  $relatedModel  the model a relation, query or factory builds
+     * @param  bool  $unsaved  the model may be one no row backs yet: `new`, a `replicate()` copy, or a `make()` result
+     * @param  bool  $collectedItems  a resource collection's `$this->resource`: its items in a Support\Collection,
+     *                                or the paginator it was given, so a method an arm cannot run throws, not answers
+     * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
+     */
+    public function __construct(
+        public array $classes,
+        public bool $shortCircuits = false,
+        public ?string $elementModel = null,
+        public ?string $relatedModel = null,
+        public bool $unsaved = false,
+        public bool $collectedItems = false,
+        public ?array $collectedElement = null,
+    ) {}
+
+    /**
+     * A receiver holding exactly one class.
+     *
+     * @param  class-string  $class
+     */
+    public static function of(string $class, bool $shortCircuits = false): self
+    {
+        return new self([$class], $shortCircuits);
+    }
+
+    /**
+     * The same receiver with its short-circuit flag replaced.
+     */
+    public function withShortCircuit(bool $shortCircuits): self
+    {
+        return $this->copy(shortCircuits: $shortCircuits);
+    }
+
+    /**
+     * The same receiver marked as a model no row backs yet.
+     */
+    public function asUnsaved(): self
+    {
+        return $this->copy(unsaved: true);
+    }
+
+    /**
+     * The same value holding other classes, as an `instanceof` test narrows it.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    public function withClasses(array $classes): self
+    {
+        return $this->copy(classes: $classes);
+    }
+
+    /**
+     * Whether every class the receiver holds is one of the given classes, or a subtype of one.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    public function within(array $classes): bool
+    {
+        return array_all(
+            $this->classes,
+            fn (string $class): bool => array_any($classes, fn (string $type): bool => is_a($class, $type, true)),
+        );
+    }
+
+    /**
+     * The receiver's classes that are Eloquent models.
+     *
+     * @return list<class-string<Model>>
+     */
+    public function models(): array
+    {
+        /** @var list<class-string<Model>> $models */
+        $models = array_values(array_filter($this->classes, fn (string $c): bool => is_a($c, Model::class, true)));
+
+        return $models;
+    }
+
+    /**
+     * A copy with the given parts replaced and every other flag kept.
+     *
+     * @param  non-empty-list<class-string>|null  $classes
+     */
+    private function copy(?array $classes = null, ?bool $shortCircuits = null, ?bool $unsaved = null): self
+    {
+        return new self(
+            classes: $classes ?? $this->classes,
+            shortCircuits: $shortCircuits ?? $this->shortCircuits,
+            elementModel: $this->elementModel,
+            relatedModel: $this->relatedModel,
+            unsaved: $unsaved ?? $this->unsaved,
+            collectedItems: $this->collectedItems,
+            collectedElement: $this->collectedElement,
+        );
+    }
+}

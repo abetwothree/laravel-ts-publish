@@ -19,7 +19,7 @@ The registry and its consumers live in these files:
   [`ModelTransformer`](../../src/Transformers/ModelTransformer.php),
   [`ResourceTransformer`](../../src/Transformers/ResourceTransformer.php),
   [`BroadcastEventTransformer`](../../src/Transformers/BroadcastEventTransformer.php), and
-  [`AnalysisComposer`](../../src/Ast/AnalysisComposer.php), which serves `AstEngine::analyze()`.
+  [`AnalysisComposer`](../../src/Ast/Composition/AnalysisComposer.php), which serves `AstEngine::analyze()`.
 
 ## How a name is chosen
 

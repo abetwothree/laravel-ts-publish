@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\CallMatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\InertiaRenderLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use PhpParser\Node;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Scalar\String_;

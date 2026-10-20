@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\JsonApiResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FrameworkValueReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;

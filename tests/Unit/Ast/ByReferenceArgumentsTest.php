@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceDefaultsSubject;

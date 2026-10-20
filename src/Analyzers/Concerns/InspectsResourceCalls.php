@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
