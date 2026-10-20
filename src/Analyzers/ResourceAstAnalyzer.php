@@ -1331,11 +1331,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
-
-                if ($spreadAnalysis !== null) {
-                    $analysis->merge($spreadAnalysis);
-                }
+                $analysis->merge(
+                    $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value)
+                    ?? ResourceAnalysis::unreadAnalysis(),
+                );
 
                 continue;
             }
@@ -1348,11 +1347,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 && $item->value->name instanceof Identifier
                 && $this->scope->subjectReflection->hasMethod($item->value->name->toString())
             ) {
-                $spreadAnalysis = $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value);
-
-                if ($spreadAnalysis !== null) {
-                    $analysis->merge($spreadAnalysis);
-                }
+                $analysis->merge(
+                    $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value)
+                    ?? ResourceAnalysis::unreadAnalysis(),
+                );
 
                 continue;
             }
@@ -1366,11 +1364,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
                     $funcName = $funcCallName->getLast();
 
                     if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $spreadAnalysis = $this->analyzeThisMethodSpread($funcName, $topLevel, $item->value);
-
-                        if ($spreadAnalysis !== null) {
-                            $analysis->merge($spreadAnalysis);
-                        }
+                        $analysis->merge(
+                            $this->analyzeThisMethodSpread($funcName, $topLevel, $item->value)
+                            ?? ResourceAnalysis::unreadAnalysis(),
+                        );
                     }
                 }
 

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneV
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyAloneResource;
@@ -63,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\ReturnedVariableLinesSe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithReturnedVariable;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Http\Request;
 use PhpParser\Node;
 use Workbench\App\Events\ManifestAssembled;
 use Workbench\App\Http\Resources\ReturnedParentVariableResource;
@@ -350,3 +352,14 @@ test('the body fallback reads a vague helper that returns a variable, and reads 
     'a container instance' => [QuoteLinesService::class, 'lines', '{ unit: string; tax: number }'],
     'a literal beside a variable' => [ReturnedVariableLinesService::class, 'mixedLines', '{ unit: string } | { unit: string; tax: number }'],
 ]);
+
+test('a spread the analyzer declines leaves the variable not read completely, so the literal keeps its keys', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+    $sent = fn (bool $compact): array => new ReturnedDeclinedSpreadResource($tag)
+        ->resolve(Request::create('/', 'GET', ['compact' => $compact ? '1' : '0']));
+
+    expect(returnedVariableMembers(ReturnedDeclinedSpreadResource::class))->toBe('id: number; name: string')
+        ->and($sent(true))->toBe(['id' => 9, 'name' => 'php'])
+        ->and($sent(false))->toBe(['id' => 9, 'name' => 'php']);
+});
