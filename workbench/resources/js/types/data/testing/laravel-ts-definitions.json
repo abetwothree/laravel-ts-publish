@@ -7838,15 +7838,15 @@
                     "type": "string | null"
                 },
                 {
+                    "name": "formatted_bio",
+                    "type": "string"
+                },
+                {
                     "name": "age",
                     "type": "number | null"
                 },
                 {
                     "name": "display_summary",
-                    "type": "string"
-                },
-                {
-                    "name": "formatted_bio",
                     "type": "string"
                 },
                 {

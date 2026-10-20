@@ -212,7 +212,7 @@ final class AnalysisMemo
 
         foreach ($this->entries[$key] ?? [] as $index => $stored) {
             // Loose `==`: two held sets are the same whatever order their guards were entered in.
-            if ($stored['held'] == $held) {
+            if ($stored['held'] === $held) {
                 $this->entries[$key][$index] = $entry;
 
                 return;

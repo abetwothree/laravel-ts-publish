@@ -22,7 +22,7 @@ class BooleanExprResource extends JsonResource
     {
         return [
             'is_recent' => $this->created_at !== null,
-            'is_equal' => $this->total == 100,
+            'is_equal' => $this->total === 100,
             'is_large' => $this->total > 100,
             'both' => $this->total > 100 && $this->notes !== null,
             'negated' => ! $this->is_paid,

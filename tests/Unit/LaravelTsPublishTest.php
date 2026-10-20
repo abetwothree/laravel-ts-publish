@@ -2693,7 +2693,7 @@ class SelfReferentialPropertyDto implements Arrayable
 {
     public function __construct(
         public string $label = '',
-        public ?SelfReferentialPropertyDto $child = null,
+        public ?self $child = null,
     ) {}
 
     /** @return array<string, mixed> */

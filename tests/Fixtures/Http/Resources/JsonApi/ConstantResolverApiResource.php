@@ -27,6 +27,6 @@ class ConstantResolverApiResource extends JsonApiResource
      */
     public function toRelationships(Request $request): array
     {
-        return ['author' => ConstantResolverApiResource::AUTHOR];
+        return ['author' => self::AUTHOR];
     }
 }

@@ -1235,12 +1235,12 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** Old-style mutator for avatar URL capitalization */
+            formatted_bio: string;
             /** Computed age from date_of_birth */
             age: number | null;
             /** Full display name combining user name and bio snippet */
             display_summary: string;
-            /** Old-style mutator for avatar URL capitalization */
-            formatted_bio: string;
             // Relations
             user: User;
             user_count: number;
