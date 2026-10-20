@@ -16,6 +16,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingTo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PartlyReadAttributesDocumentApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PartlyReadLinksDocumentApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\PlainRelationshipApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ResolveSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SerializingAttributesApiResource;
@@ -376,3 +378,15 @@ test('a reused JSON:API include read records the file of every resource it reach
     expect($first)->toContain((string) new ReflectionClass(CommentResource::class)->getFileName())
         ->and($reused)->toEqualCanonicalizing($first);
 });
+
+test('a variable built on a resolve() whose resource object is read only partly is skipped beside a literal', function (string $class) {
+    $members = array_map(
+        fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
+        resolve(AstEngine::class)->analyze($class, 'payload')->properties,
+    );
+
+    expect($members)->toBe(['data: number', 'extra: number']);
+})->with([
+    'its attributes' => [PartlyReadAttributesDocumentApiResource::class],
+    'its links' => [PartlyReadLinksDocumentApiResource::class],
+]);

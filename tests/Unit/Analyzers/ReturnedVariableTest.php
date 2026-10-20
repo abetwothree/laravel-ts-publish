@@ -12,7 +12,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneV
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedBareSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedStaticSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDecliningParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyAloneResource;
@@ -39,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOptionalR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedParentWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartialValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartlyReadSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPushedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReadableHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReadableHelperVariableResource;
@@ -353,13 +356,28 @@ test('the body fallback reads a vague helper that returns a variable, and reads 
     'a literal beside a variable' => [ReturnedVariableLinesService::class, 'mixedLines', '{ unit: string } | { unit: string; tax: number }'],
 ]);
 
-test('a spread the analyzer declines leaves the variable not read completely, so the literal keeps its keys', function () {
+test('a spread the analyzer declines leaves the variable not read completely, so the literal keeps its keys', function (string $class) {
     $tag = new Tag;
     $tag->forceFill(['id' => 9, 'name' => 'php']);
-    $sent = fn (bool $compact): array => new ReturnedDeclinedSpreadResource($tag)
+    $sent = fn (bool $compact): array => new $class($tag)
         ->resolve(Request::create('/', 'GET', ['compact' => $compact ? '1' : '0']));
 
-    expect(returnedVariableMembers(ReturnedDeclinedSpreadResource::class))->toBe('id: number; name: string')
+    expect(returnedVariableMembers($class))->toBe('id: number; name: string')
         ->and($sent(true))->toBe(['id' => 9, 'name' => 'php'])
+        ->and($sent(false))->toBe(['id' => 9, 'name' => 'php']);
+})->with([
+    'a $this-> spread' => [ReturnedDeclinedSpreadResource::class],
+    'a self:: spread' => [ReturnedDeclinedStaticSpreadResource::class],
+    'a bare call spread' => [ReturnedDeclinedBareSpreadResource::class],
+]);
+
+test('a spread resource read only partly leaves a variable built on it a branch, so a key only the literal sets is optional', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+    $sent = fn (bool $compact): array => new ReturnedPartlyReadSpreadResource($tag)
+        ->resolve(Request::create('/', 'GET', ['compact' => $compact ? '1' : '0']));
+
+    expect(returnedVariableMembers(ReturnedPartlyReadSpreadResource::class))->toBe('id: number; extra?: number')
+        ->and($sent(true))->toBe(['id' => 9, 'extra' => 1])
         ->and($sent(false))->toBe(['id' => 9, 'name' => 'php']);
 });
