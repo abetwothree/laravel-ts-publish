@@ -19,12 +19,13 @@ final readonly class ReceiverType
     /**
      * @param  non-empty-list<class-string>  $classes  every class the value may be an instance of
      * @param  bool  $shortCircuits  a `?->` earlier in the chain can end the whole expression as null
-     * @param  class-string<Model>|null  $elementModel  set when the receiver is an Eloquent collection of that model
+     * @param  class-string<Model>|null  $elementModel  set when the receiver is a collection of that model
      * @param  class-string<Model>|null  $relatedModel  the model a relation, query or factory builds
      * @param  bool  $unsaved  the model may be one no row backs yet: `new`, a `replicate()` copy, or a `make()` result
      * @param  bool  $collectedItems  a resource collection's `$this->resource`: its items in a Support\Collection,
      *                                or the paginator it was given, so a method an arm cannot run throws, not answers
      * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
+     * @param  bool  $keyed  a collection whose keys a step such as `keyBy()`, `sortBy()` or `filter()` moved off 0..n-1
      */
     public function __construct(
         public array $classes,
@@ -34,6 +35,7 @@ final readonly class ReceiverType
         public bool $unsaved = false,
         public bool $collectedItems = false,
         public ?array $collectedElement = null,
+        public bool $keyed = false,
     ) {}
 
     /**
@@ -113,6 +115,7 @@ final readonly class ReceiverType
             unsaved: $unsaved ?? $this->unsaved,
             collectedItems: $this->collectedItems,
             collectedElement: $this->collectedElement,
+            keyed: $this->keyed,
         );
     }
 }

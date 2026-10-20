@@ -110,6 +110,7 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
@@ -122,6 +123,7 @@ use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
 use Workbench\App\Http\Resources\NarrowedWiderTestResource;
+use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
@@ -2015,4 +2017,114 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
         '$this->comments->first(null, \'none\')?->content',
         '$this->comments->last(default: \'none\')?->content',
     ]);
+});
+
+/**
+ * What the final `return` of a body written with fully-qualified names publishes on a Post resource, read with the
+ * locals the body binds.
+ */
+function collectionFactsType(string $body): string
+{
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /** @param  list<Stmt>  $stmts */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->collectLocalVarBindings($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+    $returned = $stmts[array_key_last($stmts)];
+
+    if (! $returned instanceof Return_ || $returned->expr === null) {
+        throw new LogicException('The body must end in a return.');
+    }
+
+    return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+        ->resolve($returned->expr)['type'];
+}
+
+describe('a collection step that keeps its items', function () {
+    /** Runs a resource body over a saved post whose comments `beta` and `alpha` are loaded, as Laravel would. */
+    $run = function (string $body): mixed {
+        $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+        $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+        foreach (['beta', 'alpha'] as $content) {
+            Comment::create(['content' => $content, 'post_id' => $post->id, 'user_id' => $user->id]);
+        }
+
+        $resource = new class(Post::with('comments')->findOrFail($post->id)) extends JsonResource {};
+
+        return Closure::bind(eval('return function () { '.$body.' };'), $resource, $resource)();
+    };
+
+    test('keeps a collection\'s element and keys through item-keeping steps, a query, Model::all() and a @var', function (string $body, string $type, Closure $read, mixed $sent) use ($run) {
+        expect(collectionFactsType($body))->toBe($type)
+            ->and($read($run($body)))->toBe($sent);
+    })->with([
+        'sortBy()->first()' => [
+            'return $this->comments->sortBy(\'content\')->first()?->content;',
+            'string | null',
+            fn (?string $content): ?string => $content,
+            'alpha',
+        ],
+        'keyBy()->all(), whose string keys json_encode() writes as an object' => [
+            'return $this->comments->keyBy(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            ['beta' => 'beta', 'alpha' => 'alpha'],
+        ],
+        'Model::all()->toResourceCollection()' => [
+            'return \Workbench\App\Models\Post::all()->toResourceCollection();',
+            'PostResource[]',
+            fn (PostCollection $posts): array => $posts->collection->map(fn (object $item): string => $item::class)->all(),
+            [PostResource::class],
+        ],
+        'a query\'s get()->first()' => [
+            'return \Workbench\App\Models\Comment::query()->get()->first()?->content;',
+            'string | null',
+            fn (?string $content): ?string => $content,
+            'beta',
+        ],
+        'a @var collection over a value that names no class' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $vague */ '
+                .'$vague = $this->resource->getRelationValue(\'comments\'); return $vague->first()?->content;',
+            'string | null',
+            fn (?string $content): ?string => $content,
+            'beta',
+        ],
+        'values()->all(), a list' => [
+            'return $this->comments->values()->all();',
+            'Comment[]',
+            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            ['beta', 'alpha'],
+        ],
+        'keyBy()->values()->all(), a list again' => [
+            'return $this->comments->keyBy(\'content\')->values()->all();',
+            'Comment[]',
+            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            ['beta', 'alpha'],
+        ],
+        'take() of a literal count, which keeps the keys a sortBy() left' => [
+            'return \Workbench\App\Models\Comment::query()->get()->sortBy(\'content\')->take(1)->all();',
+            'Comment[] | Record<string, Comment>',
+            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            [1 => 'alpha'],
+        ],
+    ]);
+
+    test('declines modelKeys() once toBase() hands the models over in a base collection, which has no such method', function () use ($run) {
+        $body = 'return $this->comments->toBase()->modelKeys();';
+
+        expect(collectionFactsType($body))->toBe('unknown')
+            ->and(fn () => $run($body))->toThrow(BadMethodCallException::class);
+    });
 });

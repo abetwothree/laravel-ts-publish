@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Enumerable;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -46,6 +47,7 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionMethod;
@@ -97,6 +99,9 @@ final class ReceiverClassResolver
         'newRelatedInstanceFor',
     ];
 
+    /** The relation methods listing models no row backs yet; an element carries no unsaved mark, so none is named. */
+    private const array UNSAVED_QUERY_LISTS = ['makeMany'];
+
     /** The factory methods that build one model while no count is set, though each declares a collection too. */
     private const array FACTORY_MODELS = ['make', 'makeOne', 'create', 'createOne'];
 
@@ -105,6 +110,23 @@ final class ReceiverClassResolver
 
     /** The Support\Collection methods that return one item, or null where none matches and no default is passed. */
     private const array COLLECTION_ELEMENTS = ['first', 'last', 'firstWhere'];
+
+    /** The collection methods that hand back the same items, or a leading run of them, under the keys they had. */
+    private const array SAME_ITEMS = [
+        'load', 'loadMissing', 'loadCount', 'loadMorph', 'loadMorphCount', 'loadAggregate', 'loadSum', 'loadMax',
+        'loadMin', 'loadAvg', 'loadExists', 'each', 'tap', 'collect', 'toBase', 'makeHidden', 'mergeHidden',
+        'makeVisible', 'mergeVisible', 'setVisible', 'setHidden', 'append', 'setAppends', 'withoutAppends',
+        'withRelationshipAutoloading', 'takeUntil', 'takeWhile',
+    ];
+
+    /** The collection methods that hand back some of the same items, under keys they may leave out of 0..n-1. */
+    private const array SAME_ITEMS_KEYED = [
+        'filter', 'reject', 'where', 'whereStrict', 'whereIn', 'whereInStrict', 'whereNotIn', 'whereNotInStrict',
+        'whereNull', 'whereNotNull', 'whereBetween', 'whereNotBetween', 'whereInstanceOf', 'unique', 'uniqueStrict',
+        'sortBy', 'sortByDesc', 'sort', 'sortDesc', 'sortKeys', 'sortKeysDesc', 'sortKeysUsing', 'keyBy', 'skip',
+        'skipUntil', 'skipWhile', 'slice', 'reverse', 'forPage', 'take', 'diff', 'intersect', 'except', 'only',
+        'fresh',
+    ];
 
     /** The docblock template each query, relation and factory class binds to the model it builds. */
     private const array QUERY_MODEL_TEMPLATES = [
@@ -426,7 +448,8 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable an inline `@var` declares: the annotated assignment replaces what it held, so its own value is
-     * read, and the `@var` fills in only where that names no class the engine can use.
+     * read, and the `@var` fills in only where that names no class the engine can use, with the model its collection
+     * generic lists.
      *
      * @param  VarDocBinding  $span
      */
@@ -434,9 +457,19 @@ final class ReceiverClassResolver
     {
         $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
 
-        return $assigned !== null && array_any($assigned->classes, $this->isNameable(...))
-            ? $assigned
-            : $this->typeOf($this->declaredClasses($span, $scope)) ?? $assigned;
+        if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
+            return $assigned;
+        }
+
+        $declared = $this->typeOf($this->declaredClasses($span, $scope));
+
+        if ($declared === null) {
+            return $assigned;
+        }
+
+        $element = $this->declaredElementModel($span, $declared);
+
+        return $element === null ? $declared : new ReceiverType($declared->classes, elementModel: $element);
     }
 
     /**
@@ -489,6 +522,36 @@ final class ReceiverClassResolver
     private function declaredClasses(array $span, AnalysisScope $scope): ?array
     {
         return $this->docblockClasses($span['type'], $span['context'], $scope->subjectReflection->getName(), $span['context']->getName());
+    }
+
+    /**
+     * The one concrete model an inline `@var` lists as its collection's element, as `Collection<int, Comment>` or
+     * `?Collection<Comment>` does; null for any other spelling.
+     *
+     * @param  VarDocBinding  $span
+     * @return class-string<Model>|null
+     */
+    private function declaredElementModel(array $span, ReceiverType $declared): ?string
+    {
+        $arms = array_values(array_filter(
+            LaravelTsPublish::splitPhpDocUnionType($span['type']),
+            fn (string $arm): bool => strtolower($arm) !== 'null',
+        ));
+
+        if (count($arms) !== 1
+            || ! $declared->within([Enumerable::class])
+            || preg_match('/^\??[\\\\\w]+<\s*(?:(?:int|array-key|string)\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
+        ) {
+            return null;
+        }
+
+        $element = LaravelTsPublish::resolveDocblockTypeName(
+            $match[1],
+            LaravelTsPublish::parseFileUseStatements($span['context']),
+            $span['context']->getNamespaceName(),
+        );
+
+        return $this->isConcreteModel($element) ? $element : null;
     }
 
     /**
@@ -713,6 +776,12 @@ final class ReceiverClassResolver
 
         if ($element !== null) {
             return ReceiverType::of($element, $shortCircuits);
+        }
+
+        $kept = $this->keptItems($call, $method, $receiver, $shortCircuits);
+
+        if ($kept !== null) {
+            return $kept;
         }
 
         $result = $this->merge(
@@ -1093,7 +1162,7 @@ final class ReceiverClassResolver
      */
     private function forwardedStaticQuery(string $class, string $method): ?ReceiverType
     {
-        if (! is_subclass_of($class, Model::class) || method_exists($class, $method) || new ReflectionClass($class)->isAbstract()) {
+        if (! $this->isConcreteModel($class) || method_exists($class, $method)) {
             return null;
         }
 
@@ -1102,11 +1171,19 @@ final class ReceiverClassResolver
 
     /**
      * What a method returns on one class, remembering the model a model's own query builds, as `query()`'s
-     * `Builder<static>` does.
+     * `Builder<static>` does, and the model `all()`'s `Collection<int, static>` lists.
      */
     private function returned(string $class, string $method): ?ReceiverType
     {
         $classes = $this->returnClasses($class, $method);
+
+        if ($classes === [EloquentCollection::class] && $this->isConcreteModel($class)) {
+            $declared = $this->declaredReturn($class, $method);
+
+            if ($declared !== null && $this->listsTemplate($declared, 'static')) {
+                return new ReceiverType($classes, elementModel: $class);
+            }
+        }
 
         if ($classes !== [Builder::class] || ! is_a($class, Model::class, true)) {
             return $this->typeOf($classes);
@@ -1120,7 +1197,8 @@ final class ReceiverClassResolver
 
     /**
      * What a query, relation or factory method returns for the model it builds: that model where the docblock returns
-     * the class's model template, as Builder::make()'s `TModel` does, or the same query where it returns `$this`.
+     * the class's model template, as Builder::make()'s `TModel` does, a list of it where the docblock lists the
+     * template, as Builder::get()'s `Collection<int, TModel>` does, or the same query where it returns `$this`.
      *
      * @param  class-string<Model>  $queried
      */
@@ -1136,7 +1214,14 @@ final class ReceiverClassResolver
             return null;
         }
 
-        if ($this->declaredReturn($class, $method) === $template || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
+        $declared = $this->declaredReturn($class, $method);
+        $list = $factory || $declared === null ? null : $this->queriedList($class, $method, $declared, $template, $queried);
+
+        if ($list !== null) {
+            return $list;
+        }
+
+        if ($declared === $template || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
             $model = ReceiverType::of($queried);
 
             return in_array($method, self::UNSAVED_QUERY_MODELS, true) ? $model->asUnsaved() : $model;
@@ -1145,6 +1230,23 @@ final class ReceiverClassResolver
         $classes = $this->returnClasses($class, $method);
 
         return $classes === [$class] ? new ReceiverType($classes, relatedModel: $queried) : null;
+    }
+
+    /**
+     * A collection of the queried model, where a query or relation method's docblock lists the class's model template;
+     * null for any other return.
+     *
+     * @param  class-string<Model>  $queried
+     */
+    private function queriedList(string $class, string $method, string $declared, string $template, string $queried): ?ReceiverType
+    {
+        if (in_array($method, self::UNSAVED_QUERY_LISTS, true) || ! $this->listsTemplate($declared, $template)) {
+            return null;
+        }
+
+        $list = $this->typeOf($this->returnClasses($class, $method));
+
+        return $list !== null && $list->within([Enumerable::class]) ? new ReceiverType($list->classes, elementModel: $queried) : null;
     }
 
     /**
@@ -1193,6 +1295,14 @@ final class ReceiverClassResolver
     {
         return resolve(PropertyDocblockTypeReader::class)
             ->extractReturnType((string) new ReflectionMethod($class, $method)->getDocComment());
+    }
+
+    /**
+     * Whether a docblock return lists a template, as `Collection<int, TModel>` and `Collection<int, static>` do.
+     */
+    private function listsTemplate(string $declared, string $template): bool
+    {
+        return preg_match('/^\\\\?(?:[\\w\\\\]+\\\\)?Collection<\s*int\s*,\s*'.preg_quote($template, '/').'\s*>$/', $declared) === 1;
     }
 
     /**
@@ -1479,7 +1589,8 @@ final class ReceiverClassResolver
     /**
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
-     * An element or related model, and a resource collection's items, survive only when every part agrees on them.
+     * An element or related model, and a resource collection's items, survive only when every part agrees on them; a
+     * collection is keyed when any part is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -1491,6 +1602,7 @@ final class ReceiverClassResolver
         $collectedElements = [];
         $collectedItems = true;
         $unsaved = false;
+        $keyed = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -1503,6 +1615,7 @@ final class ReceiverClassResolver
             $collectedElements[$type->collectedElement['fqcn'] ?? ''] = $type->collectedElement;
             $collectedItems = $collectedItems && $type->collectedItems;
             $unsaved = $unsaved || $type->unsaved;
+            $keyed = $keyed || $type->keyed;
         }
 
         if ($classes === []) {
@@ -1517,6 +1630,7 @@ final class ReceiverClassResolver
             unsaved: $unsaved,
             collectedItems: $collectedItems,
             collectedElement: count($collectedElements) === 1 ? reset($collectedElements) : null,
+            keyed: $keyed,
         );
     }
 
@@ -1538,6 +1652,53 @@ final class ReceiverClassResolver
     private function isCallable(string $class, string $method, bool $fromInside): bool
     {
         return method_exists($class, $method) && ($fromInside || new ReflectionMethod($class, $method)->isPublic());
+    }
+
+    /**
+     * What a collection step that keeps the receiver's items holds: a collection of the receiver's own classes, or a
+     * base one for `collect()` and `toBase()`, with its element model, keyed once a step may leave its keys out of
+     * 0..n-1; null for any other step. Several of these steps inherit their docblock, which names nothing.
+     */
+    private function keptItems(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver, bool $shortCircuits): ?ReceiverType
+    {
+        $keepsKeys = in_array($method, self::SAME_ITEMS, true);
+        $keepsItems = $keepsKeys || $method === 'values' || in_array($method, self::SAME_ITEMS_KEYED, true);
+
+        if (! $keepsItems
+            || $receiver->collectedItems
+            || ! $receiver->within([Enumerable::class])
+            || ! array_all($receiver->classes, fn (string $class): bool => $this->isCallable($class, $method, false))
+        ) {
+            return null;
+        }
+
+        foreach ($receiver->classes as $class) {
+            DependencyRecorder::recordClass($class);
+        }
+
+        $keyed = match (true) {
+            $method === 'values' => false,
+            $method === 'take' => $receiver->keyed || ! $this->takesFromFront($call),
+            $keepsKeys => $receiver->keyed,
+            default => true,
+        };
+
+        return new ReceiverType(
+            in_array($method, ['collect', 'toBase'], true) ? [Collection::class] : $receiver->classes,
+            $shortCircuits,
+            elementModel: $receiver->elementModel,
+            keyed: $keyed,
+        );
+    }
+
+    /**
+     * Whether a `take()` call takes a literal count from the front, where a list stays a list.
+     */
+    private function takesFromFront(MethodCall|NullsafeMethodCall $call): bool
+    {
+        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, 'take'));
+
+        return $arguments->passedCount() === 1 && ! $arguments->hasUnpack() && $arguments->named('limit')?->value instanceof Int_;
     }
 
     /**
@@ -1580,6 +1741,16 @@ final class ReceiverClassResolver
         }
 
         return true;
+    }
+
+    /**
+     * Whether a class is a model a row can be read into: a subclass of Model that is not abstract.
+     *
+     * @phpstan-assert-if-true class-string<Model> $class
+     */
+    private function isConcreteModel(string $class): bool
+    {
+        return is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract();
     }
 
     /**

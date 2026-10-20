@@ -12,7 +12,7 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries or the `relatedModel` a relation, query or factory builds, and `collectedItems` with `collectedElement` for a resource collection's items |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds, and `collectedItems` with `collectedElement` for a resource collection's items |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
@@ -38,7 +38,10 @@ reflection answers, a decline included.
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, marked unsaved for `UNSAVED_QUERY_MODELS`; the same query where it returns itself, as `where()` does. A factory's `make()` and `create()` name the model, and a count step declines |
-| `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
+| `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
+| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`; `SAME_ITEMS` and a `take()` of a literal count keep it; `SAME_ITEMS_KEYED` set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
+| `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
+| `X::all()` | An `Eloquent\Collection` with `X` as `elementModel` on a concrete model, from `Model::all()`'s `Collection<int, static>` |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
 | `<receiver>->m()`, `<receiver>?->m()` otherwise | `returnClasses()` on every class, for a public method |
@@ -67,7 +70,9 @@ answers:
 1. `varClassBindings`: a ternary's `instanceof` narrowing, or a `morphTo` `whenLoaded()` parameter's targets.
 2. `varGuardBindings`: an early-exit guard's class, for a read past the guard.
 3. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
-   or only models with no published file. See [AST engine § Declared locals](ast-engine.md#declared-locals).
+   or only models with no published file, with the one concrete model a collection generic such as
+   `Collection<int, Comment>` lists as `elementModel`. See
+   [AST engine § Declared locals](ast-engine.md#declared-locals).
 4. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
    `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, then `requestVarNames`, then a
    `varValueBindings` value bound to one enum case, such as a parameter's default, as that enum.
@@ -230,11 +235,11 @@ names:
   read as declared.
 - **`modelKeys()`**: on an `Eloquent\Collection` with `elementModel` set, the element model's key type as a list,
   wrapped first when it is a union: `(number | string)[]`.
-- **`all()`**: on an `Eloquent\Collection` with `elementModel` set, the element model as a list, such as `Comment[]`,
-  since a relation's collection is keyed `0..n-1`.
+- **`all()`**: on a collection with `elementModel` set, the element model as a list, such as `Comment[]`, since a
+  relation's collection is keyed `0..n-1`.
 - **`toArray()`**: on a concrete model that inherits `Model::toArray()`, `Record<string, unknown>`, since its keys hang
-  on the relations loaded at runtime. On an `Eloquent\Collection` with `elementModel` set, `Record<string, unknown>[]`,
-  or `unknown[]` when the element model overrides `toArray()`.
+  on the relations loaded at runtime. On a collection with `elementModel` set, `Record<string, unknown>[]`, or
+  `unknown[]` when the element model overrides `toArray()`.
 - **`Model`'s bare arrays**: on a concrete model that inherits the method, what it holds, from
   `ReceiverMethodReturnResolver::MODEL_ARRAY_RETURNS`: a list of names such as `getAppends()`'s `string[]`,
   `getCasts()`'s `Record<string, string>`, or a map keyed by name such as `getRelations()`'s `Record<string, unknown>`.
@@ -246,6 +251,10 @@ names:
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
   literal key is a published column, else the inline shape. A runtime key list, or a literal list that types no member,
   gives `Record<string, unknown>`.
+
+A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
+for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
+collection sends.
 
 A union, an `Eloquent\Collection` and a static call get no filter rule. A model whose `only()` or `except()` override
 has a return reflection types, such as `: string`, keeps that return wherever the call is written. `RelationFilterHandler`
