@@ -51,7 +51,10 @@ class MethodAnalysis
 {
     use DispatchesFqcnResults;
 
-    /** Whether every read behind these keys was followed; a returned variable built on one that was not is skipped. */
+    /**
+     * Whether every read behind these keys was followed. A returned variable built on one that was not is skipped
+     * beside a literal return, though the lenient rule can still read it alone.
+     */
     public bool $readsCompletely = true;
 
     /**

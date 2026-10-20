@@ -70,7 +70,8 @@ every profile, the order handlers run in decides which one answers; see
   `return` is read; any other return is skipped. "Read completely" is `MethodAnalysis::$readsCompletely`, which
   `merge()` ANDs, so a base, spread helper, merge or ancestor body read only partly leaves the variable built on it
   read only partly. A value read types only its own key, and a spread resource's published keys stand as given, so
-  neither clears it.
+  neither clears it; the exception is a JSON:API resource object, whose inlined `attributes`, `links` and `meta` carry
+  their flag onto it and onto the document `resolve()` wraps it in.
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
@@ -370,10 +371,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   included, a returned variable the walk reads completely, and any other value `mergedValueAnalysis()` reads are
   branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()`
   reads, such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges
-  `value($value)`. A side read as no array is an empty branch; one the analysis cannot read also counts as a lenient
-  read, so a variable holding the merge is not read completely. A key set before a merge keeps its value and presence,
-  as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+`
-  alike, keeping each signature entry.
+  `value($value)`. A side read as no array is an empty branch; one the analysis cannot read leaves the merge, and a
+  variable holding it, not read completely. A key set before a merge keeps its value and presence, as `mergeData()`
+  unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+` alike, keeping
+  each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`.
