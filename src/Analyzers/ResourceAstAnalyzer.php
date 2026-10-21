@@ -86,6 +86,8 @@ use ReflectionMethod;
 /**
  * Analyzes a JsonResource's toArray() body to extract property names, types, and optional markers via AST.
  *
+ * @phpstan-type WrittenLocal array{string, Expr}
+ *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
@@ -139,6 +141,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
     private bool $returnedWhole = true;
+
+    /** @var array<string, true> the locals whose written value is being read, so a value naming its own local stops */
+    private array $readingLocals = [];
+
+    /** @var array<string, true>|null the method's locals the merge closure being read imports; null outside one */
+    private ?array $closureImports = null;
 
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
@@ -465,13 +473,22 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
     /**
      * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call
-     * readParentCall() reads, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call
-     * or a `+` of any of them; null for any other expression.
+     * readParentCall() reads, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call,
+     * a local written once with any of them, or a `+` of any of them; null for any other expression.
      */
     protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
     {
         if ($expr instanceof Array_) {
             return $this->analyzeReturnArray($expr, $topLevel);
+        }
+
+        $local = $this->writtenLocal($expr);
+
+        if ($local !== null) {
+            return $this->readWrittenLocal(
+                $local,
+                fn (Expr $value): ?ResourceAnalysis => $this->analyzeArrayExpression($value, $topLevel),
+            );
         }
 
         $parentMethod = $this->readParentCall($expr);
@@ -520,6 +537,12 @@ class ResourceAstAnalyzer implements ExpressionEngine
     {
         if ($expr instanceof Plus) {
             return $this->readsAsArray($expr->left) && $this->readsAsArray($expr->right);
+        }
+
+        $local = $this->writtenLocal($expr);
+
+        if ($local !== null) {
+            return $this->readWrittenLocal($local, $this->readsAsArray(...));
         }
 
         if (! $expr instanceof MethodCall) {
@@ -770,6 +793,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
         $previousNameBindings = $this->scope->nameBindings();
+        $previousImports = $this->closureImports;
 
         try {
             $this->scope->claimParameters($expr);
@@ -777,9 +801,14 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $this->markFilledDefaults($expr, $this->scope);
             $this->proveClosureGuards($expr, $this->scope);
 
+            if ($expr instanceof ClosureExpr) {
+                $this->closureImports = $this->importedLocals($expr);
+            }
+
             return $this->closureReturnBranches($expr);
         } finally {
             $this->scope->restoreNameBindings($previousNameBindings);
+            $this->closureImports = $previousImports;
         }
     }
 
@@ -1664,6 +1693,80 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         return $this->analyzeArrayExpression($expr, topLevel: false);
+    }
+
+    /**
+     * A local variable's name and the value its one write assigns, unless its read is under way; null for any other
+     * expression.
+     *
+     * @return WrittenLocal|null
+     */
+    private function writtenLocal(Expr $expr): ?array
+    {
+        if (! $expr instanceof Variable || ! is_string($expr->name) || isset($this->readingLocals[$expr->name])) {
+            return null;
+        }
+
+        $bound = $this->boundLocal($expr->name);
+
+        return $bound === null ? null : [$expr->name, $bound];
+    }
+
+    /**
+     * Read a local's written value while the local is marked as being read, so a value that names it again stops.
+     *
+     * @template TRead
+     *
+     * @param  WrittenLocal  $local
+     * @param  callable(Expr): TRead  $read
+     * @return TRead
+     */
+    private function readWrittenLocal(array $local, callable $read): mixed
+    {
+        $this->readingLocals[$local[0]] = true;
+
+        try {
+            return $read($local[1]);
+        } finally {
+            unset($this->readingLocals[$local[0]]);
+        }
+    }
+
+    /**
+     * The value a local written once holds, but where a by-reference call reshapes it; inside a merge closure, whose
+     * body is not seeded, only a method's local the closure imports.
+     */
+    private function boundLocal(string $name): ?Expr
+    {
+        if ($this->closureImports !== null && ! isset($this->closureImports[$name])) {
+            return null;
+        }
+
+        return $this->scope->literalLocalBindings()[$name] ?? null;
+    }
+
+    /**
+     * The method's locals a closure imports by value and never writes, of those the closure around it imports.
+     *
+     * @return array<string, true>
+     */
+    private function importedLocals(ClosureExpr $closure): array
+    {
+        $scope = $this->scope;
+        $writes = $this->collectVariableWrites($closure->stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $written = array_column($writes, 0);
+        $imported = [];
+
+        foreach ($closure->uses as $use) {
+            $name = $use->var->name;
+
+            if (! $use->byRef && is_string($name) && ! in_array($name, $written, true)
+                && ($this->closureImports === null || isset($this->closureImports[$name]))) {
+                $imported[$name] = true;
+            }
+        }
+
+        return $imported;
     }
 
     /**

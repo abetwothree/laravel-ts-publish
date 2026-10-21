@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchReplacedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneVariableResource;
@@ -36,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpolatedUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalOperandsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
@@ -87,6 +90,8 @@ use Workbench\App\Http\Resources\CategoryBranchesResource;
 use Workbench\App\Http\Resources\ReturnedParentVariableResource;
 use Workbench\App\Http\Resources\ReturnedVariableBranchesResource;
 use Workbench\App\Http\Resources\ReturnedVariableResource;
+use Workbench\App\Http\Resources\TagDefaultsResource;
+use Workbench\App\Http\Resources\TagParentDefaultsResource;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
@@ -611,3 +616,44 @@ test('a whole write that always runs in a branch replaces an unread write before
     'one branch keeps it' => ['$d = ["a" => 1]; $d[$k] = 2; if ($x) { $d = ["b" => 1]; }', 'a?, b?', false],
     'a write that may not run merges into it' => ['$d = ["a" => 1]; $d[$k] = 2; try { $d = ["b" => 1]; } catch (Throwable) {}', 'a, b?', false],
 ]);
+
+test('a whole return of + with a local operand publishes both sides\' keys', function (string $class, string $members, array $sent) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(new $class($tag)->resolve(Request::create('/')))->toBe($sent);
+})->with([
+    'a literal + a local, the left id winning' => [
+        TagDefaultsResource::class, 'id: number; note: string', ['id' => 9, 'note' => 'none'],
+    ],
+    'parent::toArray() + a local' => [
+        TagParentDefaultsResource::class,
+        'id: number; name: string; slug: string; color: string | null; created_at: string | null; '
+        .'updated_at: string | null; posts?: Post[]; products?: Product[]; note: string',
+        ['id' => 9, 'name' => 'php', 'note' => 'none'],
+    ],
+]);
+
+test('a local written once reads as its array where a variable starts from it or adds it, and where a merge reads it', function (string $class, string $members, array $sent) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(new $class($tag)->resolve(Request::create('/')))->toBe($sent);
+})->with([
+    'a variable\'s base and its +=' => [
+        ReturnedLocalOperandsResource::class, 'note: string; id: number; flag: boolean', ['note' => 'none', 'id' => 9, 'flag' => true],
+    ],
+    'merge()' => [MergedLocalResource::class, 'id: number; note: string', ['id' => 9, 'note' => 'none']],
+]);
+
+// A closure sees an outer local only through `use`, and a write of its own replaces it.
+test('a merge closure adds a local with + only where it imports the local and never writes it', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php-slug']);
+
+    expect(returnedVariableMembers(MergeClosureLocalPlusResource::class))->toBe('id: number; name: string; note: string')
+        ->and(new MergeClosureLocalPlusResource($tag)->resolve(Request::create('/')))
+        ->toBe(['id' => 9, 'name' => 'php', 'note' => 'none', 'slug' => 'php-slug', 'flag' => true]);
+});

@@ -218,6 +218,8 @@ export * from './supplier-collection';
 export * from './supplier-resource';
 export * from './supplier-summary-collection';
 export * from './supplier-summary-resource';
+export * from './tag-defaults-resource';
+export * from './tag-parent-defaults-resource';
 export * from './tag-resource';
 export * from './team-member-resource';
 export * from './team-resource';

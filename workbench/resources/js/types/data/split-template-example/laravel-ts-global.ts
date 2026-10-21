@@ -5463,6 +5463,23 @@ declare global {
         export interface SupplierSummaryResource {
             id: number;
         }
+        /** Exercises: a whole return that adds a local's defaults with `+`, whose keys the left side keeps. */
+        export interface TagDefaultsResource {
+            id: number;
+            note: string;
+        }
+        /** Exercises: parent::toArray() `+` a local's defaults, as the whole return. */
+        export interface TagParentDefaultsResource {
+            id: number;
+            name: string;
+            slug: string;
+            color: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
+            note: string;
+        }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
             id: number;

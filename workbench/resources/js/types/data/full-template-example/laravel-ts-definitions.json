@@ -20330,6 +20330,71 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\TagDefaultsResource": {
+            "name": "TagDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\TagParentDefaultsResource": {
+            "name": "TagParentDefaultsResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "slug",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "color",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "created_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "updated_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "posts",
+                    "type": "Post[]",
+                    "optional": true
+                },
+                {
+                    "name": "products",
+                    "type": "Product[]",
+                    "optional": true
+                },
+                {
+                    "name": "note",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\TagResource": {
             "name": "TagResource",
             "properties": [
