@@ -138,8 +138,9 @@ trait CollectsLocalVarBindings
             }
         }
 
-        $this->collectLocalVarBindings($stmts, $scope, $binding);
-        $this->bindBlockLocals($stmts, $scope, $binding);
+        $parked = null;
+        $this->collectLocalVarBindings($stmts, $scope, $binding, $parked);
+        $this->bindBlockLocals($stmts, $scope, $binding, $parked);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
         $this->bindJoinedLocals($stmts, $scope, $binding, $ended);
@@ -157,8 +158,9 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes that replace a variable, when the caller has sorted them
+     * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
-    protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null): void
+    protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null, ?array &$parked = null): void
     {
         $writes ??= $this->bindingWrites($this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
@@ -177,7 +179,7 @@ trait CollectsLocalVarBindings
             }
 
             $name = $stmt->expr->var->name;
-            $this->markFilled($stmt->expr->expr, $name, $stmts, $writes, $scope);
+            $this->markFilled($stmt->expr->expr, $name, $stmts, $writes, $scope, $parked);
 
             if (($writeCounts[$name] ?? 0) === 1) {
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
@@ -194,12 +196,13 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
-    protected function bindBlockLocals(array $stmts, AnalysisScope $scope, array $writes): void
+    protected function bindBlockLocals(array $stmts, AnalysisScope $scope, array $writes, ?array &$parked = null): void
     {
         foreach ($stmts as $stmt) {
             foreach ($this->innerBlocks($stmt) as $block) {
-                $this->bindBlock($block, $stmts, $scope, $writes);
+                $this->bindBlock($block, $stmts, $scope, $writes, $parked);
             }
         }
     }
@@ -381,9 +384,16 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node>  $body
      * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, read here once
      */
-    protected function markFilled(Expr $bound, string $name, array $body, array $writes, AnalysisScope $scope): void
-    {
+    protected function markFilled(
+        Expr $bound,
+        string $name,
+        array $body,
+        array $writes,
+        AnalysisScope $scope,
+        ?array &$parked = null,
+    ): void {
         if (! $bound instanceof New_ || $bound->args !== []) {
             return;
         }
@@ -404,7 +414,9 @@ trait CollectsLocalVarBindings
         $fill = fn (Node $node): true|string|null => $this->fills($node, $name, $models, $scope);
         $members = [];
 
-        if ($this->fillsWithin($body, $name, $fill, $cuts, $this->parkedClosures($body), $members)) {
+        $parked ??= $this->parkedClosures($body);
+
+        if ($this->fillsWithin($body, $name, $fill, $cuts, $parked, $members)) {
             $bound->setAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES, true);
         } elseif ($members !== []) {
             $bound->setAttribute(ReceiverClassResolver::FILLED_MEMBERS, array_values(array_unique($members)));
@@ -421,13 +433,16 @@ trait CollectsLocalVarBindings
             return;
         }
 
+        $body = $closure->getStmts();
+        $writes = null;
+        $parked = null;
+
         foreach ($closure->params as $param) {
             if ($param->var instanceof Variable && is_string($param->var->name) && $param->default instanceof New_
                 && ($scope->closureParamExprBindings[$param->var->name] ?? null) === $param->default
             ) {
-                $body = $closure->getStmts();
-                $writes = $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass);
-                $this->markFilled($param->default, $param->var->name, $body, $writes, $scope);
+                $writes ??= $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass);
+                $this->markFilled($param->default, $param->var->name, $body, $writes, $scope, $parked);
             }
         }
     }
@@ -514,8 +529,9 @@ trait CollectsLocalVarBindings
      * @param  array<Node\Stmt>  $block
      * @param  array<Node\Stmt>  $body  the whole body, for the writes that fill a `new` model a local holds
      * @param  VariableWrites  $writes
+     * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
-    private function bindBlock(array $block, array $body, AnalysisScope $scope, array $writes): void
+    private function bindBlock(array $block, array $body, AnalysisScope $scope, array $writes, ?array &$parked): void
     {
         foreach ($block as $stmt) {
             if ($stmt instanceof ExpressionStmt
@@ -523,12 +539,12 @@ trait CollectsLocalVarBindings
                 && $stmt->expr->var instanceof Variable
                 && is_string($stmt->expr->var->name)
             ) {
-                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body, $writes, $scope);
+                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body, $writes, $scope, $parked);
                 $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
             }
 
             foreach ($this->innerBlocks($stmt) as $inner) {
-                $this->bindBlock($inner, $body, $scope, $writes);
+                $this->bindBlock($inner, $body, $scope, $writes, $parked);
             }
         }
     }
@@ -1819,7 +1835,8 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The closures and arrow functions a body assigns to a variable it spells nowhere else, which nothing can call.
+     * The closures and arrow functions a body assigns, as a statement of their own, to a variable it spells nowhere
+     * else, which nothing can call.
      *
      * @param  array<Node>  $body
      * @return list<ArrowFunction|ClosureExpr>
@@ -1833,8 +1850,10 @@ trait CollectsLocalVarBindings
         ));
         $parked = [];
 
-        foreach ($finder->findInstanceOf($body, Assign::class) as $assign) {
-            if (($assign->expr instanceof ClosureExpr || $assign->expr instanceof ArrowFunction)
+        foreach ($finder->findInstanceOf($body, ExpressionStmt::class) as $stmt) {
+            $assign = $stmt->expr;
+
+            if ($assign instanceof Assign && ($assign->expr instanceof ClosureExpr || $assign->expr instanceof ArrowFunction)
                 && $assign->var instanceof Variable && is_string($assign->var->name)
                 && ($spelled[$assign->var->name] ?? 0) === 1
             ) {

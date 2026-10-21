@@ -620,6 +620,7 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'an arrow function a call runs' => ['collect([1])->each(fn () => $p->title = "x");', ['title']],
     'a closure the body calls' => ['$f = function () use (&$p) { $p->title = "x"; }; $f();', ['title']],
     'a closure the body never calls' => ['$f = function () use ($p) { $p->title = "x"; };', false],
+    'a closure assigned inside a call that may run it' => ['$this->register($f = function () use ($p) { $p->title = "x"; });', ['title']],
     'a closure parameter of the name' => ['collect([1])->each(function ($p) { $p->save(); });', false],
     'an arrow function parameter of the name' => ['collect([1])->each(fn ($p) => $p->title = "x");', false],
     'a closure not importing the name' => ['collect([1])->each(function () { $p->title = "x"; });', false],
