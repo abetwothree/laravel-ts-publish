@@ -317,6 +317,78 @@ it('keeps a parameter\'s receiver past a nested write naming no class', function
         },
         [[User::class]],
     ],
+    // The `try` ends the binding where it starts, an offset an unformatted body shares with the `if`'s end.
+    'a model binding read in a try that ends it later' => [
+        'if ($c) { $p = json_decode("x"); } try { $p->x; $p = $p->profile; } catch (\Exception $e) {}',
+        function (AnalysisScope $scope): void {
+            $scope->varModelBindings['p'] = User::class;
+        },
+        [[User::class]],
+    ],
+    'the same body unformatted' => [
+        'if($c){$p=json_decode("x");}try{$p->x;$p=$p->profile;}catch(\Exception $e){}',
+        function (AnalysisScope $scope): void {
+            $scope->varModelBindings['p'] = User::class;
+        },
+        [[User::class]],
+    ],
+]);
+
+/**
+ * Whether the old binding may hold, and whether a receiver keeps it, in the gap holding a parsed body's last read of
+ * `$p`, once the body is seeded; null where no gap holds it.
+ *
+ * @param  Closure(AnalysisScope): void  $seed
+ * @return array{bool, bool}|null
+ */
+function lastReadGapFlags(string $body, Closure $seed): ?array
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the body.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function seed(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $seed($scope);
+    $host->seed($stmts, $scope);
+    $reads = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof Variable && $node->name === 'p');
+    $last = end($reads);
+    $gap = $last instanceof Variable ? $scope->gapAt($last) : null;
+
+    return $gap === null ? null : [$gap[3], $gap[4]];
+}
+
+// A value binding's own write ends it, so no receiver keeps it past; a class kept beside a value still is.
+it('marks a receiver keeping a binding past the parameter\'s own write only where the write kept it', function (string $body, Closure $seed, array $flags) {
+    expect(lastReadGapFlags($body, $seed))->toBe($flags);
+})->with([
+    'a value binding' => [
+        '$p = trim($p); return $p;',
+        function (AnalysisScope $scope): void {
+            $scope->varValueBindings['p'] = ['type' => 'string', 'optional' => false];
+        },
+        [false, false],
+    ],
+    'a declared class beside a value, written a value naming no class' => [
+        '$p = $p->title; return $p;',
+        function (AnalysisScope $scope): void {
+            $scope->varDeclaredBindings['p'] = [Post::class];
+            $scope->varValueBindings['p'] = ['type' => 'Post | null', 'optional' => false];
+        },
+        [false, true],
+    ],
 ]);
 
 /**

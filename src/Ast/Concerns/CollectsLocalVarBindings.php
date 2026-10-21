@@ -115,8 +115,8 @@ trait CollectsLocalVarBindings
         $this->collectLocalVarBindings($stmts, $scope, $replacing);
         $this->bindBlockLocals($stmts, $scope, $replacing);
         // After the locals: keepsBinding() reads the `@var` spans they record.
-        $this->endBindingsAtWrites($stmts, $scope, $writes);
-        $this->bindJoinedLocals($stmts, $scope, $replacing);
+        $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
+        $this->bindJoinedLocals($stmts, $scope, $replacing, $ended);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof.
         $this->collectInstanceofGuards($stmts, $scope, $replacing);
     }
@@ -191,8 +191,9 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  array<string, Node>  $ended  the write that ended each binding, from endBindingsAtWrites()
      */
-    protected function bindJoinedLocals(array $stmts, AnalysisScope $scope, array $writes): void
+    protected function bindJoinedLocals(array $stmts, AnalysisScope $scope, array $writes, array $ended = []): void
     {
         $byName = [];
 
@@ -208,7 +209,8 @@ trait CollectsLocalVarBindings
             }
 
             if ($bound || count($own) > 1) {
-                $this->joinStatements((string) $name, $stmts, $stmts, $own, $bound ? [[], true, true, []] : [null, false, false, null], null, $scope);
+                $initial = $bound ? [[], true, true, []] : [null, false, false, null];
+                $this->joinStatements((string) $name, $stmts, $stmts, $own, $ended[$name] ?? null, $initial, null, $scope);
             }
         }
     }
@@ -224,13 +226,15 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
+     * @return array<string, Node> the write that ended each binding a write ended
      */
-    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope, ?array $writes = null): void
+    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope, ?array $writes = null): array
     {
         if (! $scope->bindsAnyName()) {
-            return;
+            return [];
         }
 
+        $ended = [];
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($writes as [$name, $node, $target]) {
@@ -257,6 +261,10 @@ trait CollectsLocalVarBindings
             }
 
             if ($block === null) {
+                if ($end < ($scope->bindingEnds[$name] ?? PHP_INT_MAX)) {
+                    $ended[$name] = $node;
+                }
+
                 $scope->bindingEnds[$name] = min($scope->bindingEnds[$name] ?? $end, $end);
 
                 continue;
@@ -274,6 +282,8 @@ trait CollectsLocalVarBindings
                 false,
             ]);
         }
+
+        return $ended;
     }
 
     /**
@@ -899,6 +909,7 @@ trait CollectsLocalVarBindings
      * @param  array<Node\Stmt>  $stmts  the list walked
      * @param  array<Node\Stmt>  $body  the whole body, which a block that always exits leaves
      * @param  VariableWrites  $writes  the name's own writes
+     * @param  Node|null  $ender  the write that ended the name's binding, if one did
      * @param  JoinedState  $state  the values the name may hold, null for none the scan knows, whether the binding it
      *                              came in with may still hold, whether a receiver keeps that binding, and in a
      *                              parameter's walk the values nested writes added, null in a local's
@@ -909,6 +920,7 @@ trait CollectsLocalVarBindings
         array $stmts,
         array $body,
         array $writes,
+        ?Node $ender,
         array $state,
         ?int $from,
         AnalysisScope $scope,
@@ -932,9 +944,11 @@ trait CollectsLocalVarBindings
             // The value a statement assigns reads what the name held before it, so that span runs through it.
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
-                $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $state, $scope),
+                $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $ender, $state, $scope),
                 // Past its own `$x = …;` a value read takes what it wrote; a class alone is endBindingsAtWrites()'s.
-                $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope)) ? null : [[$assigned], false, $state[2], $this->nothingNested($state)],
+                $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope))
+                    ? null
+                    : [[$assigned], false, $state[2] && $own[0][1] !== $ender, $this->nothingNested($state)],
                 default => $this->joinNested($own, $state),
             };
 
@@ -943,7 +957,7 @@ trait CollectsLocalVarBindings
             }
 
             // Past a write that ended the binding, its own read of the name finds none, so a receiver stops keeping it.
-            $state[2] = $state[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) > $stmt->getEndFilePos();
+            $state[2] = $state[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) >= $stmt->getEndFilePos();
             $after = $stmt->getEndFilePos();
         }
 
@@ -978,8 +992,15 @@ trait CollectsLocalVarBindings
      * @param  JoinedState  $state
      * @return JoinedState|null
      */
-    private function joinTry(string $name, TryCatch $try, array $body, array $writes, array $state, AnalysisScope $scope): ?array
-    {
+    private function joinTry(
+        string $name,
+        TryCatch $try,
+        array $body,
+        array $writes,
+        ?Node $ender,
+        array $state,
+        AnalysisScope $scope,
+    ): ?array {
         if (array_any($try->catches, fn (Catch_ $catch): bool => $catch->var?->name === $name)) {
             return $state[2] ? null : [null, false, false, $this->nothingNested($state)];
         }
@@ -988,7 +1009,7 @@ trait CollectsLocalVarBindings
             $writes,
             fn (array $write): bool => array_any($try->stmts, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $write[1])),
         )), $state);
-        $left = [$this->joinStatements($name, $try->stmts, $body, $writes, $state, $this->blockStart($try->stmts), $scope)];
+        $left = [$this->joinStatements($name, $try->stmts, $body, $writes, $ender, $state, $this->blockStart($try->stmts), $scope)];
 
         if ($thrown !== null && $try->stmts !== []) {
             $thrown[2] = $thrown[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) >= $try->stmts[array_key_last($try->stmts)]->getEndFilePos();
@@ -997,7 +1018,7 @@ trait CollectsLocalVarBindings
         foreach ($try->catches as $catch) {
             $left[] = $thrown === null
                 ? null
-                : $this->joinStatements($name, $catch->stmts, $body, $writes, $thrown, $this->blockStart($catch->stmts), $scope);
+                : $this->joinStatements($name, $catch->stmts, $body, $writes, $ender, $thrown, $this->blockStart($catch->stmts), $scope);
         }
 
         if (in_array(null, $left, true)) {
@@ -1016,7 +1037,7 @@ trait CollectsLocalVarBindings
 
         return $try->finally === null
             ? $joined
-            : $this->joinStatements($name, $try->finally->stmts, $body, $writes, $joined, $this->blockStart($try->finally->stmts), $scope);
+            : $this->joinStatements($name, $try->finally->stmts, $body, $writes, $ender, $joined, $this->blockStart($try->finally->stmts), $scope);
     }
 
     /**
