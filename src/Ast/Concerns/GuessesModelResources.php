@@ -139,7 +139,7 @@ trait GuessesModelResources
     /**
      * Resolve the model class backing a toResource()/toResourceCollection() receiver: a whenLoaded closure parameter
      * (ConditionalMethodHandler::analyzeWhenLoaded()'s bindings) or `$this->relation` accessed directly. Past the write
-     * that ended a parameter's binding, the receiver resolver reads what the body assigned instead.
+     * that ended a parameter's binding, or under a narrowing, the receiver resolver reads what the variable holds.
      *
      * @return class-string<Model>|null
      */

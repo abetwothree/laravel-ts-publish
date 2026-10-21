@@ -99,8 +99,8 @@ final class ClosureHandler implements ExpressionHandler
 
     /**
      * Bind each parameter whose native type names one class to that class, where no writer bound the name to a class:
-     * a non-null concrete model in varModelBindings, any other class, or a nullable one, in varDeclaredBindings, as
-     * ParameterBinder binds a method's. PHP throws for any other argument, so the type holds for every call.
+     * a non-null concrete model in varModelBindings, any other class, or a nullable one, in varDeclaredBindings, a
+     * Request included. PHP throws for any other argument, so the type holds for every call.
      */
     private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
     {

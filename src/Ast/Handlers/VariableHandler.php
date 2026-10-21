@@ -85,7 +85,7 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->property — an attribute of the variable's own bound model (whenLoaded param, map param, foreach
-        // value var). Anything else, a relation included, goes on to ReceiverPropertyFetchHandler.
+        // value var). Anything else, a relation or a narrowed read included, goes on to ReceiverPropertyFetchHandler.
         if ($expr instanceof PropertyFetch
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
