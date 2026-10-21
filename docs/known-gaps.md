@@ -90,9 +90,10 @@ bodies moves `DeferredAssignmentDto::$assignedLater`, which `NestedOptionalKeyDt
 ### A merge whose two sides name same-basename classes publishes only one of them
 
 `$this->mergeWhen($cond, ['party' => $this->sender], ['party' => $this->receiver])`, over an app `User` and a CRM
-`User`, types `party` with the CRM `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
-unions the two sides by type text, as it unions a method's return branches, so the later side's class takes the shared
-name. A ternary or `when()` keeps both classes, so spell the key that way.
+`User`, types `party` with the app `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
+unions the two sides by type text, as it unions a method's return branches and the branches a returned variable's walk
+joins, so the one `User` token takes the first side's class. A ternary or `when()` keeps both classes, so spell the key
+that way.
 
 ### A returned variable is read flat: an early return sees later writes, and some writes are not followed
 
@@ -101,8 +102,10 @@ A method that builds an array in a variable and returns it publishes the keys it
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
 - The branches of an `if` chain and a loop's body join, so a key holds each branch's value, optional where a branch, or
-  a loop that never runs, leaves it unset. A `switch` case, a `try` body and a `catch` are read in sequence instead: a
-  key first set there is optional, and a key re-set there publishes only its last write's type.
+  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but a
+  `continue` or `break` is not followed: after `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`,
+  `a?: string` publishes, though Laravel can send `1`. A `switch` case, a `try` body and a `catch` are read in sequence
+  instead: a key first set there is optional, and a key re-set there publishes only its last write's type.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
