@@ -344,6 +344,34 @@ it('queues in branch order each class the branches of a merge type a key with, w
         ->and($merged->inlineModelFqcns)->toBe(['who' => ['App\\User', 'App\\Category']]);
 });
 
+it('lists the enums the branches wrap a key in only where each wraps it, none reads it bare, and each has its token', function (array $second, string $type, ?array $listed) {
+    $entry = fn (string $type): array => [['name' => 's', 'type' => $type, 'optional' => false, 'description' => '']];
+    $first = new MethodAnalysis(properties: $entry('StatusType'), enumResources: ['s' => 'App\\Status']);
+    $merged = new MethodAnalysis(properties: $entry($type), enumResources: ['s' => 'App\\Status']);
+
+    $merged->queueSplitClasses([$first, new MethodAnalysis(...['properties' => $entry('PriorityType'), ...$second])]);
+
+    expect($merged->multiEnumResourceFqcns['s'] ?? null)->toBe($listed)
+        ->and(isset($merged->enumResources['s']))->toBe($listed === null);
+})->with([
+    'another enum' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | null', ['App\\Status', 'App\\Priority']],
+    'another enum also read bare' => [
+        ['enumResources' => ['s' => 'App\\Priority'], 'directEnumFqcns' => ['s' => 'App\\Priority']],
+        'StatusType | PriorityType',
+        null,
+    ],
+    'a type with another arm' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | string', null],
+    'the same enum' => [['enumResources' => ['s' => 'App\\Status']], 'StatusType', null],
+]);
+
+it('queues nothing for a merge of no branches', function () {
+    $analysis = new MethodAnalysis(enumResources: ['s' => 'App\\Status']);
+
+    $analysis->queueSplitClasses([]);
+
+    expect($analysis->enumResources)->toBe(['s' => 'App\\Status']);
+});
+
 describe('MethodAnalysis::addProperty()', function () {
     test('routes every channel a resolved value can carry', function () {
         $analysis = new MethodAnalysis;

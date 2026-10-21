@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -288,7 +289,8 @@ class MethodAnalysis
 
     /**
      * Queue, in branch order, the class each branch of a merge types a key with where two branches type it apart, as a
-     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import.
+     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import. Run on the
+     * merged analysis, whose types decide whether the enums the branches wrap a key in can be listed per token.
      *
      * @param  list<self>  $branches
      */
@@ -309,6 +311,7 @@ class MethodAnalysis
             $this->inlineModelFqcns,
             array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
         );
+        $this->listSplitEnumResources($branches);
     }
 
     /**
@@ -458,5 +461,64 @@ class MethodAnalysis
         }
 
         return $queues;
+    }
+
+    /**
+     * List in branch order the enums the branches wrap a key in where they wrap it in different ones, as a ternary of
+     * EnumResource arms is listed, when no branch reads it bare and its type holds one token per enum.
+     *
+     * @param  list<self>  $branches
+     */
+    private function listSplitEnumResources(array $branches): void
+    {
+        $wrapping = array_replace([], ...array_map(
+            fn (self $branch): array => $branch->enumResources + $branch->multiEnumResourceFqcns,
+            $branches,
+        ));
+
+        foreach ($this->properties as $property) {
+            if (! isset($wrapping[$property['name']])) {
+                continue;
+            }
+
+            $wrapped = $this->wrappedEnums($property['name'], $branches);
+            $tokens = array_diff(TsTypeString::splitTopLevelUnion($property['type']), ['null']);
+
+            if ($wrapped === null || count($wrapped) < 2 || count($tokens) !== count($wrapped)) {
+                continue;
+            }
+
+            unset($this->enumResources[$property['name']], $this->enumResourceArmShapes[$property['name']]);
+            $this->multiEnumResourceFqcns[$property['name']] = $wrapped;
+        }
+    }
+
+    /**
+     * Each enum the branches holding a key wrap it in, once each in branch order; null where one of them does not wrap
+     * it, or also reads it bare.
+     *
+     * @param  list<self>  $branches
+     * @return list<class-string>|null
+     */
+    private function wrappedEnums(string $name, array $branches): ?array
+    {
+        $wrapped = [];
+
+        foreach ($branches as $branch) {
+            if (! in_array($name, array_column($branch->properties, 'name'), true)) {
+                continue;
+            }
+
+            $own = $branch->multiEnumResourceFqcns[$name]
+                ?? (isset($branch->enumResources[$name]) ? [$branch->enumResources[$name]] : null);
+
+            if ($own === null || isset($branch->directEnumFqcns[$name])) {
+                return null;
+            }
+
+            array_push($wrapped, ...$own);
+        }
+
+        return array_values(array_unique($wrapped));
     }
 }

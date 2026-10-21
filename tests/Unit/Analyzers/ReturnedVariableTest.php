@@ -26,6 +26,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedElseifChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumKeyResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumResourceBranchesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumResourceResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThenAppendedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThenOpaqueResource;
@@ -561,6 +563,17 @@ test('a body that may not run keeps the value a key held before as one more arm,
         [['tier' => 'b'], ['id' => 9, 'tier' => false]],
         [[], ['id' => 9, 'tier' => 0]],
     ]],
+]);
+
+test('each branch keeps the enum it wraps a key in, so the merged key wraps each enum and imports it', function (string $class, string $type) {
+    $transformer = new ResourceTransformer($class);
+
+    expect($transformer->properties['s']['type'])->toBe($type)
+        ->and(collect($transformer->valueImports)->flatten()->sort()->values()->all())->toBe(['Priority', 'Status'])
+        ->and($transformer->typeImports)->toBe([]);
+})->with([
+    'a variable a branch re-sets' => [ReturnedEnumResourceResetResource::class, 'AsEnum<typeof Status> | AsEnum<typeof Priority> | null'],
+    'two returned literals' => [ReturnedEnumResourceBranchesResource::class, 'AsEnum<typeof Priority> | AsEnum<typeof Status> | null'],
 ]);
 
 test('a key\'s queued classes hold one copy per write of it, however many joins it passes', function (string $body, int $writes, bool $author) {
