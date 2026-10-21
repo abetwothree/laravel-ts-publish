@@ -586,11 +586,11 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The string, int or class-constant literal a local written once holds, as boundLocal() reads the local.
+     * The string, int or class-constant literal a local written once holds at a read, as boundLocal() reads it.
      */
-    protected function literalLocal(string $name): ?Expr
+    protected function literalLocal(Variable $read): ?Expr
     {
-        $bound = $this->boundLocal($name);
+        $bound = $this->boundLocal($read);
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
@@ -1719,7 +1719,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             return null;
         }
 
-        $bound = $this->boundLocal($expr->name);
+        $bound = $this->boundLocal($expr);
 
         return $bound === null ? null : [$expr->name, $bound];
     }
@@ -1745,16 +1745,24 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * The value a local written once holds, but where a by-reference call reshapes it; inside a merge closure, whose
-     * body is not seeded, only a method's local the closure imports.
+     * The value a local written once holds at a read, but where a by-reference call reshapes it; inside a merge
+     * closure, whose body is not seeded, only a method's local the closure imports.
      */
-    private function boundLocal(string $name): ?Expr
+    private function boundLocal(Variable $read): ?Expr
     {
-        if ($this->closureImports !== null && ! isset($this->closureImports[$name])) {
+        $name = $read->name;
+        $scope = $this->scope;
+
+        if (! is_string($name) || ($this->closureImports !== null && ! isset($this->closureImports[$name]))) {
             return null;
         }
 
-        return $this->scope->literalLocalBindings()[$name] ?? null;
+        // As VariableHandler::boundValue() reads it: a parameter's binding, or a join, holds there instead.
+        if (($scope->bindsName($name) && $scope->holdsBinding($read)) || $scope->gapAt($read) !== null) {
+            return null;
+        }
+
+        return $scope->literalLocalBindings()[$name] ?? null;
     }
 
     /**

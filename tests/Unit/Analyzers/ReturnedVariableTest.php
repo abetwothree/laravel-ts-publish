@@ -38,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedForLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperParameterKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpolatedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedJoinedKeyUnsetResource;
@@ -711,6 +712,9 @@ test('an unset() of a key a literal local holds removes that key', function (str
         [['compact' => '1'], ['id' => 9, 'name' => 'php']],
         [['compact' => '0'], ['id' => 9]],
     ]],
+    'a parameter written once only after the unset() names no key' => [
+        ReturnedHelperParameterKeyUnsetResource::class, 'id: number; name: string; slug: string', [[[], ['id' => 9, 'slug' => 'php']]],
+    ],
 ]);
 
 // Every signature entry admits `undefined`, so the entry that can still name the unset key stays sound.

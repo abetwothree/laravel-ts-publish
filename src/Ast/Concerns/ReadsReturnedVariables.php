@@ -79,10 +79,10 @@ trait ReadsReturnedVariables
     abstract protected function subjectReflection(): ReflectionClass;
 
     /**
-     * The string, int or class-constant literal a local holds where the host binds it, so a key write or an unset()
-     * through that local names its key; null for any other name.
+     * The string, int or class-constant literal a local holds at a read where the host binds it, so a key write or an
+     * unset() through that local names its key; null for any other read.
      */
-    abstract protected function literalLocal(string $name): ?Expr;
+    abstract protected function literalLocal(Variable $read): ?Expr;
 
     /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
@@ -765,7 +765,7 @@ trait ReadsReturnedVariables
      */
     private function namedKey(Expr $dim): ?string
     {
-        $key = $dim instanceof Variable && is_string($dim->name) ? $this->literalLocal($dim->name) : $dim;
+        $key = $dim instanceof Variable ? $this->literalLocal($dim) : $dim;
 
         return $key === null ? null : $this->resolveKeyName($key, $this->subjectReflection());
     }
