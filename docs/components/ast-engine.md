@@ -175,7 +175,8 @@ docblocks say what each binding table holds. These seven facts span other classe
 - **`varGuardBindings` reserves `PROXY_GUARDS`**: the proofs on an API resource's `$this->resource` sit under the key
   `'$this->resource'`, which no variable spells, so no parameter claim or `copyBindings()` reaches them, and
   `enterSubjectMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
-  holds, is a stack, not a name table, so `nameBindings()` leaves it out.
+  holds, is a stack, not a name table, so `nameBindings()` leaves it out. It and `provenProxy` reach a subject method's
+  body unless the body writes through `$this` (`CollectsInstanceofGuards::rewritesProvenThis()`).
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
@@ -491,7 +492,9 @@ each resource prop repeats: `JsonApiResources::relationships()` and `includedRes
 `analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
 suffix spelling the bindings its arguments make for the parameters whose declarations bind nothing, so two calls that
 bind alike share one answer, and a call that binds nothing keeps the plain key. The arguments are read in the caller's
-scope before the callee's frame opens, so what they record is the caller's. The `method-body:` cycle guard stays per
+scope before the callee's frame opens, so what they record is the caller's. A subject method read under an `instanceof`
+proof that holds `$this->resource` to one model adds `@backing:<model>` to its `method-return:` key, so the read with
+the proof and the one without never share an answer. The `method-body:` cycle guard stays per
 method, so a recursion that passes a new value each time stops at its first repeat.
 
 A stored answer keeps the dependency paths and the dropped-arm count recorded while it was computed, and every reuse

@@ -305,10 +305,12 @@ Check which spelling you wrote before you assume a value is `unknown`:
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
 
 On an API resource, an `if` narrows `$this->resource` as it does `$x`, for each value inside a block its test proves,
-so a resource collection's items read as the paginator a block tests. A resource with no backing model also takes the
-class of the first `if` that tests `$this->resource` alone, in either polarity, as what it holds for the whole method
-(`ResourceAstAnalyzer::resolveInstanceOfType()`), so it needs no `#[TsCasts]` for what the guard proves. A ternary that
-tests such a resource for two or more models still publishes `null` for an attribute its arm reads, such as
+so a resource collection's items read as the paginator a block tests. The class of the first `if` that tests
+`$this->resource` alone, in either polarity, also holds for the whole method
+(`ResourceAstAnalyzer::resolveInstanceOfType()`): it is what `$this->resource` holds on a resource with no backing
+model, and a call `JsonResource` forwards, such as `$this->m()`, tries it ahead of the backing model on a model-backed
+resource too. So a resource that guards on it needs no `#[TsCasts]` for what the guard proves. A ternary that tests a
+resource with no backing model for two or more models still publishes `null` for an attribute its arm reads, such as
 `$this->title` (#127).
 
 ### A shape whose values name a class loses those values, in one of two ways

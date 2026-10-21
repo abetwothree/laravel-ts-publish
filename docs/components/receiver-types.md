@@ -136,9 +136,9 @@ as with the backing model standing in for each it is or extends, so `@var Model`
 its unproven answer. A redeclaration that admits null is the exception: the test rules the `null` out, so
 `instanceof Post` on `@var Post|null` records `Post`.
 
-On a `$this->prop` subject, a read in the arm of the same property names on `$this`, through `->` or `?->`, holds the
-classes the test leaves (`AnalysisScope::$narrowedReads`): under `$this->imageable instanceof Post`, the arm's
-`$this->imageable->title` publishes `string`.
+On a `$this->prop` subject, a read in the arm of the same property names on `$this`, through `->` or `?->`, holds what
+the test leaves of the subject, its collection's element and keys included (`AnalysisScope::$narrowedReads`): under
+`$this->imageable instanceof Post`, the arm's `$this->imageable->title` publishes `string`.
 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
