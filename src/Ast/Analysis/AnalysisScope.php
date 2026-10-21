@@ -303,8 +303,11 @@ final class AnalysisScope
 
     /**
      * The spans where a name may not hold the binding it came in with though it takes it back past them: from a write
-     * in a block that always leaves the function to that block's end. Each carries its writes' values, or null where
-     * one assigns none the scan reads, and whether the old binding may still hold there, past a write that may not run.
+     * in a block that always leaves the function to that block's end. A name with no binding has one for each `$x = …;`
+     * nested in a block, from past that statement to its block's end or the block's statement holding the next write.
+     *
+     * Each carries its writes' values, or null where one assigns none the scan reads, and whether the old binding may
+     * still hold there, past a write that may not run.
      *
      * @var BindingGapsMap
      */

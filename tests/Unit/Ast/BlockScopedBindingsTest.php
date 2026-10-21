@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedParameterGapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -153,6 +154,10 @@ test('binds a block local past its statement, up to its block\'s end or the stat
         '$f = function () use (&$x) { $x = null; }; if (true) { $x = $this->author; $f(); $x->a; }',
         [null],
     ],
+    'a by-reference foreach variable, which the array writes through' => [
+        '$arr = [1]; foreach ($arr as &$x) {} if (true) { $x = $this->author; $arr[0] = null; $x->a; }',
+        [null],
+    ],
 ]);
 
 // Its value names another class, so the parameter holds either class past the block, as an untagged write leaves it.
@@ -161,6 +166,12 @@ test('ends a parameter\'s binding at a nested write a tag declares another class
         '$x->a; if (true) { /** @var \Workbench\App\Models\Comment $x */ $x = json_decode(""); $x->b; } $x->c;',
         ['x' => User::class],
     ))->toBe([[User::class], [Comment::class], null]);
+});
+
+// Base kept the gap for the capture's read; a body that writes a name drops only an unbound name's outer gaps.
+test('a closure in a parameter\'s exit-block gap reads the value the block wrote, before its own write', function () {
+    expect(publishedResourceKeyTypes(BlockScopedParameterGapsResource::class, Post::class)['captured?'] ?? null)
+        ->toBe('string | number');
 });
 
 test('a block local passed to a transform() closure binds the parameter', function () {
@@ -195,5 +206,7 @@ test('sends what the block-scoped bindings publish', function () {
         ->and(json_encode(new BlockScopedBindingsResource($image)->resolve($request)))->toBe(json_encode([
             'label' => 'https://example.com/a.png',
             'bytes' => 9,
-        ]));
+        ]))
+        ->and(json_encode(new BlockScopedParameterGapsResource($post)->resolve($request)))
+        ->toBe(json_encode(['captured' => 'Ann', 'passed' => 'Ann']));
 });

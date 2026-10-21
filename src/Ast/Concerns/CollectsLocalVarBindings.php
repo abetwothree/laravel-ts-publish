@@ -88,13 +88,13 @@ trait CollectsLocalVarBindings
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
 
         foreach ($replacing as [$name]) {
-            // An outer gap's offsets may cover this body, as a closure nested in the block that opened it.
-            unset(
-                $scope->localVarBindings[$name],
-                $scope->varDocBindings[$name],
-                $scope->byReferenceForms[$name],
-                $scope->bindingGaps[$name],
-            );
+            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
+
+            // An outer block local's span may cover this body, as a closure in that block. A bound name's gap holds the
+            // value its block wrote, which a closure capturing it still reads before its own write.
+            if (! $scope->bindsName($name)) {
+                unset($scope->bindingGaps[$name]);
+            }
         }
 
         foreach ($kept as [$name, $form]) {
@@ -436,12 +436,12 @@ trait CollectsLocalVarBindings
     {
         $end = $block[array_key_last($block)]->getEndFilePos();
 
-        foreach ($writes as [$written, $node]) {
+        foreach ($writes as [$written, $node, $target]) {
             if ($written !== $name) {
                 continue;
             }
 
-            if ($this->makesReference($node)) {
+            if ($this->makesReference($node, $target)) {
                 return null;
             }
 
@@ -456,11 +456,12 @@ trait CollectsLocalVarBindings
 
     /**
      * Whether a write can make a variable a reference that another name, or a closure, writes through: `=&`, a
-     * by-reference `use`, `global` or `static`.
+     * by-reference `use` or `foreach` value, `global` or `static`.
      */
-    private function makesReference(Node $write): bool
+    private function makesReference(Node $write, Expr $target): bool
     {
-        return $write instanceof AssignRef || $write instanceof ClosureExpr || $write instanceof Global_ || $write instanceof Static_;
+        return $write instanceof AssignRef || $write instanceof ClosureExpr || $write instanceof Global_ || $write instanceof Static_
+            || ($write instanceof Foreach_ && $write->byRef && $write->valueVar === $target);
     }
 
     /**
