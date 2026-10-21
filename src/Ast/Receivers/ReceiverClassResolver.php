@@ -926,6 +926,14 @@ final class ReceiverClassResolver
         }
 
         $name = $fetch->name->toString();
+        $path = $scope->narrowedReads === [] ? null : $this->thisReadPath($fetch);
+
+        // An `instanceof` ternary's proven arm reads the path it tested as the classes the test left, innermost first.
+        foreach ($path === null ? [] : array_reverse($scope->narrowedReads) as [$narrowed, $classes]) {
+            if ($narrowed === $path) {
+                return new ReceiverType($classes);
+            }
+        }
 
         if ($fetch->var instanceof Variable && $fetch->var->name === 'this') {
             return $this->fromThisProperty($name, $scope);

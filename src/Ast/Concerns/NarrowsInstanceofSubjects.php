@@ -9,7 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
@@ -21,8 +24,8 @@ trait NarrowsInstanceofSubjects
 {
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varGuardBindings,
-     * or what the `$this->resource` proxy holds), then restore the scope. Null for any other subject, or for an arm
-     * that writes it.
+     * what the `$this->resource` proxy holds, or a `$this->prop` path's narrowedReads), then restore the scope. Null
+     * for any other subject, or for an arm that writes it.
      *
      * @template TResult
      *
@@ -33,9 +36,11 @@ trait NarrowsInstanceofSubjects
     protected function resolveNarrowed(Expr $subject, array $tested, Expr $arm, AnalysisScope $scope, Closure $resolve): mixed
     {
         $variable = $subject instanceof Variable && is_string($subject->name) ? $subject->name : null;
+        $isProxy = $variable === null && $this->isProxyFetch($subject, $scope);
+        $path = $variable === null && ! $isProxy ? $this->thisReadPath($subject) : null;
 
-        // `$this->resource` is written through the `this` variable.
-        if (($variable === null && ! $this->isProxyFetch($subject, $scope))
+        // `$this->resource` and a `$this->prop` path are written through the `this` variable.
+        if (($variable === null && ! $isProxy && $path === null)
             || in_array($variable ?? 'this', $this->collectWrittenVariableNames([$arm], $scope), true)
         ) {
             return null;
@@ -55,6 +60,18 @@ trait NarrowsInstanceofSubjects
                 return $resolve();
             } finally {
                 $scope->varGuardBindings = $previousVarGuardBindings;
+            }
+        }
+
+        if ($path !== null) {
+            $previousNarrowedReads = $scope->narrowedReads;
+
+            try {
+                $scope->narrowedReads[] = [$path, $classes];
+
+                return $resolve();
+            } finally {
+                $scope->narrowedReads = $previousNarrowedReads;
             }
         }
 
@@ -83,5 +100,23 @@ trait NarrowsInstanceofSubjects
             $scope->modelClass = $previousModelClass;
             $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }
+    }
+
+    /**
+     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
+     * for `$this->owner?->team`; null for any other expression.
+     *
+     * @return list<string>|null
+     */
+    private function thisReadPath(Expr $expr): ?array
+    {
+        $path = [];
+
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($path, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
     }
 }

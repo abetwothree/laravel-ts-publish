@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use Illuminate\Http\Request;
@@ -22,8 +24,11 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeFinder;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * A post titled Banana, as the fixtures here read it.
@@ -231,4 +236,26 @@ test('preg_match() with no flag and no named group writes a list of strings, but
         ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/', 'GET', ['match' => 1]))))
         ->toContain('"kept":["B","B"],"maybe":["B","B"],"decoded":["B","B"],"flagged":["B","B"],"else_null":["B","B"],'
             .'"else_number":["B","B"],"list":["B","B"],"parameter":[["a","a"]],"listed_parameter":[["a","a"]]');
+});
+
+// The arm reads the same property the test read, so it holds the tested class; a read past the ternary keeps them all.
+test('an instanceof ternary on a $this->prop narrows the reads through it', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+    $product = new Product;
+    $product->forceFill(['id' => 'p-1']);
+    $productImage = new Image;
+    $productImage->setRelation('imageable', $product);
+
+    expect(publishedResourceKeyTypes(MemberNarrowedResource::class, Image::class))->toBe([
+        'title' => 'string | null',
+        'key' => 'number | null',
+        'either_key' => 'number | null',
+        'open_key' => 'number | string | null',
+    ])
+        ->and(json_encode(new MemberNarrowedResource($image)->resolve(Request::create('/'))))
+        ->toBe('{"title":"Banana","key":7,"either_key":7,"open_key":7}')
+        ->and(json_encode(new MemberNarrowedResource($productImage)->resolve(Request::create('/'))))
+        ->toBe('{"title":null,"key":null,"either_key":null,"open_key":"p-1"}');
 });

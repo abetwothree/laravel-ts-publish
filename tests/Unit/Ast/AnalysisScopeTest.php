@@ -367,7 +367,7 @@ it('ends a name\'s binding in exactly the tables a variable passed past its end 
     }
 });
 
-it('captures every public array table but the re-entrancy guards as a name binding', function () {
+it('captures every public array table but the re-entrancy guards and the narrowed `$this` reads as a name binding', function () {
     $tables = array_map(
         fn (ReflectionProperty $property): string => $property->getName(),
         array_filter(
@@ -375,10 +375,10 @@ it('captures every public array table but the re-entrancy guards as a name bindi
             fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
         ),
     );
-    $guards = ['resolvingLocalVars', 'visitedSpreadMethods'];
+    $notNameKeyed = ['resolvingLocalVars', 'visitedSpreadMethods', 'narrowedReads'];
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
-    expect(array_values(array_diff($tables, $guards)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
+    expect(array_values(array_diff($tables, $notNameKeyed)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
         ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
 });
 

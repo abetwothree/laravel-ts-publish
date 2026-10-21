@@ -54,6 +54,7 @@ use ReflectionClass;
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
+ * @phpstan-type NarrowedRead array{list<string>, non-empty-list<class-string>}
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -154,6 +155,15 @@ final class AnalysisScope
      * @var non-empty-list<class-string>|null
      */
     public ?array $provenProxy = null;
+
+    /**
+     * The `$this` read paths, as property names outermost first, an `instanceof` ternary's proven arm holds to
+     * classes while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
+     * reads them.
+     *
+     * @var list<NarrowedRead>
+     */
+    public array $narrowedReads = [];
 
     /**
      * What each item the runtime class, a ResourceCollection, collects publishes as: the element `$this->collection`
