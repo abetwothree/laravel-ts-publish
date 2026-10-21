@@ -2013,6 +2013,15 @@ describe('a ResourceCollection holds its items, never the collected model', func
         ['$this->collection', 'ProxyCollectedPostResource[]'],
     ]);
 
+    // The items arrive as a list or one of three paginators, so a test for one keeps that paginator alone.
+    test('an instanceof ternary on the items narrows them to the paginator it tests', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyCollectedPostCollection::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource instanceof \Illuminate\Pagination\LengthAwarePaginator ? $this->resource : null', 'LengthAwarePaginator<ProxyCollectedPostResource> | null'],
+        ['$this->resource instanceof \Illuminate\Pagination\CursorPaginator ? $this->resource : null', 'CursorPaginator<ProxyCollectedPostResource> | null'],
+        ['! $this->resource instanceof \Illuminate\Pagination\LengthAwarePaginator ? null : $this->resource', 'LengthAwarePaginator<ProxyCollectedPostResource> | null'],
+    ]);
+
     // A guard holds only inside its branch, so `page`, read past it, keeps every class the items may arrive in.
     test('a guard on a paginator keeps the items answer', function (string $key, string $type) {
         expect(collect(pipelineAnalyzer(ProxyGuardedPageCollection::class)->analyze()->properties)->keyBy('name')[$key]['type'])->toBe($type);
