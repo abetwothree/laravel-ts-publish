@@ -364,10 +364,17 @@ With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes 
 `unknown` (an undeclared relation, a related model the run does not publish, or a `morphTo` with no resolvable target),
 though Laravel sends `null` for a relation loaded as `null`.
 `whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. A `whenLoaded()` value that
-collects the relation, such as `whenLoaded('ancestors', CategoryResource::collection(...))`, adds none, since only a
+collects such a relation, such as `whenLoaded('branches', CategoryResource::collection(...))`, adds none, since only a
 to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
+
+### A relation method that declares no relation class and builds it through a helper is left out
+
+A method with neither a relation return type nor a `@return` naming a relation class, whose body builds the relation
+through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders, is never read as a
+relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it publishes
+`unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
 
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 

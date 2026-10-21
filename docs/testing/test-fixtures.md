@@ -6,7 +6,7 @@ follows the folder.
 
 | Folder | Holds |
 |---|---|
-| `Models/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
+| `Models/`, `Relations/`, `Casts/`, `Enums/`, `Events/`, `ValueObjects/`, `Services/` | the Laravel kind the folder names |
 | `Http/Resources/`, `Http/Requests/`, `Http/Controllers/` | API resources and collections, form requests, Inertia controllers |
 | `Tables/` | Inertia UI tables |
 | `Providers/` | service providers a test registers |

@@ -28,7 +28,8 @@ The attribute waterfall spans these classes:
 - [`LaravelTsPublish`](../../src/LaravelTsPublish.php): `toTsType()`, return-type resolution, and the docblock helpers
   for generics, shapes, type aliases and trait templates.
 - [`TsTypeString`](../../src/Support/TsTypeString.php): `isVagueTsType()`, the one definition of "vague".
-- [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute and relation lists.
+- [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute list, and reads the
+  relation list itself. See [Relation discovery](#relation-discovery).
 
 ## A vague signature defers to the docblock
 
@@ -240,6 +241,19 @@ which lists `ModelInspector`'s attributes.
 
 A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
 `null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+
+## Relation discovery
+
+`ModelInspector::getRelations()` calls each relation method once, so one that throws on a blank model is left out with
+a warning. It calls what Laravel's `getRelations()` calls, a public parameterless method typed as a relation or calling
+a builder such as `$this->hasMany(` in its body, and also one whose declared return names only relation classes
+(`declaresRelationReturn()`): `@return Ancestors<static, static>` over a package's own helper, or `Notifiable`'s
+`readNotifications()`. A method that declares neither is missed; see
+[known gaps](../known-gaps.md#a-relation-method-that-declares-no-relation-class-and-builds-it-through-a-helper-is-left-out).
+
+Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads list-ness from
+the class, so a subclass of `HasMany` loads a list whatever its name, and `strategyFor()` gives a subclass the map does
+not name the strategy of its nearest parent the map does. The `morphTo` and `morphToMany` tests still read `type`.
 
 ## MorphTo targets
 
