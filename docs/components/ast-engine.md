@@ -337,10 +337,11 @@ that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`,
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
 same reads. A block may not run and a loop runs it again, so a read before the write or past the block stays unbound,
-as does a name a reference can write through (`=&`, `use (&$x)`, `global`, `static`). A name a parameter or a seeded
-binding holds gets no gap, since the rules below end that binding. A body drops the outer gaps of each name it writes,
-so a closure's own `$x` never reads its enclosing block's, and `AnalysisScope::copyBindings()` passes a closure
-parameter the value of the gap one write opened.
+as does a name a reference can write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). A name a
+parameter or a seeded binding holds gets no gap, since the rules below end that binding. A body drops the outer gaps of
+each name it writes that holds no binding, so a closure's own `$x` never reads its enclosing block's, while a bound
+name keeps its exit-block gap for the value a closure captures. `AnalysisScope::copyBindings()` passes a closure
+parameter the value of the gap one write opened, a block local's or a parameter's.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
