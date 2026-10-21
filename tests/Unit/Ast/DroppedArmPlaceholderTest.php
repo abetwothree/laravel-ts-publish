@@ -60,6 +60,7 @@ test('a value left only null by a dropped arm warns too', function () {
         placeholderWarning(34, '`never[]`, an array that is always empty', '$rows'),
         placeholderWarning(36, '`null | never[]`, as if it were always null or an empty array', '$this->opaqueRows()'),
         placeholderWarning(27, $null, '$this->opaqueRows()'),
+        placeholderWarning(48, $null, '$value'),
     ])
         ->and(placeholderWarnings(UnionHonestyResource::class))->toBe(array_map(
             fn (int $line): string => UnionHonestyResource::class.": The value on line {$line} publishes {$null}, because "
@@ -70,6 +71,7 @@ test('a value left only null by a dropped arm warns too', function () {
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
             'both' => 'never[] | null',
             'unpublished_tag' => 'null',
+            'parameter?' => 'null',
         ]);
 });
 

@@ -148,7 +148,7 @@ trait CollectsLocalVarBindings
         $this->bindBlockLocals($stmts, $scope, $binding, $parked);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
-        $this->bindJoinedLocals($stmts, $scope, $binding, $ended);
+        $this->bindJoinedLocals($stmts, $scope, $binding, $ended, $closure === null ? [] : $this->parameterNames($closure));
         // After the join: a read it binds takes that value, and only the reads it leaves unbound walk the key writes.
         $this->collectKeyBuiltLocals($stmts, $scope, $binding);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof; a
@@ -230,12 +230,20 @@ trait CollectsLocalVarBindings
      * it holds, a write of another kind, or its own `$x = …;` where it binds no value, stops the walk, leaving the rest
      * to endBindingsAtWrites(); else that `$x = …;` replaces the value. Past an ending write it walks as a local.
      *
+     * A closure's parameter nothing binds starts holding what its call passed, which no receiver keeps.
+     *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites  $writes  the body's writes that replace a variable
      * @param  array<string, Node>  $ended  the write that ended each binding, from endBindingsAtWrites()
+     * @param  list<string>  $parameters  the names of the parameters of the closure whose body the statements are
      */
-    protected function bindJoinedLocals(array $stmts, AnalysisScope $scope, array $writes, array $ended = []): void
-    {
+    protected function bindJoinedLocals(
+        array $stmts,
+        AnalysisScope $scope,
+        array $writes,
+        array $ended = [],
+        array $parameters = [],
+    ): void {
         $byName = [];
 
         foreach ($writes as $write) {
@@ -243,15 +251,23 @@ trait CollectsLocalVarBindings
         }
 
         foreach ($byName as $name => $own) {
-            $bound = $scope->bindsName((string) $name);
+            $name = (string) $name;
+            $bound = $scope->bindsName($name);
+            // Only a nested write needs the join: a parameter assigned at the top level alone reads as a local.
+            $passed = ! $bound && in_array($name, $parameters, true)
+                && array_any($own, fn (array $write): bool => ! $this->isStatementOf($stmts, $write[1]));
 
             if (array_any($own, fn (array $write): bool => $write[3]->makesReference())) {
                 continue;
             }
 
-            if ($bound || count($own) > 1) {
-                $initial = $bound ? [[], true, true, []] : [null, false, false, null];
-                $this->joinStatements((string) $name, $stmts, $stmts, $own, $ended[$name] ?? null, $initial, null, $scope);
+            if ($bound || $passed || count($own) > 1) {
+                $initial = match (true) {
+                    $bound => [[], true, true, []],
+                    $passed => [[], true, false, []],
+                    default => [null, false, false, null],
+                };
+                $this->joinStatements($name, $stmts, $stmts, $own, $ended[$name] ?? null, $initial, null, $scope);
             }
         }
     }
@@ -687,6 +703,24 @@ trait CollectsLocalVarBindings
             $scope->bindingEnds[$name] = $end;
             $this->clipSpans($scope, $name, $end);
         }
+    }
+
+    /**
+     * The names a closure's parameters declare.
+     *
+     * @return list<string>
+     */
+    private function parameterNames(ClosureExpr $closure): array
+    {
+        $names = [];
+
+        foreach ($closure->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $names[] = $param->var->name;
+            }
+        }
+
+        return $names;
     }
 
     /**

@@ -53,6 +53,7 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type VarDocBinding from AnalysisScope
+ * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
  */
@@ -264,6 +265,19 @@ final class VariableHandler implements ExpressionHandler
             return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
         }
 
+        return $this->joinedValue($variable, $name, $gap, $scope, $engine);
+    }
+
+    /**
+     * A read's value inside a gap: the values its writes assigned, joined with the old binding where that may still
+     * hold. An arm the engine cannot type is left out beside typed ones, as a ternary leaves one out: a parameter's
+     * nested write where an earlier value still reaches the read, and an old value beside writes that all type.
+     *
+     * @param  BindingGap  $gap
+     * @return ValueExpressionResult|null
+     */
+    private function joinedValue(Variable $read, string $name, array $gap, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
         // The old binding may still hold past a write nested in a block that falls through, so both are read.
         $written = $gap[2] ?? [];
         $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
@@ -275,17 +289,36 @@ final class VariableHandler implements ExpressionHandler
         // An earlier value still reaches past a parameter's nested write, so a value it wrote the engine cannot type is
         // left out of the join, as fromGap() leaves a receiver.
         $reaches = $gap[3] || array_any($written, fn (Expr $value): bool => ! in_array($value, $nested, true));
-        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine)] : [];
+        $old = $gap[3] ? $this->heldValue($name, $scope, $engine) : null;
+        $arms = [];
+        $dropped = [];
 
         foreach ($values as $index => $arm) {
-            if (! $reaches || ! $untyped($arm) || ! in_array($written[$index], $nested, true)) {
+            if ($reaches && $untyped($arm) && in_array($written[$index], $nested, true)) {
+                $dropped[] = $written[$index];
+            } else {
                 $arms[] = $arm;
             }
         }
 
-        return $gap[2] === null || $arms === [] || array_any($arms, $untyped)
-            ? null
-            : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
+        if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
+            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? $read;
+        } elseif ($gap[3]) {
+            array_unshift($arms, $old);
+        }
+
+        if ($gap[2] === null || $arms === [] || array_any($arms, $untyped)) {
+            return null;
+        }
+
+        foreach ($dropped as $arm) {
+            DroppedUnionArms::record($arm, $scope, 'binding-join');
+        }
+
+        $typed = array_values(array_filter($arms));
+        $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
+
+        return DroppedUnionArms::warnOfPlaceholder($union, $dropped, $scope);
     }
 
     /**

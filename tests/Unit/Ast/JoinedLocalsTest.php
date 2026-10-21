@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
@@ -109,13 +110,13 @@ test('a local the try body and a catch both assign joins both, and a finally wri
         ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['caught' => 'Banana', 'finally' => 1, 'caught_read' => 7]);
 });
 
-// An old value no rule types keeps the joined read unknown. A call no rule types binds the callback's parameter to
-// nothing, so the read past the block is a local's that one nested write leaves unbound.
+// An old value no rule types is left out beside the write's, as a ternary leaves out an arm, and so is the value of a
+// call no rule types, which binds the callback's parameter to nothing.
 test('a parameter written inside a block joins its old value and the write\'s', function () {
     expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
         'joined?' => 'string | number',
-        'vague_joined?' => 'unknown',
-        'opaque_joined?' => 'unknown',
+        'vague_joined?' => 'number',
+        'opaque_joined?' => 'number',
         'caught_joined?' => 'string | number',
     ])
         ->and(joinedSends(JoinedParametersResource::class, true))
@@ -146,6 +147,25 @@ test('a parameter past its own write leaves out a nested write the engine cannot
         ->toMatchArray(['post_write_nested' => null, 'post_write_nested_typed' => 6, 'both_paths' => [], 'expr_value' => 's'])
         ->and(joinedSends(JoinedParametersResource::class, false))
         ->toMatchArray(['post_write_nested' => 'Banana', 'post_write_nested_typed' => 'Banana']);
+});
+
+// Each arm a join leaves out is the audit's: the old value no rule types (a property's, or the parameter a call no rule
+// types passes, named by its read), and a nested write no rule types while an earlier value still reaches the read.
+test('a parameter\'s join records each arm it leaves out', function () {
+    DroppedUnionArms::start();
+
+    try {
+        publishedResourceKeyTypes(JoinedParametersResource::class, Post::class);
+    } finally {
+        $dropped = DroppedUnionArms::stop();
+    }
+
+    expect(array_map(fn (array $arm): string => $arm['line'].' '.$arm['expression'].' '.$arm['site'], $dropped))->toBe([
+        '44 $this->vague binding-join',
+        '71 json_decode(\'{}\') binding-join',
+        '85 $value binding-join',
+        '137 json_decode($title) binding-join',
+    ]);
 });
 
 // The declared string holds for a read before the body's write, and joins a branch's write for a read past it.

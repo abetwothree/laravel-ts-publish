@@ -5657,9 +5657,9 @@ declare global {
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
-         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
-         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
+         * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
+         * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
+         * 'binding_join' keys through a parameter's join past a block, the value passed and the one the block writes.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -5670,6 +5670,8 @@ declare global {
             conditional_default: string;
             match_arm: string;
             coalesce_right: string;
+            binding_join_old?: string;
+            binding_join_written?: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.

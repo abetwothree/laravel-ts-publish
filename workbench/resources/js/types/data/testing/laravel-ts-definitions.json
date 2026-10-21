@@ -20947,6 +20947,16 @@
                     "name": "coalesce_right",
                     "type": "string",
                     "optional": false
+                },
+                {
+                    "name": "binding_join_old",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "binding_join_written",
+                    "type": "string",
+                    "optional": true
                 }
             ]
         },
