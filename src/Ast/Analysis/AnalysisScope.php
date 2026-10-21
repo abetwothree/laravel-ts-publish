@@ -177,7 +177,10 @@ final class AnalysisScope
      */
     public bool $filtersNestedResources = true;
 
-    /** Whether the map() call being read is turned into an array by a trailing all(), so filter() reaches its items. */
+    /**
+     * Whether the map() call being read is turned into an array by a trailing all(), so filter() reaches its items.
+     * VariableHandler's values()/all() arm sets it for its receiver, and only VariableHandler's map arm reads it.
+     */
     public bool $mapResultArrayed = false;
 
     /**

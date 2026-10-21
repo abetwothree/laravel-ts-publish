@@ -182,9 +182,11 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         $previousNameBindings = $scope->nameBindings();
         $filters = $scope->filtersNestedResources;
+        $outerArrayed = $scope->mapResultArrayed;
 
         try {
             $scope->filtersNestedResources = $filters && $arrayed;
+            $scope->mapResultArrayed = false;
             // A model or collection binding outranks varValueBindings for a bare read, so the name is freed first.
             $scope->claimParameters($mapArg);
 
@@ -199,6 +201,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
             $scope->filtersNestedResources = $filters;
+            $scope->mapResultArrayed = $outerArrayed;
         }
     }
 }

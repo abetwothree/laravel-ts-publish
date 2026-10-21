@@ -283,10 +283,12 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         $previousContext = $scope->closureRelationModelClass;
         $previousNameBindings = $scope->nameBindings();
         $filters = $scope->filtersNestedResources;
+        $arrayed = $scope->mapResultArrayed;
 
         try {
             // filter() reaches a mapped item only where the chain hands back an array.
             $scope->filtersNestedResources = $filters && $terminalOp === 'all';
+            $scope->mapResultArrayed = false;
             $scope->closureRelationModelClass = $elementModel;
             $scope->claimParameters($mapArg);
 
@@ -302,6 +304,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $scope->closureRelationModelClass = $previousContext;
             $scope->restoreNameBindings($previousNameBindings);
             $scope->filtersNestedResources = $filters;
+            $scope->mapResultArrayed = $arrayed;
         }
 
         if ($bodyResult['type'] === 'unknown') {
