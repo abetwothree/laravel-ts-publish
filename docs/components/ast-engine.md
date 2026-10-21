@@ -360,7 +360,9 @@ that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`,
 
 A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
 statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
-same reads. A block may not run and a loop runs it again, so a read before the write or past the block stays unbound,
+same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), a bound
+name's only where a statement of its block follows the write. A block may not run and a loop runs it again, so a
+read before the write or past the block stays unbound,
 as does a name a reference can write through (`=&`, `use (&$x)`, `foreach (… as &$x)`, `global`, `static`). A name a
 parameter or a seeded binding holds gets no gap, since the rules below end that binding. A body drops the outer gaps of
 each name it writes that holds no binding, so a closure's own `$x` never reads its enclosing block's, while a bound
@@ -370,7 +372,8 @@ parameter's, and in a gap the old binding may still hold past, that binding join
 
 A name with no binding that the body writes more than once is joined statement by statement (`bindJoinedLocals()`),
 each span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all
-nested `$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A
+nested `$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally.
+A member read leaves out a joined `null`, as it does a ternary's `null` arm. A
 write in a block that always exits reaches no read past it. Any other write leaves the name unbound until its next
 top-level `$x = …;`, and a name a reference can write through is never joined. A parameter takes the same walk from its
 own binding, for values only. Its own `$x = …;` replaces the value it binds, alone or beside a class, and a model's
