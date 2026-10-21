@@ -89,8 +89,7 @@ class ModelInspector extends EloquentModelInspector
     }
 
     /**
-     * Whether a method getRelations() may call declares a relation: its native return type, else its docblock's, names
-     * only relation classes, as a relation built through the model's own helper declares itself.
+     * Whether a candidate method's native return type, else its docblock's, names only relation classes.
      */
     public function declaresRelationReturn(ReflectionMethod $method): bool
     {
