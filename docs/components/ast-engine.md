@@ -184,8 +184,7 @@ docblocks say what each binding table holds. These six facts span other classes:
   getter that `AstEngine::analyzeModelClosure()` reads without imports. See
   [Receiver types § The body fallback][body-fallback].
 - **`varDeclaredBindings` holds a parameter's declared classes**: the floor every narrowing refines, so
-  `ReceiverClassResolver` reads it after `varModelBindings` and below the narrowing tables. In `varClassBindings` it
-  would outrank an early-exit guard, as `GuardWritePostResource` pins.
+  `ReceiverClassResolver` reads it after `varModelBindings`, and a guard narrows it, as `GuardWritePostResource` pins.
 
 ### Writing a scope binding
 
@@ -295,19 +294,28 @@ sends as `{}`.
 
 Two mechanisms decide which class a variable holds at one point in a body, and each restores its binding in a `finally`:
 
-- **An early-exit guard**: [`CollectsInstanceofGuards`] reads a top-level `if` with no `elseif` or `else` whose body
-  always leaves the function, by a last `return`, `throw` or `exit()` no `break` or `continue` skips, and whose
-  condition is `! $x instanceof C` or an `||` chain holding one. It binds `$x` to `C` in `varGuardBindings` with the
-  offset where the `if` ends. An earlier `return` and the guard's own body therefore read `$x` unnarrowed.
+- **An `if` chain's tests**: [`CollectsInstanceofGuards`] reads every `if` in every block of the body, and binds what
+  its `instanceof` tests prove in `varGuardBindings`, each proof with the offsets it holds between: a branch's block,
+  where its test holds and every earlier one failed, and past the chain to the end of its block, where the tests of its
+  leading branches that always leave failed. A branch leaves a whole body by a last `return`, `throw` or `exit()` no
+  `break` or `continue` skips, and a nested block also by a last `break` or `continue`, whatever its level.
+  `instanceofProofs()` reads a test through `!`, an `&&` that holds, an `||` that fails, or an `||` chain on one
+  variable. An earlier `return` and a guard's own body read `$x` unnarrowed, and a proof inside another holds what both
+  prove (`ReceiverClassResolver::provenClasses()`).
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
-  binds a variable in `varClassBindings`, or records `provenProxy` for `$this->resource`, setting `modelClass` too when
-  one model is left. A test that rules out no class `$resource` is redeclared as, and no `null` it admits, records
-  nothing, and an arm that writes its subject is not narrowed.
+  binds a variable in `varGuardBindings` past its test, or records `provenProxy` for `$this->resource`, setting
+  `modelClass` too when one model is left. A test that rules out no class `$resource` is redeclared as, and no `null` it
+  admits, records nothing, and an arm that writes its subject is not narrowed.
 
-A guard binds `$x` only when no write to it can land after the test, and a write before the guard is fine.
-`GuardWritePostResource` pins both cases. Both see an argument a call passes to a by-reference parameter of a callee
-the scan can name, but a built-in's that keeps the value in some form ([By-reference calls](#by-reference-calls));
-neither sees one on a receiver it cannot name.
+`AnalysisScope::guardAt()` gives the proof a read falls within, the one that starts latest. `fromVariable()` narrows
+whatever binds the variable by it, so a `morphTo` parameter's targets narrow and a collection keeps its element, and a
+model-bound variable read bare publishes the subclass a proof names. A parameter a call passes `$x` to takes the proof
+in force at the call, for every read of the parameter.
+
+A test binds `$x` only when no write to it can land between the test and the end of what it narrows; a write before
+the test, or past the block a nested proof ends with, is fine. `GuardWritePostResource` pins both cases. Both see an
+argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
+in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -316,9 +324,6 @@ rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the con
 the scope proves non-null drops its `null` arm, unless that would leave only `null`. A closure or a spread method that
 writes a name drops the proofs of that name it came in with. A call between a guard and its read, such as a method
 that assigns the read or `setRelation()`, is not seen as a write, so the proof survives it (#115).
-
-A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
-the body, where `$x` is what the test excluded.
 
 `ClosureHandler` runs both passes over a `Closure`'s statements after unsetting every name the body writes from the
 outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice. A write

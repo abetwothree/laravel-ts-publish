@@ -288,11 +288,13 @@ the literal without the name, or cast to a type that uses the import.
 
 Check which spelling you wrote before you assume a value is `unknown`:
 
-- **A negated early-exit `if` on a local variable binds**: after `if (! $x instanceof Post) { return null; }`, also
-  through `||` or a `throw`, later reads of `$x` see `Post`, as `NarrowedParentResource` shows. A write to `$x` after
-  the guard means no binding at all, even for reads before that write.
-- **A positive `if` statement binds nothing**: `if ($x instanceof Post) { return $x->title; }` leaves `$x->title`
-  `unknown`, as `ReceiverHandlersTest` pins. The walk is flat, so the binding would outlive the `if`.
+- **An `if` binds `$x` where its test is proven**: inside `if ($x instanceof Post) { … }`, in an `elseif` or `else`
+  the earlier tests rule `$x` into, and after a guard such as `if (! $x instanceof Post) { return null; }` up to the
+  end of its block, which a guard nested in a loop or `switch` may also leave by `break` or `continue`, as
+  `BlockScopedBindingsResource` shows. A write to `$x` between the test and the end of what it narrows means no binding
+  at all, even for reads before that write.
+- **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
+  condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x` in `A`, and the negated test
   narrows it in `B` ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)).
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after

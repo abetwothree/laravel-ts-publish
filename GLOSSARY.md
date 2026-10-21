@@ -120,6 +120,10 @@ Working out a property's type from PHP code when no override or docblock states 
 **Vague type**:
 A declared PHP type too broad to publish usefully, such as `mixed` or `array`, which sends inference to look further.
 
+**Narrowing**:
+A test that proves a value's class for the reads it covers, such as an `instanceof` check in an `if` or a ternary.
+_Avoid_: type guard, refinement
+
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.
 _Avoid_: reindex, renumber (renumbering is what `array_merge()` does to int keys)

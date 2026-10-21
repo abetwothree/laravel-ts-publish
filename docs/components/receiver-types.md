@@ -68,27 +68,28 @@ property the resource declares answers only the `$this->prop` spelling, because 
 `ReceiverClassResolver::fromVariable()` reads the scope's tables in this order, and the first that binds the name
 answers:
 
-1. `varClassBindings`: a ternary's `instanceof` narrowing, or a `morphTo` `whenLoaded()` parameter's targets.
-2. `varGuardBindings`: an early-exit guard's class, for a read past the guard.
-3. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
+1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets.
+2. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file, with the one concrete model a collection generic such as
    `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
    [AST engine § Declared locals](ast-engine.md#declared-locals).
-4. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
+3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
    `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
    `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a
    parameter's default, as that enum.
-5. `closureParamExprBindings`, where a readable `new X` default binds as unsaved, else `localVarBindings`, resolved
+4. `closureParamExprBindings`, where a readable `new X` default binds as unsaved, else `localVarBindings`, resolved
    recursively under the `resolvingLocalVars` guard.
 
-Steps 1, 4 and 5's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
-first write that replaces a parameter, step 5's `localVarBindings` answers.
+Steps 1, 3 and 4's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
+first write that replaces a parameter, step 4's `localVarBindings` answers.
 
-The narrowing tables come first because a narrowed variable is usually also a plain `$x = …;` local, which step 5 would
-read unnarrowed. Ranking them above `varModelBindings` guards the same case for a closure parameter or loop variable, a
-case no fixture exercises. An unbound variable is `null`. No reader of a variable's members guesses its model from the
-ambient `closureRelationModelClass`, and a `...$x->toArray()` spread no binding names spreads the one model `$x` holds.
-[AST engine § Narrowing](ast-engine.md#narrowing) covers what writes the first two tables.
+Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
+class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
+and loses its short circuit; where no class it holds can pass, or it holds none, the proven classes stand. So a plain
+`$x = …;` local, a closure parameter and a loop variable narrow alike. An unbound variable is `null`. No reader of a
+variable's members guesses its model from the ambient `closureRelationModelClass`, and a `...$x->toArray()` spread no
+binding names spreads the one model `$x` holds. [AST engine § Narrowing](ast-engine.md#narrowing) covers what writes
+`varGuardBindings`.
 
 ### `self` and `parent`
 
@@ -134,6 +135,10 @@ as with the backing model standing in for each it is or extends, so `@var Model`
 its unproven answer. A redeclaration that admits null is the exception: the test rules the `null` out, so
 `instanceof Post` on `@var Post|null` records `Post`.
 
+An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
+parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
+holds `Post`, not every target.
+
 These stay un-narrowed:
 
 - A condition on another subject, or on another spelling of the same value, such as `$this->resource->x` tested against
@@ -144,7 +149,8 @@ These stay un-narrowed:
 - `?:` and `??`, which prove nothing.
 
 The rule narrows receivers only. `TernaryHandler` narrows reads made inside the proven arm, so `$x->prop` there narrows,
-while the ternary's own value and a bare `$x` do not. In `NarrowedImageableResource`, `Image::imageable` is a `morphTo`
+while the ternary's own value and a bare `$x` do not, but for a model-bound `$x`, which publishes the subclass a proof
+names (`VariableHandler::narrowedModel()`). In `NarrowedImageableResource`, `Image::imageable` is a `morphTo`
 over int-keyed and string-keyed models. `$either` is bound to
 `$this->imageable instanceof Post || $this->imageable instanceof User ? $this->imageable : null`, so
 `$either?->getKey()` publishes `either_id: number | null`, while `$this->imageable?->getKey()` publishes
