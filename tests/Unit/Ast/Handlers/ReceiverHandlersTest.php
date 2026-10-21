@@ -2023,6 +2023,15 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
         '$this->comments->find(1, \'none\')?->content',
     ]);
 
+    test('declines find() on a collection whose find() is not Eloquent\\Collection\'s own', function () use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $php = '$this->comments->toBase()->find(1)?->content';
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown')
+            ->and(fn () => $runAsResource($php, new EloquentCollection([(new Comment)->forceFill(['id' => 1, 'content' => 'Hi'])])))
+            ->toThrow(BadMethodCallException::class);
+    });
+
     test('declines find() of a key it cannot tell from a list, which returns a collection', function (string $php) use ($runAsResource) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
         $comments = new EloquentCollection([(new Comment)->forceFill(['id' => 1, 'content' => 'Hi'])]);

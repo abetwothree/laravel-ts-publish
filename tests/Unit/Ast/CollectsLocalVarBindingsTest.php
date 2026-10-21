@@ -173,8 +173,7 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
     'an operator such as .= or ++' => ['$p .= "x"; $p++; return $p;', [true, true, true]],
 ]);
 
-// A pluck() or map() hands back a base collection of other values, which ends the binding; an Eloquent collection
-// still holds models, though a merge() names none of them.
+// A collection naming no element still holds the models, but past a step such as pluck() or map() that replaces them.
 it('keeps a loaded collection\'s binding across a write that keeps its models', function (string $body, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
         $scope->varCollectionBindings['p'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
@@ -185,11 +184,21 @@ it('keeps a loaded collection\'s binding across a write that keeps its models', 
     'a re-key' => ['$p = $p->keyBy("content"); return $p;', [true, true, true]],
     'a re-index' => ['$p = $p->values(); return $p;', [true, true, true]],
     'an eager load' => ['$p = $p->load("user"); return $p;', [true, true, true]],
-    'a merge(), still an Eloquent collection' => ['$p = $p->merge([]); return $p;', [true, true, true]],
+    'a merge()' => ['$p = $p->merge([]); return $p;', [true, true, true]],
+    'a concat()' => ['$p = $p->concat([]); return $p;', [true, true, true]],
+    'a push()' => ['$p = $p->push(new \\Workbench\\App\\Models\\Comment); return $p;', [true, true, true]],
+    'collect()' => ['$p = collect($p); return $p;', [true, true, true]],
+    'a new base collection' => ['$p = new \\Illuminate\\Support\\Collection($p); return $p;', [true, true, true]],
+    'Collection::make()' => ['$p = \\Illuminate\\Support\\Collection::make($p); return $p;', [true, true, true]],
+    'a ternary falling back to an empty collection' => ['$p = $p->isEmpty() ? collect() : $p; return $p;', [true, true, true, true]],
+    'a base collection\'s merge()' => ['$p = $p->toBase()->merge([]); return $p;', [true, true, true]],
+    'a lazy collection' => ['$p = $p->lazy(); return $p;', [true, true, true]],
     'a top-level value naming no class' => ['$p = $p->toJson(); return $p;', [true, true, true]],
     'a nested value naming no class' => ['if ($p->isEmpty()) { $p = $p->toJson(); } return $p;', [true, true, true, true]],
     'a pluck() of plain values' => ['$p = $p->pluck("id"); return $p;', [true, true, false]],
     'a map() to plain values' => ['$p = $p->map(fn ($c) => $c->content); return $p;', [true, true, false]],
+    'a pluck() an item-keeping step follows' => ['$p = $p->pluck("id")->values(); return $p;', [true, true, false]],
+    'a groupBy()' => ['$p = $p->groupBy("user_id"); return $p;', [true, true, false]],
     'the model find() of one key returns' => ['$p = $p->find(1); return $p;', [true, true, false]],
     'a collection of another model' => ['$p = $this->resource->tags; return $p;', [true, false]],
     'a single model' => ['$p = new \\Workbench\\App\\Models\\Comment; return $p;', [true, false]],
@@ -210,27 +219,29 @@ it('ends a declared binding at a write holding other classes, or fewer than it d
     'a nested write whose value names no class' => ['if ($p->id) { $p = $p->comments->toJson(); } return $p;', [true, true, true, true]],
 ]);
 
-// A value binding ends at a top-level write, whose local answers the reads past it, or at a nested one naming a class.
-it('ends a value binding at a top-level write or at one whose value names a class', function (string $body, array $holding) {
+// A value binding names no class, so only a value that names one ends it; the local then reads what was assigned.
+it('ends a value binding only at a write whose value names a class', function (string $body, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
         $scope->varValueBindings['p'] = ['type' => 'string', 'optional' => false];
     }))->toBe($holding);
 })->with([
     'a concatenation' => ['$p .= "!"; return $p;', [true, true]],
     'a literal in a branch' => ['if ($p === "") { $p = "x"; } return $p;', [true, true, true]],
-    'a top-level value naming no class, which its local answers' => ['$p = trim($p); return $p;', [true, true, false]],
+    // Task 12 owns ending a plain value's binding at a top-level write.
+    'a top-level value naming no class' => ['$p = trim($p); return $p;', [true, true, true]],
     'a nested value naming no class' => ['if ($p === "") { $p = trim($p); } return $p;', [true, true, true, true]],
     'a ??= naming no class, which keeps a value it finds set' => ['$p ??= trim("x"); return $p;', [true, true]],
     'a value naming a class' => ['$p = \\Workbench\\App\\Enums\\Status::from($p); return $p;', [true, true, false]],
 ]);
 
-// An expression binding is a class binding where the receiver resolver names a class for its expression.
-it('ends an expression binding at a top-level write naming no class only where its expression names none', function (string $body, Expr $bound, array $holding) {
+// An expression binding stands past a write naming no class, whether or not the receiver resolver names a class for it.
+it('keeps an expression binding across a top-level write naming no class', function (string $body, Expr $bound, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope) use ($bound): void {
         $scope->closureParamExprBindings['p'] = $bound;
     }))->toBe($holding);
 })->with([
-    'a column read' => ['$p = trim($p); return $p;', new PropertyFetch(new Variable('this'), 'title'), [true, true, false]],
+    // Task 12 owns ending a plain value's binding at a top-level write.
+    'a column read' => ['$p = trim($p); return $p;', new PropertyFetch(new Variable('this'), 'title'), [true, true, true]],
     'a relation read' => ['$p = json_decode($p); return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, true]],
     'a passed model no row backs yet' => ['$p = json_decode($p); return $p;', new New_(new FullyQualified(User::class)), [true, true, true]],
 ]);

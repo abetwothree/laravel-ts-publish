@@ -146,6 +146,13 @@ final class ReceiverClassResolver
         'fresh',
     ];
 
+    /** The collection steps that hand back other values than the items, though their docblocks may name none. */
+    private const array REPLACES_ITEMS = [
+        'pluck', 'map', 'mapWithKeys', 'mapToDictionary', 'mapToGroups', 'mapSpread', 'mapInto', 'flatMap', 'keys',
+        'flip', 'countBy', 'zip', 'collapse', 'flatten', 'pad', 'partition', 'groupBy', 'chunk', 'chunkWhile', 'split',
+        'splitIn', 'sliding', 'crossJoin', 'combine', 'transform', 'select', 'dot', 'undot',
+    ];
+
     /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
     private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];
 
@@ -541,6 +548,22 @@ final class ReceiverClassResolver
             $filters => $nothing && $keyed,
             default => ! $nothing,
         };
+    }
+
+    /**
+     * Whether a chain of calls takes a step that hands back other values than the items, as `pluck()` or `map()` does.
+     */
+    public function replacesItems(Expr $value): bool
+    {
+        while ($value instanceof MethodCall || $value instanceof NullsafeMethodCall) {
+            if ($value->name instanceof Identifier && in_array($value->name->toString(), self::REPLACES_ITEMS, true)) {
+                return true;
+            }
+
+            $value = $value->var;
+        }
+
+        return false;
     }
 
     /**
@@ -1949,7 +1972,7 @@ final class ReceiverClassResolver
         }
 
         if ($method === 'find') {
-            return $receiver->within([EloquentCollection::class]) && $this->findsOne($call) ? $receiver->elementModel : null;
+            return $this->findsOne($call, $receiver) ? $receiver->elementModel : null;
         }
 
         if (! in_array($method, self::COLLECTION_ELEMENTS, true) || ! $receiver->within([Collection::class])) {
@@ -1962,11 +1985,18 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether an Eloquent collection's `find()` looks up one literal key with no default, so it returns a model or
-     * null; a list or an Arrayable of keys returns a collection, and a variable may hold either.
+     * Whether Eloquent\Collection's own `find()` looks up one literal key with no default, so it returns a model or
+     * null; a list or an Arrayable of keys returns a collection, a variable may hold either, and an override answers
+     * for itself.
      */
-    private function findsOne(MethodCall|NullsafeMethodCall $call): bool
+    private function findsOne(MethodCall|NullsafeMethodCall $call, ReceiverType $receiver): bool
     {
+        if (! array_all($receiver->classes, fn (string $class): bool => is_a($class, EloquentCollection::class, true)
+            && new ReflectionMethod($class, 'find')->getDeclaringClass()->getName() === EloquentCollection::class)
+        ) {
+            return false;
+        }
+
         $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, 'find'));
         $key = $arguments->named('key')?->value;
 

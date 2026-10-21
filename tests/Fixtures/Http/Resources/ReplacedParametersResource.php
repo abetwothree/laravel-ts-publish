@@ -6,13 +6,15 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * Closure parameters a top-level write replaces: a pluck() or a map() leaves values other than the loaded comments, a
- * keyBy() or sortByDesc() the comments under moved keys, find() of one key a comment, and json_decode() or trim() a
- * value of its own.
+ * Closure parameters a top-level write replaces: a pluck() or a map() leaves values other than the loaded comments,
+ * a collect(), a merge() or a lazy() the same comments, a keyBy() or sortByDesc() the comments under moved keys,
+ * find() of one key a comment, and a function of a plain value a value of its own.
  *
  * @mixin Post
  */
@@ -47,6 +49,36 @@ class ReplacedParametersResource extends JsonResource
 
                 return $comments->map(fn ($comment) => $comment->content);
             }),
+            'collected_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = collect($comments);
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'wrapped_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = new Collection($comments);
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'made_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = Collection::make($comments);
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'defaulted_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->isEmpty() ? collect() : $comments;
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'based_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->toBase()->merge([]);
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
+            'lazy_contents' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->lazy();
+
+                return $comments->map(fn ($comment) => $comment->content)->all();
+            }),
             'found_content' => $this->whenLoaded('author', function (User $author) {
                 $author = $author->comments->find(1);
 
@@ -73,6 +105,33 @@ class ReplacedParametersResource extends JsonResource
 
                 return $title;
             }),
+            'upper' => $this->whenHas('title', function ($title) {
+                $title = Str::upper($title);
+
+                return $title;
+            }),
+            'same' => $this->whenHas('title', function ($title) {
+                $title = $this->same($title);
+
+                return $title;
+            }),
+            'trimmed_upper' => $this->whenHas('title', function ($title) {
+                $title = trim($title);
+                $title = strtoupper($title);
+
+                return $title;
+            }),
+            'filtered_options' => $this->whenHas('options', function ($options) {
+                $options = array_filter($options);
+
+                return $options;
+            }),
         ];
+    }
+
+    /** Hands back what it is given, with no type the package reads. */
+    private function same($value)
+    {
+        return $value;
     }
 }

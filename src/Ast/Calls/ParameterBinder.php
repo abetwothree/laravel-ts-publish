@@ -34,9 +34,9 @@ use ReflectionUnionType;
  * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows or passes as
  * a model no row backs yet, by what that argument binds, which a value read's memos key on (CallSite::signature()).
  *
- * A body write that replaces a parameter ends its class binding there: the caller seeds the body (seedBody()) once
- * its parameters are bound. A written parameter binds no value, since a value binding outlives a write naming no class,
- * such as `$n = (string) $n`, where the body's own local answers.
+ * A body write that replaces a parameter with another class, or a collection's models with other values, ends its
+ * binding there: the caller seeds the body (seedBody()) once its parameters are bound. A written parameter binds no
+ * value, since a value binding outlives a write naming no class, such as `$n = (string) $n`, where the local answers.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

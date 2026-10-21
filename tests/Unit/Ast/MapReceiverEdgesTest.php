@@ -18,10 +18,16 @@ test('a map over no collection, or over values a write replaced, publishes no li
         ->and($types['paged'])->toBe('{ id: number }[]');
 });
 
-test('a map passes the values a replaced collection holds, and a replaced parameter reads what the body wrote', function () {
-    $types = publishedResourceKeyTypes(ReplacedParametersResource::class, Post::class);
+/**
+ * What Laravel sends for ReplacedParametersResource over the post `First` with options `a` and an empty `b`, its author
+ * Ada and her comments 1 `alpha` and 2 `beta`, all loaded.
+ *
+ * @return array<string, mixed>
+ */
+function replacedParametersSends(): array
+{
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
-    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id, 'options' => ['a' => 'x', 'b' => '']]);
 
     foreach ([1 => 'alpha', 2 => 'beta'] as $id => $content) {
         new Comment()->forceFill(['id' => $id, 'content' => $content, 'post_id' => $post->id, 'user_id' => $user->id])->save();
@@ -31,28 +37,66 @@ test('a map passes the values a replaced collection holds, and a replaced parame
     $sent = json_decode((string) new ReplacedParametersResource(Post::with(['author.comments', 'comments'])->findOrFail($post->id))
         ->response(request())->getContent(), true);
 
-    expect($types)->toBe([
+    return $sent['data'];
+}
+
+test('a map passes the values a replaced collection holds, and a replaced parameter reads what the body wrote', function () {
+    $types = publishedResourceKeyTypes(ReplacedParametersResource::class, Post::class);
+    $sent = replacedParametersSends();
+
+    expect($types)->toMatchArray([
         'plucked_ids?' => 'number[]',
         'mapped_contents?' => 'string[]',
         'keyed_all?' => 'Comment[] | Record<string, Comment>',
         'resorted_ids?' => 'number[] | Record<string, number>',
-        'merged_contents?' => 'string[]',
         'found_content?' => 'string | null',
         'found_name?' => 'unknown',
         'found_bare?' => 'unknown',
-        'decoded?' => 'unknown',
-        'trimmed?' => 'string',
-    ])->and($sent['data'])->toMatchArray([
+    ])->and($sent)->toMatchArray([
         'plucked_ids' => [1, 2],
         'mapped_contents' => ['alpha', 'beta'],
         'resorted_ids' => [1 => 2, 0 => 1],
-        'merged_contents' => ['alpha', 'beta'],
         'found_content' => 'alpha',
         'found_name' => null,
+    ])->and(array_keys($sent['keyed_all']))->toBe(['alpha', 'beta'])
+        ->and(array_keys($sent['resorted_ids']))->toBe([1, 0])
+        ->and($sent['found_bare'])->toMatchArray(['id' => 1, 'content' => 'alpha']);
+});
+
+test('a write that keeps the loaded comments, or hands a plain value back changed, keeps the parameter\'s binding', function () {
+    $types = publishedResourceKeyTypes(ReplacedParametersResource::class, Post::class);
+    $sent = replacedParametersSends();
+
+    expect($types)->toMatchArray([
+        'merged_contents?' => 'string[]',
+        'collected_contents?' => 'string[]',
+        'wrapped_contents?' => 'string[]',
+        'made_contents?' => 'string[]',
+        'defaulted_contents?' => 'string[]',
+        'based_contents?' => 'string[]',
+        'lazy_contents?' => 'string[]',
+        // Task 12 owns ending a plain value's binding at a top-level write; Laravel sends json_decode()'s null.
+        'decoded?' => 'string',
+        'trimmed?' => 'string',
+        'upper?' => 'string',
+        'same?' => 'string',
+        'trimmed_upper?' => 'string',
+        'filtered_options?' => 'Record<string, string> | null',
+    ])->and($sent)->toMatchArray([
+        'merged_contents' => ['alpha', 'beta'],
+        'collected_contents' => ['alpha', 'beta'],
+        'wrapped_contents' => ['alpha', 'beta'],
+        'made_contents' => ['alpha', 'beta'],
+        'defaulted_contents' => ['alpha', 'beta'],
+        'based_contents' => ['alpha', 'beta'],
+        'lazy_contents' => ['alpha', 'beta'],
         'decoded' => null,
         'trimmed' => 'First',
-    ])->and(array_keys($sent['data']['keyed_all']))->toBe(['alpha', 'beta'])
-        ->and($sent['data']['found_bare'])->toMatchArray(['id' => 1, 'content' => 'alpha']);
+        'upper' => 'FIRST',
+        'same' => 'First',
+        'trimmed_upper' => 'FIRST',
+        'filtered_options' => ['a' => 'x'],
+    ]);
 });
 
 /**
