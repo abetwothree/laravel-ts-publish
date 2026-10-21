@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalScopesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
@@ -820,4 +822,37 @@ test('a merge closure reads its own local in place of the method\'s local of the
     expect(returnedVariableMembers(MergeClosureShadowedValueResource::class))->toBe('id: number; outer: string; label: number')
         ->and(new MergeClosureShadowedValueResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'outer' => 'x', 'label' => 9]);
+});
+
+test('a value-position local built by key writes or += publishes the keys written before the read', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+
+    expect(returnedVariableMembers(KeyBuiltLocalValueResource::class))->toBe(
+        'plus: { a: number; b: string }; meta: { id: number; name: string; late: boolean }; '
+        .'early: { meta: { id: number; name: string } }',
+    )->and(new KeyBuiltLocalValueResource($tag)->resolve(Request::create('/')))->toBe([
+        'plus' => ['a' => 1, 'b' => 'x'],
+        'meta' => ['id' => 9, 'name' => 'php', 'late' => true],
+        'early' => ['meta' => ['id' => 9, 'name' => 'php']],
+    ]);
+});
+
+// A read inside a block that writes the local first may see a write the statements before the block do not hold.
+test('a key-built local reads the writes its own body makes before the read, and none from inside a block writing it', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+    $sent = fn (string $x): array => new KeyBuiltLocalScopesResource($tag)->resolve(Request::create('/', 'GET', ['x' => $x]));
+
+    expect(returnedVariableMembers(KeyBuiltLocalScopesResource::class))->toBe(
+        'own?: { m: { inner: string; inner2: boolean } }; own_text?: { m: unknown }; early?: { m: { outer: number } }; '
+        .'helper: { m: { inner: string; inner2: boolean } }; outer: { outer: number; outer2: number }; nested: unknown',
+    )->and($sent('0'))->toBe([
+        'own' => ['m' => ['inner' => 'x', 'inner2' => true]],
+        'own_text' => ['m' => 'xy'],
+        'early' => ['m' => ['outer' => 1]],
+        'helper' => ['m' => ['inner' => 'x', 'inner2' => true]],
+        'outer' => ['outer' => 1, 'outer2' => 2],
+        'nested' => null,
+    ])->and($sent('1')['nested'])->toBe(['a' => 1, 'b' => 'x']);
 });

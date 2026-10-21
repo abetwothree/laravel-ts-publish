@@ -82,6 +82,7 @@ use ReflectionClass;
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
+ * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
  * @phpstan-type NameBindingsSnapshot array{
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
@@ -97,7 +98,8 @@ use ReflectionClass;
  *      requestVarNames: RequestVarNamesMap,
  *      claimedClosures: array<int, true>,
  *      bindingEnds: array<string, int>,
- *      bindingGaps: BindingGapsMap
+ *      bindingGaps: BindingGapsMap,
+ *      keyBuiltLocals: KeyBuiltLocalsMap
  * }
  * @phpstan-type CallerState array{
  *      bindings: NameBindingsSnapshot,
@@ -132,6 +134,7 @@ final class AnalysisScope
         'claimedClosures' => [],
         'bindingEnds' => [],
         'bindingGaps' => [],
+        'keyBuiltLocals' => [],
     ];
 
     /**
@@ -336,6 +339,14 @@ final class AnalysisScope
      * @var BindingGapsMap
      */
     public array $bindingGaps = [];
+
+    /**
+     * Locals the body assigns whole and builds through key writes or `+=`, which no binding holds and no reference can
+     * write, each with the body's statements, so a read no join binds walks the writes before it.
+     *
+     * @var KeyBuiltLocalsMap
+     */
+    public array $keyBuiltLocals = [];
 
     /**
      * Re-entrancy guard: the bindings mid-resolution, each keyed by its name and the bound expression, so a self- or
@@ -663,6 +674,7 @@ final class AnalysisScope
             'claimedClosures' => $this->claimedClosures,
             'bindingEnds' => $this->bindingEnds,
             'bindingGaps' => $this->bindingGaps,
+            'keyBuiltLocals' => $this->keyBuiltLocals,
         ];
     }
 
@@ -688,6 +700,7 @@ final class AnalysisScope
         $this->claimedClosures = $snapshot['claimedClosures'];
         $this->bindingEnds = $snapshot['bindingEnds'];
         $this->bindingGaps = $snapshot['bindingGaps'];
+        $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
     }
 
     /**
@@ -1076,6 +1089,7 @@ final class AnalysisScope
                 $this->requestVarNames[$name],
                 $this->bindingEnds[$name],
                 $this->bindingGaps[$name],
+                $this->keyBuiltLocals[$name],
             );
         }
     }

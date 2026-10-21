@@ -113,7 +113,12 @@ trait CollectsLocalVarBindings
         $binding = $this->bindingWrites($replacing, $scope);
 
         foreach ($binding as [$name]) {
-            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
+            unset(
+                $scope->localVarBindings[$name],
+                $scope->varDocBindings[$name],
+                $scope->byReferenceForms[$name],
+                $scope->keyBuiltLocals[$name],
+            );
 
             // An outer block local's span may cover this body, as a closure in that block. A bound name's gap holds the
             // value its block wrote, which a closure capturing it still reads before its own write.
@@ -144,6 +149,8 @@ trait CollectsLocalVarBindings
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
         $this->bindJoinedLocals($stmts, $scope, $binding, $ended);
+        // After the join: a read it binds takes that value, and only the reads it leaves unbound walk the key writes.
+        $this->collectKeyBuiltLocals($stmts, $scope, $binding);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof; a
         // member write may null a member a guard proves.
         $this->collectInstanceofGuards($stmts, $scope, $replacing);
@@ -245,6 +252,39 @@ trait CollectsLocalVarBindings
             if ($bound || count($own) > 1) {
                 $initial = $bound ? [[], true, true, []] : [null, false, false, null];
                 $this->joinStatements((string) $name, $stmts, $stmts, $own, $ended[$name] ?? null, $initial, null, $scope);
+            }
+        }
+    }
+
+    /**
+     * Record each local the body assigns whole and builds through a key, an unset() of one or `+=`, with the body's
+     * statements, for a read no join binds to walk the writes before it. A name a binding holds, or a reference can
+     * write through, is left out.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     */
+    protected function collectKeyBuiltLocals(array $stmts, AnalysisScope $scope, array $writes): void
+    {
+        $assigned = [];
+        $keyed = [];
+        $referenced = [];
+
+        foreach ($writes as [$name, $node, $target, $kind]) {
+            if ($kind->makesReference()) {
+                $referenced[$name] = true;
+            } elseif ($kind === VariableWrite::Replaces) {
+                $assigned[$name] = true;
+            } elseif ($target instanceof ArrayDimFetch || $node instanceof AssignOp\Plus) {
+                $keyed[$name] = true;
+            }
+        }
+
+        foreach (array_keys(array_diff_key(array_intersect_key($assigned, $keyed), $referenced)) as $name) {
+            $name = (string) $name;
+
+            if (! isset($scope->localVarBindings[$name]) && ! $scope->bindsName($name)) {
+                $scope->keyBuiltLocals[$name] = array_values($stmts);
             }
         }
     }

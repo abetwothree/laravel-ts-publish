@@ -144,6 +144,30 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * The array a local holds where it is read, walked over the body's statements that end before the read; null where
+     * the statement holding the read writes the local too, as a loop can before the read runs again.
+     *
+     * ResolvesReturnedValues entry point for a value read of a local built by key writes.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
+     * @return ValueExpressionResult|null
+     */
+    public function walkedLocal(Variable $read, array $stmts): ?array
+    {
+        $name = $read->name;
+        $stmts = array_values($stmts);
+        $offset = $read->getStartFilePos();
+        $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
+        $holding = $stmts[count($before)] ?? null;
+
+        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable($holding, $name))) {
+            return null;
+        }
+
+        return $this->walkedValue($before, $name);
+    }
+
+    /**
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
@@ -420,6 +444,17 @@ trait ReadsReturnedVariables
         resolve(IndexSignatureReconciler::class)->reconcile($branch);
 
         return new InlineArrayHandler()->inlineObjectResult($branch);
+    }
+
+    /**
+     * Whether a statement writes the named variable anywhere within it, as collectVariableWrites() counts a write.
+     */
+    private function writesVariable(Node\Stmt $stmt, string $varName): bool
+    {
+        return array_any(
+            $this->collectVariableWrites([$stmt], $this->subjectReflection()),
+            fn (array $write): bool => $write[0] === $varName,
+        );
     }
 
     /**

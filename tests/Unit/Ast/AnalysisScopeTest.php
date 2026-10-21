@@ -15,6 +15,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
@@ -107,6 +108,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
         $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
+        $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
     }
 
     return $scope;
@@ -155,18 +157,19 @@ it('releases an unclaimed closure parameter and leaves a claimed closure paramet
         ->and($claimed->varModelBindings)->toBe(['key' => User::class, 'kept' => User::class, 'item' => User::class]);
 });
 
-// A proof spells the read it proves, `$item` here, so it never holds for a read of another name, and a binding's end
-// is an offset in the caller's body, which the parameter's body never reaches.
-it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs, ends and gaps', function () {
+// A proof spells the read it proves, `$item` here, so it never holds for a read of another name; a binding's end is an
+// offset in the caller's body, which the parameter's body never reaches, and a key-built local walks the caller's body.
+it('copies every entry a variable held in a capture onto a parameter, in every name-keyed table but the proofs, ends, gaps and key-built locals', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     $scope->copyBindings(new Variable('item'), 'param', $captured);
 
-    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true, 'bindingGaps' => true])))->each->toBe(['param'])
+    expect(array_map(array_keys(...), array_diff_key($scope->nameBindings(), ['claimedClosures' => true, 'nonNullReads' => true, 'bindingEnds' => true, 'bindingGaps' => true, 'keyBuiltLocals' => true])))->each->toBe(['param'])
         ->and($scope->nonNullReads)->toBe([])
         ->and($scope->bindingEnds)->toBe([])
         ->and($scope->bindingGaps)->toBe([])
+        ->and($scope->keyBuiltLocals)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
         ->and($scope->varGuardBindings['param'])->toBe($captured['varGuardBindings']['item'])

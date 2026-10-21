@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -158,6 +159,7 @@ final class VariableHandler implements ExpressionHandler
         $span = $scope->declaredAt($expr);
         $value = $span === null
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
+                ?? $this->keyBuiltValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
         if ($value === null && $this->writtenWhole($expr, $scope)) {
@@ -284,6 +286,30 @@ final class VariableHandler implements ExpressionHandler
         return $gap[2] === null || $arms === [] || array_any($arms, $untyped)
             ? null
             : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
+    }
+
+    /**
+     * A local built by key writes, read where no join binds it, as the array its writes before the read build; null for
+     * any other variable, and for one whose walk is already under way.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function keyBuiltValue(Variable $read, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $stmts = $scope->keyBuiltLocals[$name] ?? null;
+
+        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues
+            || $scope->gapAt($read) !== null || isset($scope->resolvingLocalVars[$name])) {
+            return null;
+        }
+
+        $scope->resolvingLocalVars[$name] = true;
+
+        try {
+            return $engine->walkedLocal($read, $stmts);
+        } finally {
+            unset($scope->resolvingLocalVars[$name]);
+        }
     }
 
     /**

@@ -459,6 +459,58 @@ function byReferenceSeededLocals(string $body): array
     return $bound;
 }
 
+/**
+ * The names seedBody() records as built by key writes in a parsed body, with UnseenWritesResource as the subject, once
+ * the seed step binds what a caller would.
+ *
+ * @param  (Closure(AnalysisScope): void)|null  $seed
+ * @return list<string>
+ */
+function keyBuiltLocalNames(string $body, ?Closure $seed = null): array
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the body.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function seed(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $scope = new AnalysisScope(new ReflectionClass(UnseenWritesResource::class), Post::class);
+
+    if ($seed !== null) {
+        $seed($scope);
+    }
+
+    $host->seed($stmts, $scope);
+
+    return array_keys($scope->keyBuiltLocals);
+}
+
+it('records a local assigned whole and built by keys, but one a binding holds or a reference can write', function (string $body, array $names, ?Closure $seed = null) {
+    expect(keyBuiltLocalNames($body, $seed))->toBe($names);
+})->with([
+    'a key write' => ['$a = []; $a["k"] = 1;', ['a']],
+    '+=' => ['$a = []; $a += ["k" => 1];', ['a']],
+    'an unset() of a key' => ['$a = ["k" => 1]; unset($a["k"]);', ['a']],
+    'a local written once' => ['$a = ["k" => 1];', []],
+    'no whole write' => ['$a["k"] = 1;', []],
+    'a reference' => ['$a = []; $r = &$a; $a["k"] = 1;', []],
+    'a closure importing it by reference' => ['$a = []; $f = function () use (&$a) {}; $a["k"] = 1;', []],
+    'a parameter' => ['$a = []; $a["k"] = 1;', [], function (AnalysisScope $scope): void {
+        $scope->varValueBindings['a'] = ['type' => 'string[]', 'optional' => false];
+    }],
+]);
+
 it('binds a local across a by-reference built-in that keeps its value in some form, and records that form', function (string $body, array $bound) {
     expect(byReferenceSeededLocals($body))->toBe($bound);
 })->with([
@@ -535,8 +587,9 @@ it('ends a class binding at a by-reference built-in that keeps a value in anothe
     'preg_match()\'s matches in a call that may not run' => ['$c && preg_match("/x/", "s", $p); return $p;', [true, true]],
 ]);
 
-// An offset write extends an array, so the literal assigned no longer describes it; a model takes the write itself.
-it('keeps a local holding a model across a write through it, and no array an offset write extends', function () {
+// An offset write extends an array, so the literal assigned no longer describes it and the walk reads its keys; a model
+// takes the write itself.
+it('keeps a local holding a model across a write through it, and reads an array an offset write extends by its keys', function () {
     $user = new User;
     $user->forceFill(['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']);
     $post = new Post;
@@ -549,7 +602,7 @@ it('keeps a local holding a model across a write through it, and no array an off
         'post_title' => 'string',
         'author_name' => 'string',
         'captured_title?' => 'string',
-        'options' => 'unknown',
+        'options' => '{ a: number; b: string }',
         'key' => 'string',
         'maybe' => 'unknown',
     ])
