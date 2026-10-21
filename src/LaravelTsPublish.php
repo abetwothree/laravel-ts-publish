@@ -810,6 +810,31 @@ class LaravelTsPublish
     }
 
     /**
+     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
+     */
+    public function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
+    {
+        $trait = $this->methodDeclaringFileClass($method);
+
+        if (! $trait->isTrait()) {
+            return $typeString;
+        }
+
+        $templates = $this->traitTemplateNames($trait);
+        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
+
+        foreach ($templates as $index => $name) {
+            if (! isset($arguments[$index])) {
+                continue;
+            }
+
+            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
+        }
+
+        return $typeString;
+    }
+
+    /**
      * Parse a method's `@return` docblock — including multiline `array{...}` shapes — into type info,
      * resolving short class names through the declaring file's use statements.
      *
@@ -2244,31 +2269,6 @@ class LaravelTsPublish
             $this->bindTraitTemplates($typeString, $method),
             $this->methodDeclaringFileClass($method),
         );
-    }
-
-    /**
-     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
-     */
-    protected function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
-    {
-        $trait = $this->methodDeclaringFileClass($method);
-
-        if (! $trait->isTrait()) {
-            return $typeString;
-        }
-
-        $templates = $this->traitTemplateNames($trait);
-        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
-
-        foreach ($templates as $index => $name) {
-            if (! isset($arguments[$index])) {
-                continue;
-            }
-
-            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
-        }
-
-        return $typeString;
     }
 
     /**

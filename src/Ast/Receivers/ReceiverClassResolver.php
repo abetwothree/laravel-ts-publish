@@ -1277,7 +1277,7 @@ final class ReceiverClassResolver
     private function memberMethod(string $class, string $method, bool $fromInside, ?string $queried = null): ?ReceiverType
     {
         if (! $this->isCallable($class, $method, $fromInside)) {
-            return null;
+            return $this->forwardedQueryMethod($class, $method, $queried);
         }
 
         $built = $queried === null ? null : $this->queriedModel($class, $method, $queried);
@@ -1295,6 +1295,23 @@ final class ReceiverClassResolver
         }
 
         return $this->returned($class, $method);
+    }
+
+    /**
+     * What a method a relation or an Eloquent builder does not declare returns on the class its query forwards it to;
+     * a relation hands itself back where its builder returns `$this`, as `forwardDecoratedCallTo()` does.
+     *
+     * @param  class-string<Model>|null  $queried  the model the relation or builder builds
+     */
+    private function forwardedQueryMethod(string $class, string $method, ?string $queried): ?ReceiverType
+    {
+        $forwarded = resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass($class, $method);
+
+        if ($forwarded === Builder::class && is_a($class, Relation::class, true) && $this->declaredReturn($forwarded, $method) === '$this') {
+            return new ReceiverType([$class], relatedModel: $queried);
+        }
+
+        return $forwarded === null ? null : $this->memberMethod($forwarded, $method, false, $queried);
     }
 
     /**
@@ -1361,7 +1378,7 @@ final class ReceiverClassResolver
             return $list;
         }
 
-        if ($declared === $template || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
+        if (($declared !== null && $this->returnsTemplate($declared, $template)) || ($factory && in_array($method, self::FACTORY_MODELS, true))) {
             $model = ReceiverType::of($queried);
 
             return in_array($method, self::UNSAVED_QUERY_MODELS, true) ? $model->asUnsaved() : $model;
@@ -1429,12 +1446,26 @@ final class ReceiverClassResolver
     }
 
     /**
-     * A method's `@return` docblock type as written, or null when it has none.
+     * A method's `@return` docblock type as written, a trait's templates read as its consumer binds them, or null.
      */
     private function declaredReturn(string $class, string $method): ?string
     {
-        return resolve(PropertyDocblockTypeReader::class)
-            ->extractReturnType((string) new ReflectionMethod($class, $method)->getDocComment());
+        $reflection = new ReflectionMethod($class, $method);
+        $declared = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
+
+        return $declared === null ? null : LaravelTsPublish::bindTraitTemplates($declared, $reflection);
+    }
+
+    /**
+     * Whether a docblock return is the template, alone or beside `null`, as `first()`'s `TValue|null` binds `TModel`.
+     *
+     * A `?->` read carries the `null`, and a plain read of a missing model throws, so no response sends it.
+     */
+    private function returnsTemplate(string $declared, string $template): bool
+    {
+        $arms = array_map(fn (string $arm): string => ltrim(trim($arm), '?\\'), LaravelTsPublish::splitPhpDocUnionType($declared));
+
+        return array_values(array_filter($arms, fn (string $arm): bool => strtolower($arm) !== 'null')) === [$template];
     }
 
     /**

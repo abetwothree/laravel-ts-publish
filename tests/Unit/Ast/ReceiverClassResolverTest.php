@@ -244,6 +244,30 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
     });
 
+    // forwardDecoratedCallTo() hands the relation back only for the very builder it holds, which `$this` promises and
+    // `static` does not: clone() returns a copy. first()'s `TValue|null` is the model BuildsQueries<TModel> binds.
+    test('a call a relation forwards to its builder holds what the builder returns, the relation itself for $this', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+        $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+        Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $user->id]);
+        $relation = $post->comments();
+
+        expect($resolver->resolve(receiverExpr('$this->resource->comments()->where("id", ">", 0)'), postScope()))
+            ->toEqual(new ReceiverType([HasMany::class], relatedModel: Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->clone()'), postScope()))
+            ->toEqual(new ReceiverType([Builder::class], relatedModel: Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->first()'), postScope()))->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->firstWhere("id", 1)'), postScope()))
+            ->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->first()'), postScope()))->toEqual(ReceiverType::of(Post::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->count()'), postScope()))->toBeNull()
+            ->and($relation->where('id', '>', 0))->toBe($relation)
+            ->and($relation->clone())->toBeInstanceOf(Builder::class)
+            ->and($relation->first())->toBeInstanceOf(Comment::class)
+            ->and($relation->firstWhere('id', 0))->toBeNull();
+    });
+
     // A `new` with no constructor argument holds no attributes; a copy, a filled model and any model a step reaches
     // may hold some. The binder's `new` for a passed copy is one of those.
     test('marks only a new model built with no constructor argument as holding no attributes', function () {
