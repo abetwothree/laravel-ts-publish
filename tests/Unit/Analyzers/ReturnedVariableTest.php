@@ -10,10 +10,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalScopesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureShadowedValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureUnimportedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadLocalHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
@@ -109,6 +111,7 @@ use Workbench\App\Http\Resources\ReturnedVariableResource;
 use Workbench\App\Http\Resources\TagDefaultsResource;
 use Workbench\App\Http\Resources\TagParentDefaultsResource;
 use Workbench\App\Models\Category;
+use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\User;
@@ -693,7 +696,8 @@ test('a local written once reads as its array where a variable starts from it or
     'merge()' => [MergedLocalResource::class, 'id: number; note: string', ['id' => 9, 'note' => 'none']],
 ]);
 
-// A closure sees an outer local only through `use`, and a write of its own replaces it.
+// A closure sees an outer local only through `use`, and a write of its own replaces it. The engine still reads one a
+// merge closure neither imports nor writes, through boundLocal(), but Laravel throws `Undefined variable` there.
 test('a merge closure adds with + a local it imports, and its own local in place of the method\'s of that name', function () {
     $tag = new Tag;
     $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php-slug']);
@@ -702,6 +706,15 @@ test('a merge closure adds with + a local it imports, and its own local in place
         ->toBe('id: number; name: string; note: string; slug: string; flag: boolean')
         ->and(new MergeClosureLocalPlusResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'name' => 'php', 'note' => 'none', 'slug' => 'php-slug', 'flag' => true]);
+});
+
+test('a merge closure adds with + an outer local it neither imports nor writes, where Laravel throws', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+
+    expect(returnedVariableMembers(MergeClosureUnimportedLocalResource::class))->toBe('id: number; name: string; note: string')
+        ->and(fn () => new MergeClosureUnimportedLocalResource($tag)->resolve(Request::create('/')))
+        ->toThrow(ErrorException::class, 'Undefined variable $extra');
 });
 
 test('a spread helper reads its own locals inside a merge closure, and while its caller reads a local of the same name', function (string $class, string $members, array $sent) {
@@ -821,6 +834,25 @@ test('a merge closure reads its own local in place of the method\'s local of the
     expect(returnedVariableMembers(MergeClosureShadowedValueResource::class))->toBe('id: number; outer: string; label: number')
         ->and(new MergeClosureShadowedValueResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'outer' => 'x', 'label' => 9]);
+});
+
+test('a merge closure narrows its own local by an instanceof guard in its body', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7]);
+    $user = new User;
+    $user->forceFill(['id' => 3]);
+    $sent = function (Post|User $owner): array {
+        $image = new Image;
+        $image->forceFill(['id' => 21]);
+        $image->setRelation('imageable', $owner);
+
+        return new MergeClosureGuardResource($image)->resolve(Request::create('/'));
+    };
+
+    expect(publishedResourceKeyTypes(MergeClosureGuardResource::class, Image::class))
+        ->toBe(['id' => 'number', 'owner_key?' => 'number'])
+        ->and($sent($post))->toBe(['id' => 21, 'owner_key' => 7])
+        ->and($sent($user))->toBe(['id' => 21]);
 });
 
 test('a value-position local built by key writes or += publishes the keys written before the read', function () {
