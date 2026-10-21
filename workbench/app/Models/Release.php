@@ -114,7 +114,7 @@ class Release extends Model
         ]);
     }
 
-    /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
+    /** Loop-built dynamic keys: an object of the `k`-prefixed keys the loop writes, their values untyped. */
     protected function dynamicTotals(): Attribute
     {
         return Attribute::get(function (): array {
