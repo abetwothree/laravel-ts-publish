@@ -39,7 +39,7 @@ use PhpParser\Node\Stmt\While_;
  * blocks it runs and past the branches that leave. CollectsLocalVarBindings composes it: its write collection is what
  * decides a binding or a proof is safe, and both passes read the same statement list.
  *
- * @phpstan-type InstanceofProofs = list<array{string, non-empty-list<class-string>, Expr}>
+ * @phpstan-type VariableProofs = list<array{string, non-empty-list<class-string>, Expr}>
  *
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
@@ -147,7 +147,7 @@ trait CollectsInstanceofGuards
      * pass, through `!`, an `&&` that holds and an `||` that fails, or one `||` chain of tests on one variable that
      * holds, with the classes and the test.
      *
-     * @return InstanceofProofs
+     * @return VariableProofs
      */
     private function instanceofProofs(Expr $cond, bool $holds): array
     {
@@ -233,7 +233,7 @@ trait CollectsInstanceofGuards
      * Bind the proofs a branch's block runs under, for its statements, of each variable nothing writes from its test to
      * the block's end; a loop re-tests before it runs the block again.
      *
-     * @param  InstanceofProofs  $proofs
+     * @param  VariableProofs  $proofs
      * @param  array<Node\Stmt>  $block
      * @param  VariableWrites  $writes
      */
@@ -419,6 +419,11 @@ trait CollectsInstanceofGuards
     private function writtenWithin(string $name, int $from, ?int $to, array $exits, array $writes): bool
     {
         foreach ($this->writesFrom($name, $from, $writes) as $node) {
+            // A `foreach` around the test assigns its value before each pass, so never between the test and a read.
+            if ($node instanceof Foreach_ && ! $node->byRef && $node->getStartFilePos() < $from) {
+                continue;
+            }
+
             $inExit = array_any($exits, fn (array $body): bool => $body !== []
                 && $node->getStartFilePos() >= $body[0]->getStartFilePos()
                 && $node->getEndFilePos() <= $body[array_key_last($body)]->getEndFilePos());

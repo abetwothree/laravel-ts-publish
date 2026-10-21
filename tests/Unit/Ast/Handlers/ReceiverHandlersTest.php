@@ -1015,11 +1015,11 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The guard bindings collectInstanceofGuards() writes for one parsed method body, and the source it parsed.
+ * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed.
  *
- * @return array{array<string, list<array<string, mixed>>>, string}
+ * @return array{AnalysisScope, string}
  */
-function guardBindingsOf(string $body): array
+function guardPassScope(string $body): array
 {
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
     $source = '<?php '.$body;
@@ -1039,7 +1039,7 @@ function guardBindingsOf(string $body): array
 
     $host->run($stmts, $scope);
 
-    return [$scope->varGuardBindings, $source];
+    return [$scope, $source];
 }
 
 /**
@@ -1051,7 +1051,7 @@ function narrowingBindings(string $body): array
 {
     return array_filter(array_map(
         fn (array $guards): array => array_merge(...array_map(fn (array $guard): array => $guard['before'] === null ? $guard['classes'] : [], $guards)),
-        guardBindingsOf($body)[0],
+        guardPassScope($body)[0]->varGuardBindings,
     ));
 }
 
@@ -1062,12 +1062,12 @@ function narrowingBindings(string $body): array
  */
 function blockNarrowingBindings(string $body): array
 {
-    [$bindings, $source] = guardBindingsOf($body);
+    [$scope, $source] = guardPassScope($body);
 
     return array_map(fn (array $guards): array => array_map(fn (array $guard): array => [
         $guard['classes'],
         trim(substr($source, $guard['after'] + 1, ($guard['before'] ?? strlen($source) - 1) - $guard['after'])),
-    ], $guards), $bindings);
+    ], $guards), $scope->varGuardBindings);
 }
 
 describe('narrowing', function () {
@@ -1267,6 +1267,10 @@ describe('narrowing', function () {
             'foreach ([] as $i) { switch ($k) { case 1: if (! $x instanceof \Workbench\App\Models\Post) { continue 2; } $a = $x->title; break; } $b = $x->title; }',
             ['x' => [[[Post::class], '$a = $x->title; break;']]],
         ],
+        'a guard or a positive test on a foreach\'s own value variable, which a by-reference loop leaves unbound' => [
+            'foreach ($a as $x) { if (! $x instanceof \Workbench\App\Models\Post) { continue; } $y = 1; } foreach ($b as $z) { if ($z instanceof \Workbench\App\Models\Post) { $y = 2; } } foreach ($c as &$w) { if (! $w instanceof \Workbench\App\Models\Post) { continue; } $y = 3; }',
+            ['x' => [[[Post::class], '$y = 1;']], 'z' => [[[Post::class], '$y = 2;']]],
+        ],
         'an interface proof, then a test for a class that does not implement it, holds the class' => [
             'if (! $x instanceof \Countable) { return; } if (! $x instanceof \Workbench\App\Models\Post) { return; } $y = 1;',
             ['x' => [
@@ -1291,6 +1295,13 @@ describe('narrowing', function () {
             ]],
         ],
     ]);
+
+    test('proves a foreach value variable non-null in the block its test runs, unless the loop is by reference', function () {
+        $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
+
+        expect($proven('foreach ($a as $x) { if ($x) { $y = 1; } }'))->toBe(['x'])
+            ->and($proven('foreach ($a as &$x) { if ($x) { $y = 1; } }'))->toBe([]);
+    });
 });
 
 describe('getKey()', function () {

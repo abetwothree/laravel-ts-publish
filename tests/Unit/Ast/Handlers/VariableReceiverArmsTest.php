@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDraftCommentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedLoopPostsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterfaceGuardedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
@@ -182,6 +183,23 @@ it('publishes a model-bound variable read bare under an instanceof test as the s
     ])
         ->and($sent($draft))->toBe('{"data":{"guarded_draft":{"p":{"id":4,"title":"abc"}},"narrowed_draft":{"id":4,"title":"abc"}}}')
         ->and($sent((new Post)->forceFill(['id' => 5, 'title' => 'abc'])))->toBe('{"data":{"guarded_draft":null,"narrowed_draft":null}}');
+});
+
+// The loop assigns its value before each pass, never between the test and a read the pass makes.
+it('narrows a foreach value variable by a guard or a positive test in the loop body', function () {
+    $user = (new User)->forceFill(['id' => 1]);
+    $sent = fn (Post $post): string => (string) new GuardedLoopPostsResource($user->setRelation('posts', new EloquentCollection([$post])))
+        ->response(request())->getContent();
+
+    expect(publishedResourceKeyTypes(GuardedLoopPostsResource::class, User::class))->toBe([
+        'guarded_word_count?' => 'string | null',
+        'positive_word_count?' => 'string | null',
+    ])
+        ->and($sent((new DraftPost)->forceFill(['word_count' => 12])))
+        ->toBe('{"data":{"guarded_word_count":"12","positive_word_count":"12"}}')
+        ->and($sent((new DraftPost)->forceFill(['word_count' => null])))
+        ->toBe('{"data":{"guarded_word_count":null,"positive_word_count":null}}')
+        ->and($sent((new Post)->forceFill(['word_count' => 12])))->toBe('{"data":[]}');
 });
 
 // A value that is both an interface and a class it proves is best named by the class, in whichever order it is proven.
