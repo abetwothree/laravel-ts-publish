@@ -248,5 +248,5 @@ it('keeps a bound model or collection under an instanceof test for a class it al
         'spread_publishable' => false,
         'narrowed_contents' => ['alpha', 'beta'],
     ])->and(array_column($sent['data']['narrowed_spread'], 'content'))->toBe(['alpha', 'beta'])
-        ->and(array_keys($sent['data']['narrowed_spread'][0]))->not->toContain('preview', 'post');
+        ->and(array_keys($sent['data']['narrowed_spread'][0]))->not->toContain('preview')->not->toContain('post');
 });
