@@ -341,13 +341,13 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
-### A model spread inside a `collect()->map()` closure names the wrong model, or none
+### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list
 
-`collect($this->comments)->map(fn (Comment $c) => [...$c->toArray(), 'flag' => true])` binds `$c` to an element type
-with no model, so `InlineArrayHandler::spreadModelToArrayFqcn()` falls back to the model an enclosing `whenLoaded()` or
-relation `map()` set. At the top level there is none, and only `{ flag: boolean }` publishes. Inside
-`whenLoaded('author', …)` the element publishes as `Omit<User, 'flag'> & …`, though it is a `Comment`. Use the
-relation chain, `$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, which binds the model.
+`$bag->map(fn (Post $p) => ['id' => $p->id])` publishes `{ id: number }[]` when nothing names the class `$bag` holds,
+such as a container binding or a helper with no declared return: the model hint is read as the element of a collection.
+A hand-written bag whose own `map()` keeps string keys sends an object. Name the class, by a return type or an inline
+`@var`, and the bag's own `map()` answers. A local whose one write is an array literal publishes `unknown`, since PHP
+throws there.
 
 ### An index-signature model with a shared key loses its attribute types in `{Model}All` and `{Model}AllResource`
 

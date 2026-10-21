@@ -448,14 +448,17 @@ a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` termina
   `Collection<X>` and its array both render `X[]`, so it is identity on the published type.
 - **`concat($source)` is identity only on exact type equality**: anything but the receiver's own collection type
   declines the chain, since `Comment[]` joined with `Tag[]` is a different collection, not a longer one.
-- **A `collect()` pipeline binds its `map()` parameter to a value**: its elements need not be models, so the parameter
-  goes in `AnalysisScope::$varValueBindings`, where a relation chain binds its element model in `$varModelBindings`.
-  See [AST engine § Writing a scope binding](ast-engine.md#writing-a-scope-binding).
+- **A `collect()` pipeline binds its `map()` parameter to its element**: the model the receiver resolver names for
+  `$arg`, or that its value carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
+  `AnalysisScope::$varValueBindings`. Both bind through one binder, as
+  [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.
 
-`VariableHandler` also peels a trailing `values()` or `all()` off a receiver it can type.
+`VariableHandler` types a `map()` over any other receiver, such as a local, a model parameter's relation, a query or
+`getRelation()`, and peels a trailing `values()` or `all()` off a chain it can type or a variable whose element the
+receiver resolver does not name.
 [AST engine § The honest ordering inventory](ast-engine.md#the-honest-ordering-inventory) records when, and why it
 agrees with `CollectionPipelineHandler`.
 
@@ -931,7 +934,7 @@ These [known gaps](../known-gaps.md) come from the rules on this page:
 - [A merge whose two sides name same-basename classes publishes only one of them](../known-gaps.md#a-merge-whose-two-sides-name-same-basename-classes-publishes-only-one-of-them)
 - [A helper that returns an empty `[]` on one path publishes an object shape](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
 - [`#[TsCasts]` and the top-level spread flatten disagree by scope](../known-gaps.md#tscasts-and-the-top-level-spread-flatten-disagree-by-scope-in-three-separate-ways)
-- [A model spread inside a `collect()->map()` closure names the wrong model, or none](../known-gaps.md#a-model-spread-inside-a-collect-map-closure-names-the-wrong-model-or-none)
+- [A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list](../known-gaps.md#a-variable-the-package-cannot-name-holding-a-non-collection-with-its-own-map-publishes-a-list)
 - [`Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
