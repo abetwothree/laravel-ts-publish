@@ -24,10 +24,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclining
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyAloneResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDynamicUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedElseifChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumKeyResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedEnumSpreadResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThenAppendedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedFilterThenOpaqueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedForLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
@@ -35,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpola
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNumericKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOnlyVariableResource;
@@ -69,6 +72,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetPare
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnsetWithKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedVanishingKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedVanishingSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedWhileLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\ReturnedVariableLinesService;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithReturnedVariable;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -529,6 +533,34 @@ test('each branch keeps the class it types a key with, so every class a merged k
         ReturnedClassBranchesResource::class,
         'id: number; x: CategoryResource | UserResource | null; s: PriorityType | StatusType | null; who: Category | User | null',
     ],
+]);
+
+test('a body that may not run keeps the value a key held before as one more arm, as Laravel sends it', function (string $class, string $members, array $paths) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+    $sent = fn (array $query): array => new $class($tag)->resolve(Request::create('/', 'GET', $query));
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(array_map($sent, array_column($paths, 0)))->toBe(array_column($paths, 1));
+})->with([
+    'a for loop' => [ReturnedForLoopResetResource::class, 'id: number; mode: number | string; seen?: boolean', [
+        [['n' => '0'], ['id' => 9, 'mode' => 1]],
+        [['n' => '2'], ['id' => 9, 'mode' => 'many', 'seen' => true]],
+    ]],
+    'a while loop' => [ReturnedWhileLoopResetResource::class, 'id: number; mode: number | string; seen?: boolean', [
+        [['n' => '0'], ['id' => 9, 'mode' => 1]],
+        [['n' => '2'], ['id' => 9, 'mode' => 'many', 'seen' => true]],
+    ]],
+    'a loop inside a loop' => [ReturnedNestedLoopResetResource::class, 'id: number; mode: number | string; seen?: boolean', [
+        [['n' => '0', 'm' => '1'], ['id' => 9, 'mode' => 1]],
+        [['n' => '2', 'm' => '0'], ['id' => 9, 'mode' => 1]],
+        [['n' => '1', 'm' => '1'], ['id' => 9, 'mode' => 'deep', 'seen' => true]],
+    ]],
+    'an if/elseif chain with no else' => [ReturnedElseifChainResource::class, 'id: number; tier: number | string | boolean; first_only?: boolean', [
+        [['tier' => 'a'], ['id' => 9, 'tier' => 'first', 'first_only' => true]],
+        [['tier' => 'b'], ['id' => 9, 'tier' => false]],
+        [[], ['id' => 9, 'tier' => 0]],
+    ]],
 ]);
 
 test('a key\'s queued classes hold one copy per write of it, however many joins it passes', function (string $body, int $writes, bool $author) {
