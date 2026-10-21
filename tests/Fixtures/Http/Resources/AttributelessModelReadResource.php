@@ -12,7 +12,7 @@ use Workbench\App\Models\User;
 
 /**
  * Column reads on a model with no attributes, which Laravel sends as null, beside unsaved copies that hold attributes,
- * and the relation, accessor and default-attribute reads a new model answers all the same.
+ * new models the body writes or fills, and the relation, accessor and default-attribute reads a new model answers.
  *
  * @mixin Post
  */
@@ -22,6 +22,12 @@ class AttributelessModelReadResource extends JsonResource
     public function toArray(Request $request): array
     {
         $draft = new Post;
+        $written = new Post;
+        $written->title = 'x';
+        $offset = new Post;
+        $offset['title'] = 'w';
+        $filled = new Post;
+        $filled->fill(['title' => 'y']);
 
         return [
             'new_title' => (new Post)->title,
@@ -32,6 +38,19 @@ class AttributelessModelReadResource extends JsonResource
             'first_or_new_title' => Post::query()->firstOrNew(['title' => 'x'])->title,
             'filled_title' => (new Post(['title' => 'x']))->title,
             'local_title' => $draft->title,
+            'written_title' => $written->title,
+            'offset_title' => $offset->title,
+            'filled_local_title' => $filled->title,
+            'default_written_title' => $this->when(true, function ($post = new Post) {
+                $post->title = 'z';
+
+                return $post->title;
+            }),
+            'default_offset_title' => $this->when(true, function ($post = new Post) {
+                $post['title'] = 'v';
+
+                return $post->title;
+            }),
             'new_status' => (new Post)->status,
             'new_reading_time' => (new Post)->reading_time,
             'new_comments' => (new Post)->comments,

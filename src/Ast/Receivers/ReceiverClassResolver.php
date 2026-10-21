@@ -29,9 +29,14 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Enumerable;
 use Illuminate\Support\Str;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
@@ -41,6 +46,10 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
@@ -49,6 +58,8 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt\Expression;
+use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -86,8 +97,11 @@ final class ReceiverClassResolver
         'collect' => Collection::class,
     ];
 
-    /** Marks a `new` built for a passed model no row backs yet, which may hold the attributes it was given. */
-    public const string UNSAVED_COPY = 'unsavedCopy';
+    /** Marks a `new` whose model may hold attributes when read: one built for a passed copy, or one its body fills. */
+    public const string HOLDS_ATTRIBUTES = 'holdsAttributes';
+
+    /** The Model methods that write attributes, wherever a body calls them. */
+    private const array ATTRIBUTE_WRITERS = ['fill', 'forceFill', 'setAttribute', 'setRawAttributes', 'offsetSet'];
 
     /** The Model methods whose result is a copy no row backs yet. */
     private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
@@ -141,6 +155,24 @@ final class ReceiverClassResolver
         Relation::class => 'TRelatedModel',
         Factory::class => 'TModel',
     ];
+
+    /**
+     * Mark the `new` a variable is bound to as holding attributes where its body fills the model, before the read or
+     * after it: Laravel then sends what was written. A write to a member or offset through the variable fills it, as
+     * does a call to an attribute writer on it, or any method called on it as a statement.
+     *
+     * @param  array<Node>  $body
+     */
+    public static function markFilled(Expr $bound, string $name, array $body): void
+    {
+        if (! $bound instanceof New_ || $bound->args !== []) {
+            return;
+        }
+
+        if (new NodeFinder()->findFirst($body, fn (Node $node): bool => self::fills($node, $name)) !== null) {
+            $bound->setAttribute(self::HOLDS_ATTRIBUTES, true);
+        }
+    }
 
     /**
      * Resolve the classes an expression holds, or null when any part of it cannot be named.
@@ -506,6 +538,46 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Whether one node fills the model a variable holds: a write to a member or offset through it, a call to an
+     * attribute writer on it, or a statement calling a method on it.
+     */
+    private static function fills(Node $node, string $name): bool
+    {
+        if ($node instanceof Assign || $node instanceof AssignOp || $node instanceof AssignRef
+            || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
+        ) {
+            return ! $node->var instanceof Variable && self::rootedAt($node->var, $name);
+        }
+
+        if ($node instanceof MethodCall || $node instanceof NullsafeMethodCall) {
+            return $node->name instanceof Identifier
+                && in_array($node->name->toString(), self::ATTRIBUTE_WRITERS, true)
+                && self::rootedAt($node->var, $name);
+        }
+
+        return $node instanceof Expression
+            && ($node->expr instanceof MethodCall || $node->expr instanceof NullsafeMethodCall)
+            && self::rootedAt($node->expr, $name);
+    }
+
+    /**
+     * Whether a chain of member reads, offsets and calls starts at a variable, the bare variable included.
+     */
+    private static function rootedAt(Expr $expr, string $name): bool
+    {
+        while ($expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof ArrayDimFetch
+            || $expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
+        ) {
+            $expr = $expr->var;
+        }
+
+        return $expr instanceof Variable && $expr->name === $name;
+    }
+
+    /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
      * what the body assigned; an unbound variable declines.
      */
@@ -851,13 +923,13 @@ final class ReceiverClassResolver
 
     /**
      * Resolve `new X`, `new static` or `new self`: a model no row backs yet, which with no constructor argument
-     * holds no attributes either, but for a `new` built for a passed copy.
+     * holds no attributes either, but for a `new` marked HOLDS_ATTRIBUTES.
      */
     private function fromNew(New_ $new, AnalysisScope $scope): ?ReceiverType
     {
         $held = $new->class instanceof Name ? $this->namedClass($new->class, $scope) : null;
 
-        if ($held === null || $new->args !== [] || $new->getAttribute(self::UNSAVED_COPY) === true || $held->models() === []) {
+        if ($held === null || $new->args !== [] || $new->getAttribute(self::HOLDS_ATTRIBUTES) === true || $held->models() === []) {
             return $held?->asUnsaved();
         }
 

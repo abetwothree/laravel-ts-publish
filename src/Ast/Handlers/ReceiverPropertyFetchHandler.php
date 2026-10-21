@@ -102,7 +102,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         $attribute = resolve(ReflectedTypeAcceptor::class)->accept($resolver->resolveAttribute($modelFqcn, $name, $carriesImports));
 
         if ($attribute !== null) {
-            return $attributeless && $this->readsNullWithoutAttributes($modelFqcn, $name)
+            return $attributeless && $this->readsNullWithoutAttributes($resolver, $modelFqcn, $name)
                 ? [...$attribute, 'type' => ValueResult::withNullArm($attribute['type'])]
                 : $attribute;
         }
@@ -133,9 +133,8 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
      *
      * @param  class-string<Model>  $modelFqcn
      */
-    private function readsNullWithoutAttributes(string $modelFqcn, string $name): bool
+    private function readsNullWithoutAttributes(ModelAttributeResolver $resolver, string $modelFqcn, string $name): bool
     {
-        $resolver = resolve(ModelAttributeResolver::class);
         $column = $resolver->getAttributes($modelFqcn)?->firstWhere('name', $name);
         $instance = $resolver->getInstance($modelFqcn);
         $cast = $column['cast'] ?? null;

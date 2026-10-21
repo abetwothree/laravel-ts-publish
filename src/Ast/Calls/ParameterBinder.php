@@ -286,7 +286,7 @@ final class ParameterBinder
             }
 
             if ($classes !== null && $unsaved) {
-                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]), [], [ReceiverClassResolver::UNSAVED_COPY => true]);
+                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]), [], [ReceiverClassResolver::HOLDS_ATTRIBUTES => true]);
             } elseif ($elementModel !== null) {
                 $scope->varCollectionBindings[$name] = [
                     'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),

@@ -133,6 +133,7 @@ trait CollectsLocalVarBindings
             }
 
             $name = $stmt->expr->var->name;
+            ReceiverClassResolver::markFilled($stmt->expr->expr, $name, $stmts);
 
             if (($writeCounts[$name] ?? 0) === 1) {
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
