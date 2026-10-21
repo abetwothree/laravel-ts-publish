@@ -80,25 +80,35 @@ final class AccessorBodyAnalyzer
         $dropped = DroppedUnionArms::dropped();
 
         try {
-            $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
+            // A body declined here gives way to what the model declares, so its placeholder is never published.
+            $result = DroppedUnionArms::replaceable(
+                fn (): ?array => $this->resolveBody($modelFqcn, $attributeName, $carriesImports),
+                fn (?array $result): bool => $this->bodyStands($result, $dropped),
+            );
         } finally {
             $memo->leave($key);
         }
 
-        // `never[]` is what an empty `[]` literal resolves to — no element information at all, so a
-        // @property tag or a cast still knows the elements better than the body does.
-        if ($result === null || $result['type'] === 'unknown' || $result['type'] === 'never[]') {
-            return null;
-        }
-
-        // A bare `null` left once a ternary or `??` dropped the arm it could not type says nothing about the value.
-        if ($result['type'] === 'null' && DroppedUnionArms::dropped() > $dropped) {
+        if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
         }
 
         $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
 
         return $this->namesEveryClass($result, $info) ? $info : null;
+    }
+
+    /**
+     * Whether a body's type stands over a `@property` tag or a cast: not `unknown`, not the `never[]` of an empty `[]`,
+     * which says nothing of the elements, and not a bare `null` a ternary or `??` left when it dropped an untyped arm.
+     *
+     * @param  ValueExpressionResult|null  $result
+     */
+    private function bodyStands(?array $result, int $dropped): bool
+    {
+        return $result !== null
+            && ! in_array($result['type'], ['unknown', 'never[]'], true)
+            && ($result['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped);
     }
 
     /**

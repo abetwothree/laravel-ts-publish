@@ -98,14 +98,19 @@ final class TernaryHandler implements ExpressionHandler
         }
 
         // This path resolves its arms itself, so it records its own drops: analyzeClosureUnion() never sees them.
+        $dropped = [];
+
         foreach ($results as $index => $armResult) {
             if ($armResult['type'] === 'unknown') {
                 DroppedUnionArms::record($arms[$index], $scope, 'ternary-narrowed');
+                $dropped[] = $arms[$index];
             }
         }
 
         // The narrowed results, not a second resolution of the arms: that would drop the narrowing and let two
         // resolutions of the same arm disagree by construction.
-        return ValueResult::withEnumArmShapes(ValueResult::unionResults($results), $results);
+        $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
+
+        return ValueResult::withEnumArmShapes($union, $results);
     }
 }

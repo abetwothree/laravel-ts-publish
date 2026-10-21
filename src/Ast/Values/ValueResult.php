@@ -255,13 +255,16 @@ final class ValueResult
 
         // Paired with their expressions here because unionResults() receives results only, and by then
         // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
+        $dropped = [];
+
         foreach ($results as $index => $result) {
             if ($result['type'] === 'unknown') {
                 DroppedUnionArms::record($returns[$index], $scope, 'closure-union');
+                $dropped[] = $returns[$index];
             }
         }
 
-        return self::unionResults($results);
+        return DroppedUnionArms::warnOfPlaceholder(self::unionResults($results), $dropped, $scope);
     }
 
     /**

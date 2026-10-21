@@ -395,20 +395,47 @@ final class VariableHandler implements ExpressionHandler
     private function declaredLocalValue(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $dropped = DroppedUnionArms::dropped();
-        $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
+        // A placeholder the tag replaces is never published, so the warnings its reading raised are not either.
+        $reading = DroppedUnionArms::replaceable(
+            fn (): ?array => $this->boundExpressionValue($name, $span['expr'], $scope, $engine),
+            fn (?array $reading): bool => $this->declaredReplacement($span, $reading, $dropped) === null,
+        );
 
-        if ($reading !== null
+        return $this->declaredReplacement($span, $reading, $dropped) ?? $reading;
+    }
+
+    /**
+     * Whether a declared local's reading stands over its `@var`: not vague, and not the `null` an untypable arm's drop
+     * left once the read began at the given count of dropped arms.
+     *
+     * @param  ValueExpressionResult|null  $reading
+     */
+    private function readingStands(?array $reading, int $dropped): bool
+    {
+        return $reading !== null
             && ! TsTypeString::isVagueTsType($reading['type'])
-            && ($reading['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped)
-        ) {
-            return $reading;
+            && ($reading['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped);
+    }
+
+    /**
+     * The `@var` type in place of a reading that does not stand, where the tag is precise enough to publish, optional
+     * where the reading was; null where the reading stands or the tag cannot replace it.
+     *
+     * @param  VarDocBinding  $span
+     * @param  ValueExpressionResult|null  $reading
+     * @return ValueExpressionResult|null
+     */
+    private function declaredReplacement(array $span, ?array $reading, int $dropped): ?array
+    {
+        if ($this->readingStands($reading, $dropped)) {
+            return null;
         }
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
         return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
             ? [...$declared, 'optional' => $reading['optional'] ?? false]
-            : $reading;
+            : null;
     }
 
     /**
