@@ -491,16 +491,9 @@ final class AnalysisScope
      */
     public function gapAt(Variable $variable): ?array
     {
-        $position = $variable->getStartFilePos();
-        $latest = null;
-
-        foreach (is_string($variable->name) ? $this->bindingGaps[$variable->name] ?? [] : [] as $gap) {
-            if ($position > $gap[0] && $position <= $gap[1] && ($latest === null || $gap[0] > $latest[0])) {
-                $latest = $gap;
-            }
-        }
-
-        return $latest;
+        return is_string($variable->name)
+            ? self::latestGap($this->bindingGaps[$variable->name] ?? [], $variable->getStartFilePos())
+            : null;
     }
 
     /**
@@ -713,7 +706,7 @@ final class AnalysisScope
     /**
      * Bind a claimed parameter to every entry the variable its call passes held in a nameBindings() capture, but a
      * proof, which spells the read it proves under the variable's own name, and a binding end or gap, offsets in the
-     * caller's body. A variable passed past its end, or inside a gap, passes only the body's own bindings of it.
+     * caller's body. Past its end or inside a gap, only the body's own bindings pass, a gap's one write among them.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
@@ -724,10 +717,17 @@ final class AnalysisScope
         }
 
         $from = $passed->name;
+        $offset = $passed->getStartFilePos();
+        $local = $snapshot['localVarBindings'][$from] ?? null;
 
-        if (! self::holdsAt($from, $passed->getStartFilePos(), $snapshot['bindingEnds'], $snapshot['bindingGaps'])) {
+        if (! self::holdsAt($from, $offset, $snapshot['bindingEnds'], $snapshot['bindingGaps'])) {
             // The parameter's own binding ends before any read, so no reader guesses a class for it.
             $this->bindingEnds[$to] = PHP_INT_MIN;
+            $gap = self::latestGap($snapshot['bindingGaps'][$from] ?? [], $offset);
+
+            if ($gap !== null && ! $gap[3] && count($gap[2] ?? []) === 1) {
+                $local = $gap[2][0];
+            }
         } else {
             if (isset($snapshot['closureParamExprBindings'][$from])) {
                 $this->closureParamExprBindings[$to] = $snapshot['closureParamExprBindings'][$from];
@@ -766,8 +766,8 @@ final class AnalysisScope
             $this->varDocBindings[$to] = $snapshot['varDocBindings'][$from];
         }
 
-        if (isset($snapshot['localVarBindings'][$from])) {
-            $this->localVarBindings[$to] = $snapshot['localVarBindings'][$from];
+        if ($local !== null) {
+            $this->localVarBindings[$to] = $local;
         }
 
         if (isset($snapshot['byReferenceForms'][$from])) {
@@ -796,6 +796,25 @@ final class AnalysisScope
     {
         return (! isset($ends[$name]) || $offset <= $ends[$name])
             && ! array_any($gaps[$name] ?? [], fn (array $gap): bool => $offset > $gap[0] && $offset <= $gap[1]);
+    }
+
+    /**
+     * The gap of a name's that an offset falls inside, the one whose write came latest, or null when it falls in none.
+     *
+     * @param  list<BindingGap>  $gaps
+     * @return BindingGap|null
+     */
+    private static function latestGap(array $gaps, int $offset): ?array
+    {
+        $latest = null;
+
+        foreach ($gaps as $gap) {
+            if ($offset > $gap[0] && $offset <= $gap[1] && ($latest === null || $gap[0] > $latest[0])) {
+                $latest = $gap;
+            }
+        }
+
+        return $latest;
     }
 
     /**

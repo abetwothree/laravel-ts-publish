@@ -113,6 +113,7 @@
     "app\/Http\/Resources\/BareFuncCallResource.php",
     "app\/Http\/Resources\/BareMethodReturnResource.php",
     "app\/Http\/Resources\/BaseSharedResource.php",
+    "app\/Http\/Resources\/BlockScopedBindingsResource.php",
     "app\/Http\/Resources\/BodylessOrderResource.php",
     "app\/Http\/Resources\/BodylessTeamResource.php",
     "app\/Http\/Resources\/BooleanExprResource.php",

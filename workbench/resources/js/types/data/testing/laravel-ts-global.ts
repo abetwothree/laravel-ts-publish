@@ -2632,6 +2632,11 @@ declare global {
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
         }
+        /** Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there. */
+        export interface BlockScopedBindingsResource {
+            label?: string;
+            bytes?: number;
+        }
         /**
          * Declares neither a toArray() nor a @mixin — pins parent-docblock model inheritance: the model
          * has to come from OrderResource's own `@mixin Order`, since the naming convention would look for

@@ -10818,6 +10818,21 @@
             "name": "BaseSharedResource",
             "properties": []
         },
+        "Workbench\\App\\Http\\Resources\\BlockScopedBindingsResource": {
+            "name": "BlockScopedBindingsResource",
+            "properties": [
+                {
+                    "name": "label",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "bytes",
+                    "type": "number",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\BodylessOrderResource": {
             "name": "BodylessOrderResource",
             "properties": [

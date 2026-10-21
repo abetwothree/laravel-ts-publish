@@ -8,6 +8,7 @@ export * from './bare-beside-container-resource';
 export * from './bare-func-call-resource';
 export * from './bare-method-return-resource';
 export * from './base-shared-resource';
+export * from './block-scoped-bindings-resource';
 export * from './bodyless-order-resource';
 export * from './bodyless-team-resource';
 export * from './boolean-expr-resource';

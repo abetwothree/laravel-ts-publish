@@ -74,8 +74,8 @@ trait CollectsLocalVarBindings
     use CollectsInstanceofGuards;
 
     /**
-     * Seed a body once its parameters are bound: its own locals, the end of each binding it came in with at the write
-     * that replaces it, then its guards, all from one scan of its writes.
+     * Seed a body once its parameters are bound: its own locals, top-level and block-scoped, the end of each binding it
+     * came in with at the write that replaces it, then its guards, all from one scan of its writes.
      *
      * A local shadows an outer binding of its name however often the body writes it; a method body starts with none.
      * A by-reference call that keeps a value in some form writes none: its form is recorded for the read to check.
@@ -88,7 +88,13 @@ trait CollectsLocalVarBindings
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
 
         foreach ($replacing as [$name]) {
-            unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
+            // An outer gap's offsets may cover this body, as a closure nested in the block that opened it.
+            unset(
+                $scope->localVarBindings[$name],
+                $scope->varDocBindings[$name],
+                $scope->byReferenceForms[$name],
+                $scope->bindingGaps[$name],
+            );
         }
 
         foreach ($kept as [$name, $form]) {
@@ -98,6 +104,7 @@ trait CollectsLocalVarBindings
         }
 
         $this->collectLocalVarBindings($stmts, $scope, $replacing);
+        $this->bindBlockLocals($stmts, $scope, $replacing);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $this->endBindingsAtWrites($stmts, $scope, $writes);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof.
@@ -140,6 +147,23 @@ trait CollectsLocalVarBindings
             }
 
             $this->bindDeclaredType($stmt, $stmt->expr, $name, $stmts, $writes, $scope);
+        }
+    }
+
+    /**
+     * Bind each `$x = …;` a nested block holds, and the type an inline `@var` on it declares, for the reads past it up
+     * to its block's end or the start of that block's statement holding the next write: a block may not run, and a loop
+     * runs it again. A name holding a parameter's or a seeded binding keeps the rules endBindingsAtWrites() sets.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     */
+    protected function bindBlockLocals(array $stmts, AnalysisScope $scope, array $writes): void
+    {
+        foreach ($stmts as $stmt) {
+            foreach ($this->innerBlocks($stmt) as $block) {
+                $this->bindBlock($block, $stmts, $scope, $writes);
+            }
         }
     }
 
@@ -287,10 +311,7 @@ trait CollectsLocalVarBindings
         array $writes,
         AnalysisScope $scope,
     ): void {
-        $tag = resolve(PropertyDocblockTypeReader::class)
-            ->extractVarTag((string) $assignment->getDocComment()?->getText(), $scope->declaringFileClass);
-
-        if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
+        if ($assignment->getDocComment() === null) {
             return;
         }
 
@@ -315,13 +336,131 @@ trait CollectsLocalVarBindings
             return;
         }
 
+        $this->bindDeclaredSpan($assignment, $assign, $name, $assignment->getEndFilePos(), $before, $scope);
+    }
+
+    /**
+     * Bind a variable to the type an inline `@var` on its assignment declares, for the reads past $after and, when it
+     * is set, before $before.
+     */
+    private function bindDeclaredSpan(
+        ExpressionStmt $assignment,
+        Assign $assign,
+        string $name,
+        int $after,
+        ?int $before,
+        AnalysisScope $scope,
+    ): void {
+        if ($assignment->getDocComment() === null) {
+            return;
+        }
+
+        $tag = resolve(PropertyDocblockTypeReader::class)
+            ->extractVarTag($assignment->getDocComment()->getText(), $scope->declaringFileClass);
+
+        if ($tag === null || ($tag[1] !== null && $tag[1] !== $name)) {
+            return;
+        }
+
         $scope->varDocBindings[$name][] = [
             'type' => $tag[0],
             'context' => $scope->declaringFileClass,
-            'after' => $assignment->getEndFilePos(),
+            'after' => $after,
             'before' => $before,
             'expr' => $assign->expr,
         ];
+    }
+
+    /**
+     * Bind the assignments of one nested block, then those of the blocks its statements hold.
+     *
+     * @param  array<Node\Stmt>  $block
+     * @param  array<Node\Stmt>  $body  the whole body, for the writes that fill a `new` model a local holds
+     * @param  VariableWrites  $writes
+     */
+    private function bindBlock(array $block, array $body, AnalysisScope $scope, array $writes): void
+    {
+        foreach ($block as $stmt) {
+            if ($stmt instanceof ExpressionStmt
+                && $stmt->expr instanceof Assign
+                && $stmt->expr->var instanceof Variable
+                && is_string($stmt->expr->var->name)
+            ) {
+                ReceiverClassResolver::markFilled($stmt->expr->expr, $stmt->expr->var->name, $body);
+                $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
+            }
+
+            foreach ($this->innerBlocks($stmt) as $inner) {
+                $this->bindBlock($inner, $body, $scope, $writes);
+            }
+        }
+    }
+
+    /**
+     * Bind one nested `$x = …;` for the reads past its statement, up to the end of its block or the start of the
+     * block's statement holding the name's next write.
+     *
+     * @param  non-empty-array<Node\Stmt>  $block
+     * @param  VariableWrites  $writes
+     */
+    private function bindBlockAssignment(
+        ExpressionStmt $statement,
+        Assign $assign,
+        string $name,
+        array $block,
+        AnalysisScope $scope,
+        array $writes,
+    ): void {
+        $after = $statement->getEndFilePos();
+        $end = $this->blockSpanEnd($name, $after, $block, $writes);
+
+        if ($end === null || $end <= $after) {
+            return;
+        }
+
+        $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope);
+
+        if (! $scope->bindsName($name)) {
+            $scope->bindingGaps[$name][] = [$after, $end, [$assign->expr], false];
+        }
+    }
+
+    /**
+     * Where the span of a block's write past $after ends: before the block's statement holding the name's next write,
+     * else at the block's end. Null where another name or a closure can write the variable through a reference.
+     *
+     * @param  non-empty-array<Node\Stmt>  $block
+     * @param  VariableWrites  $writes
+     */
+    private function blockSpanEnd(string $name, int $after, array $block, array $writes): ?int
+    {
+        $end = $block[array_key_last($block)]->getEndFilePos();
+
+        foreach ($writes as [$written, $node]) {
+            if ($written !== $name) {
+                continue;
+            }
+
+            if ($this->makesReference($node)) {
+                return null;
+            }
+
+            $holder = $node->getStartFilePos() > $after
+                ? array_find($block, fn (Node\Stmt $later): bool => $this->encloses($later, $node))
+                : null;
+            $end = $holder === null ? $end : min($end, $holder->getStartFilePos() - 1);
+        }
+
+        return $end;
+    }
+
+    /**
+     * Whether a write can make a variable a reference that another name, or a closure, writes through: `=&`, a
+     * by-reference `use`, `global` or `static`.
+     */
+    private function makesReference(Node $write): bool
+    {
+        return $write instanceof AssignRef || $write instanceof ClosureExpr || $write instanceof Global_ || $write instanceof Static_;
     }
 
     /**
