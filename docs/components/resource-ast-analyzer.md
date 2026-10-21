@@ -361,7 +361,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
 - **`whenNotNull()` and `whenNull()` take a value, not a callback**: both call `when()` on `is_null($value)`.
   `whenNotNull()` strips the top-level `| null` from its value with `ValueResult::stripNullArm()`, which leaves a
-  nested one. `whenNull()`'s value arm is `null`.
+  nested one. A closure or first-class callable is never `null`, so `whenNotNull()` always calls it, with nothing: the
+  key is required and keeps what it returns, `null` included. `whenNull()`'s value arm is `null`.
 - **`unless()` and `mergeUnless()` reuse `when()` and `mergeWhen()`**: negating the condition changes which arm runs,
   never either arm's type.
 - **`mergeWhen()` and `mergeUnless()` merge their default**: `ResourceAstAnalyzer::analyzeMergeExpression()` reads the

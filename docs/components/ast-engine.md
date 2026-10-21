@@ -201,15 +201,16 @@ so a same-named closure parameter still resolves against its own binding, as `Cl
 #### A closure parameter owns its name
 
 Readers rank the name-keyed tables differently. `VariableHandler` reads `varDocBindings` first and `varValueBindings`
-last, while `ReceiverClassResolver::fromVariable()` reads `varClassBindings` first and never reads `varValueBindings`.
-So an outer binding of a parameter's name, left in any table, outranks the parameter's own binding for some reader.
-Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
+last, while `ReceiverClassResolver::fromVariable()` reads `varClassBindings` first and `varValueBindings` only for an
+enum case, so a `new` default and a passed collection also bind where it reads. So an outer binding of a parameter's
+name, left in any table, outranks the parameter's own binding for some reader. Nested in `map(fn (Comment $c) => …)`,
+a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
 
 Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
 claim drops each parameter name from every table, its binding end included, and marks the closure claimed. The writer
 reads the value the call passes before it claims, since the claim can release a name that value shares, then binds the
 parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no
-writer claimed, such as a `whenNotNull()` value closure.
+writer claimed, such as a `whenNull()` value closure.
 
 Each writer binds the first parameter to what Laravel passes the closure:
 
@@ -222,6 +223,7 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `whenAggregated()`, other aggregates | The aggregate | The aggregate without its `null`, as the model's declaration or [`AggregateValueType`] types it; nothing when neither does |
 | `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
 | `transform()`'s default | The blank value | The value's full type, `null` included |
+| `whenNotNull()`'s closure or first-class callable | Nothing, and always, since a closure is never `null` | Nothing beyond the unpassed-parameter rule below |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |
 
 A first-class callable in a position where Laravel passes one value binds the same way:
@@ -235,8 +237,9 @@ These rules settle the cases the table leaves open:
   `AnalysisScope::bindUnpassedParameters()`, which binds an optional one to its default's type, evaluated as PHP does,
   so `when($this->title, fn ($t = null) => $t)` publishes `null`, as Laravel returns. It binds a variadic one to
   `never[]`, a static closure or first-class callable default to `Record<string, never>`, the `{}` Laravel sends, and
-  leaves one whose default it cannot type unbound. A map closure's parameters past the first, and a
-  `whenNotNull()` or `whenNull()` value closure's, stay unbound.
+  leaves one whose default it cannot type unbound. A readable `new X` default also binds the `new` in
+  `closureParamExprBindings`, which the receiver resolver reads as an unsaved `X`. A map closure's parameters past the
+  first, and a `whenNull()` value closure's, which never runs, stay unbound.
 - **A variadic first parameter collects its one argument**: `whenLoaded('author', fn (...$a) => $a)` is `User[]`, and a
   `morphTo` `whenLoaded()` binds the list of its targets, its element never `null`. The map writers skip one, since
   `map()` passes two values of different types.

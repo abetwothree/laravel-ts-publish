@@ -74,9 +74,11 @@ answers:
    `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
    [AST engine § Declared locals](ast-engine.md#declared-locals).
 4. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
-   `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, then `requestVarNames`, then a
-   `varValueBindings` value bound to one enum case, such as a parameter's default, as that enum.
-5. `closureParamExprBindings`, else `localVarBindings`, resolved recursively under the `resolvingLocalVars` guard.
+   `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
+   `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a
+   parameter's default, as that enum.
+5. `closureParamExprBindings`, where a readable `new X` default binds as unsaved, else `localVarBindings`, resolved
+   recursively under the `resolvingLocalVars` guard.
 
 Steps 1, 4 and 5's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
 first write that replaces a parameter, step 5's `localVarBindings` answers.
@@ -251,15 +253,18 @@ names:
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
   literal key is a published column, else the inline shape. A runtime key list, or a literal list that types no member,
-  gives `Record<string, unknown>`.
+  gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
+  keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
+  `except(null)` keeps a `keyed` collection's keys (`ReceiverClassResolver::eloquentKeyedAfter()`).
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
 collection sends.
 
-A union, an `Eloquent\Collection` and a static call get no filter rule. A model whose `only()` or `except()` override
-has a return reflection types, such as `: string`, keeps that return wherever the call is written. `RelationFilterHandler`
-asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model agrees.
+A union, an `Eloquent\Collection` with no `elementModel` and a static call get no filter rule. A model whose `only()` or
+`except()` override has a return reflection types, such as `: string`, keeps that return wherever the call is written.
+`RelationFilterHandler` asks the same `typesAsModelFilter()`, so a relation, accessor or map proxy to such a model
+agrees.
 
 A rule answers for the receiver's own model, never the subject's, so `getKey()` on a `UuidPost` receiver is `string`
 even when the subject is backed by the integer-keyed `Post`. The filter, route binding and `all()` rules name a model
