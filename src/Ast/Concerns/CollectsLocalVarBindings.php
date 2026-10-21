@@ -1109,8 +1109,10 @@ trait CollectsLocalVarBindings
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
                 $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $ender, $state, $scope),
-                // Past its own `$x = …;` a value read takes what it wrote; a class alone is endBindingsAtWrites()'s.
-                $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope))
+                // Past its own `$x = …;` a value read takes what it wrote, a model's where the write names no class;
+                // any other class alone is endBindingsAtWrites()'s.
+                $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope)
+                    && ! $this->replacesModelValue($name, $assigned, $scope))
                     ? null
                     : [[$assigned], false, $state[2] && $own[0][1] !== $ender, $this->nothingNested($state)],
                 default => $this->joinNested($own, $state),
@@ -1333,6 +1335,16 @@ trait CollectsLocalVarBindings
         }
 
         return $target instanceof Variable && $target->name === $name;
+    }
+
+    /**
+     * Whether a write replaces a model binding's value, naming no class: a value read past it takes what was written,
+     * while a receiver keeps the model.
+     */
+    private function replacesModelValue(string $name, Expr $written, AnalysisScope $scope): bool
+    {
+        return isset($scope->varModelBindings[$name])
+            && resolve(ReceiverClassResolver::class)->resolve($written, $scope) === null;
     }
 
     /**
