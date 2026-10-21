@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
@@ -204,6 +205,12 @@ it('reads a route-bound parameter past its reassignment through what the action 
 it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
     expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
+});
+
+// keyBy() keys the rows by id, so Inertia sends an object unless the ids run 0..n-1.
+it('a keyed map and an offset read type in a page\'s props', function () {
+    expect(pageData(MappedPagePropsController::class.'@show')['pageType'] ?? null)
+        ->toContain('rows: { id: number }[] | Record<string, { id: number }>');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract

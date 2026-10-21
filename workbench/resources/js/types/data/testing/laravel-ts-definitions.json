@@ -15315,6 +15315,106 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\MappedCollectionsResource": {
+            "name": "MappedCollectionsResource",
+            "properties": [
+                {
+                    "name": "collected_spread",
+                    "type": "(Omit<Comment, 'flag'> & { flag: boolean })[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_reads",
+                    "type": "({ content: string; who: string | null })[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_spread_in_author",
+                    "type": "(Omit<Comment, 'flag'> & { flag: boolean })[]",
+                    "optional": true
+                },
+                {
+                    "name": "local_rows",
+                    "type": "({ who: string | null })[]",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_rows",
+                    "type": "(Pick<Comment, 'id' | 'content'>)[]",
+                    "optional": false
+                },
+                {
+                    "name": "local_proxy",
+                    "type": "{ id: number; content: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "reassigned_parameter",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "keyed_rows",
+                    "type": "{ id: number }[] | Record<string, { id: number }>",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_ids",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_listed_ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "sorted_first",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "loaded_values",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "mapped_values",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "query_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "declared_first",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "all_posts",
+                    "type": "PostResource[]",
+                    "optional": false
+                },
+                {
+                    "name": "post_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "query_service_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "unflagged_rows",
+                    "type": "{ id: number }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\MediaTypeInstanceOfResource": {
             "name": "MediaTypeInstanceOfResource",
             "properties": [

@@ -338,10 +338,9 @@ final class InlineArrayHandler implements ExpressionHandler
             return $scope->varModelBindings[$varName];
         }
 
-        // A to-many whenLoaded param holds the whole collection, not one element — its toArray()
-        // is a list of member arrays, never a single model's shape. spreadCollectionToArrayFqcn()
-        // picks it up instead.
-        if (isset($scope->varCollectionBindings[$varName])) {
+        // A to-many whenLoaded param holds the whole collection, whose toArray() spreadCollectionToArrayFqcn() reads,
+        // and a parameter bound to a value holds that value: neither spreads one model's shape.
+        if (isset($scope->varCollectionBindings[$varName]) || isset($scope->varValueBindings[$varName])) {
             return null;
         }
 

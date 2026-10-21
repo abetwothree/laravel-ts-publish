@@ -101,6 +101,7 @@ export * from './local-var-resource';
 export * from './local-var-spread-resource';
 export * from './loop-return-resource';
 export * from './map-relation-filter-resource';
+export * from './mapped-collections-resource';
 export * from './media-type-instance-of-resource';
 export * from './media-type-positive-instance-of-resource';
 export * from './media-type-resource';

@@ -8,11 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
@@ -23,10 +23,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\AbstractCursorPaginator;
+use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
@@ -37,7 +41,6 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use ReflectionMethod;
 
 /**
@@ -53,14 +56,17 @@ use ReflectionMethod;
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use BindsMapCallbacks;
     use CollectsLocalVarBindings;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use ReadsNonNullGuards;
-    use ResolvesMapProxyElementModels;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
     use SpellsKeyedCollections;
+
+    /** The classes whose map() runs over their items: a collection, or a paginator, which forwards it to its page. */
+    private const array MAPS_ITEMS = [Enumerable::class, AbstractPaginator::class, AbstractCursorPaginator::class];
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -75,7 +81,7 @@ final class VariableHandler implements ExpressionHandler
         // is the only thing that knows it: all() hands the array back, keys and all, and values() re-indexes it into a
         // list. On any other class the method is its own, so the receiver's type says nothing about what it returns.
         if ($expr instanceof MethodCall
-            && $expr->var instanceof MethodCall
+            && ($expr->var instanceof MethodCall || $this->isPlainVariable($expr->var))
             && $expr->name instanceof Identifier
             && in_array($expr->name->toString(), ['values', 'all'], true)
             && ! $expr->isFirstClassCallable()
@@ -114,10 +120,10 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        // `$variable->map(fn (Item $item) => [...])` — no ambient closureRelationModelClass is required: the element
-        // model comes from the param's type hint, or from the receiver's own to-many whenLoaded binding.
-        if ($expr instanceof MethodCall && $this->mappedVariable($expr) !== null) {
-            $mapResult = $this->analyzeVariableMapCall($expr, $scope, $engine);
+        // `$receiver->map(fn (Item $item) => [...])`: the element model comes from the param's type hint, or from the
+        // collection the receiver resolver names.
+        if ($expr instanceof MethodCall && $this->mappedReceiver($expr) !== null) {
+            $mapResult = $this->analyzeReceiverMapCall($expr, $scope, $engine);
 
             if ($mapResult !== null) {
                 return $mapResult;
@@ -448,87 +454,43 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze `$variable->map(fn (Item $item) => [...])` with the first param bound to its element model — the type
-     * hint, else the receiver's to-many whenLoaded element — and wrap the body result as `elementType[]`.
+     * Analyze `$receiver->map(fn (Item $item) => [...])` with the first param bound to its element: the type hint's
+     * model, else the element model or the list element of the collection the receiver resolver names. The body wraps
+     * as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
      *
-     * Returns null when neither names a model, or the first param is variadic, deferring to the generic method handler.
+     * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), an unnamed one but a
+     * variable a model hint binds, and a receiver whose element nothing names.
      *
      * @return ValueExpressionResult|null
      */
-    private function analyzeVariableMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function analyzeReceiverMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $closureArg = $this->mapArguments($call)->named('callback')?->value;
+        $callback = $this->mapArguments($call)->named('callback')?->value;
 
-        if ($closureArg === null) {
+        if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
             return null;
         }
 
-        if ($closureArg instanceof ArrowFunction) {
-            $params = $closureArg->params;
-        } elseif ($closureArg instanceof ClosureExpr) {
-            $params = $closureArg->params;
-        } else {
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
+        $declared = $this->declaredMapModel($callback->params[0] ?? null);
+
+        if ($receiver === null ? ! $this->mayHoldCollection($call->var, $declared, $scope) : ! $receiver->within(self::MAPS_ITEMS)) {
             return null;
         }
 
-        if ($params === []) {
-            return null;
-        }
+        $elementModel = $receiver?->elementModel;
+        $elementValue = null;
 
-        $firstParam = $params[0];
+        // A collection of plain values, such as a pluck() or an earlier map(), passes each value its list holds.
+        if ($declared === null && $elementModel === null) {
+            $elementValue = $receiver === null ? null : $this->listElement($engine->resolve($call->var));
 
-        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
-        if ($firstParam->variadic) {
-            return null;
-        }
-
-        // A named class type hint (already FQCN-resolved by NameResolver) wins when present — it's
-        // the more specific signal. Otherwise fall back to the receiver's own relation binding, the
-        // same one ConditionalMethodHandler::analyzeWhenLoaded() already populated for a to-many param.
-        $paramClass = $firstParam->type instanceof Name
-            ? $firstParam->type->toString()
-            : $this->resolveMapProxyElementModel($call->var, $scope);
-
-        if ($paramClass === null || ! class_exists($paramClass) || ! is_a($paramClass, Model::class, true)) {
-            return null;
-        }
-
-        /** @var class-string<Model> $paramClass */
-        $previousRelationModel = $scope->closureRelationModelClass;
-        $previousNameBindings = $scope->nameBindings();
-        $filters = $scope->filtersNestedResources;
-        $arrayed = $scope->mapResultArrayed;
-
-        try {
-            // filter() reaches a mapped item only where an all() turns the mapped Collection into an array.
-            $scope->filtersNestedResources = $filters && $arrayed;
-            $scope->mapResultArrayed = false;
-            $scope->closureRelationModelClass = $paramClass;
-            $scope->claimParameters($closureArg);
-
-            // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
-            if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
-                $scope->varModelBindings[$firstParam->var->name] = $paramClass;
+            if ($elementValue === null) {
+                return null;
             }
-
-            // The body's returns resolve here, never through ClosureHandler, so its reassignments end bindings here.
-            if ($closureArg instanceof ClosureExpr) {
-                $this->endBindingsAtWrites($closureArg->stmts, $scope);
-            }
-
-            $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
-
-            $bodyResult = match (count($returnExprs)) {
-                0 => null,
-                1 => $engine->resolve($returnExprs[0]),
-                default => ValueResult::analyzeClosureUnion($returnExprs, $engine, $scope),
-            };
-        } finally {
-            $scope->closureRelationModelClass = $previousRelationModel;
-            $scope->restoreNameBindings($previousNameBindings);
-            $scope->filtersNestedResources = $filters;
-            $scope->mapResultArrayed = $arrayed;
         }
+
+        $bodyResult = $this->resolveMapCallback($callback, $elementModel, $elementValue, $scope->mapResultArrayed, $scope, $engine);
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
@@ -536,10 +498,39 @@ final class VariableHandler implements ExpressionHandler
 
         // ValueResult::arrayWrapType(), not a raw '[]' suffix: a union body (e.g. a mixed AsEnum/direct-enum
         // ternary) must be parenthesized before the array suffix binds.
-        $bodyResult['type'] = ValueResult::arrayWrapType($bodyResult['type']);
-        $bodyResult['optional'] = false;
+        $list = ValueResult::arrayWrapType($bodyResult['type']);
 
-        return $bodyResult;
+        return [...$bodyResult, 'type' => $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list, 'optional' => false];
+    }
+
+    /**
+     * The value each element of a one-armed list type holds, with the channels the list carries; else null.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult|null
+     */
+    private function listElement(array $list): ?array
+    {
+        $element = count(TsTypeString::splitTopLevelUnion($list['type'])) === 1 ? TsTypeShape::elementType($list['type']) : null;
+
+        return $element === null || $element === 'unknown' || $element === 'never'
+            ? null
+            : [...$list, 'type' => $element, 'optional' => false];
+    }
+
+    /**
+     * Whether an unnamed receiver is read as a collection: a variable a model hint binds the element of, unless its one
+     * write is an array literal, on which map() throws.
+     *
+     * @param  class-string<Model>|null  $declared
+     */
+    private function mayHoldCollection(Expr $receiver, ?string $declared, AnalysisScope $scope): bool
+    {
+        return $declared !== null
+            && $receiver instanceof Variable
+            && is_string($receiver->name)
+            && $receiver->name !== 'this'
+            && ! (($scope->literalLocalBindings()[$receiver->name] ?? null) instanceof Array_);
     }
 
     /**
@@ -569,27 +560,39 @@ final class VariableHandler implements ExpressionHandler
                 $expr = $expr->var;
             }
 
-            $mapped = $this->mappedVariable($expr);
+            $mapped = $this->mappedReceiver($expr);
 
-            return $mapped !== null && resolve(ReceiverClassResolver::class)->resolve($mapped, $scope) === null;
+            return $mapped instanceof Variable && resolve(ReceiverClassResolver::class)->resolve($mapped, $scope) === null;
+        }
+
+        // The receiver rules type values()/all() on a variable whose element the resolver names, keys included, where
+        // its bare read may give only its `@var` type.
+        if ($expr instanceof Variable && $receiver->elementModel !== null) {
+            return false;
         }
 
         return array_all($receiver->classes, fn (string $class): bool => is_a($class, Enumerable::class, true));
     }
 
     /**
-     * The variable a `$variable->map(callback)` call maps over, else null.
+     * The receiver a `$receiver->map(callback)` call maps over, but a bare `$this`, else null.
      */
-    private function mappedVariable(Expr $expr): ?Variable
+    private function mappedReceiver(Expr $expr): ?Expr
     {
         return $expr instanceof MethodCall
-            && $expr->var instanceof Variable
-            && is_string($expr->var->name)
-            && $expr->var->name !== 'this'
+            && ! ($expr->var instanceof Variable && $expr->var->name === 'this')
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'map'
             && ! $this->mapArguments($expr)->isEmpty()
                 ? $expr->var
                 : null;
+    }
+
+    /**
+     * Whether an expression is a variable other than `$this`.
+     */
+    private function isPlainVariable(Expr $expr): bool
+    {
+        return $expr instanceof Variable && is_string($expr->name) && $expr->name !== 'this';
     }
 }

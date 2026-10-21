@@ -6,18 +6,18 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use ReflectionFunction;
@@ -33,6 +33,7 @@ use ReflectionMethod;
  */
 final class CollectionPipelineHandler implements ExpressionHandler
 {
+    use BindsMapCallbacks;
     use SpellsKeyedCollections;
 
     /** @return list<class-string<Expr>> */
@@ -64,7 +65,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         $rootResult = $this->collectRootResult($node, $engine);
 
-        if ($rootResult === null) {
+        if ($rootResult === null || ! $node instanceof FuncCall) {
             return null;
         }
 
@@ -110,7 +111,14 @@ final class CollectionPipelineHandler implements ExpressionHandler
             ];
         }
 
-        $bodyResult = $this->resolveMapBody($mapNode, $element, $ops[0]['name'] === 'all', $scope, $engine);
+        $bodyResult = $this->resolveMapCallback(
+            CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value,
+            $this->elementModel($node, $rootResult, $element, $scope),
+            ['type' => $element, 'optional' => false],
+            $ops[0]['name'] === 'all',
+            $scope,
+            $engine,
+        );
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
@@ -160,48 +168,23 @@ final class CollectionPipelineHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve a `map()` closure body with its first parameter bound to the pipeline's element type; $arrayed says the
-     * chain ends in all(), so JsonResource::filter() reaches the mapped items.
+     * The model each element of a `collect($arg)` root holds: the element model the receiver resolver names for `$arg`,
+     * else the model its value carries when the element type is that model.
      *
-     * @return ValueExpressionResult|null
+     * @param  ValueExpressionResult  $rootResult
+     * @return class-string<Model>|null
      */
-    private function resolveMapBody(MethodCall $mapNode, string $element, bool $arrayed, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function elementModel(FuncCall $root, array $rootResult, string $element, AnalysisScope $scope): ?string
     {
-        $mapArg = CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value;
+        $argument = CallArguments::for($root, new ReflectionFunction('collect'))->named('value')?->value;
+        $named = $argument === null ? null : resolve(ReceiverClassResolver::class)->resolve($argument, $scope)?->elementModel;
 
-        // A callable-array or a bare string callable is itself a resolvable expression, so the engine
-        // would answer with *that* — 'strtoupper' → 'string', wrongly wrapped here to 'string[]'.
-        if (! $mapArg instanceof ArrowFunction && ! $mapArg instanceof ClosureExpr) {
-            return null;
+        if ($named !== null) {
+            return $named;
         }
 
-        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
-        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
-            return null;
-        }
+        $carried = $rootResult['modelFqcn'] ?? null;
 
-        $previousNameBindings = $scope->nameBindings();
-        $filters = $scope->filtersNestedResources;
-        $outerArrayed = $scope->mapResultArrayed;
-
-        try {
-            $scope->filtersNestedResources = $filters && $arrayed;
-            $scope->mapResultArrayed = false;
-            // A model or collection binding outranks varValueBindings for a bare read, so the name is freed first.
-            $scope->claimParameters($mapArg);
-
-            if ($mapArg->params !== []
-                && $mapArg->params[0]->var instanceof Variable
-                && is_string($mapArg->params[0]->var->name)
-            ) {
-                $scope->varValueBindings[$mapArg->params[0]->var->name] = ['type' => $element, 'optional' => false];
-            }
-
-            return $engine->resolve($mapArg);
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
-            $scope->filtersNestedResources = $filters;
-            $scope->mapResultArrayed = $outerArrayed;
-        }
+        return $carried !== null && is_a($carried, Model::class, true) && class_basename($carried) === $element ? $carried : null;
     }
 }

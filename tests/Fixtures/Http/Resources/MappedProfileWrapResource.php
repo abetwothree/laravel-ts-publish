@@ -11,7 +11,7 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /**
- * A resource wrapped around a nullable profile inside a map(): a member's, or in a collect() pipeline the owner's.
+ * A resource wrapped around a nullable profile inside a map(): a member's, or in a collect() pipeline the owner's too.
  * JsonResource::filter() turns it into null only where it reaches the mapped items as an array; inside a Collection the
  * wrap serializes itself, and ProfileResource throws on its null payload.
  *
@@ -33,6 +33,8 @@ class MappedProfileWrapResource extends JsonResource
             'chain_wrapped_all' => $this->members->map(fn (User $m) => ['profile' => new ProfileResource($m->profile)])->all(),
             'pipe_owner_wrapped' => collect($this->members)->map(fn (User $m) => ['profile' => new ProfileResource($this->owner?->profile)]),
             'pipe_owner_wrapped_all' => collect($this->members)->map(fn (User $m) => ['profile' => new ProfileResource($this->owner?->profile)])->all(),
+            'pipe_member_wrapped' => collect($this->members)->map(fn (User $m) => ['profile' => new ProfileResource($m->profile)]),
+            'pipe_member_wrapped_all' => collect($this->members)->map(fn (User $m) => ['profile' => new ProfileResource($m->profile)])->all(),
             'owner_wrapped' => $this->whenLoaded('owner', fn ($owner) => ['profile' => new ProfileResource($owner->profile)]),
         ];
     }

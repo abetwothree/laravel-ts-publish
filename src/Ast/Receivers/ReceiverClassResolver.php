@@ -487,8 +487,8 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable an inline `@var` declares: the annotated assignment replaces what it held, so its own value is
-     * read, and the `@var` fills in only where that names no class the engine can use, with the model its collection
-     * generic lists.
+     * read. The `@var` fills in only where that names no class the engine can use, or the element an Eloquent
+     * collection value leaves unnamed, with the model its collection generic lists.
      *
      * @param  VarDocBinding  $span
      */
@@ -497,7 +497,13 @@ final class ReceiverClassResolver
         $assigned = $this->fromBoundExpression($name, $span['expr'], $scope);
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
-            return $assigned;
+            $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class]
+                ? $this->declaredElementModel($span, $assigned)
+                : null;
+
+            return $element === null
+                ? $assigned
+                : new ReceiverType($assigned->classes, $assigned->shortCircuits, $element, keyed: $assigned->keyed);
         }
 
         $declared = $this->typeOf($this->declaredClasses($span, $scope));

@@ -2109,6 +2109,13 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        'a @var collection over an Eloquent collection the value names no element of' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $rows */ '
+                .'$rows = new \Illuminate\Database\Eloquent\Collection($this->comments->all()); return $rows->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
         'a @var collection that admits null' => [
             '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment>|null $maybe */ '
                 .'$maybe = $this->resource->getRelationValue(\'comments\'); return $maybe?->first()?->content;',

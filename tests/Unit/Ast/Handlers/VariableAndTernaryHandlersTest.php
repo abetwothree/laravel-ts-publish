@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
@@ -382,7 +383,7 @@ it('reads $variable->map(callback: …) by name', function () {
         'expr' => $body,
     ]);
     $expr = new MethodCall(new Variable('users'), 'map', [new Arg($closure, name: new Identifier('callback'))]);
-    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+    $engine = new VariableHandlersLoopEngine([new ClosureHandler, new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
 });
@@ -434,7 +435,7 @@ it('binds the map-closure parameter over an outer binding of the same name, only
         'expr' => new Variable('comment'),
     ]);
     $expr = new MethodCall(new Variable('rows'), 'map', [new Arg($closure)]);
-    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+    $engine = new VariableHandlersLoopEngine([new ClosureHandler, new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))
         ->toBe(['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class])

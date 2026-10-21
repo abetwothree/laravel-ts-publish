@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
@@ -30,8 +31,6 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -52,6 +51,7 @@ use ReflectionMethod;
 final class RelationCollectionChainHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use BindsMapCallbacks;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
     use InspectsResourceSubject;
@@ -261,53 +261,18 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             return [...ValueResult::unknown(), ...$pluckResult];
         }
 
-        // The map argument must be a Closure/ArrowFunction: a callable-array (`[$this, 'method']`) or a
-        // bare string callable (`'strtoupper'`) is itself a valid expression node, so analyzeValueExpression()
-        // would resolve *that* — 'strtoupper' → 'string', wrongly wrapped here to 'string[]'.
+        // filter() reaches a mapped item only where the chain hands back an array.
         /** @var MethodCall $mapNode */
-        $mapArg = $this->collectionArguments($mapNode, 'map')->named('callback')?->value;
+        $bodyResult = $this->resolveMapCallback(
+            $this->collectionArguments($mapNode, 'map')->named('callback')?->value,
+            $elementModel,
+            null,
+            $terminalOp === 'all',
+            $scope,
+            $engine,
+        );
 
-        if ($mapArg === null) {
-            return null; // @codeCoverageIgnore
-        }
-
-        if (! $mapArg instanceof ArrowFunction && ! $mapArg instanceof ClosureExpr) {
-            return null;
-        }
-
-        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
-        if ($mapArg->params !== [] && $mapArg->params[0]->variadic) {
-            return null;
-        }
-
-        $previousContext = $scope->closureRelationModelClass;
-        $previousNameBindings = $scope->nameBindings();
-        $filters = $scope->filtersNestedResources;
-        $arrayed = $scope->mapResultArrayed;
-
-        try {
-            // filter() reaches a mapped item only where the chain hands back an array.
-            $scope->filtersNestedResources = $filters && $terminalOp === 'all';
-            $scope->mapResultArrayed = false;
-            $scope->closureRelationModelClass = $elementModel;
-            $scope->claimParameters($mapArg);
-
-            if ($mapArg->params !== []
-                && $mapArg->params[0]->var instanceof Variable
-                && is_string($mapArg->params[0]->var->name)
-            ) {
-                $scope->varModelBindings[$mapArg->params[0]->var->name] = $elementModel;
-            }
-
-            $bodyResult = $engine->resolve($mapArg);
-        } finally {
-            $scope->closureRelationModelClass = $previousContext;
-            $scope->restoreNameBindings($previousNameBindings);
-            $scope->filtersNestedResources = $filters;
-            $scope->mapResultArrayed = $arrayed;
-        }
-
-        if ($bodyResult['type'] === 'unknown') {
+        if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
         }
 
