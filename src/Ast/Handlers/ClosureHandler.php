@@ -71,7 +71,7 @@ final class ClosureHandler implements ExpressionHandler
                 $this->markFilledDefaults($expr, $scope);
 
                 if ($expr instanceof ClosureExpr) {
-                    $this->seedBody($expr->stmts, $scope);
+                    $this->seedBody($expr->stmts, $scope, $expr);
                     $this->bindForeachLoopVariables($expr->stmts, $scope);
                 }
 

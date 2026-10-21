@@ -202,6 +202,15 @@ test('a closure in a parameter\'s exit-block gap reads the value the block wrote
         ->toBe('string | number');
 });
 
+// A closure's own write of the name replaces what it captured, or is a variable of its own the capture never reaches;
+// an append works on the value captured.
+test('a closure that assigns its captured or its own name publishes the value it assigned', function () {
+    expect(array_intersect_key(
+        publishedResourceKeyTypes(BlockScopedParameterGapsResource::class, Post::class),
+        ['captured_written?' => true, 'shadowed?' => true, 'captured_appended?' => true],
+    ))->toBe(['captured_written?' => 'number', 'shadowed?' => 'number', 'captured_appended?' => 'string']);
+});
+
 test('a parameter passed to a transform() closure inside its exit-block gap binds the callback\'s to the gap\'s value', function () {
     expect(publishedResourceKeyTypes(BlockScopedParameterGapsResource::class, Post::class)['passed?'] ?? null)
         ->toBe('string | number');
@@ -246,7 +255,7 @@ test('sends what the block-scoped bindings publish', function () {
         ->and(json_encode(new BlockScopedBindingsResource($userImage)->resolve(Request::create('/', 'GET'))))
         ->toBe(json_encode(['bytes' => 4, 'positive_email' => 'ann@example.com', 'loaded_post_key' => null]))
         ->and(json_encode(new BlockScopedParameterGapsResource($post)->resolve($request)))
-        ->toBe(json_encode(['captured' => 'Ann', 'passed' => 'Ann']));
+        ->toBe(json_encode(['captured' => 'Ann', 'captured_written' => 7, 'shadowed' => 7, 'captured_appended' => 'Banana!', 'passed' => 'Ann']));
 });
 
 // A guard nested in a block narrows the rest of that block alone; past the block the morph's string key arm is back.

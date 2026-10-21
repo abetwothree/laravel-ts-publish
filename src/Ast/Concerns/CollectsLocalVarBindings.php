@@ -95,8 +95,9 @@ trait CollectsLocalVarBindings
      * A by-reference call that keeps a value in some form writes none: its form is recorded for the read to check.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  ClosureExpr|null  $closure  the closure whose body the statements are, whose writes end what it captured
      */
-    protected function seedBody(array $stmts, AnalysisScope $scope): void
+    protected function seedBody(array $stmts, AnalysisScope $scope, ?ClosureExpr $closure = null): void
     {
         $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
@@ -110,6 +111,10 @@ trait CollectsLocalVarBindings
             if (! $scope->bindsName($name)) {
                 unset($scope->bindingGaps[$name]);
             }
+        }
+
+        if ($closure !== null) {
+            $this->endCapturedBindings($closure, $stmts, $scope, $binding);
         }
 
         // A name no write but preg_match() reaches holds the matches past a call that surely replaced what it held.
@@ -563,6 +568,50 @@ trait CollectsLocalVarBindings
         }
 
         return $end;
+    }
+
+    /**
+     * End each outer binding of a name a closure's body assigns, past that body's first `$x = …` of it, unless the
+     * closure declares the name or imports it by reference: from there the name is the closure's own variable.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     */
+    private function endCapturedBindings(ClosureExpr $closure, array $stmts, AnalysisScope $scope, array $writes): void
+    {
+        $own = [
+            ...array_map(fn (Param $param): mixed => $param->var instanceof Variable ? $param->var->name : null, $closure->params),
+            ...array_map(fn (ClosureUse $use): mixed => $use->byRef ? $use->var->name : null, $closure->uses),
+        ];
+
+        foreach ($writes as [$name, $node, , $kind]) {
+            $end = $this->endWithin($stmts, $node);
+
+            if ($kind !== VariableWrite::Replaces || $end === null || in_array($name, $own, true) || ! $scope->bindsName($name)
+                || ($scope->bindingEnds[$name] ?? PHP_INT_MAX) <= $end
+            ) {
+                continue;
+            }
+
+            $scope->bindingEnds[$name] = $end;
+            $gaps = array_filter(
+                array_map(fn (array $gap): array => [...$gap, 1 => min($gap[1], $end)], $scope->bindingGaps[$name] ?? []),
+                fn (array $gap): bool => $gap[0] < $gap[1],
+            );
+            $guards = array_filter(
+                array_map(fn (array $guard): array => [...$guard, 'before' => min($guard['before'] ?? $end, $end)], $scope->varGuardBindings[$name] ?? []),
+                fn (array $guard): bool => $guard['after'] < $guard['before'],
+            );
+            unset($scope->bindingGaps[$name], $scope->varGuardBindings[$name]);
+
+            if ($gaps !== []) {
+                $scope->bindingGaps[$name] = array_values($gaps);
+            }
+
+            if ($guards !== []) {
+                $scope->varGuardBindings[$name] = array_values($guards);
+            }
+        }
     }
 
     /**
