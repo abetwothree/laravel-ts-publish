@@ -614,6 +614,8 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'a method called on a relation as a statement' => ['$p->author->save();', false],
     'a write before the assignment' => ['', false, '$p->title = "x"; '],
     'a write past the next assignment' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = "x";', false],
+    'a write past a block that assigns and leaves' => ['if ($c) { $p = new \\Workbench\\App\\Models\\Post; return; } $p->title = "x";', true],
+    'a write past an assignment in its own block' => ['if ($c) { $p = new \\Workbench\\App\\Models\\Post; $p->title = "x"; }', false],
     'a member read' => ['$t = $p->title;', false],
     'a method read as a value' => ['$k = $p->getKey();', false],
     'another variable written' => ['$q = new \\Workbench\\App\\Models\\Post; $q->title = "x";', false],

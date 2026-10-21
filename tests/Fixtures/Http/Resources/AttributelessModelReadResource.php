@@ -56,6 +56,32 @@ class AttributelessModelReadResource extends JsonResource
             'written_title' => $written->title,
             'offset_title' => $offset->title,
             'filled_local_title' => $filled->title,
+            'exit_filled_title' => $this->when(true, function () {
+                $post = new Post;
+
+                if ($this->is_pinned === 'never') {
+                    $post = new Post;
+
+                    return 'never';
+                }
+
+                $post->fill(['title' => 'y']);
+
+                return $post->title;
+            }),
+            'exit_written_title' => $this->when(true, function () {
+                $post = new Post;
+
+                if ($this->is_pinned === 'never') {
+                    $post = new Post;
+
+                    return 'never';
+                }
+
+                $post->title = 'w';
+
+                return $post->title;
+            }),
             'parked_title' => $parked->title,
             'shadowed_title' => $shadowed->title,
             'ran_title' => $ran->title,

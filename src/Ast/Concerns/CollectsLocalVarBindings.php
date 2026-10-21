@@ -367,8 +367,8 @@ trait CollectsLocalVarBindings
 
     /**
      * Mark the `new` a variable is bound to as holding attributes where its body fills that model, before a read or
-     * after it but before the variable's next write: Laravel then sends what was written. A write to a member or offset
-     * of the variable fills it, as does a call to an attribute writer on it, or a chain of calls on it as a statement.
+     * after it, but not past a later write in the list holding that write: Laravel then sends what was written. A write
+     * to a member or offset of the variable fills it, as does an attribute writer on it, or calls on it as a statement.
      *
      * @param  array<Node>  $body
      * @param  VariableWrites  $writes  the body's writes that replace a variable
@@ -380,12 +380,18 @@ trait CollectsLocalVarBindings
         }
 
         $from = $bound->getEndFilePos();
-        // A by-reference `use` imports the variable; a write inside that closure is a write of its own.
-        $next = array_filter($writes, fn (array $write): bool => $write[0] === $name && $write[1]->getStartFilePos() > $from
-            && $write[3] !== VariableWrite::MemberOrOffset && $write[3] !== VariableWrite::InClosure);
-        $to = min([PHP_INT_MAX, ...array_map(fn (array $write): int => $write[1]->getStartFilePos(), $next)]);
+        $cuts = [];
 
-        if ($this->fillsWithin($body, $name, $from, $to, $this->parkedClosures($body))) {
+        foreach ($writes as [$written, $node, , $kind]) {
+            // A by-reference `use` imports the variable; a write inside that closure is a write of its own.
+            if ($written === $name && $node->getStartFilePos() > $from
+                && $kind !== VariableWrite::MemberOrOffset && $kind !== VariableWrite::InClosure
+            ) {
+                $cuts[] = [$node->getStartFilePos(), $this->listEnd($this->holdingList($body, $node))];
+            }
+        }
+
+        if ($this->fillsWithin($body, $name, $from, $cuts, $this->parkedClosures($body))) {
             $bound->setAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES, true);
         }
     }
@@ -1551,40 +1557,82 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether nodes between two offsets fill the model a variable holds, outside a nested class or function, and a
-     * closure that never runs or has a variable of that name of its own. A node the source does not place is read.
+     * Whether nodes past an offset fill the model a variable holds, outside a nested class or function, a closure that
+     * never runs or has a variable of that name of its own, and each span a later write cuts off. A node the source
+     * does not place is read.
      *
      * @param  array<mixed>|Node  $nodes
+     * @param  list<array{int, int}>  $cuts  the spans past a later write of the variable, up to its list's end
      * @param  list<ArrowFunction|ClosureExpr>  $parked  the closures that never run
      */
-    private function fillsWithin(array|Node $nodes, string $name, int $from, int $to, array $parked): bool
+    private function fillsWithin(array|Node $nodes, string $name, int $from, array $cuts, array $parked): bool
     {
         foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
-            if (is_array($node) && $this->fillsWithin($node, $name, $from, $to, $parked)) {
+            if (is_array($node) && $this->fillsWithin($node, $name, $from, $cuts, $parked)) {
                 return true;
             }
 
             if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_
-                || ($node->getStartFilePos() >= 0 && ($node->getEndFilePos() < $from || $node->getStartFilePos() >= $to))
+                || ($node->getStartFilePos() >= 0 && $node->getEndFilePos() < $from)
                 || (($node instanceof ClosureExpr || $node instanceof ArrowFunction) && ! $this->sharesVariable($node, $name, $parked))
             ) {
                 continue;
             }
 
-            if ($node->getStartFilePos() > $from && $this->fills($node, $name)) {
+            $start = $node->getStartFilePos();
+
+            if ($start > $from && ! array_any($cuts, fn (array $cut): bool => $start > $cut[0] && $start <= $cut[1])
+                && $this->fills($node, $name)
+            ) {
                 return true;
             }
 
             foreach ($node->getSubNodeNames() as $subNode) {
                 $child = $node->{$subNode};
 
-                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $from, $to, $parked)) {
+                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $from, $cuts, $parked)) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /**
+     * The statement list holding a node most closely: the innermost block's, else the given list.
+     *
+     * @param  array<Node>  $stmts
+     * @return array<Node>
+     */
+    private function holdingList(array $stmts, Node $node): array
+    {
+        foreach ($stmts as $stmt) {
+            $inner = $stmt instanceof Node\Stmt && $this->encloses($stmt, $node)
+                ? array_find($this->innerBlocks($stmt), fn (array $block): bool => array_any(
+                    $block,
+                    fn (Node\Stmt $held): bool => $this->encloses($held, $node),
+                ))
+                : null;
+
+            if ($inner !== null) {
+                return $this->holdingList($inner, $node);
+            }
+        }
+
+        return $stmts;
+    }
+
+    /**
+     * The offset a statement list ends at; one the source does not place reaches past every offset.
+     *
+     * @param  array<Node>  $stmts
+     */
+    private function listEnd(array $stmts): int
+    {
+        $end = $stmts === [] ? -1 : $stmts[array_key_last($stmts)]->getEndFilePos();
+
+        return $end < 0 ? PHP_INT_MAX : $end;
     }
 
     /**
