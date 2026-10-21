@@ -1277,7 +1277,7 @@ it('warns that a when() or unless() closure requiring a parameter throws, and ke
         ]);
 });
 
-it('records one warning, naming the call, for a when() or unless() closure that requires a parameter', function (string $php, string $message) {
+it('records one warning, naming the call, for a when(), unless() or whenNotNull() closure that requires a parameter', function (string $php, string $message) {
     conditionalMethodHandlerResolveOnPost($php);
 
     expect(AnalysisWarnings::all())->toBe([['subject' => PostResource::class, 'message' => $message]]);
@@ -1293,6 +1293,10 @@ it('records one warning, naming the call, for a when() or unless() closure that 
     'a condition that binds nothing' => [
         '$this->when($this->id > 0, fn ($t) => $t)',
         'when() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
+    ],
+    'whenNotNull(), whose closure is never null' => [
+        '$this->whenNotNull(fn ($t) => $t)',
+        'whenNotNull() on line 1 calls its closure with no arguments, so the closure throws ArgumentCountError whenever it runs. Read the value inside the closure instead of taking it as a parameter.',
     ],
 ]);
 
@@ -1314,6 +1318,7 @@ it('records no warning for a when() or unless() value Laravel can call with no a
     'no parameter' => ['$this->when($this->title, fn () => $this->title)'],
     'a value that is no closure' => ['$this->when($this->title, $this->title)'],
     'unless(), an optional parameter' => ['$this->unless($this->title, fn ($t = null) => $t)'],
+    'whenNotNull(), an optional parameter' => ['$this->whenNotNull(fn ($t = null) => $t)'],
 ]);
 
 // Conditionable::when() passes its callback the object and the value, so a callback that takes them is right. Only an
