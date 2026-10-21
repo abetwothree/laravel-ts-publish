@@ -48,7 +48,7 @@ reflection answers, a decline included.
 | `static::m()`, `self::m()`, `parent::m()` | The subject, or its framework parent for `parent`, then `returnClasses()`, at any visibility. A name the subject lacks, which a macro or the resource proxy answers, reads as `$this->m()`, since PHP sends it to `__call()` |
 | `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
-| `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent`; marked unsaved |
+| `new X`, `new static`, `new self`, `new parent` | `X`, the subject for `static` and `self`, or its framework parent for `parent`; marked unsaved, and `attributeless` for a model built with no constructor argument |
 | `resolve(X::class)`, `app(X::class)` | `X` |
 | `now()`, `today()`, `collect(...)` | `Illuminate\Support\Carbon`, or `Illuminate\Support\Collection`, from `ReceiverClassResolver::HELPER_CLASSES` |
 | A ternary, `?:` or `??` | The union of the non-`null` arms. See [A ternary's `instanceof` condition](#a-ternarys-instanceof-condition). |
@@ -230,6 +230,11 @@ names:
   `newModelInstance()`, `firstOrNew()` and the rest of `UNSAVED_QUERY_MODELS`, adds `| null`: `number | null`. A fluent
   call that returns the model itself, such as `fill()`, keeps the mark. A helper parameter declared as one concrete
   model keys as `| null` only where its call passes a model no row backs yet.
+  `ReceiverType::$attributeless` is narrower: only a `new` model with no constructor argument holds no attributes, a
+  callback default `= new X` included, so its column reads add `| null` too, as
+  [Property access on a receiver](#property-access-on-a-receiver) says. A `replicate()` copy, a `make()`,
+  `firstOrNew()` and `new X([...])` hold the attributes they were given, so their columns keep the plain type, and any
+  step that returns a model, `fill()` included, clears the flag.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
 - **`getAuthIdentifier()`**: on a model that runs `Authenticatable`'s own, the type from
@@ -397,7 +402,8 @@ Each class types the property one of two ways:
 
 - **A model**: `ModelAttributeResolver::resolveAttribute()`, then `resolveRelation()`, the order `Model::__get()` uses.
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
-  its import.
+  its import. On an `attributeless` receiver a column adds `| null`, as Laravel reads a missing attribute, unless the
+  model's new instance holds a default for it or an accessor or cast class computes it; a relation reads as ever.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
