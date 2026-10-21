@@ -44,11 +44,13 @@ test('a value left only never[] by a dropped arm warns with the arm it left out'
     expect(placeholderWarnings(DroppedArmPlaceholderResource::class))
         ->toContain(placeholderWarning(33, $never, '$this->opaqueRows()'))
         ->toContain(placeholderWarning(34, $never, '$rows'))
+        ->toContain(placeholderWarning(54, $never, '$this->opaqueRows()'))
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
             'ternary' => 'never[]',
             'coalesce' => 'never[]',
             'literal' => 'never[]',
             'kept' => 'string | null',
+            'walked?' => '{ id: number; rows: never[] }',
         ]);
 });
 
@@ -61,6 +63,7 @@ test('a value left only null by a dropped arm warns too', function () {
         placeholderWarning(36, '`null | never[]`, as if it were always null or an empty array', '$this->opaqueRows()'),
         placeholderWarning(27, $null, '$this->opaqueRows()'),
         placeholderWarning(48, $null, '$value'),
+        placeholderWarning(54, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
     ])
         ->and(placeholderWarnings(UnionHonestyResource::class))->toBe(array_map(
             fn (int $line): string => UnionHonestyResource::class.": The value on line {$line} publishes {$null}, because "

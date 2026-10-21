@@ -20957,6 +20957,11 @@
                     "name": "binding_join_written",
                     "type": "string",
                     "optional": true
+                },
+                {
+                    "name": "walk_branch_join",
+                    "type": "{ id: number; value: string }",
+                    "optional": true
                 }
             ]
         },

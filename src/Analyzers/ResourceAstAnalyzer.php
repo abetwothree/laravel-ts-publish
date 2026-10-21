@@ -576,6 +576,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * The scope this analyzer reads its subject in.
+     */
+    protected function analysisScope(): AnalysisScope
+    {
+        return $this->scope;
+    }
+
+    /**
      * A new, empty resource analysis for a returned variable's walk to fill.
      */
     protected function newVariableAnalysis(): ResourceAnalysis

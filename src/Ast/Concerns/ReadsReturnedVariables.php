@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -49,12 +52,17 @@ use ReflectionClass;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type UntypedKeyWrite = array{string, Expr}
+ *
  * @internal
  */
 trait ReadsReturnedVariables
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
+
+    /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
+    private array $untypedKeyWrites = [];
 
     /**
      * The analysis of a whole-array write's value, or null for an expression the host does not read.
@@ -79,6 +87,11 @@ trait ReadsReturnedVariables
      * @return ReflectionClass<object>
      */
     abstract protected function subjectReflection(): ReflectionClass;
+
+    /**
+     * The scope the walk reads in, which an arm its join leaves out is recorded against.
+     */
+    abstract protected function analysisScope(): AnalysisScope;
 
     /**
      * The string, int or class-constant literal a local holds at a read where the host binds it, so a key write or an
@@ -249,6 +262,7 @@ trait ReadsReturnedVariables
             $appended = $appendedValue === null ? null : $this->appendedKey($appendedValue);
 
             if ($appended !== null) {
+                $this->noteUntypedWrite($appended['name'], $appendedValue, $appended['result']);
                 $this->writeKey($into, $appended['name'], $appended['result'], $isConditional);
 
                 continue;
@@ -289,6 +303,7 @@ trait ReadsReturnedVariables
                     $into->replaceWith($this->newVariableAnalysis());
                 }
 
+                $this->noteUntypedItems($stmt->expr->expr, $baseAnalysis);
                 $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
@@ -309,6 +324,7 @@ trait ReadsReturnedVariables
                 }
 
                 $addedAnalysis->dropKeysHeldBy($into);
+                $this->noteUntypedItems($stmt->expr->expr, $addedAnalysis);
                 $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
 
                 continue;
@@ -324,6 +340,7 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
+                $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
                     $into->addSignatureEntry($keyName, $result);
@@ -480,8 +497,15 @@ trait ReadsReturnedVariables
     {
         $analysis = $this->newVariableAnalysis();
         $live = $this->fromLastReplacement($stmts, $varName);
+        // A value read during the walk can start a walk of its own, whose writes are not this one's.
+        $outer = $this->untypedKeyWrites;
+        $this->untypedKeyWrites = [];
 
-        $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+        try {
+            $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+        } finally {
+            $this->untypedKeyWrites = $outer;
+        }
 
         return $analysis;
     }
@@ -620,14 +644,17 @@ trait ReadsReturnedVariables
             return;
         }
 
-        $walked = array_map(function (array $body) use ($varName, $isConditional, $into, $topLevel): MethodAnalysis {
+        $branches = $mayRunNone ? [clone $into] : [];
+        // Each branch's span of the untyped writes: the copy of the keys held before holds those written before.
+        $spans = $mayRunNone ? [[0, count($this->untypedKeyWrites)]] : [];
+
+        foreach ($bodies as $body) {
+            $from = count($this->untypedKeyWrites);
             $branch = clone $into;
             $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
-
-            return $branch;
-        }, $bodies);
-
-        $branches = [...($mayRunNone ? [clone $into] : []), ...$walked];
+            $branches[] = $branch;
+            $spans[] = [$from, count($this->untypedKeyWrites)];
+        }
 
         foreach ($branches as $index => $branch) {
             foreach (array_slice($branches, 0, $index) as $earlier) {
@@ -635,7 +662,96 @@ trait ReadsReturnedVariables
             }
         }
 
-        $into->replaceWith($this->joinedBranches($branches));
+        $joined = $this->joinedBranches($branches);
+        $this->recordJoinDrops($joined, $branches, $spans);
+        $into->replaceWith($joined);
+    }
+
+    /**
+     * Record each branch value a join left out beside a typed one, naming the last untyped write of its key in the
+     * branch's span, and warn where that leaves the key only `null` or `never[]`.
+     *
+     * @param  non-empty-list<TAnalysis>  $branches
+     * @param  list<array{int, int}>  $spans  each branch's span of untypedKeyWrites
+     */
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $spans): void
+    {
+        if ($this->untypedKeyWrites === []) {
+            return;
+        }
+
+        $types = array_map(
+            fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
+            $branches,
+        );
+
+        foreach ($joined->properties as $property) {
+            if ($property['type'] === 'unknown') {
+                continue;
+            }
+
+            $dropped = [];
+
+            foreach ($types as $index => $branchTypes) {
+                $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
+                    ? $this->lastUntypedWrite($property['name'], $spans[$index][0], $spans[$index][1])
+                    : null;
+
+                if ($write !== null) {
+                    DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
+                    $dropped[] = $write;
+                }
+            }
+
+            $union = [...ValueResult::unknown(), 'type' => $property['type']];
+            DroppedUnionArms::warnOfPlaceholder($union, $dropped, $this->analysisScope());
+        }
+    }
+
+    /**
+     * The last value the walk wrote a key that the engine cannot type, within a span of its untyped writes.
+     */
+    private function lastUntypedWrite(string $key, int $from, int $to): ?Expr
+    {
+        for ($index = $to - 1; $index >= $from; $index--) {
+            if ($this->untypedKeyWrites[$index][0] === $key) {
+                return $this->untypedKeyWrites[$index][1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Note each item of an array literal written whole whose key the write's analysis types `unknown`.
+     */
+    private function noteUntypedItems(Expr $array, MethodAnalysis $write): void
+    {
+        if (! $array instanceof Array_) {
+            return;
+        }
+
+        $types = array_column($write->properties, 'type', 'name');
+
+        foreach ($array->items as $item) {
+            $key = $item->key === null || $item->unpack ? null : $this->namedKey($item->key);
+
+            if ($key !== null && ($types[$key] ?? null) === 'unknown') {
+                $this->untypedKeyWrites[] = [$key, $item->value];
+            }
+        }
+    }
+
+    /**
+     * Note a key write whose value the engine cannot type, which a join may leave out beside a typed branch.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function noteUntypedWrite(string $key, Expr $value, array $result): void
+    {
+        if ($result['type'] === 'unknown') {
+            $this->untypedKeyWrites[] = [$key, $value];
+        }
     }
 
     /**

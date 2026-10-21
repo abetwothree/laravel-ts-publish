@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -551,6 +552,28 @@ test('a value a branch cannot type drops beside a typed one, and a lone null sta
     'beside a value held before' => ['$d = ["a" => 1]; if ($x) { $d["a"] = $nowhere; }', 'a: number'],
     'beside a lone null' => ['$d = []; if ($x) { $d["b"] = null; } else { $d["b"] = $nowhere; }', 'b: null'],
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
+]);
+
+// The arm left out is the last write of its key in the branch, or before the branches for the keys held before them.
+test('the join records each branch value it leaves out, a value held before the branches included', function (string $body, array $dropped) {
+    DroppedUnionArms::start();
+
+    try {
+        walkedVariable($body);
+    } finally {
+        $recorded = DroppedUnionArms::stop();
+    }
+
+    expect(array_map(fn (array $arm): string => $arm['expression'].' '.$arm['site'], $recorded))->toBe($dropped);
+})->with([
+    'a branch' => ['$d = ["a" => 1]; if ($x) { $d["a"] = $nowhere; }', ['$nowhere walk-branch-join']],
+    'a key held before' => ['$d = []; $d["a"] = $nowhere; if ($x) { $d["a"] = 1; }', ['$nowhere walk-branch-join']],
+    'an item held before' => ['$d = ["a" => $nowhere]; foreach ($rows as $row) { $d["a"] = 1; }', ['$nowhere walk-branch-join']],
+    'the last write in a branch' => [
+        '$d = []; if ($x) { $d["a"] = $first; $d["a"] = $last; } else { $d["a"] = 1; }',
+        ['$last walk-branch-join'],
+    ],
+    'every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', []],
 ]);
 
 test('a branch that throws leaves the join, so Laravel sends the key only as the other branch writes it', function () {

@@ -13,7 +13,7 @@ use Workbench\App\Models\Post;
  *
  * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
  * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
- * 'binding_join' keys through a parameter's join past a block, the value passed and the one the block writes.
+ * 'binding_join' keys through a parameter's join past a block, and 'walk_branch_join' through a local's branch join.
  *
  * @mixin Post
  */
@@ -50,6 +50,17 @@ final class UnionHonestyResource extends JsonResource
                 }
 
                 return $title;
+            }),
+            'walk_branch_join' => $this->when($this->id > 0, function () {
+                $built = ['id' => $this->id];
+
+                if ($this->id > 1) {
+                    $built['value'] = $this->opaqueValue();
+                } else {
+                    $built['value'] = $this->title;
+                }
+
+                return $built;
             }),
         ];
     }
