@@ -81,7 +81,7 @@ test('a write that keeps the loaded comments keeps the binding, and a plain valu
         'upper?' => 'string',
         'same?' => 'string',
         'trimmed_upper?' => 'string',
-        'filtered_options?' => 'Record<string, string> | null',
+        'filtered_options?' => 'Record<string, string>',
     ])->and($sent)->toMatchArray([
         'merged_contents' => ['alpha', 'beta'],
         'collected_contents' => ['alpha', 'beta'],

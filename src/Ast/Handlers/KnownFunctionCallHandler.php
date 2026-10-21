@@ -240,8 +240,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * `array_filter($array)` as the array it is passed, arm by arm: each key it keeps is kept, so a list it leaves a
-     * gap in sends json_encode()'s object of int keys, and with no callback no value is null. A `null` arm stays, since
-     * the call takes only an array. Null when any other arm, such as a shape or a tuple, leaves the array unread.
+     * gap in sends json_encode()'s object of int keys, and with no callback no value is null. A `null` arm is left out,
+     * as PHP throws a TypeError on null; null when another arm, such as a shape or a tuple, leaves the array unread.
      *
      * @return ValueExpressionResult|null
      */
@@ -259,6 +259,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $arms = [];
 
         foreach (TsTypeString::splitTopLevelUnion($result['type']) as $arm) {
+            if ($arm === 'null') {
+                continue;
+            }
+
             $kept = $this->filteredArm($arm, $dropsNull);
 
             if ($kept === null) {
@@ -268,6 +272,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $arms[] = $kept;
         }
 
+        if ($arms === []) {
+            return null;
+        }
+
         unset($result['keepsKeys']);
 
         return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
@@ -275,14 +283,10 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * What array_filter() leaves of one arm of its array: a Record as itself, a list as itself or the object its gaps
-     * make, each value without its `null` arm where the filter drops nulls, and `null` as it is; null for another arm.
+     * make, each value without its `null` arm where the filter drops nulls; null for any other arm.
      */
     private function filteredArm(string $arm, bool $dropsNull): ?string
     {
-        if ($arm === 'null') {
-            return $arm;
-        }
-
         $record = str_starts_with($arm, 'Record<') && str_ends_with($arm, '>')
             ? TsTypeShape::splitTopLevel(substr($arm, strlen('Record<'), -1), [','])
             : [];

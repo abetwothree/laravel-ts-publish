@@ -28,12 +28,13 @@ function directCallsJson(): string
     return (string) json_encode(new DirectCallsResource($post)->resolve(Request::create('/')));
 }
 
-// array_filter() keeps each key it keeps, so a list it leaves a gap in is json_encode()'s object of int keys.
+// array_filter() keeps each key it keeps, so a list it leaves a gap in is json_encode()'s object of int keys. It throws
+// a TypeError on null, so a null arm of its argument never reaches a response.
 it('reads array_filter() as its array argument, keys kept, and with no callback drops its null values', function (string $php, string $type) {
     expect(knownFunctionCallType($php))->toBe($type);
 })->with([
-    'a record' => ['array_filter($this->options)', 'Record<string, string> | null'],
-    'a record, with a callback' => ['array_filter($this->options, fn ($o) => $o !== "x")', 'Record<string, string> | null'],
+    'a record or null' => ['array_filter($this->options)', 'Record<string, string>'],
+    'a record or null, with a callback' => ['array_filter($this->options, fn ($o) => $o !== "x")', 'Record<string, string>'],
     'a list' => ['array_filter([1, 2])', 'number[] | Record<number, number>'],
     'a list holding null' => ['array_filter([$this->title, null])', 'string[] | Record<number, string>'],
     'a list holding null, with a callback' => [
@@ -49,6 +50,7 @@ it('leaves array_filter() of a value it cannot read as an array to unknown', fun
     expect(knownFunctionCallType($php))->toBe('unknown');
 })->with([
     'no array' => ['array_filter()'],
+    'null alone' => ['array_filter(null)'],
     'a spread' => ['array_filter(...$this->options)'],
     'a string' => ['array_filter($this->title)'],
     'an untyped value' => ['array_filter(json_decode($this->title))'],
@@ -57,8 +59,8 @@ it('leaves array_filter() of a value it cannot read as an array to unknown', fun
 
 it('publishes array_filter() as the array Laravel sends, and a gap in a list as an object', function () {
     expect(publishedResourceKeyTypes(DirectCallsResource::class, Post::class))->toMatchArray([
-        'filtered' => 'Record<string, string> | null',
-        'filtered_by' => 'Record<string, string> | null',
+        'filtered' => 'Record<string, string>',
+        'filtered_by' => 'Record<string, string>',
         'filtered_list' => 'string[] | Record<number, string>',
         'filtered_nulls' => 'string[] | Record<number, string>',
         'filtered_nulls_by' => '(string | null)[] | Record<number, string | null>',
