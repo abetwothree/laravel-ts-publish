@@ -222,7 +222,7 @@ test('preg_match() with no flag and no named group writes a list of strings, but
         'list' => 'unknown',
         'parameter' => 'unknown',
         'listed_parameter' => 'string[][]',
-        'run_parameter' => 'unknown',
+        'run_parameter' => 'string[][]',
     ])
         ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/'))))
         ->toBe('{"m":["Ba","B","a"],"bare":["Ba","B","a"],"named":{"0":"B","first":"B","1":"B"},"offsets":[["B",0],["B",0]],'

@@ -452,13 +452,13 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a read holds the list of strings preg_match() writes into a name no binding and no other write reaches: a
-     * call the read falls past was its first write, since a skipped call leaves the name undefined, which Laravel
-     * throws on and `??` replaces with its default.
+     * Whether a read holds the list of strings preg_match() writes into a name no other write reaches, past a call and
+     * no longer holding a binding: only a call that is a statement of the body ends one. A skipped call leaves an
+     * unbound name undefined, which Laravel throws on and `??` replaces with its default.
      */
     private function writtenWhole(Variable $read, AnalysisScope $scope): bool
     {
-        if (! is_string($read->name) || $scope->bindsName($read->name)) {
+        if (! is_string($read->name) || ($scope->bindsName($read->name) && $scope->holdsBinding($read))) {
             return false;
         }
 

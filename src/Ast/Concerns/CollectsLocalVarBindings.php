@@ -97,7 +97,7 @@ trait CollectsLocalVarBindings
             }
         }
 
-        // A name only preg_match() writes holds nothing before its first call, so a read past it holds the matches.
+        // A name no write but preg_match() reaches holds the matches past a call that surely replaced what it held.
         $written = array_column([...$replacing, ...array_filter(
             $kept,
             fn (array $write): bool => $write[1]['effect'] !== ByReferenceEffect::WritesMatches,

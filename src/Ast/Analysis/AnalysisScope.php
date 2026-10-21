@@ -290,7 +290,7 @@ final class AnalysisScope
      * name each writes: `sort()` keeps a list, `asort()` an object. Written by CollectsLocalVarBindings, which binds
      * the variable across them; a read past a call, and before the end of a block it returns from, takes its form.
      *
-     * A form's `sole` says no write but calls of its effect reaches the name, so the name holds nothing before them.
+     * A form's `sole` says no write but calls of its effect reaches the name.
      *
      * @var ByReferenceFormsMap
      */
