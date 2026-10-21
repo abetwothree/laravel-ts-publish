@@ -568,7 +568,7 @@ final class ReceiverClassResolver
         $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
         $filters = $method === 'only' || $method === 'except';
         $passed = $arguments->named($filters ? 'keys' : 'key')?->value;
-        $nothing = $passed === null || ($passed instanceof ConstFetch && $passed->name->toLowerString() === 'null');
+        $nothing = $passed === null || $this->isNullLiteral($passed);
 
         return match (true) {
             $arguments->hasUnpack() => true,
@@ -797,9 +797,7 @@ final class ReceiverClassResolver
         // binding past a write naming no class keeps it for this one too.
         $values = array_values(array_filter(
             $gap[2] ?? [],
-            fn (Expr $value): bool => $gap[4]
-                || ! $value instanceof ConstFetch
-                || $value->name->toLowerString() !== 'null',
+            fn (Expr $value): bool => $gap[4] || ! $this->isNullLiteral($value),
         ));
         $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
             fn (Expr $value): ?ReceiverType => $this->fromWrite($name, $value, $scope),
@@ -1122,7 +1120,7 @@ final class ReceiverClassResolver
         $shortCircuits = false;
 
         foreach ($arms as $index => $arm) {
-            if ($arm instanceof ConstFetch && $arm->name->toLowerString() === 'null') {
+            if ($this->isNullLiteral($arm)) {
                 continue;
             }
 
@@ -1641,6 +1639,14 @@ final class ReceiverClassResolver
             && $expr->name->toLowerString() === 'class'
                 ? $expr->class
                 : null;
+    }
+
+    /**
+     * Whether an expression is the `null` constant.
+     */
+    private function isNullLiteral(Expr $expr): bool
+    {
+        return $expr instanceof ConstFetch && $expr->name->toLowerString() === 'null';
     }
 
     /**
