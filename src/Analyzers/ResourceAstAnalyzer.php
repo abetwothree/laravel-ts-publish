@@ -65,7 +65,6 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -585,34 +584,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         }
 
         $this->seedBody($stmts, $this->scope);
-        $this->bindForeachLoopVariables($stmts);
-    }
-
-    /**
-     * Bind a top-level `foreach ($this->{manyRelation} as $item)`'s value variable to the relation's
-     * element model, for the whole method — mirrors `collectLocalVarBindings()`'s method-wide scope.
-     *
-     * @param  array<Node\Stmt>  $stmts
-     */
-    protected function bindForeachLoopVariables(array $stmts): void
-    {
-        foreach ($stmts as $stmt) {
-            if (! $stmt instanceof Foreach_
-                || ! $stmt->valueVar instanceof Variable
-                || ! is_string($stmt->valueVar->name)
-                || ! $stmt->expr instanceof PropertyFetch
-                || ! $this->isThisPropertyFetch($stmt->expr)
-                || ! $stmt->expr->name instanceof Identifier
-            ) {
-                continue;
-            }
-
-            $relationInfo = $this->resolveModelRelationTypeInfo($stmt->expr->name->toString(), $this->scope);
-
-            if (str_ends_with($relationInfo['type'], '[]') && $relationInfo['modelFqcn'] !== null) {
-                $this->scope->varModelBindings[$stmt->valueVar->name] = $relationInfo['modelFqcn'];
-            }
-        }
+        $this->bindForeachLoopVariables($stmts, $this->scope);
     }
 
     /**

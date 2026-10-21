@@ -7,6 +7,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Support\Facades\Config;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Foreach_;
 
 /**
  * Resolve a `$this->{name}` property as a relation on the scope's backing model.
@@ -21,6 +27,11 @@ use Illuminate\Support\Facades\Config;
  */
 trait ResolvesModelRelationTypes
 {
+    /**
+     * Whether an expression is a `$this->prop` property fetch, whichever property it names.
+     */
+    abstract protected function isThisPropertyFetch(Expr $expr): bool;
+
     /**
      * Resolve a `$this->{name}` property as a model relation, in ModelAttributeResolver::resolveRelation()'s
      * {type, modelFqcn, morphFqcns} shape — a to-many relation's type ends in '[]'.
@@ -47,5 +58,32 @@ trait ResolvesModelRelationTypes
         }
 
         return resolve(ModelAttributeResolver::class)->relationLoadsNull($scope->modelClass, $name);
+    }
+
+    /**
+     * Bind a top-level `foreach ($this->{manyRelation} as $item)`'s value variable to the relation's element model, for
+     * the whole body, as seedBody() binds a local.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    protected function bindForeachLoopVariables(array $stmts, AnalysisScope $scope): void
+    {
+        foreach ($stmts as $stmt) {
+            if (! $stmt instanceof Foreach_
+                || ! $stmt->valueVar instanceof Variable
+                || ! is_string($stmt->valueVar->name)
+                || ! $stmt->expr instanceof PropertyFetch
+                || ! $this->isThisPropertyFetch($stmt->expr)
+                || ! $stmt->expr->name instanceof Identifier
+            ) {
+                continue;
+            }
+
+            $relationInfo = $this->resolveModelRelationTypeInfo($stmt->expr->name->toString(), $scope);
+
+            if (str_ends_with($relationInfo['type'], '[]') && $relationInfo['modelFqcn'] !== null) {
+                $scope->varModelBindings[$stmt->valueVar->name] = $relationInfo['modelFqcn'];
+            }
+        }
     }
 }

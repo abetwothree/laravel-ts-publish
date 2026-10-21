@@ -172,6 +172,15 @@ final class AnalysisScope
     public bool $reindexesNumericKeys = false;
 
     /**
+     * Whether JsonResource::filter() reaches the value being read, so a nested resource around null is sent as null.
+     * False while a map() body resolves whose result stays a Collection: filter() recurses into arrays only.
+     */
+    public bool $filtersNestedResources = true;
+
+    /** Whether the map() call being read is turned into an array by a trailing all(), so filter() reaches its items. */
+    public bool $mapResultArrayed = false;
+
+    /**
      * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
      *
      * @var class-string<Model>|null

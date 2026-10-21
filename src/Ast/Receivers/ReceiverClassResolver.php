@@ -785,7 +785,9 @@ final class ReceiverClassResolver
             return ReceiverType::of($receiver->relatedModel, $shortCircuits);
         }
 
-        $loaded = $method === 'getRelation' ? $this->loadedRelation($call, $receiver, $shortCircuits) : null;
+        $loaded = in_array($method, ['getRelation', 'getRelationValue'], true)
+            ? $this->loadedRelation($call, $receiver, $shortCircuits)
+            : null;
 
         if ($loaded !== null) {
             return $loaded;
@@ -1102,8 +1104,8 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What a model's `getRelation('name')` hands back: the relation loaded under that name on each model it may be
-     * called on, since it throws for a name that is not loaded.
+     * What a model's `getRelation('name')` or `getRelationValue('name')` hands back: the relation under that name on
+     * each model it may be called on, since the first throws for a name that is not loaded and the second loads it.
      */
     private function loadedRelation(
         MethodCall|NullsafeMethodCall $call,

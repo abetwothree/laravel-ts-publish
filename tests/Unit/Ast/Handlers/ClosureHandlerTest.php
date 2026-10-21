@@ -482,8 +482,7 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'same_model?' => 'string',
         'relation_bio?' => 'string | null',
         'relation_website?' => 'string | null',
-        // A relation read through a model-bound variable is unknown, so the local it binds is too (#93).
-        'relation_bare?' => 'unknown',
+        'relation_bare?' => 'Profile | null',
         'narrowed_bio?' => 'string | null',
         'narrowed_website?' => 'string | null',
         'mapped_reassigned?' => 'unknown',

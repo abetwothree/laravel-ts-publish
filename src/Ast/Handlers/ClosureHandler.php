@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -37,6 +38,7 @@ final class ClosureHandler implements ExpressionHandler
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
+    use ResolvesModelRelationTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -59,6 +61,7 @@ final class ClosureHandler implements ExpressionHandler
 
                 if ($expr instanceof ClosureExpr) {
                     $this->seedBody($expr->stmts, $scope);
+                    $this->bindForeachLoopVariables($expr->stmts, $scope);
                 }
 
                 $bodyResult = count($closureReturns) === 1

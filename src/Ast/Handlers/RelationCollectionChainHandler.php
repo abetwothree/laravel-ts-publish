@@ -246,14 +246,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         }
 
         if ($pluckNode !== null) {
-            $previousContext = $scope->closureRelationModelClass;
-            $scope->closureRelationModelClass = $elementModel;
-
-            try {
-                $pluckResult = $this->analyzeVariablePluckCall($pluckNode, $scope);
-            } finally {
-                $scope->closureRelationModelClass = $previousContext;
-            }
+            $pluckResult = $this->analyzeVariablePluckCall($pluckNode, $scope, $elementModel);
 
             // analyzeVariablePluckCall() degrades an unresolved field to 'unknown[]'; normalize to null
             // so the caller's fallthrough produces plain 'unknown' like every other unrecognized chain.
@@ -289,8 +282,11 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
         $previousContext = $scope->closureRelationModelClass;
         $previousNameBindings = $scope->nameBindings();
+        $filters = $scope->filtersNestedResources;
 
         try {
+            // filter() reaches a mapped item only where the chain hands back an array.
+            $scope->filtersNestedResources = $filters && $terminalOp === 'all';
             $scope->closureRelationModelClass = $elementModel;
             $scope->claimParameters($mapArg);
 
@@ -305,6 +301,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         } finally {
             $scope->closureRelationModelClass = $previousContext;
             $scope->restoreNameBindings($previousNameBindings);
+            $scope->filtersNestedResources = $filters;
         }
 
         if ($bodyResult['type'] === 'unknown') {

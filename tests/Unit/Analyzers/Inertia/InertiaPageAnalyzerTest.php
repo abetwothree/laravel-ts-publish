@@ -176,11 +176,16 @@ it('types the route-bound model parameter and the injected service call', functi
     expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } }');
 });
 
-// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
-// model, in a branch or not, keeps the parameter's binding.
+it('types a route-bound model\'s relation reads by the models they load', function () {
+    expect(pageData(TypedActionParametersController::class.'@relations')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { author: User, comments: Comment[] }');
+});
+
+// `$post->author` reads as the relation's model through a model-bound variable, so `bare` follows it there; a copy of
+// the same model, in a branch or not, keeps the parameter's binding.
 it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
     expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
@@ -188,7 +193,7 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->toBe('Inertia.SharedData & { post: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)

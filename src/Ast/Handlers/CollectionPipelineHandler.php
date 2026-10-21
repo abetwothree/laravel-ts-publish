@@ -110,7 +110,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             ];
         }
 
-        $bodyResult = $this->resolveMapBody($mapNode, $element, $scope, $engine);
+        $bodyResult = $this->resolveMapBody($mapNode, $element, $ops[0]['name'] === 'all', $scope, $engine);
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
@@ -162,9 +162,10 @@ final class CollectionPipelineHandler implements ExpressionHandler
     /**
      * Resolve a `map()` closure body with its first parameter bound to the pipeline's element type.
      *
+     * @param  bool  $arrayed  the chain ends in all(), so JsonResource::filter() reaches the mapped items
      * @return ValueExpressionResult|null
      */
-    private function resolveMapBody(MethodCall $mapNode, string $element, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function resolveMapBody(MethodCall $mapNode, string $element, bool $arrayed, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $mapArg = CallArguments::for($mapNode, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value;
 
@@ -180,8 +181,10 @@ final class CollectionPipelineHandler implements ExpressionHandler
         }
 
         $previousNameBindings = $scope->nameBindings();
+        $filters = $scope->filtersNestedResources;
 
         try {
+            $scope->filtersNestedResources = $filters && $arrayed;
             // A model or collection binding outranks varValueBindings for a bare read, so the name is freed first.
             $scope->claimParameters($mapArg);
 
@@ -195,6 +198,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             return $engine->resolve($mapArg);
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
+            $scope->filtersNestedResources = $filters;
         }
     }
 }

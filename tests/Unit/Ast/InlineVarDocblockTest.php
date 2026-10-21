@@ -419,18 +419,20 @@ describe('an inline @var on a local assignment', function () {
             ->and($reader->readDeclared($tag[0] ?? '', $context)['type'] ?? null)->toBe('{ a: number; b: { c: number } | null }');
     });
 
-    test('keeps the loaded relation\'s model for a member read when the declaration admits it', function () {
-        $closure = fn (string $declared): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
+    // The loaded relation's model is no evidence of what a local holds, so only the assigned value or the tag types it.
+    test('never reads a member of a declared local through the loaded relation\'s model', function () {
+        $closure = fn (string $declared, string $value): Expr => new AstParser()->parseSource('<?php $this->whenLoaded("author", function () {
             /** @var '.$declared.' $o */
-            $o = json_decode("");
+            $o = '.$value.';
 
             return $o->name;
         });')[0]->expr;
-        $resolved = fn (string $declared): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
-            ->resolve($closure($declared))['type'];
+        $resolved = fn (string $declared, string $value = 'json_decode("")'): string => new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)
+            ->resolve($closure($declared, $value))['type'];
 
-        expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('string')
-            ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown');
+        expect($resolved('\Illuminate\Database\Eloquent\Model'))->toBe('unknown')
+            ->and($resolved('\Workbench\App\ValueObjects\CartTotals'))->toBe('unknown')
+            ->and($resolved('\Illuminate\Database\Eloquent\Model', '$this->resource->getRelationValue("author")'))->toBe('string');
     });
     test('types a local from its assigned value when the engine reads it, and from the tag only where that is vague', function () {
         $value = function (string $body, ?string $modelOf = null): string {

@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -81,7 +80,15 @@ final class VariableHandler implements ExpressionHandler
             && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
             && $this->holdsOnlyCollections($expr->var, $scope)
         ) {
-            $receiverResult = $engine->resolve($expr->var);
+            $arrayed = $scope->mapResultArrayed;
+
+            try {
+                $scope->mapResultArrayed = $arrayed || $expr->name->toString() === 'all';
+                $receiverResult = $engine->resolve($expr->var);
+            } finally {
+                $scope->mapResultArrayed = $arrayed;
+            }
+
             $type = $expr->name->toString() === 'values' ? $this->valuesList($receiverResult['type']) : $receiverResult['type'];
 
             if ($type !== null && $type !== 'unknown') {
@@ -89,8 +96,8 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        // $variable->property — resolve against the variable's own bound model (whenLoaded param,
-        // map param, foreach value var), falling back to the ambient whenLoaded closure model.
+        // $variable->property — an attribute of the variable's own bound model (whenLoaded param, map param, foreach
+        // value var). Anything else, a relation included, goes on to ReceiverPropertyFetchHandler.
         if ($expr instanceof PropertyFetch
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -98,9 +105,10 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
         ) {
             $boundModel = $this->boundModel($expr->var, $scope);
+            $attribute = $boundModel === null ? null : $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
 
-            if ($boundModel !== null) {
-                return $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
+            if ($attribute !== null && $attribute['type'] !== 'unknown') {
+                return $attribute;
             }
         }
 
@@ -114,22 +122,23 @@ final class VariableHandler implements ExpressionHandler
             }
         }
 
-        // $variable->pluck('field') — resolve to an array of the field's type
-        if ($scope->closureRelationModelClass !== null
-            && $expr instanceof MethodCall
+        // $variable->pluck('field') — an array of the field's type on the element model of the variable's own to-many
+        // binding; any other variable goes on to the receiver handlers.
+        if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'pluck'
             && $scope->holdsBinding($expr->var)
+            && isset($scope->varCollectionBindings[$expr->var->name])
         ) {
-            return $this->analyzeVariablePluckCall($expr, $scope);
+            return $this->analyzeVariablePluckCall($expr, $scope, $scope->varCollectionBindings[$expr->var->name]['modelFqcn']);
         }
 
-        // $variable->method() — resolve against the variable's own bound model, falling back to the
-        // ambient whenLoaded closure model. An only()/except() filter is skipped: the receiver rules own it, and
-        // reflecting it here reads Model::except()'s `@return array` as a list or filters a collection by key.
+        // $variable->method() — resolve against the variable's own bound model. An only()/except() filter is skipped:
+        // the receiver rules own it, and reflecting it here reads Model::except()'s `@return array` as a list or filters
+        // a collection by key.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -164,18 +173,15 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it,
-     * else the ambient whenLoaded model.
+     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it.
      *
      * @return class-string<Model>|null
      */
     private function boundModel(Variable $variable, AnalysisScope $scope): ?string
     {
-        $own = is_string($variable->name) && $scope->holdsBinding($variable)
+        return is_string($variable->name) && $scope->holdsBinding($variable)
             ? $scope->varModelBindings[$variable->name] ?? null
             : null;
-
-        return $own ?? $this->ambientModel($variable, $scope);
     }
 
     /**
@@ -424,30 +430,6 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
-     * only where it is, or extends, one of the classes the receiver path reads it as: its assigned value's, else the
-     * `@var`'s. A variable past the write that ended its parameter binding holds what that write assigned instead.
-     *
-     * @return class-string<Model>|null
-     */
-    private function ambientModel(Variable $variable, AnalysisScope $scope): ?string
-    {
-        $ambient = $scope->closureRelationModelClass;
-
-        if ($ambient === null || ! $scope->holdsBinding($variable)) {
-            return null;
-        }
-
-        if ($scope->declaredAt($variable) === null) {
-            return $ambient;
-        }
-
-        $held = resolve(ReceiverClassResolver::class)->resolve($variable, $scope);
-
-        return $held === null || ReceiverType::of($ambient)->within($held->classes) ? $ambient : null;
-    }
-
-    /**
      * Analyze `$variable->map(fn (Item $item) => [...])` with the first param bound to its element model — the type
      * hint, else the receiver's to-many whenLoaded element — and wrap the body result as `elementType[]`.
      *
@@ -496,8 +478,13 @@ final class VariableHandler implements ExpressionHandler
         /** @var class-string<Model> $paramClass */
         $previousRelationModel = $scope->closureRelationModelClass;
         $previousNameBindings = $scope->nameBindings();
+        $filters = $scope->filtersNestedResources;
+        $arrayed = $scope->mapResultArrayed;
 
         try {
+            // filter() reaches a mapped item only where an all() turns the mapped Collection into an array.
+            $scope->filtersNestedResources = $filters && $arrayed;
+            $scope->mapResultArrayed = false;
             $scope->closureRelationModelClass = $paramClass;
             $scope->claimParameters($closureArg);
 
@@ -521,6 +508,8 @@ final class VariableHandler implements ExpressionHandler
         } finally {
             $scope->closureRelationModelClass = $previousRelationModel;
             $scope->restoreNameBindings($previousNameBindings);
+            $scope->filtersNestedResources = $filters;
+            $scope->mapResultArrayed = $arrayed;
         }
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {

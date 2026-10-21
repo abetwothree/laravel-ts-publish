@@ -214,9 +214,9 @@ it('resolves a bare variable bound to a whole relation collection to the collect
     expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class]);
 });
 
-it('resolves $variable->pluck() against the ambient closure relation model', function () {
+it('resolves $variable->pluck() against the element model of its own to-many binding', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
 
     $result = (new VariableHandler)->resolve(
         new MethodCall(new Variable('users'), 'pluck', [new Arg(new String_('name'))]),
@@ -232,7 +232,7 @@ it('resolves $variable->pluck() against the ambient closure relation model', fun
 // on User, which has none, so swapping the two turns this into 'unknown'.
 it('tries the pluck guard before the generic bound-method guard', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
     $scope->varModelBindings['users'] = User::class;
 
     $result = (new VariableHandler)->resolve(
@@ -360,7 +360,7 @@ it('declines a method call no known-method rule matches', function () {
 
 it('reads $variable->pluck(key: …, value: …) by name', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
 
     $result = (new VariableHandler)->resolve(
         new MethodCall(new Variable('users'), 'pluck', [
