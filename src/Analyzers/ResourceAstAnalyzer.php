@@ -148,9 +148,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** @var array<string, true> the locals whose written value is being read, so a value naming its own local stops */
     private array $readingLocals = [];
 
-    /** @var array<string, true>|null the method's locals the merge closure being read imports; null outside one */
-    private ?array $closureImports = null;
-
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -806,22 +803,21 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
         $previousNameBindings = $this->scope->nameBindings();
-        $previousImports = $this->closureImports;
 
         try {
             $this->scope->claimParameters($expr);
             $this->scope->bindUnpassedParameters($expr, 0, $this);
             $this->markFilledDefaults($expr, $this->scope);
-            $this->proveClosureGuards($expr, $this->scope);
 
+            // Seeded as ClosureHandler seeds a closure, so a local the body assigns shadows the method's of its name.
             if ($expr instanceof ClosureExpr) {
-                $this->closureImports = $this->importedLocals($expr);
+                $this->seedBody($expr->stmts, $this->scope, $expr);
+                $this->bindForeachLoopVariables($expr->stmts, $this->scope);
             }
 
             return $this->closureReturnBranches($expr);
         } finally {
             $this->scope->restoreNameBindings($previousNameBindings);
-            $this->closureImports = $previousImports;
         }
     }
 
@@ -908,9 +904,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         );
 
         $readsAttributeNames = $this->readsKeylessAttributeNames;
-        // The helper's body is seeded with its own locals, whatever closure or local read the caller is in.
-        [$closureImports, $readingLocals] = [$this->closureImports, $this->readingLocals];
-        [$this->closureImports, $this->readingLocals] = [null, []];
+        // The helper's body is seeded with its own locals, whatever local read the caller is in.
+        $readingLocals = $this->readingLocals;
+        $this->readingLocals = [];
 
         try {
             $this->seedVarBindings($method, $targetMethod->stmts, $passed);
@@ -935,7 +931,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
-            [$this->closureImports, $this->readingLocals] = [$closureImports, $readingLocals];
+            $this->readingLocals = $readingLocals;
             $this->scope->leaveSubjectMethod($methodName, $caller);
         }
 
@@ -1750,15 +1746,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The value a local written once holds at a read, but where a by-reference call reshapes it; inside a merge
-     * closure, whose body is not seeded, only a method's local the closure imports.
+     * The value a local written once holds at a read, but where a by-reference call reshapes it.
      */
     private function boundLocal(Variable $read): ?Expr
     {
         $name = $read->name;
         $scope = $this->scope;
 
-        if (! is_string($name) || ($this->closureImports !== null && ! isset($this->closureImports[$name]))) {
+        if (! is_string($name)) {
             return null;
         }
 
@@ -1768,30 +1763,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         return $scope->literalLocalBindings()[$name] ?? null;
-    }
-
-    /**
-     * The method's locals a closure imports by value and never writes, of those the closure around it imports.
-     *
-     * @return array<string, true>
-     */
-    private function importedLocals(ClosureExpr $closure): array
-    {
-        $scope = $this->scope;
-        $writes = $this->collectVariableWrites($closure->stmts, $scope->subjectReflection, $scope->declaringFileClass);
-        $written = array_column($writes, 0);
-        $imported = [];
-
-        foreach ($closure->uses as $use) {
-            $name = $use->var->name;
-
-            if (! $use->byRef && is_string($name) && ! in_array($name, $written, true)
-                && ($this->closureImports === null || isset($this->closureImports[$name]))) {
-                $imported[$name] = true;
-            }
-        }
-
-        return $imported;
     }
 
     /**

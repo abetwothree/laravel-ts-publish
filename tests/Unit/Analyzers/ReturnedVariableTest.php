@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureShadowedValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadLocalHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
@@ -691,11 +692,12 @@ test('a local written once reads as its array where a variable starts from it or
 ]);
 
 // A closure sees an outer local only through `use`, and a write of its own replaces it.
-test('a merge closure adds a local with + only where it imports the local and never writes it', function () {
+test('a merge closure adds with + a local it imports, and its own local in place of the method\'s of that name', function () {
     $tag = new Tag;
     $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php-slug']);
 
-    expect(returnedVariableMembers(MergeClosureLocalPlusResource::class))->toBe('id: number; name: string; note: string')
+    expect(returnedVariableMembers(MergeClosureLocalPlusResource::class))
+        ->toBe('id: number; name: string; note: string; slug: string; flag: boolean')
         ->and(new MergeClosureLocalPlusResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'name' => 'php', 'note' => 'none', 'slug' => 'php-slug', 'flag' => true]);
 });
@@ -809,4 +811,13 @@ test('a merge closure\'s lone returned variable merges the keys the walk reads',
     expect(returnedVariableMembers(ReturnedMergeClosureVariableResource::class))->toBe('id: number; x21_a?: number')
         ->and(new ReturnedMergeClosureVariableResource($tag)->resolve(Request::create('/', 'GET', ['key' => 'extra'])))
         ->toBe(['id' => 9, 'x21_a' => 9, 'extra' => 1]);
+});
+
+test('a merge closure reads its own local in place of the method\'s local of the same name', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+
+    expect(returnedVariableMembers(MergeClosureShadowedValueResource::class))->toBe('id: number; outer: string; label: number')
+        ->and(new MergeClosureShadowedValueResource($tag)->resolve(Request::create('/')))
+        ->toBe(['id' => 9, 'outer' => 'x', 'label' => 9]);
 });

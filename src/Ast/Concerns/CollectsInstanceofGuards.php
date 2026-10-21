@@ -12,7 +12,6 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
-use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Exit_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Throw_;
@@ -70,20 +69,6 @@ trait CollectsInstanceofGuards
 
         $this->bindBlockGuards($stmts, null, $scope, $writes);
         $this->proveGuardedReads($stmts, $scope, $writes);
-    }
-
-    /**
-     * Prove the reads a closure's own guards show non-null while its body runs; an arrow function holds no statement.
-     */
-    protected function proveClosureGuards(Expr $closure, AnalysisScope $scope): void
-    {
-        if ($closure instanceof ClosureExpr) {
-            $this->proveGuardedReads(
-                $closure->stmts,
-                $scope,
-                $this->collectVariableWrites($closure->stmts, $scope->subjectReflection, $scope->declaringFileClass),
-            );
-        }
     }
 
     /**
