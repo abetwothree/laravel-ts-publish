@@ -58,6 +58,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedShapedLoneVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSkippingParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSkippingParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedThrowingBranchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedTryLiteralThenOpaqueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnionAssignResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedUnmodeledOnlyResource;
@@ -117,6 +118,17 @@ function walkedVariable(string $body): ResourceAnalysis
     };
 
     return $analyzer->walkD(resolve(AstParser::class)->parseSource('<?php '.$body));
+}
+
+/**
+ * The members the walk of `$d` publishes over a method body given as source, one `name: type` per key, in order.
+ */
+function walkedMembers(string $body): string
+{
+    return implode('; ', array_map(
+        fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'],
+        walkedVariable($body)->properties,
+    ));
 }
 
 test('a toArray() that returns a variable publishes the keys its writes set', function () {
@@ -474,14 +486,33 @@ test('a key a loop re-sets keeps the value it held before as one more arm', func
 });
 
 test('a value a branch cannot type drops beside a typed one, and a lone null stays, as a ternary\'s arms do', function (string $body, string $members) {
-    $walk = walkedVariable($body);
-
-    expect(implode('; ', array_map(fn (array $p): string => $p['name'].($p['optional'] ? '?' : '').': '.$p['type'], $walk->properties)))
-        ->toBe($members);
+    expect(walkedMembers($body))->toBe($members);
 })->with([
     'beside a value held before' => ['$d = ["a" => 1]; if ($x) { $d["a"] = $nowhere; }', 'a: number'],
     'beside a lone null' => ['$d = []; if ($x) { $d["b"] = null; } else { $d["b"] = $nowhere; }', 'b: null'],
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
+]);
+
+test('a branch that throws leaves the join, so Laravel sends the key only as the other branch writes it', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+    $sent = fn (bool $fail): array => new ReturnedThrowingBranchResource($tag)
+        ->resolve(Request::create('/', 'GET', ['fail' => $fail ? '1' : '0']));
+
+    expect(returnedVariableMembers(ReturnedThrowingBranchResource::class))->toBe('id: number; a: string')
+        ->and($sent(false))->toBe(['id' => 9, 'a' => 'x'])
+        ->and(fn () => $sent(true))->toThrow(RuntimeException::class, 'Unavailable.');
+});
+
+test('a body that ends in a throw or a return of another value leaves the join, and one returning the variable stays', function (string $body, string $members) {
+    expect(walkedMembers($body))->toBe($members);
+})->with([
+    'a throw' => ['$d = ["id" => 1]; if ($x) { $d["a"] = 1; throw new RuntimeException(); } else { $d["a"] = "x"; }', 'id: number; a: string'],
+    'a return of another value' => ['$d = ["id" => 1]; if ($x) { $d["a"] = 1; return []; } else { $d["a"] = "x"; }', 'id: number; a: string'],
+    'a throw with no else' => ['$d = ["id" => 1]; if ($x) { $d["a"] = 1; throw new RuntimeException(); }', 'id: number'],
+    'a loop body that throws' => ['$d = ["id" => 1]; foreach ($rows as $row) { $d["a"] = 1; throw new RuntimeException(); }', 'id: number'],
+    'every body' => ['$d = ["id" => 1]; if ($x) { $d["a"] = 1; throw new RuntimeException(); } else { return []; }', 'id: number'],
+    'a return of the variable' => ['$d = ["id" => 1]; if ($x) { $d["a"] = 1; return $d; } else { $d["a"] = "x"; }', 'id: number; a: number | string'],
 ]);
 
 test('each branch keeps the class it types a key with, so every class a merged key spells is imported', function (string $class, string $members) {

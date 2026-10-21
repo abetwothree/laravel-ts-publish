@@ -20,6 +20,7 @@ use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -29,6 +30,7 @@ use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
@@ -526,6 +528,12 @@ trait ReadsReturnedVariables
             return;
         }
 
+        $bodies = array_values(array_filter($bodies, fn (array $body): bool => ! $this->exitsElsewhere($body, $varName)));
+
+        if ($bodies === []) {
+            return;
+        }
+
         $walked = array_map(function (array $body) use ($varName, $isConditional, $into, $topLevel): MethodAnalysis {
             $branch = clone $into;
             $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
@@ -542,6 +550,23 @@ trait ReadsReturnedVariables
         }
 
         $into->replaceWith($this->joinedBranches($branches));
+    }
+
+    /**
+     * Whether a body ends in a throw, or in a return of anything but the variable, so its writes never reach the code
+     * after it; a body that returns the variable stays, as an early return does.
+     *
+     * @param  array<Node\Stmt>  $body
+     */
+    private function exitsElsewhere(array $body, string $varName): bool
+    {
+        $last = $body === [] ? null : $body[array_key_last($body)];
+
+        return match (true) {
+            $last instanceof ExpressionStmt => $last->expr instanceof Throw_,
+            $last instanceof Return_ => ! $last->expr instanceof Variable || $last->expr->name !== $varName,
+            default => false,
+        };
     }
 
     /**
