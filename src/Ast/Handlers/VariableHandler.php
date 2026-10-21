@@ -375,23 +375,13 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve the expression a variable is bound to, or null while that variable is already mid-resolution.
+     * Resolve the expression a variable is bound to, or null while that binding is already mid-resolution.
      *
      * @return ValueExpressionResult|null
      */
     private function boundExpressionValue(string $name, Expr $bound, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (isset($scope->resolvingLocalVars[$name])) {
-            return null;
-        }
-
-        $scope->resolvingLocalVars[$name] = true;
-
-        try {
-            return $engine->resolve($bound);
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
-        }
+        return $scope->resolvingBinding($name, $bound, fn (): array => $engine->resolve($bound));
     }
 
     /**

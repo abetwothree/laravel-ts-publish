@@ -15235,12 +15235,12 @@
             "properties": [
                 {
                     "name": "early",
-                    "type": "unknown",
+                    "type": "string | null",
                     "optional": true
                 },
                 {
                     "name": "late",
-                    "type": "unknown",
+                    "type": "number",
                     "optional": true
                 }
             ]
@@ -15300,7 +15300,7 @@
                 },
                 {
                     "name": "shadowed",
-                    "type": "unknown",
+                    "type": "string | null",
                     "optional": false
                 }
             ]

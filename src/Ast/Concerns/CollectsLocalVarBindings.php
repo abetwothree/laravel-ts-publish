@@ -61,9 +61,11 @@ use ReflectionClass;
  * The one sequence that seeds a method's or a closure's body, seedBody(), and the write scan its passes share. Every
  * reader of a body seeds it here, so each reads the body's variables the same way.
  *
- * @phpstan-type VariableWrites = list<array{string, Node, Expr}>
+ * @phpstan-type NamedWrite = array{string, Node, Expr}
+ * @phpstan-type VariableWrites = list<NamedWrite>
  * @phpstan-type KeptWrites = list<array{string, ByReferenceForm}>
  * @phpstan-type PartitionedWrites = array{VariableWrites, KeptWrites}
+ * @phpstan-type JoinedState = array{list<Expr>|null, bool}
  *
  * @phpstan-import-type ByReferenceForm from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
@@ -114,6 +116,7 @@ trait CollectsLocalVarBindings
         $this->bindBlockLocals($stmts, $scope, $replacing);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $this->endBindingsAtWrites($stmts, $scope, $writes);
+        $this->bindJoinedLocals($stmts, $scope, $replacing);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof.
         $this->collectInstanceofGuards($stmts, $scope, $replacing);
     }
@@ -170,6 +173,29 @@ trait CollectsLocalVarBindings
         foreach ($stmts as $stmt) {
             foreach ($this->innerBlocks($stmt) as $block) {
                 $this->bindBlock($block, $stmts, $scope, $writes);
+            }
+        }
+    }
+
+    /**
+     * Bind each local the body writes more than once for the reads between its writes: past a top-level `$x = …;` the
+     * value it assigns, past a statement whose writes are all nested `$x = …` the values before it and theirs, and past
+     * a `try` what its body, a catch and its finally leave. Any other write leaves it unbound until such a write.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     */
+    protected function bindJoinedLocals(array $stmts, AnalysisScope $scope, array $writes): void
+    {
+        $byName = [];
+
+        foreach ($writes as $write) {
+            $byName[$write[0]][] = $write;
+        }
+
+        foreach ($byName as $name => $own) {
+            if (count($own) > 1 && ! $scope->bindsName((string) $name)) {
+                $this->joinStatements((string) $name, $stmts, $stmts, $own, [null, false], null, $scope);
             }
         }
     }
@@ -853,6 +879,176 @@ trait CollectsLocalVarBindings
         }
 
         $scope->bindingGaps[$name][] = $gap;
+    }
+
+    /**
+     * Walk one list of statements for the values a name may hold, from a state it holds past $from, recording a gap for
+     * the reads between the statements that write it, and give the state past the list.
+     *
+     * @param  array<Node\Stmt>  $stmts  the list walked
+     * @param  array<Node\Stmt>  $body  the whole body, which a block that always exits leaves
+     * @param  VariableWrites  $writes  the name's own writes
+     * @param  JoinedState  $state
+     * @return JoinedState
+     */
+    private function joinStatements(
+        string $name,
+        array $stmts,
+        array $body,
+        array $writes,
+        array $state,
+        ?int $from,
+        AnalysisScope $scope,
+    ): array {
+        $after = $from;
+
+        foreach ($stmts as $stmt) {
+            $own = array_values(array_filter($writes, fn (array $write): bool => $this->encloses($stmt, $write[1])));
+            $assigned = $own === [] ? null : $this->wholeAssignment($stmt, $own);
+
+            // A write in a block that always exits reaches no read past it, which only a known value needs checked; a
+            // `try` resumes past its blocks.
+            if ($assigned === null && $state[0] !== null && ! $stmt instanceof TryCatch) {
+                $own = array_values(array_filter($own, fn (array $write): bool => $this->exitingBlock($body, $write[1]) === null));
+            }
+
+            if ($own === []) {
+                continue;
+            }
+
+            // The value a statement assigns reads what the name held before it, so that span runs through it.
+            $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
+            $state = match (true) {
+                $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $state, $scope),
+                $assigned !== null => [[$assigned], false],
+                default => $this->joinNested($own, $state),
+            };
+            $after = $stmt->getEndFilePos();
+        }
+
+        if ($stmts !== []) {
+            $this->addJoinedGap($scope, $name, $after, $stmts[array_key_last($stmts)]->getEndFilePos(), $state);
+        }
+
+        return $state;
+    }
+
+    /**
+     * The value a statement assigns when it is one `$x = …;`, the name's only write in it; else null.
+     *
+     * @param  non-empty-list<NamedWrite>  $writes  the statement's writes of the name
+     */
+    private function wholeAssignment(Node\Stmt $stmt, array $writes): ?Expr
+    {
+        [, $node, $target] = $writes[0];
+
+        return count($writes) === 1 && $this->isStatementOf([$stmt], $node) && $node instanceof Assign
+            && $this->writeKind($node, $target) === VariableWrite::Replaces
+                ? $node->expr
+                : null;
+    }
+
+    /**
+     * The state past a `try`: what its body, or a catch it resumes in, leaves, then what its finally leaves of that. A
+     * catch starts from what the name held before the `try` or any value the body assigned before it threw.
+     *
+     * @param  array<Node\Stmt>  $body
+     * @param  VariableWrites  $writes  the name's own writes
+     * @param  JoinedState  $state
+     * @return JoinedState
+     */
+    private function joinTry(string $name, TryCatch $try, array $body, array $writes, array $state, AnalysisScope $scope): array
+    {
+        if (array_any($try->catches, fn (Catch_ $catch): bool => $catch->var?->name === $name)) {
+            return [null, false];
+        }
+
+        $thrown = $this->joinNested(array_values(array_filter(
+            $writes,
+            fn (array $write): bool => array_any($try->stmts, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $write[1])),
+        )), $state);
+        $left = [$this->joinStatements($name, $try->stmts, $body, $writes, $state, $this->blockStart($try->stmts), $scope)];
+
+        foreach ($try->catches as $catch) {
+            $left[] = $this->joinStatements($name, $catch->stmts, $body, $writes, $thrown, $this->blockStart($catch->stmts), $scope);
+        }
+
+        $joined = [
+            array_any($left, fn (array $state): bool => $state[0] === null)
+                ? null
+                : $this->joinValues(...array_map(fn (array $state): array => $state[0] ?? [], $left)),
+            array_any($left, fn (array $state): bool => $state[1]),
+        ];
+
+        return $try->finally === null
+            ? $joined
+            : $this->joinStatements($name, $try->finally->stmts, $body, $writes, $joined, $this->blockStart($try->finally->stmts), $scope);
+    }
+
+    /**
+     * The state past a statement whose writes of the name lie nested in it: the values before it and those its
+     * assignments add, or none the scan knows where one is a write of another kind.
+     *
+     * @param  VariableWrites  $writes  the statement's writes of the name
+     * @param  JoinedState  $state
+     * @return JoinedState
+     */
+    private function joinNested(array $writes, array $state): array
+    {
+        $values = [];
+
+        foreach ($writes as [, $node, $target]) {
+            if ($this->writeKind($node, $target) !== VariableWrite::Replaces || ! $node instanceof Assign) {
+                return [null, false];
+            }
+
+            $values[] = $node->expr;
+        }
+
+        return [$state[0] === null ? null : $this->joinValues($state[0], $values), $state[1]];
+    }
+
+    /**
+     * The values of several lists, each expression once.
+     *
+     * @param  list<Expr>  ...$lists
+     * @return list<Expr>
+     */
+    private function joinValues(array ...$lists): array
+    {
+        $joined = [];
+
+        foreach ($lists as $list) {
+            foreach ($list as $value) {
+                if (! in_array($value, $joined, true)) {
+                    $joined[] = $value;
+                }
+            }
+        }
+
+        return $joined;
+    }
+
+    /**
+     * Record a gap for the reads between two offsets that a name's joined values hold for, where they name any.
+     *
+     * @param  JoinedState  $state
+     */
+    private function addJoinedGap(AnalysisScope $scope, string $name, ?int $after, int $end, array $state): void
+    {
+        if ($after !== null && $end > $after && $state[0] !== null && ($state[0] !== [] || $state[1])) {
+            $scope->bindingGaps[$name][] = [$after, $end, $state[0], $state[1]];
+        }
+    }
+
+    /**
+     * The offset just before a block's first statement, past which what the block's reads see holds; null for none.
+     *
+     * @param  array<Node\Stmt>  $block
+     */
+    private function blockStart(array $block): ?int
+    {
+        return $block === [] ? null : $block[0]->getStartFilePos() - 1;
     }
 
     /**

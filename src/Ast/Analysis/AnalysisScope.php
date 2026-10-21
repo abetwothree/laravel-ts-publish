@@ -335,8 +335,9 @@ final class AnalysisScope
     public array $bindingGaps = [];
 
     /**
-     * Re-entrancy guard: variable names currently mid-resolution, so a self- or mutually-referential
-     * binding (e.g. `$a = $b; $b = $a;`) resolves as unknown instead of recursing forever.
+     * Re-entrancy guard: the bindings mid-resolution, each keyed by its name and the bound expression, so a self- or
+     * mutually-referential binding (e.g. `$a = $b; $b = $a;`) resolves as unknown instead of recursing forever, while
+     * `$s = $s . 'x'` still reads the value `$s` held before. A by-reference call's forms are keyed by name alone.
      *
      * @var array<string, true>
      */
@@ -562,6 +563,39 @@ final class AnalysisScope
                 $this->bindingGaps[$name] = $gaps;
             }
         }
+    }
+
+    /**
+     * Run a read of the expression a variable is bound to, or give null while that same binding is mid-resolution.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead|null
+     */
+    public function resolvingBinding(string $name, Expr $bound, Closure $read): mixed
+    {
+        $key = self::resolvingKey($name, $bound);
+
+        if (isset($this->resolvingLocalVars[$key])) {
+            return null;
+        }
+
+        $this->resolvingLocalVars[$key] = true;
+
+        try {
+            return $read();
+        } finally {
+            unset($this->resolvingLocalVars[$key]);
+        }
+    }
+
+    /**
+     * Whether a variable's binding to an expression is mid-resolution, so reading it again would recurse.
+     */
+    public function resolvesBinding(string $name, Expr $bound): bool
+    {
+        return isset($this->resolvingLocalVars[self::resolvingKey($name, $bound)]);
     }
 
     /**
@@ -838,6 +872,14 @@ final class AnalysisScope
     public function literalLocalBindings(): array
     {
         return array_diff_key($this->localVarBindings, $this->byReferenceForms);
+    }
+
+    /**
+     * The resolvingLocalVars key of a variable's binding to an expression.
+     */
+    private static function resolvingKey(string $name, Expr $bound): string
+    {
+        return $name.'#'.spl_object_id($bound);
     }
 
     /**

@@ -890,21 +890,11 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve the expression a variable is bound to, or null while that variable is already mid-resolution.
+     * Resolve the expression a variable is bound to, or null while that binding is already mid-resolution.
      */
     private function fromBoundExpression(string $name, Expr $bound, AnalysisScope $scope): ?ReceiverType
     {
-        if (isset($scope->resolvingLocalVars[$name])) {
-            return null;
-        }
-
-        $scope->resolvingLocalVars[$name] = true;
-
-        try {
-            return $this->resolve($bound, $scope);
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
-        }
+        return $scope->resolvingBinding($name, $bound, fn (): ?ReceiverType => $this->resolve($bound, $scope));
     }
 
     /**

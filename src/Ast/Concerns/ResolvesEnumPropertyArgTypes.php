@@ -55,8 +55,8 @@ trait ResolvesEnumPropertyArgTypes
 
         if (! $this->isThisPropertyFetch($argExpr)) {
             // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local
-            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: it is keyed by
-            // name, and a parameter, never bound to a variable, may shadow an outer local that is mid-resolution.
+            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: a parameter is
+            // never bound to a variable.
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
                 $name = $argExpr->name;
 
@@ -66,14 +66,8 @@ trait ResolvesEnumPropertyArgTypes
 
                 $local = $scope->literalLocalBindings()[$name] ?? null;
 
-                if ($scope->carriesImports && $local !== null && ! isset($scope->resolvingLocalVars[$name])) {
-                    $scope->resolvingLocalVars[$name] = true;
-
-                    try {
-                        return $this->resolveEnumFromPropertyArg($local, $scope);
-                    } finally {
-                        unset($scope->resolvingLocalVars[$name]);
-                    }
+                if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
+                    return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));
                 }
             }
 

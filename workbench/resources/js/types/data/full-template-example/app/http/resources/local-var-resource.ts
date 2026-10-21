@@ -11,5 +11,5 @@ export interface LocalVarResource
 {
     label: string;
     key: number;
-    shadowed: unknown;
+    shadowed: string | null;
 }

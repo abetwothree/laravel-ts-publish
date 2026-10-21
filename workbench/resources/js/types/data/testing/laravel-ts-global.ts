@@ -3878,8 +3878,8 @@ declare global {
          * whichever assignment happens to be recorded.
          */
         export interface LocalVarGuardClauseResource {
-            early?: unknown;
-            late?: unknown;
+            early?: string | null;
+            late?: number;
         }
         /**
          * Regression fixture (Task 12 review, Important 3): a variable reassigned through a
@@ -3921,7 +3921,7 @@ declare global {
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: unknown;
+            shadowed: string | null;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for

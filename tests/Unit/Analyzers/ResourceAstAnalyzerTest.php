@@ -5630,9 +5630,14 @@ describe('local variable bindings', function () {
             ->and($this->props['key']['type'])->toBe('number');
     });
 
-    // A variable also written inside nested control flow is dropped from $localVarBindings entirely.
-    test('a variable reassigned in nested control flow degrades to unknown, not the stale top-level type', function () {
-        expect($this->props['shadowed']['type'])->toBe('unknown');
+    // Past the `if` that may reassign it, the variable holds the top-level default or the nested write.
+    test('a variable reassigned in nested control flow reads the top-level value or the nested one past it', function () {
+        $order = new Order;
+        $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
+
+        expect($this->props['shadowed']['type'])->toBe('string | null')
+            ->and(new LocalVarResource($order)->resolve(Request::create('/'))['shadowed'])->toBe('top-level default')
+            ->and(new LocalVarResource($order)->resolve(Request::create('/', 'GET', ['flag' => 1]))['shadowed'])->toBe('Ring twice');
     });
 
     // A closure parameter rebinds the name: it resolves against its own bound model (whenLoaded
@@ -5726,15 +5731,20 @@ describe('local variable bindings — review follow-up regressions', function ()
             ->and($props['y']['type'])->toBe('string');
     });
 
-    // Which of two top-level assignments is live depends on the return branch taken — no last-assignment-wins.
-    test('two top-level assignments to the same var across return branches both degrade to unknown', function () {
+    // Each return reads the top-level assignment live where it stands, never the last one in the body.
+    test('two top-level assignments to the same var across return branches each type the return they precede', function () {
         $props = collect(
             (new ResourceAstAnalyzer(new ReflectionClass(LocalVarGuardClauseResource::class), Order::class))
                 ->analyze()->properties,
         )->keyBy('name');
 
-        expect($props['early']['type'])->toBe('unknown')
-            ->and($props['late']['type'])->toBe('unknown');
+        $order = new Order;
+        $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
+
+        expect($props['early']['type'])->toBe('string | null')
+            ->and($props['late']['type'])->toBe('number')
+            ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/', 'GET', ['early' => 1])))->toBe(['early' => 'Ring twice'])
+            ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/')))->toBe(['late' => 3]);
     });
 
     // A foreach binding, compound assignment, increment and by-ref alias are writes too, not just Assign.

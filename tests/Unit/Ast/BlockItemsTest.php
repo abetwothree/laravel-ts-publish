@@ -166,7 +166,8 @@ test('heldCallable() reads the first-class callable a local holds where it is re
     expect(blockItemsHeldCallables($body, $parameters))->toBe($held);
 })->with([
     'a top-level write' => ['$c = $this->label(...); $this->when(true, $c);', [], [true]],
-    'a local written twice' => ['$c = $this->label(...); $c = $this->upper(...); $this->when(true, $c);', [], [false]],
+    'a local written twice, read past its second write' => ['$c = $this->label(...); $c = $this->upper(...); $this->when(true, $c);', [], [true]],
+    'a local a branch may write again' => ['$c = $this->label(...); if ($x) { $c = $this->upper(...); } $this->when(true, $c);', [], [false]],
     'a call, which holds its result' => ['$c = $this->label(); $this->when(true, $c);', [], [false]],
     'a block write, read in its block and past it' => [
         'if ($x) { $c = $this->label(...); $this->when(true, $c); } $this->when(true, $c);',
