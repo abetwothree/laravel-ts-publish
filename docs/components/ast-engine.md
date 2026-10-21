@@ -202,9 +202,9 @@ so a same-named closure parameter still resolves against its own binding, as `Cl
 
 Readers rank the name-keyed tables differently. `VariableHandler` reads `varDocBindings` first and `varValueBindings`
 last, while `ReceiverClassResolver::fromVariable()` reads `varClassBindings` first and `varValueBindings` only for an
-enum case, so a `new` default and a passed collection also bind where it reads. So an outer binding of a parameter's
-name, left in any table, outranks the parameter's own binding for some reader. Nested in `map(fn (Comment $c) => …)`,
-a `collect(...)->map(fn ($c) => …)` would read its string element as a `Comment`.
+enum case. So an outer binding of a parameter's name, left in any table, outranks the parameter's own binding for some
+reader. Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a
+`Comment`.
 
 Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
 claim drops each parameter name from every table, its binding end included, and marks the closure claimed. The writer

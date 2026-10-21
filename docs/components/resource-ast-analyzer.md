@@ -359,7 +359,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **A `never[]` arm drops beside an array arm**: a literal `[]` is `never[]`, since `json_encode([])` is `[]`, and it
   adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
-- **`whenNotNull()` and `whenNull()` take a value, not a callback**: both call `when()` on `is_null($value)`.
+- **`whenNotNull()` and `whenNull()` test their value for `null`**: both call `when()` on `is_null($value)`.
   `whenNotNull()` strips the top-level `| null` from its value with `ValueResult::stripNullArm()`, which leaves a
   nested one. A closure or first-class callable is never `null`, so `whenNotNull()` always calls it, with nothing: the
   key is required and keeps what it returns, `null` included. `whenNull()`'s value arm is `null`.

@@ -364,7 +364,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenNotNull($value, $default) — the success arm returns $value, proven non-null.
+     * Analyze $this->whenNotNull($value, $default): the success arm returns $value proven non-null, or, for a closure
+     * or first-class callable, which is never null, what it returns, null included.
      *
      * @return ValueExpressionResult
      */
@@ -386,7 +387,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Shared logic for whenNotNull()/whenNull(): argument 0 is the value, argument 1 the optional
-     * default. An explicit default makes the key required and unions its type into the result.
+     * default. An explicit default makes the key required and unions its type into the result, but for a whenNotNull()
+     * callable, which always runs.
      *
      * @return ValueExpressionResult
      */
