@@ -29,10 +29,14 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -306,8 +310,8 @@ trait CollectsLocalVarBindings
      * writes to: an assignment or increment, a `foreach` target or by-reference array, a `catch` variable, `unset()`,
      * `static`, `global`, a by-reference `use`, or an argument to a by-reference parameter of a callee the call names.
      *
-     * Only an assignment, an increment, a `foreach` target and a `use` count every variable they spell; the rest count
-     * just the variable they name or key into, so `unset($a[$k])` writes `$a` and `unset($o->p)` writes nothing.
+     * An assignment, an increment, a `foreach` target and a `use` also count the variable a member or key they write
+     * goes through; the rest count just the variable they name or key into, so `unset($o->p)` writes nothing.
      *
      * A nested closure's write reaches the body only for a name it imports by reference, and an arrow function's only
      * through `$this`; a nested class's or a named function's never does.
@@ -1208,8 +1212,7 @@ trait CollectsLocalVarBindings
             $node instanceof Catch_ => VariableWrite::Catches,
             $node instanceof Unset_ => VariableWrite::Unsets,
             $target instanceof List_, $target instanceof Array_ => VariableWrite::Destructures,
-            // `$$k = …` writes the variable `$k` names, never `$k`.
-            ! $target instanceof Variable || ! is_string($target->name) => VariableWrite::MemberOrOffset,
+            ! $target instanceof Variable => VariableWrite::MemberOrOffset,
             $node instanceof CoalesceAssign => VariableWrite::Coalesces,
             $node instanceof Assign => VariableWrite::Replaces,
             default => VariableWrite::Compounds,
@@ -1276,8 +1279,8 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The expressions an assignment, an increment, a `foreach` target or a by-reference `use` writes to, each variable
-     * they spell counted as written.
+     * The expressions an assignment, an increment, a `foreach` target or a by-reference `use` writes to, each counted
+     * for the variables writtenVariables() names.
      *
      * @return list<Expr>
      */
@@ -1345,25 +1348,28 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The names of the variables a write target spells.
+     * The names of the variables a write target writes: the variable, each a destructuring list spells, or the one a
+     * member or offset write goes through. A variable a key or a member name reads is not written, and neither is the
+     * one a variable variable names.
      *
      * @return list<string>
      */
     private function writtenVariables(Expr $target): array
     {
-        if ($target instanceof Variable && is_string($target->name)) {
-            return [$target->name];
+        if ($target instanceof List_ || $target instanceof Array_) {
+            return array_merge(...array_map(
+                fn (?ArrayItem $item): array => $item === null ? [] : $this->writtenVariables($item->value),
+                $target->items,
+            ));
         }
 
-        $names = [];
-
-        foreach (new NodeFinder()->find($target, fn (Node $node): bool => $node instanceof Variable) as $variable) {
-            if ($variable instanceof Variable && is_string($variable->name)) {
-                $names[] = $variable->name;
-            }
+        while ($target instanceof ArrayDimFetch || $target instanceof PropertyFetch || $target instanceof MethodCall
+            || $target instanceof NullsafePropertyFetch || $target instanceof NullsafeMethodCall
+        ) {
+            $target = $target->var;
         }
 
-        return $names;
+        return $target instanceof Variable && is_string($target->name) ? [$target->name] : [];
     }
 
     /**

@@ -83,6 +83,11 @@ it('reports each write kind', function (string $body, array $names) {
     'arrow capture write' => ['$f = fn () => $y = 1;', ['f']],
     'arrow $this write' => ['$f = fn () => $this->x = 1;', ['f', 'this']],
     'nested class' => ['$o = new class { public function m() { $z = 1; } };', ['o']],
+    'a write through a key a variable reads' => ['$a[$k] = 1;', ['a']],
+    'a write through a member a variable names' => ['$o->{$n} = 1; $o->list[$i] = 1;', ['o', 'o']],
+    'a write through a relation' => ['$p->author->name = "x";', ['p']],
+    'a destructured key a variable reads' => ['[$a[$i], $b] = [1, 2];', ['a', 'b']],
+    'a variable variable' => ['$$k = 1; ${"x"} = 1;', []],
 ]);
 
 /**

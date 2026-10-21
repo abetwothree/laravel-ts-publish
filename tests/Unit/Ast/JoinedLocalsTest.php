@@ -131,7 +131,7 @@ test('a local another name or a closure can write through a reference is never j
 });
 
 test('a variable variable\'s write is no write of the variable that names it', function () {
-    expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray(['key' => 'unknown'])
+    expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray(['key' => 'string'])
         ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['key' => 'a']);
 });
 
