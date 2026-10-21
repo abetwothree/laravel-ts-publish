@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\FirstRelated;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -121,19 +122,24 @@ test('strategyFor defaults to nullable for unknown relation types', function () 
     expect($relationMap->strategyFor('UnknownRelation'))->toBe('nullable');
 });
 
-test('isToMany reads a relation class, counting a subclass of a to-many relation', function () {
-    expect(RelationMap::isToMany(HasMany::class))->toBeTrue()
-        ->and(RelationMap::isToMany(HasManyThrough::class))->toBeTrue()
-        ->and(RelationMap::isToMany(BelongsToMany::class))->toBeTrue()
-        ->and(RelationMap::isToMany(MorphMany::class))->toBeTrue()
-        ->and(RelationMap::isToMany(MorphToMany::class))->toBeTrue()
-        ->and(RelationMap::isToMany(Ancestors::class))->toBeTrue()
-        ->and(RelationMap::isToMany(HasOne::class))->toBeFalse()
-        ->and(RelationMap::isToMany(HasOneThrough::class))->toBeFalse()
-        ->and(RelationMap::isToMany(MorphOne::class))->toBeFalse()
-        ->and(RelationMap::isToMany(BelongsTo::class))->toBeFalse()
-        ->and(RelationMap::isToMany(MorphTo::class))->toBeFalse()
-        ->and(RelationMap::isToMany(CompositeMorphTo::class))->toBeFalse();
+test('isToMany reads the short type, and a subclass of a to-many relation that keeps how it loads the collection', function () {
+    $toMany = fn (string $class): bool => RelationMap::isToMany(class_basename($class), $class);
+
+    expect($toMany(HasMany::class))->toBeTrue()
+        ->and($toMany(HasManyThrough::class))->toBeTrue()
+        ->and($toMany(BelongsToMany::class))->toBeTrue()
+        ->and($toMany(MorphMany::class))->toBeTrue()
+        ->and($toMany(MorphToMany::class))->toBeTrue()
+        ->and($toMany(Ancestors::class))->toBeTrue()
+        ->and($toMany(FirstRelated::class))->toBeFalse()
+        ->and($toMany(HasOne::class))->toBeFalse()
+        ->and($toMany(HasOneThrough::class))->toBeFalse()
+        ->and($toMany(MorphOne::class))->toBeFalse()
+        ->and($toMany(BelongsTo::class))->toBeFalse()
+        ->and($toMany(MorphTo::class))->toBeFalse()
+        ->and($toMany(CompositeMorphTo::class))->toBeFalse()
+        ->and(RelationMap::isToMany('HasManyDeep'))->toBeTrue()
+        ->and(RelationMap::isToMany('Ancestors'))->toBeFalse();
 });
 
 test('strategyFor gives a relation subclass the map does not name the strategy of its nearest parent the map names', function () {
@@ -142,6 +148,10 @@ test('strategyFor gives a relation subclass the map does not name the strategy o
     expect($relationMap->strategyFor('Ancestors', Ancestors::class))->toBe('never')
         ->and($relationMap->strategyFor('CompositeMorphTo', CompositeMorphTo::class))->toBe('morph')
         ->and($relationMap->strategyFor('Ancestors'))->toBe('nullable');
+});
+
+test('strategyFor never gives a to-many parent\'s strategy to a subclass that loads one model', function () {
+    expect((new RelationMap)->strategyFor('FirstRelated', FirstRelated::class))->toBe('nullable');
 });
 
 test('strategyFor keeps a mapping that names the subclass over its parent\'s', function () {

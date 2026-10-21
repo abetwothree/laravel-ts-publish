@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use ReflectionMethod;
 
 class RelationMap
 {
@@ -26,11 +27,27 @@ class RelationMap
     protected static ?array $map = null;
 
     /**
-     * Whether a relation class loads a collection: it is one of Laravel's to-many relations or extends one.
+     * Whether a relation loads a collection: its short type names "many" and no `morphTo`, or its class extends one of
+     * Laravel's to-many relations and keeps the getResults() and match() that load the collection.
      */
-    public static function isToMany(string $relationClass): bool
+    public static function isToMany(string $type, ?string $relationClass = null): bool
     {
-        return array_any(self::TO_MANY, fn (string $toMany): bool => is_a($relationClass, $toMany, true));
+        if (str_contains(strtolower($type), 'many') && ! str_ends_with($type, 'MorphTo')) {
+            return true;
+        }
+
+        if ($relationClass === null) {
+            return false;
+        }
+
+        foreach (self::TO_MANY as $toMany) {
+            if (is_a($relationClass, $toMany, true)) {
+                return self::keepsMethodOf($relationClass, 'getResults', $toMany)
+                    && self::keepsMethodOf($relationClass, 'match', $toMany);
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -83,7 +100,7 @@ class RelationMap
      * Resolve the nullability strategy for a relation type.
      *
      * Accepts a short class name (e.g. 'HasOne' from ModelInspector) or a FQCN. A relation class the map does not
-     * name, such as a package's subclass of HasMany, takes the strategy of its nearest parent the map does name.
+     * name takes the strategy of its nearest parent the map names, unless it loads one model and that parent a list.
      */
     public function strategyFor(string $type, ?string $relationClass = null): string
     {
@@ -108,14 +125,23 @@ class RelationMap
             }
         }
 
+        $loadsOne = $relationClass !== null && ! self::isToMany($type, $relationClass);
         $parents = $relationClass === null ? false : class_parents($relationClass);
 
         foreach ($parents ?: [] as $parent) {
-            if (isset($map[$parent])) {
+            if (isset($map[$parent]) && ! ($loadsOne && self::isToMany(Str::afterLast($parent, '\\'), $parent))) {
                 return $map[$parent];
             }
         }
 
         return 'nullable';
+    }
+
+    /**
+     * Whether a class runs the given method as the ancestor declares it, or as a class above that ancestor does.
+     */
+    private static function keepsMethodOf(string $class, string $method, string $ancestor): bool
+    {
+        return is_a($ancestor, new ReflectionMethod($class, $method)->class, true);
     }
 }

@@ -1838,13 +1838,13 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a relation loads a collection, by its class, so a package's subclass of HasMany does too.
+     * Whether a relation loads a collection, by its short type or, for a package's subclass, by its class.
      *
      * @param  RelationInfo  $relation
      */
     private static function isToManyRelation(array $relation): bool
     {
-        return RelationMap::isToMany($relation['class']);
+        return RelationMap::isToMany($relation['type'], $relation['class']);
     }
 
     /**

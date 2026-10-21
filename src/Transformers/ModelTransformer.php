@@ -575,7 +575,7 @@ class ModelTransformer extends CoreTransformer
 
             $isMorphTo = $isMorphToRelation($relation);
             $relatedBasename = class_basename($relation['related']);
-            $toMany = RelationMap::isToMany($relation['class']);
+            $toMany = RelationMap::isToMany($relation['type'], $relation['class']);
 
             // Default for a non-morph relation; the morph branch below overrides it either way.
             $relationTargetFqcns = [$relation['related']];

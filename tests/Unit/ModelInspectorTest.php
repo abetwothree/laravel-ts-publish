@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TreeCategory;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationFacility;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationTrail;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\FirstRelated;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelInspector as EloquentModelInspector;
@@ -51,6 +52,7 @@ describe('ModelInspector with a relation that cannot be read on a blank model', 
 describe('ModelInspector with a relation method declared only by its @return relation class', function () {
     test('discovers a relation method declared only by its @return relation class', function () {
         expect(resolve(ModelInspector::class)->relationsOf(new TreeCategory)->all())->toBe([
+            ['name' => 'firstBranch', 'type' => 'FirstRelated', 'related' => TreeCategory::class, 'class' => FirstRelated::class],
             ['name' => 'ancestors', 'type' => 'Ancestors', 'related' => TreeCategory::class, 'class' => Ancestors::class],
             ['name' => 'parent', 'type' => 'BelongsTo', 'related' => Category::class, 'class' => BelongsTo::class],
             ['name' => 'children', 'type' => 'HasMany', 'related' => Category::class, 'class' => HasMany::class],
@@ -87,6 +89,20 @@ describe('ModelInspector with a relation method declared only by its @return rel
             ->and($declares(TreeCategory::class, 'branches'))->toBeFalse()
             ->and($declares(Model::class, 'newQuery'))->toBeFalse();
     });
+});
+
+// staudenmeir/eloquent-has-many-deep's HasOneDeep is built the same way, on has-many-through.
+test('publishes a relation class built on HasMany that loads one model as that model or null, as Laravel sends it', function () {
+    $root = TreeCategory::create(['name' => 'Root', 'slug' => 'root']);
+    $branch = TreeCategory::create(['name' => 'Branch', 'slug' => 'branch', 'parent_id' => $root->id]);
+
+    $sent = fn (TreeCategory $category): mixed => TreeCategory::with('firstBranch')->findOrFail($category->id)
+        ->toArray()['first_branch'];
+
+    expect((new ModelTransformer(TreeCategory::class))->data()->relations['first_branch']['type'])->toBe('TreeCategory | null')
+        ->and($sent($root))->toBeArray()->toHaveKey('id', $branch->id)
+        ->and($sent($branch))->toBeNull()
+        ->and($root->firstBranch)->toBeInstanceOf(TreeCategory::class);
 });
 
 test('Laravel loads, counts and sends the notification relations only their docblock declares', function () {
