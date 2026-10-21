@@ -37,7 +37,7 @@ reflection answers, a decline included.
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
-| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, marked unsaved for `UNSAVED_QUERY_MODELS`; the same query where it returns itself, as `where()` does. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `forwardedQueryClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
 | `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
 | `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
@@ -291,13 +291,19 @@ One more rule reads no model, and runs before the eight on a resource collection
   `R` is the collected element, an API resource or the raw models' model; with none it is `unknown` and the item and
   list rules decline.
 
+A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
+`ReceiverMethodReturnResolver::forwardedQueryClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
+whose `__call()` sends a name its `$passthru` lists to `Query\Builder`. A macro under the name runs first, so it
+forwards nowhere. `$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`,
+so it stays `unknown`.
+
 ### The order for one class
 
 When no convention rule answers, `ReceiverMethodReturnResolver` types the method on one class in this order, and any
 step can decline:
 
-1. The method must exist. On a receiver other than `self::`, `static::` or `parent::`, it must be public, by the
-   [visibility](#visibility) rule.
+1. The method must exist, or a relation or builder must forward it, as [Receiver rules](#receiver-rules) says. On a
+   receiver other than `self::`, `static::` or `parent::`, it must be public, by the [visibility](#visibility) rule.
 2. A model's `toArray()` that no rule answers, an override or an abstract model's, declines. Its output depends on which
    relations are loaded, and no declaration describes that runtime state. See [known gaps][gap-to-array].
 3. When `returnClasses()` is exactly the receiver's own class, from `static`, `$this` or a `self` the class declares,

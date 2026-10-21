@@ -74,6 +74,9 @@ a concrete class, so it stays a one-line change if a provider author asks for it
 handler profile, whose handlers mean nothing in a provider. It reads `#[TsCasts]` from `provide()` only, on purpose.
 `InertiaSharedDataAnalyzer` also reads class-level casts, but adding that here would be a new feature, not a fix.
 
+Inside an `instanceof` arm `$model` holds the tested model, so its reads and relation calls type there:
+`$model instanceof Post ? $model->comments()->count() : null` infers `number | null`.
+
 ### Inferred imports
 
 `ModelMetadataAnalyzer::inferredTypeImports()` passes `AnalysisImports::build()` only the channels the inferred
