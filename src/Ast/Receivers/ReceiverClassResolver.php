@@ -90,6 +90,9 @@ final class ReceiverClassResolver
     /** Marks a `new` whose model may hold attributes when read: one built for a passed copy, or one its body fills. */
     public const string HOLDS_ATTRIBUTES = 'holdsAttributes';
 
+    /** Lists the columns a body's writes fill on a `new` model that holds no other attribute. */
+    public const string FILLED_MEMBERS = 'filledMembers';
+
     /** The Model methods whose result is a copy no row backs yet. */
     private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
 
@@ -1006,7 +1009,9 @@ final class ReceiverClassResolver
             return $held?->asUnsaved();
         }
 
-        return $held->asAttributeless();
+        $filled = $new->getAttribute(self::FILLED_MEMBERS);
+
+        return $held->asAttributeless(is_array($filled) ? array_values(array_filter($filled, is_string(...))) : []);
     }
 
     /**
@@ -1870,6 +1875,7 @@ final class ReceiverClassResolver
         $unsaved = false;
         $keyed = false;
         $attributeless = false;
+        $filled = null;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -1884,6 +1890,8 @@ final class ReceiverClassResolver
             $unsaved = $unsaved || $type->unsaved;
             $keyed = $keyed || $type->keyed;
             $attributeless = $attributeless || $type->attributeless;
+            // Each part with no attributes holds only the columns written into all of them.
+            $filled = ! $type->attributeless ? $filled : ($filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled)));
         }
 
         if ($classes === []) {
@@ -1900,6 +1908,7 @@ final class ReceiverClassResolver
             collectedElement: count($collectedElements) === 1 ? reset($collectedElements) : null,
             keyed: $keyed,
             attributeless: $attributeless,
+            filled: $filled ?? [],
         );
     }
 

@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * Column reads on a model with no attributes, which Laravel sends as null, beside unsaved copies that hold attributes,
- * new models the body writes or fills, and the relation, accessor and default-attribute reads a new model answers. A
- * closure never called, or writing its own parameter, fills no model; a write past a reassignment fills the next one.
+ * Column reads on a model with no attributes, which Laravel sends as null, beside copies holding attributes, new models
+ * the body fills, a member write only that column, and the relation, accessor and default reads a new model answers.
+ * A closure never called fills nothing, and a write its column cannot hold leaves the local unread.
  *
  * @mixin Post
  */
@@ -43,6 +43,13 @@ class AttributelessModelReadResource extends JsonResource
         $replacedTitle = $replaced->title;
         $replaced = new Post;
         $replaced->title = 'x';
+        $nulled = new Post;
+        $nulled->title = null;
+        $redacted = $this->resource->replicate();
+
+        if (! $this->is_pinned) {
+            $redacted->title = null;
+        }
 
         return [
             'new_title' => (new Post)->title,
@@ -54,6 +61,9 @@ class AttributelessModelReadResource extends JsonResource
             'filled_title' => (new Post(['title' => 'x']))->title,
             'local_title' => $draft->title,
             'written_title' => $written->title,
+            'written_content' => $written->content,
+            'nulled_title' => $nulled->title,
+            'redacted_title' => $redacted->title,
             'offset_title' => $offset->title,
             'filled_local_title' => $filled->title,
             'exit_filled_title' => $this->when(true, function () {

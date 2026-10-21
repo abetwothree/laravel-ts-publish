@@ -354,6 +354,9 @@ it('keeps a local\'s model across a write through its member or offset', functio
         [[User::class]],
     ],
     'a local a list destructures, which the scan cannot read' => ['[$p] = [$this->author]; $p->name = "x"; $p->x;', [null]],
+    'a member written null, which its column cannot hold' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = null; $p->x;', [null]],
+    'a member written a value the scan cannot type' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = $t; $p->x;', [null]],
+    'a relation\'s member written null' => ['$p = $this->resource; $p->author->name = null; $p->x;', [null]],
     'an array, which an offset write extends' => ['$p = []; $p["k"] = $this->author; $p->x;', [null]],
 ]);
 
@@ -560,10 +563,12 @@ it('keeps a local holding a model across a write through it, and no array an off
 });
 
 /**
- * Whether the `new` a parsed body's `$p = new Post;` assigns, past $before, holds attributes once markFilled() reads
- * the body, as the binding pass does.
+ * What markFilled() marks the `new` a parsed body's `$p = new Post;` assigns, past $before, as holding: every attribute
+ * (true), the members a write fills, or none (false).
+ *
+ * @return list<string>|bool
  */
-function marksFilled(string $body, string $before = ''): bool
+function marksFilled(string $body, string $before = ''): array|bool
 {
     $host = new class
     {
@@ -576,7 +581,8 @@ function marksFilled(string $body, string $before = ''): bool
          */
         public function mark(New_ $new, array $stmts): void
         {
-            $this->markFilled($new, 'p', $stmts, $this->collectVariableWrites($stmts));
+            $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+            $this->markFilled($new, 'p', $stmts, $this->collectVariableWrites($stmts), $scope);
         }
     };
 
@@ -586,24 +592,29 @@ function marksFilled(string $body, string $before = ''): bool
     assert($new instanceof New_);
     $host->mark($new, $stmts);
 
-    return $new->getAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES) === true;
+    return $new->getAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES) === true
+        ?: $new->getAttribute(ReceiverClassResolver::FILLED_MEMBERS, false);
 }
 
 // Laravel sends what a body wrote through the variable, before the read or after it, so its `new` holds attributes.
-it('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, bool $fills, string $before = '') {
+it('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, array|bool $fills, string $before = '') {
     expect(marksFilled($body, $before))->toBe($fills);
 })->with([
-    'a member write' => ['$p->title = "x";', true],
-    'a coalescing member write' => ['$p->title ??= "x";', true],
-    'an offset write' => ['$p["title"] = "x";', true],
-    'an increment' => ['$p->views++;', true],
+    'a member write' => ['$p->title = "x";', ['title']],
+    'a coalescing member write' => ['$p->title ??= "x";', ['title']],
+    'an offset write' => ['$p["title"] = "x";', ['title']],
+    'an increment' => ['$p->word_count++;', ['word_count']],
+    'two members written' => ['$p->title = "x"; $p->content .= "y";', ['title', 'content']],
+    'a member written null, which its column cannot hold' => ['$p->title = null;', false],
+    'a member written a value the scan cannot type' => ['$p->title = $t;', false],
+    'a member no column names' => ['$p->views = 1;', false],
     'fill() as a statement' => ['$p->fill([]);', true],
     'forceFill() inside an expression' => ['$q = $p->forceFill([]);', true],
     'any method called as a statement' => ['$p->save();', true],
     'a relation method called as a statement' => ['$p->author()->associate($u);', true],
-    'a closure a call runs' => ['collect([1])->each(function () use ($p) { $p->title = "x"; });', true],
-    'an arrow function a call runs' => ['collect([1])->each(fn () => $p->title = "x");', true],
-    'a closure the body calls' => ['$f = function () use (&$p) { $p->title = "x"; }; $f();', true],
+    'a closure a call runs' => ['collect([1])->each(function () use ($p) { $p->title = "x"; });', ['title']],
+    'an arrow function a call runs' => ['collect([1])->each(fn () => $p->title = "x");', ['title']],
+    'a closure the body calls' => ['$f = function () use (&$p) { $p->title = "x"; }; $f();', ['title']],
     'a closure the body never calls' => ['$f = function () use ($p) { $p->title = "x"; };', false],
     'a closure parameter of the name' => ['collect([1])->each(function ($p) { $p->save(); });', false],
     'an arrow function parameter of the name' => ['collect([1])->each(fn ($p) => $p->title = "x");', false],
@@ -614,7 +625,7 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'a method called on a relation as a statement' => ['$p->author->save();', false],
     'a write before the assignment' => ['', false, '$p->title = "x"; '],
     'a write past the next assignment' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = "x";', false],
-    'a write past a block that assigns and leaves' => ['if ($c) { $p = new \\Workbench\\App\\Models\\Post; return; } $p->title = "x";', true],
+    'a write past a block that assigns and leaves' => ['if ($c) { $p = new \\Workbench\\App\\Models\\Post; return; } $p->title = "x";', ['title']],
     'a write past an assignment in its own block' => ['if ($c) { $p = new \\Workbench\\App\\Models\\Post; $p->title = "x"; }', false],
     'a member read' => ['$t = $p->title;', false],
     'a method read as a value' => ['$k = $p->getKey();', false],

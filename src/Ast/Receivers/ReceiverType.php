@@ -27,6 +27,7 @@ final readonly class ReceiverType
      * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
      * @param  bool  $keyed  a collection whose keys a step such as `keyBy()`, `sortBy()` or `filter()` moved off 0..n-1
      * @param  bool  $attributeless  a `new` model with no attributes yet, whose columns read null but for a default
+     * @param  list<string>  $filled  the columns a write gave such a model, which read as written
      */
     public function __construct(
         public array $classes,
@@ -38,6 +39,7 @@ final readonly class ReceiverType
         public ?array $collectedElement = null,
         public bool $keyed = false,
         public bool $attributeless = false,
+        public array $filled = [],
     ) {}
 
     /**
@@ -67,11 +69,14 @@ final readonly class ReceiverType
     }
 
     /**
-     * The same receiver marked as a new model that holds no attributes yet, which no row backs either.
+     * The same receiver marked as a new model that holds no attributes yet, but the columns a write filled, which no
+     * row backs either.
+     *
+     * @param  list<string>  $filled
      */
-    public function asAttributeless(): self
+    public function asAttributeless(array $filled = []): self
     {
-        return $this->copy(unsaved: true, attributeless: true);
+        return $this->copy(unsaved: true, attributeless: true, filled: $filled);
     }
 
     /**
@@ -114,9 +119,15 @@ final readonly class ReceiverType
      * A copy with the given parts replaced and every other flag kept.
      *
      * @param  non-empty-list<class-string>|null  $classes
+     * @param  list<string>|null  $filled
      */
-    private function copy(?array $classes = null, ?bool $shortCircuits = null, ?bool $unsaved = null, ?bool $attributeless = null): self
-    {
+    private function copy(
+        ?array $classes = null,
+        ?bool $shortCircuits = null,
+        ?bool $unsaved = null,
+        ?bool $attributeless = null,
+        ?array $filled = null,
+    ): self {
         return new self(
             classes: $classes ?? $this->classes,
             shortCircuits: $shortCircuits ?? $this->shortCircuits,
@@ -127,6 +138,7 @@ final readonly class ReceiverType
             collectedElement: $this->collectedElement,
             keyed: $this->keyed,
             attributeless: $attributeless ?? $this->attributeless,
+            filled: $filled ?? $this->filled,
         );
     }
 }

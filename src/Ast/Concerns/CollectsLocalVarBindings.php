@@ -11,8 +11,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
+use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -168,7 +173,7 @@ trait CollectsLocalVarBindings
             }
 
             $name = $stmt->expr->var->name;
-            $this->markFilled($stmt->expr->expr, $name, $stmts, $writes);
+            $this->markFilled($stmt->expr->expr, $name, $stmts, $writes, $scope);
 
             if (($writeCounts[$name] ?? 0) === 1) {
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
@@ -366,21 +371,21 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Mark the `new` a variable is bound to as holding attributes where its body fills that model, before a read or
-     * after it, but not past a later write in the list holding that write: Laravel then sends what was written. A write
-     * to a member or offset of the variable fills it, as does an attribute writer on it, or calls on it as a statement.
+     * Mark the `new` a variable is bound to as holding the attributes its body fills, before a read or after it, but
+     * not past a later write in the list holding that write: Laravel then sends what was written. An attribute writer
+     * or calls on it as a statement fill every one; a member or key write fills that column.
      *
      * @param  array<Node>  $body
      * @param  VariableWrites  $writes  the body's writes that replace a variable
      */
-    protected function markFilled(Expr $bound, string $name, array $body, array $writes): void
+    protected function markFilled(Expr $bound, string $name, array $body, array $writes, AnalysisScope $scope): void
     {
         if (! $bound instanceof New_ || $bound->args !== []) {
             return;
         }
 
         $from = $bound->getEndFilePos();
-        $cuts = [];
+        $cuts = [[PHP_INT_MIN, $from]];
 
         foreach ($writes as [$written, $node, , $kind]) {
             // A by-reference `use` imports the variable; a write inside that closure is a write of its own.
@@ -391,8 +396,14 @@ trait CollectsLocalVarBindings
             }
         }
 
-        if ($this->fillsWithin($body, $name, $from, $cuts, $this->parkedClosures($body))) {
+        $models = resolve(ReceiverClassResolver::class)->resolve($bound, $scope)?->models() ?? [];
+        $fill = fn (Node $node): true|string|null => $this->fills($node, $name, $models, $scope);
+        $members = [];
+
+        if ($this->fillsWithin($body, $name, $fill, $cuts, $this->parkedClosures($body), $members)) {
             $bound->setAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES, true);
+        } elseif ($members !== []) {
+            $bound->setAttribute(ReceiverClassResolver::FILLED_MEMBERS, array_values(array_unique($members)));
         }
     }
 
@@ -412,7 +423,7 @@ trait CollectsLocalVarBindings
             ) {
                 $body = $closure->getStmts();
                 $writes = $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass);
-                $this->markFilled($param->default, $param->var->name, $body, $writes);
+                $this->markFilled($param->default, $param->var->name, $body, $writes, $scope);
             }
         }
     }
@@ -508,7 +519,7 @@ trait CollectsLocalVarBindings
                 && $stmt->expr->var instanceof Variable
                 && is_string($stmt->expr->var->name)
             ) {
-                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body, $writes);
+                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body, $writes, $scope);
                 $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
             }
 
@@ -762,42 +773,70 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether every value a name holds in the body is a model: the binding it came in with, if any, and each value the
-     * body assigns it, where no write of another kind gives it a value the scan cannot read.
+     * Whether every value a name holds in the body is a model, which each write through it leaves holding it: the
+     * binding it came in with, if any, and each value the body assigns it, where no write of another kind gives it a
+     * value the scan cannot read, and each member or key write stores a value its column holds.
      *
      * @param  VariableWrites  $writes  the body's writes that replace a variable
      */
     private function holdsOnlyModels(string $name, array $writes, AnalysisScope $scope): bool
     {
-        $resolver = resolve(ReceiverClassResolver::class);
-        $namesModels = fn (Expr $value): bool => $resolver->resolve($value, $scope)?->within([Model::class]) ?? false;
         $declared = $scope->varClassBindings[$name] ?? $scope->varDeclaredBindings[$name] ?? null;
         $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
-        $assigned = [];
+        $classes = match (true) {
+            isset($scope->varModelBindings[$name]) => [$scope->varModelBindings[$name]],
+            $declared !== null => $declared,
+            $bound === null && $scope->bindsName($name) => null,
+            default => [],
+        };
+        $values = $classes === [] && $bound !== null ? [$bound] : [];
+        $through = [];
 
         foreach ($writes as [$written, $node, , $kind]) {
-            if ($written !== $name || $kind === VariableWrite::MemberOrOffset) {
-                continue;
-            }
-
-            if (($kind !== VariableWrite::Replaces && $kind !== VariableWrite::Coalesces)
-                || (! $node instanceof Assign && ! $node instanceof CoalesceAssign)
+            if ($written === $name && $kind === VariableWrite::MemberOrOffset) {
+                $through[] = $node;
+            } elseif ($written === $name && ($kind === VariableWrite::Replaces || $kind === VariableWrite::Coalesces)
+                && ($node instanceof Assign || $node instanceof CoalesceAssign)
             ) {
+                $values[] = $node->expr;
+            } elseif ($written === $name) {
                 return false;
             }
-
-            $assigned[] = $node->expr;
         }
 
-        $comesIn = match (true) {
-            isset($scope->varModelBindings[$name]) => true,
-            $declared !== null => array_all($declared, fn (string $class): bool => is_a($class, Model::class, true)),
-            $bound !== null => $namesModels($bound),
-            $scope->bindsName($name) => false,
-            default => null,
+        foreach ($values as $value) {
+            $held = $classes === null ? null : resolve(ReceiverClassResolver::class)->resolve($value, $scope);
+            $classes = $held === null ? null : [...$classes, ...$held->classes];
+        }
+
+        $models = array_values(array_unique($classes ?? []));
+
+        return $models !== [] && array_all($models, fn (string $class): bool => is_a($class, Model::class, true))
+            && array_all($through, fn (Node $node): bool => $this->keepsModelThrough($node, $name, $models, $scope));
+    }
+
+    /**
+     * Whether a write through a member or key of a variable holding models stores a value its column holds, on those
+     * models or on the one model each relation of them the write goes through holds.
+     *
+     * @param  list<class-string>  $models
+     */
+    private function keepsModelThrough(Node $node, string $name, array $models, AnalysisScope $scope): bool
+    {
+        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
+        $relation = $holder instanceof PropertyFetch && $holder->var instanceof Variable && $holder->var->name === $name
+            && $holder->name instanceof Identifier ? $holder->name->toString() : null;
+        $related = $relation === null ? [] : array_map(
+            fn (string $model): ?string => resolve(ModelAttributeResolver::class)->resolveRelation($model, $relation)['modelFqcn'],
+            $models,
+        );
+        $holds = match (true) {
+            $holder instanceof Variable && $holder->name === $name => $models,
+            $related !== [] && ! in_array(null, $related, true) => $related,
+            default => [],
         };
 
-        return ($comesIn ?? ($assigned !== [])) && array_all($assigned, $namesModels);
+        return $this->storesWithinColumn($node, $member, $holds, $scope);
     }
 
     /**
@@ -1557,40 +1596,45 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether nodes past an offset fill the model a variable holds, outside a nested class or function, a closure that
-     * never runs or has a variable of that name of its own, and each span a later write cuts off. A node the source
-     * does not place is read.
+     * Whether nodes fill every attribute of the model a variable holds, adding each column one fills alone to $members,
+     * outside a nested class or function, a closure that never runs or has a variable of that name of its own, and each
+     * span cut off: the reads before the model, and those past a later write. A node the source does not place is read.
      *
      * @param  array<mixed>|Node  $nodes
-     * @param  list<array{int, int}>  $cuts  the spans past a later write of the variable, up to its list's end
+     * @param  Closure(Node): (true|string|null)  $fill  what one node fills
+     * @param  list<array{int, int}>  $cuts
      * @param  list<ArrowFunction|ClosureExpr>  $parked  the closures that never run
+     * @param  list<string>  $members
      */
-    private function fillsWithin(array|Node $nodes, string $name, int $from, array $cuts, array $parked): bool
+    private function fillsWithin(array|Node $nodes, string $name, Closure $fill, array $cuts, array $parked, array &$members): bool
     {
         foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
-            if (is_array($node) && $this->fillsWithin($node, $name, $from, $cuts, $parked)) {
+            if (is_array($node) && $this->fillsWithin($node, $name, $fill, $cuts, $parked, $members)) {
                 return true;
             }
 
+            $start = $node instanceof Node ? $node->getStartFilePos() : -1;
+            $cut = fn (int $at): bool => array_any($cuts, fn (array $cut): bool => $at > $cut[0] && $at <= $cut[1]);
+
             if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_
-                || ($node->getStartFilePos() >= 0 && $node->getEndFilePos() < $from)
+                || ($start >= 0 && $cut($start) && $cut($node->getEndFilePos()))
                 || (($node instanceof ClosureExpr || $node instanceof ArrowFunction) && ! $this->sharesVariable($node, $name, $parked))
             ) {
                 continue;
             }
 
-            $start = $node->getStartFilePos();
+            $filled = $start < 0 || $cut($start) ? null : $fill($node);
 
-            if ($start > $from && ! array_any($cuts, fn (array $cut): bool => $start > $cut[0] && $start <= $cut[1])
-                && $this->fills($node, $name)
-            ) {
+            if ($filled === true) {
                 return true;
             }
+
+            $members = $filled === null ? $members : [...$members, $filled];
 
             foreach ($node->getSubNodeNames() as $subNode) {
                 $child = $node->{$subNode};
 
-                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $from, $cuts, $parked)) {
+                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $fill, $cuts, $parked, $members)) {
                     return true;
                 }
             }
@@ -1636,27 +1680,81 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether one node fills the model a variable holds: a write to a member or offset of it, a call to an attribute
-     * writer on it, or a statement calling a chain of methods on it, such as a relation's associate().
+     * What one node fills of the model a variable holds: every attribute (true) where it calls an attribute writer on
+     * it, or a chain of methods on it as a statement, such as a relation's associate(); the column a member or key
+     * write of it stores a value that column holds in; else nothing.
+     *
+     * @param  list<class-string<Model>>  $models  the models the variable may hold
      */
-    private function fills(Node $node, string $name): bool
+    private function fills(Node $node, string $name, array $models, AnalysisScope $scope): true|string|null
     {
-        if ($node instanceof Assign || $node instanceof AssignOp || $node instanceof AssignRef
-            || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
-        ) {
-            return ($node->var instanceof PropertyFetch || $node->var instanceof ArrayDimFetch)
-                && $this->callsOn($node->var->var, $name);
-        }
+        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
 
-        if ($node instanceof MethodCall || $node instanceof NullsafeMethodCall) {
-            return $node->name instanceof Identifier
+        return match (true) {
+            $holder !== null => $holder instanceof Variable && $holder->name === $name
+                && $this->storesWithinColumn($node, $member, $models, $scope) ? $member : null,
+            $node instanceof MethodCall, $node instanceof NullsafeMethodCall => $node->name instanceof Identifier
                 && in_array($node->name->toString(), self::ATTRIBUTE_WRITERS, true)
-                && $node->var instanceof Variable && $node->var->name === $name;
-        }
+                && $node->var instanceof Variable && $node->var->name === $name ?: null,
+            default => $node instanceof ExpressionStmt
+                && ($node->expr instanceof MethodCall || $node->expr instanceof NullsafeMethodCall)
+                && $this->callsOn($node->expr->var, $name) ?: null,
+        };
+    }
 
-        return $node instanceof ExpressionStmt
-            && ($node->expr instanceof MethodCall || $node->expr instanceof NullsafeMethodCall)
-            && $this->callsOn($node->expr->var, $name);
+    /**
+     * The holder and the column a write through a member or a literal key stores into, or null for any other write.
+     *
+     * @return array{Expr, string}|null
+     */
+    private function writtenMember(Node $node): ?array
+    {
+        $target = $node instanceof Assign || $node instanceof AssignOp || $node instanceof PreInc || $node instanceof PostInc
+            || $node instanceof PreDec || $node instanceof PostDec ? $node->var : null;
+
+        return match (true) {
+            $target instanceof PropertyFetch && $target->name instanceof Identifier => [$target->var, $target->name->toString()],
+            $target instanceof ArrayDimFetch && $target->dim instanceof String_ => [$target->var, $target->dim->value],
+            default => null,
+        };
+    }
+
+    /**
+     * Whether a write stores in a column a value that column's published type holds on every model it may be written
+     * on: a constant, or what `.=`, an arithmetic operator, `++` or `--` leaves.
+     *
+     * @param  list<class-string>  $models
+     */
+    private function storesWithinColumn(Node $node, string $member, array $models, AnalysisScope $scope): bool
+    {
+        $value = match (true) {
+            $node instanceof Assign, $node instanceof CoalesceAssign => $this->constantType($node->expr, $scope),
+            $node instanceof AssignOp\Concat => 'string',
+            $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PostInc, $node instanceof PreDec,
+            $node instanceof PostDec => 'number',
+            default => null,
+        };
+        $attributes = resolve(ModelAttributeResolver::class);
+
+        return $value !== null && $models !== [] && array_all($models, fn (string $model): bool => in_array(
+            $value,
+            TsTypeString::splitTopLevelUnion($attributes->resolveAttribute($model, $member)['type']),
+            true,
+        ));
+    }
+
+    /**
+     * The TypeScript type of a constant expression, or null for any other.
+     */
+    private function constantType(Expr $value, AnalysisScope $scope): ?string
+    {
+        $values = resolve(ValueResolver::class);
+
+        try {
+            return $values->resolveConstantValue($values->evaluateConstantExpression($value, $scope))['type'] ?? null;
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
     }
 
     /**
