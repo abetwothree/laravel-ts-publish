@@ -530,7 +530,6 @@ trait CollectsLocalVarBindings
             default => null,
         };
         $declared = $scope->varDeclaredBindings[$name] ?? null;
-        $valueOnly = $this->bindsValueOnly($name, $scope);
 
         // preg_match() may not run unless it is a statement of the body, and a skipped call leaves the binding.
         if ($form !== null && $form['effect'] === ByReferenceEffect::WritesMatches) {
@@ -539,7 +538,8 @@ trait CollectsLocalVarBindings
 
         // A by-reference call keeps only an array or a number, never the object a class binding holds.
         if ($form !== null) {
-            return $form['effect'] === ByReferenceEffect::KeepsAny || ($form['effect'] !== ByReferenceEffect::Replaces && $valueOnly);
+            return $form['effect'] === ByReferenceEffect::KeepsAny
+                || ($form['effect'] !== ByReferenceEffect::Replaces && $classes === null && $declared === null && $element === null);
         }
 
         // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
@@ -550,7 +550,7 @@ trait CollectsLocalVarBindings
         }
 
         // A value binding holds no class a receiver keeps, so its own `$x = …;` replaces it past that statement.
-        if ($valueOnly && $topLevel && $kind === VariableWrite::Replaces) {
+        if ($topLevel && $kind === VariableWrite::Replaces && $this->bindsValueOnly($name, $scope)) {
             return false;
         }
 
@@ -1136,20 +1136,27 @@ trait CollectsLocalVarBindings
      */
     private function bindsValue(string $name, AnalysisScope $scope): bool
     {
-        return isset($scope->varValueBindings[$name]) || $this->bindsValueOnly($name, $scope);
+        return isset($scope->varValueBindings[$name]) || isset($scope->closureParamExprBindings[$name]);
     }
 
     /**
-     * Whether a name's binding is a value alone, with no class, declared class or collection element a receiver reads;
-     * an expression binding is a value, whatever class its expression names.
+     * Whether a name's binding is a value alone: no class, declared class or collection element, and no expression the
+     * receiver resolver names a class for, such as a relation read or a model no row backs yet.
      */
     private function bindsValueOnly(string $name, AnalysisScope $scope): bool
     {
+        $bound = $scope->closureParamExprBindings[$name] ?? null;
+
         return ! isset($scope->varModelBindings[$name])
             && ! isset($scope->varClassBindings[$name])
             && ! isset($scope->requestVarNames[$name])
             && ! isset($scope->varDeclaredBindings[$name])
-            && ! isset($scope->varCollectionBindings[$name]);
+            && ! isset($scope->varCollectionBindings[$name])
+            && ($bound === null || $scope->resolvingBinding(
+                $name,
+                $bound,
+                fn (): bool => resolve(ReceiverClassResolver::class)->resolve($bound, $scope) === null,
+            ) === true);
     }
 
     /**

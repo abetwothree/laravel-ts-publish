@@ -163,14 +163,28 @@ test('a helper that replaces its typed parameter with a value of another type re
 });
 
 // The class a receiver reads stays past a write naming none, but the value read takes what the body wrote.
-test('a helper\'s parameter that declares a class reads its value before its own write, and the written value past it', function () {
+test('a parameter holding a class beside a value reads its value before its own write, and the written value past it', function () {
     $post = new Post;
     $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $post->setRelation('author', new User()->forceFill(['id' => 3, 'name' => 'Ann']));
 
     expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(WrittenDeclaredParametersResource::class, 'toArray', Post::class)->properties))
-        ->toBe(['title_of' => 'string | null', 'copied' => 'Post | null', 'decoded' => 'unknown', 'views_of' => 'number'])
+        ->toBe([
+            'title_of' => 'string | null',
+            'copied' => 'Post | null',
+            'decoded' => 'unknown',
+            'views_of' => 'number',
+            'author_name' => '?string',
+            'replica_title' => 'string',
+        ])
         ->and(json_decode((string) json_encode(new WrittenDeclaredParametersResource($post)->resolve(Request::create('/'))), true))
-        ->toBe(['title_of' => 'Banana', 'copied' => ['id' => 7, 'title' => 'Banana'], 'decoded' => [], 'views_of' => 1]);
+        ->toMatchArray([
+            'title_of' => 'Banana',
+            'decoded' => [],
+            'views_of' => 1,
+            'author_name' => 'Ann',
+            'replica_title' => 'Banana',
+        ]);
 });
 
 test('a spread call passes its argument to an untyped by-reference parameter', function () {

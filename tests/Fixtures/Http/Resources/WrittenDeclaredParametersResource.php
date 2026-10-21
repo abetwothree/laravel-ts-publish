@@ -10,8 +10,9 @@ use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PostStats;
 
 /**
- * Helpers whose parameter declares a class and binds a value beside it, which the body replaces with a value naming no
- * class: read past the write, and copied before it.
+ * Parameters holding a class beside a value, which the body replaces with a value naming no class, read past the write
+ * and copied before it: a helper's that declares a class, a transform() callback's passed a relation, and an untyped
+ * helper's passed a model no row backs yet.
  *
  * @mixin Post
  */
@@ -27,7 +28,21 @@ final class WrittenDeclaredParametersResource extends JsonResource
             'copied' => $this->copied($this->resource),
             'decoded' => $this->decoded($this->resource),
             'views_of' => $this->viewsOf(new PostStats(1.0, 2)),
+            'author_name' => $this->transform($this->author, function ($author) {
+                $author = $this->same($author);
+
+                return $author->name;
+            }),
+            'replica_title' => $this->titleThrough($this->resource->replicate()),
         ];
+    }
+
+    /**
+     * Hands back what it is given, with no type the package reads.
+     */
+    public function same(mixed $value): mixed
+    {
+        return func_get_args()[0];
     }
 
     /**
@@ -69,5 +84,15 @@ final class WrittenDeclaredParametersResource extends JsonResource
         $stats = $stats->views;
 
         return $stats;
+    }
+
+    /**
+     * The title read through an untyped parameter, past a write the package cannot type.
+     */
+    private function titleThrough($post)
+    {
+        $post = $this->same($post);
+
+        return $post->title;
     }
 }

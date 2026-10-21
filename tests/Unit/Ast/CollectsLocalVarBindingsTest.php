@@ -236,15 +236,15 @@ it('ends a value binding past a top-level write, and at a nested write whose val
     'a value naming a class' => ['$p = \\Workbench\\App\\Enums\\Status::from($p); return $p;', [true, true, false]],
 ]);
 
-// An expression binding is a value binding, whether or not the receiver resolver names a class for it.
-it('ends an expression binding past a top-level write, and keeps it across a nested one naming no class', function (string $body, Expr $bound, array $holding) {
+// An expression binding the receiver resolver names no class for is a value binding; one it names a class for keeps it.
+it('ends an expression binding naming no class past a top-level write, and keeps one naming a class', function (string $body, Expr $bound, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope) use ($bound): void {
         $scope->closureParamExprBindings['p'] = $bound;
     }))->toBe($holding);
 })->with([
     'a column read' => ['$p = trim($p); return $p;', new PropertyFetch(new Variable('this'), 'title'), [true, true, false]],
-    'a relation read' => ['$p = json_decode($p); return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, false]],
-    'a passed model no row backs yet' => ['$p = json_decode($p); return $p;', new New_(new FullyQualified(User::class)), [true, true, false]],
+    'a relation read' => ['$p = json_decode($p); return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, true]],
+    'a passed model no row backs yet' => ['$p = json_decode($p); return $p;', new New_(new FullyQualified(User::class)), [true, true, true]],
     'a nested write naming no class' => ['if ($p) { $p = json_decode($p); } return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, true, true]],
 ]);
 
