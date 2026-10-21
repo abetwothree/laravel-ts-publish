@@ -36,9 +36,20 @@ enum VariableWrite
     /** `unset()`. */
     case Unsets;
 
-    /** A by-reference argument, `=&`, a by-reference `foreach`, `global` or `static`. */
+    /** A by-reference argument, or the array a by-reference `foreach` writes element by element. */
     case ByReference;
+
+    /** `=&`, `global`, `static` or a by-reference `foreach` value, which another name or a call can write through. */
+    case References;
 
     /** A closure's by-reference `use`, which every write inside that closure goes through. */
     case InClosure;
+
+    /**
+     * Whether the write leaves the variable a reference that another name, or a closure, writes through later.
+     */
+    public function makesReference(): bool
+    {
+        return $this === self::References || $this === self::InClosure;
+    }
 }

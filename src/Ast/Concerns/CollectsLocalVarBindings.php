@@ -482,7 +482,7 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            if ($this->makesReference($node, $target)) {
+            if ($this->writeKind($node, $target)->makesReference()) {
                 return null;
             }
 
@@ -493,16 +493,6 @@ trait CollectsLocalVarBindings
         }
 
         return $end;
-    }
-
-    /**
-     * Whether a write can make a variable a reference that another name, or a closure, writes through: `=&`, a
-     * by-reference `use` or `foreach` value, `global` or `static`.
-     */
-    private function makesReference(Node $write, Expr $target): bool
-    {
-        return $write instanceof AssignRef || $write instanceof ClosureExpr || $write instanceof Global_ || $write instanceof Static_
-            || ($write instanceof Foreach_ && $write->byRef && $write->valueVar === $target);
     }
 
     /**
@@ -1137,8 +1127,9 @@ trait CollectsLocalVarBindings
     {
         return match (true) {
             $node instanceof ClosureExpr => VariableWrite::InClosure,
-            $node instanceof CallLike, $node instanceof AssignRef, $node instanceof Global_, $node instanceof Static_,
-            $node instanceof Foreach_ && $node->byRef => VariableWrite::ByReference,
+            $node instanceof AssignRef, $node instanceof Global_, $node instanceof Static_,
+            $node instanceof Foreach_ && $node->byRef && $node->valueVar === $target => VariableWrite::References,
+            $node instanceof CallLike, $node instanceof Foreach_ && $node->byRef => VariableWrite::ByReference,
             $node instanceof Foreach_ => VariableWrite::Foreach,
             $node instanceof Catch_ => VariableWrite::Catches,
             $node instanceof Unset_ => VariableWrite::Unsets,
