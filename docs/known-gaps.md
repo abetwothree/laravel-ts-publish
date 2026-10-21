@@ -717,8 +717,9 @@ or on the left of `+`.
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
-adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value. Type the
-operand with a docblock, or the key with `#[TsCasts]`.
+adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value, but not a
+local a merge closure such as `merge(function () { … })` assigns itself. Type the operand with a docblock, or the key
+with `#[TsCasts]`.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
