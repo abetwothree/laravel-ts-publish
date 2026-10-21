@@ -9,14 +9,16 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 
 /**
  * Determines whether a singular Eloquent relation should be typed as nullable,
  * using the configured RelationMap strategies and DB-level column inspection.
  *
+ * @phpstan-type RelationEntry = array{name: string, type: string, related: class-string<Model>, class?: class-string<Relation<Model, Model, mixed>>}
+ *
  * @phpstan-import-type AttributeInfo from ModelInfo
- * @phpstan-import-type RelationInfo from ModelInfo
  */
 class RelationNullable
 {
@@ -29,11 +31,14 @@ class RelationNullable
     ) {}
 
     /**
-     * @param  RelationInfo  $relation
+     * Whether the relation can load as null, by its strategy; an entry without its class, as Laravel's own list gives,
+     * is read by its short type alone.
+     *
+     * @param  RelationEntry  $relation
      */
     public function isNullable(array $relation): bool
     {
-        $strategy = LaravelTsPublish::relationStrategy($relation['type'], $relation['class']);
+        $strategy = LaravelTsPublish::relationStrategy($relation['type'], $relation['class'] ?? null);
 
         return match ($strategy) {
             'never' => false,
@@ -45,7 +50,7 @@ class RelationNullable
     }
 
     /**
-     * @param  RelationInfo  $relation
+     * @param  RelationEntry  $relation
      */
     protected function isForeignKeyNullable(array $relation): bool
     {
@@ -72,7 +77,7 @@ class RelationNullable
     }
 
     /**
-     * @param  RelationInfo  $relation
+     * @param  RelationEntry  $relation
      */
     protected function isMorphNullable(array $relation): bool
     {
