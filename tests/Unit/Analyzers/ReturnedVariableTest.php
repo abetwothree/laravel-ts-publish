@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalGapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalScopesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureGuardResource;
@@ -886,4 +887,17 @@ test('a key-built local reads the writes its own body makes before the read, and
         'outer' => ['outer' => 1, 'outer2' => 2],
         'nested' => null,
     ])->and($sent('1')['nested'])->toBe(['a' => 1, 'b' => 'x']);
+});
+
+// The join binds the read of `$m` to parent::toArray(), which a value read cannot type, so the walk reads that write.
+test('a key-built local read where its join holds a value it cannot type reads the whole write before it', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php', 'color' => null, 'created_at' => null, 'updated_at' => null]);
+    $model = 'id: number; name: string; slug: string; color: string | null; created_at: string | null; '
+        .'updated_at: string | null; posts?: Post[]; products?: Product[]';
+    $attributes = ['id' => 9, 'name' => 'php', 'slug' => 'php', 'color' => null, 'created_at' => null, 'updated_at' => null];
+
+    expect(returnedVariableMembers(KeyBuiltLocalGapResource::class))->toBe("first: { {$model} }; m: { {$model}; extra: number }")
+        ->and(new KeyBuiltLocalGapResource($tag)->resolve(Request::create('/')))
+        ->toBe(['first' => $attributes, 'm' => [...$attributes, 'extra' => 1]]);
 });

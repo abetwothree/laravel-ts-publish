@@ -342,7 +342,7 @@ final class AnalysisScope
 
     /**
      * Locals the body assigns whole and builds through key writes or `+=`, which no binding holds and no reference can
-     * write, each with the body's statements, so a read no join binds walks the writes before it.
+     * write, each with the body's statements, so a read no binding types walks the writes before it.
      *
      * @var KeyBuiltLocalsMap
      */

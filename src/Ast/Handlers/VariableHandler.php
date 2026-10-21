@@ -289,8 +289,8 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A local built by key writes, read where no join binds it, as the array its writes before the read build; null for
-     * any other variable, and for one whose walk is already under way.
+     * A local built by key writes, read where no binding types it, as the array its writes before the read build; null
+     * for any other variable, and for one whose walk is already under way.
      *
      * @return ValueExpressionResult|null
      */
@@ -298,8 +298,7 @@ final class VariableHandler implements ExpressionHandler
     {
         $stmts = $scope->keyBuiltLocals[$name] ?? null;
 
-        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues
-            || $scope->gapAt($read) !== null || isset($scope->resolvingLocalVars[$name])) {
+        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues || isset($scope->resolvingLocalVars[$name])) {
             return null;
         }
 
