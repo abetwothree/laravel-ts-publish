@@ -67,8 +67,11 @@ test('a parameter written inside a block joins its old value and the write\'s', 
         'joined?' => 'string | number',
         'vague_joined?' => 'unknown',
         'opaque_joined?' => 'unknown',
+        'caught_joined?' => 'string | number',
     ])
-        ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['joined' => 5, 'vague_joined' => 5, 'opaque_joined' => 5]);
+        ->and(joinedSends(JoinedParametersResource::class, true))
+        ->toMatchArray(['joined' => 5, 'vague_joined' => 5, 'opaque_joined' => 5, 'caught_joined' => 'Banana'])
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['caught_joined' => 3]);
 });
 
 // A written value no rule types is left out of the join, as a receiver keeps the old binding past it.

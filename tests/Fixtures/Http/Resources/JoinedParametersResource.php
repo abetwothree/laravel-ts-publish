@@ -7,11 +7,13 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
  * Closure parameters a write inside a block may replace, read past that block: transform()'s passed the title, a
- * property no rule types or a call no rule types, and ones, whenLoaded()'s too, that a value no rule types replaces.
+ * property no rule types or a call no rule types, ones, whenLoaded()'s too, that a value no rule types replaces, and
+ * one a `try` writes.
  *
  * @mixin Post
  */
@@ -80,6 +82,14 @@ final class JoinedParametersResource extends JsonResource
 
                 return $value;
             }),
+            'caught_joined' => $this->transform($this->title, function ($title) {
+                try {
+                    $title = $this->risky();
+                } catch (RuntimeException) {
+                }
+
+                return $title;
+            }),
         ];
     }
 
@@ -89,5 +99,13 @@ final class JoinedParametersResource extends JsonResource
     public function opaque(): mixed
     {
         return json_decode('"s"');
+    }
+
+    /**
+     * A count, which a pinned post has none of yet.
+     */
+    private function risky(): int
+    {
+        return $this->is_pinned ? throw new RuntimeException('pinned') : 3;
     }
 }

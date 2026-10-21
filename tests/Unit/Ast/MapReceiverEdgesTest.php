@@ -52,18 +52,20 @@ test('a map passes the values a replaced collection holds, and a replaced parame
         'found_content?' => 'string | null',
         'found_name?' => 'unknown',
         'found_bare?' => 'unknown',
+        'decoded?' => 'unknown',
     ])->and($sent)->toMatchArray([
         'plucked_ids' => [1, 2],
         'mapped_contents' => ['alpha', 'beta'],
         'resorted_ids' => [1 => 2, 0 => 1],
         'found_content' => 'alpha',
         'found_name' => null,
+        'decoded' => null,
     ])->and(array_keys($sent['keyed_all']))->toBe(['alpha', 'beta'])
         ->and(array_keys($sent['resorted_ids']))->toBe([1, 0])
         ->and($sent['found_bare'])->toMatchArray(['id' => 1, 'content' => 'alpha']);
 });
 
-test('a write that keeps the loaded comments, or hands a plain value back changed, keeps the parameter\'s binding', function () {
+test('a write that keeps the loaded comments keeps the binding, and a plain value handed back changed reads the write', function () {
     $types = publishedResourceKeyTypes(ReplacedParametersResource::class, Post::class);
     $sent = replacedParametersSends();
 
@@ -75,8 +77,6 @@ test('a write that keeps the loaded comments, or hands a plain value back change
         'defaulted_contents?' => 'string[]',
         'based_contents?' => 'string[]',
         'lazy_contents?' => 'string[]',
-        // Task 12 owns ending a plain value's binding at a top-level write; Laravel sends json_decode()'s null.
-        'decoded?' => 'string',
         'trimmed?' => 'string',
         'upper?' => 'string',
         'same?' => 'string',
@@ -90,7 +90,6 @@ test('a write that keeps the loaded comments, or hands a plain value back change
         'defaulted_contents' => ['alpha', 'beta'],
         'based_contents' => ['alpha', 'beta'],
         'lazy_contents' => ['alpha', 'beta'],
-        'decoded' => null,
         'trimmed' => 'First',
         'upper' => 'FIRST',
         'same' => 'First',

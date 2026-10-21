@@ -186,8 +186,8 @@ trait CollectsLocalVarBindings
      * never joined: another name or a closure may write it at any point, as blockSpanEnd() also declines.
      *
      * A parameter, or a seeded name, starts holding its binding, which nested writes join for a value read only. While
-     * that binding holds, its own `$x = …;` or a write of another kind stops the walk, leaving the rest to
-     * endBindingsAtWrites(); past a write that ended it, the name walks as a local.
+     * it holds, a write of another kind, or a class binding's own `$x = …;`, stops the walk, leaving the rest to
+     * endBindingsAtWrites(); a value binding's own `$x = …;` replaces it. Past an ending write it walks as a local.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites  $writes  the body's writes that replace a variable
@@ -215,8 +215,8 @@ trait CollectsLocalVarBindings
 
     /**
      * End each binding a name came into the body with, a parameter's or a seeded one, at the body's first write that
-     * replaces the variable with a value naming a class the binding does not hold; a later read takes what the body
-     * wrote. A value naming no class leaves the binding standing, since it is all that is known.
+     * replaces the variable with a value naming a class the binding does not hold, or a value binding's own top-level
+     * `$x = …;`; a later read takes what the body wrote. Else a value naming no class leaves it, as all that is known.
      *
      * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
      * nested in a statement ends it where that statement starts, since a loop can run the write before a read. A write
@@ -530,6 +530,7 @@ trait CollectsLocalVarBindings
             default => null,
         };
         $declared = $scope->varDeclaredBindings[$name] ?? null;
+        $valueOnly = $this->bindsValueOnly($name, $scope);
 
         // preg_match() may not run unless it is a statement of the body, and a skipped call leaves the binding.
         if ($form !== null && $form['effect'] === ByReferenceEffect::WritesMatches) {
@@ -538,14 +539,18 @@ trait CollectsLocalVarBindings
 
         // A by-reference call keeps only an array or a number, never the object a class binding holds.
         if ($form !== null) {
-            return $form['effect'] === ByReferenceEffect::KeepsAny
-                || ($form['effect'] !== ByReferenceEffect::Replaces && $classes === null && $declared === null && $element === null);
+            return $form['effect'] === ByReferenceEffect::KeepsAny || ($form['effect'] !== ByReferenceEffect::Replaces && $valueOnly);
         }
 
         // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
         if (($kind !== VariableWrite::Replaces && $kind !== VariableWrite::Coalesces)
             || (! $node instanceof Assign && ! $node instanceof CoalesceAssign)
         ) {
+            return false;
+        }
+
+        // A value binding holds no class a receiver keeps, so its own `$x = …;` replaces it past that statement.
+        if ($valueOnly && $topLevel && $kind === VariableWrite::Replaces) {
             return false;
         }
 
@@ -927,8 +932,8 @@ trait CollectsLocalVarBindings
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
                 $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $state, $scope),
-                // Past its own `$x = …;` a parameter's binding is endBindingsAtWrites()'s to keep or end.
-                $assigned !== null => $state[2] ? null : [[$assigned], false, false],
+                // Past its own `$x = …;` a parameter's class binding is endBindingsAtWrites()'s to keep or end.
+                $assigned !== null => $state[2] && ! $this->bindsValueOnly($name, $scope) ? null : [[$assigned], false, $state[2]],
                 default => $this->joinNested($own, $state),
             };
 
@@ -937,7 +942,7 @@ trait CollectsLocalVarBindings
             }
 
             // Past a write that ended the binding, its own read of the name finds none, so a receiver stops keeping it.
-            $state[2] = $state[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) >= $stmt->getEndFilePos();
+            $state[2] = $state[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) > $stmt->getEndFilePos();
             $after = $stmt->getEndFilePos();
         }
 
@@ -1124,6 +1129,19 @@ trait CollectsLocalVarBindings
         }
 
         return $target instanceof Variable && $target->name === $name;
+    }
+
+    /**
+     * Whether a name's binding is a value alone, with no class, declared class or collection element a receiver reads;
+     * an expression binding is a value, whatever class its expression names.
+     */
+    private function bindsValueOnly(string $name, AnalysisScope $scope): bool
+    {
+        return ! isset($scope->varModelBindings[$name])
+            && ! isset($scope->varClassBindings[$name])
+            && ! isset($scope->requestVarNames[$name])
+            && ! isset($scope->varDeclaredBindings[$name])
+            && ! isset($scope->varCollectionBindings[$name]);
     }
 
     /**
