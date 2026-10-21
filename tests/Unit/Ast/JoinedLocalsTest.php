@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedDeclaredLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedNullMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
@@ -40,6 +41,33 @@ function joinedSends(string $resource, bool $pinned): array
     return $sent;
 }
 
+/**
+ * A user (id 3) with one post titled Banana (id 7), or a guest (id 0) with none.
+ */
+function joinedUser(bool $guest): User
+{
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $user = new User()->forceFill(['id' => $guest ? 0 : 3, 'name' => 'Ann']);
+    $user->setRelation('posts', new EloquentCollection($guest ? [] : [$post]));
+
+    return $user;
+}
+
+/**
+ * What Laravel sends for the declared-locals fixture over a user or a guest.
+ *
+ * @return array<string, mixed>
+ */
+function joinedDeclaredSends(bool $guest): array
+{
+    $resource = new JoinedDeclaredLocalsResource(joinedUser($guest));
+    /** @var array<string, mixed> $sent */
+    $sent = json_decode((string) json_encode($resource->resolve(Request::create('/'))), true);
+
+    return $sent;
+}
+
 test('a local written in sequence and inside branches joins the values that can reach the read', function () {
     expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray([
         'status' => 'string | number',
@@ -51,12 +79,24 @@ test('a local written in sequence and inside branches joins the values that can 
         ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['status' => 'draft', 'removed' => 'kept', 'captured' => 'kept']);
 });
 
-// A member read of `null` reads null, so the `null` a branch writes over adds no class to the receiver past it.
+// `?->` reads a joined `null` as null, so the `null` adds no class to the receiver, written before the model or after.
 test('a member read past a join leaves out a joined null', function () {
     expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))
-        ->toMatchArray(['author_name' => 'string | null'])
-        ->and(joinedSends(JoinedLocalsResource::class, true))->toMatchArray(['author_name' => 'Ann'])
-        ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['author_name' => null]);
+        ->toMatchArray(['author_name' => 'string | null', 'editor_name' => 'string | null'])
+        ->and(joinedSends(JoinedLocalsResource::class, true))
+        ->toMatchArray(['author_name' => 'Ann', 'editor_name' => null])
+        ->and(joinedSends(JoinedLocalsResource::class, false))
+        ->toMatchArray(['author_name' => null, 'editor_name' => 'Ann']);
+});
+
+// On the `null` path `->` raises a warning Laravel throws as an ErrorException, so only the model's member is sent.
+test('a plain member read past a joined null reads the model\'s member', function () {
+    $request = Request::create('/');
+
+    expect(publishedResourceKeyTypes(JoinedNullMemberResource::class, Post::class))->toBe(['editor_name' => 'string'])
+        ->and(fn () => new JoinedNullMemberResource(joinedPost(true))->resolve($request))
+        ->toThrow(ErrorException::class, 'Attempt to read property "name" on null')
+        ->and(new JoinedNullMemberResource(joinedPost(false))->resolve($request))->toBe(['editor_name' => 'Ann']);
 });
 
 test('a local the try body and a catch both assign joins both, and a finally write replaces them', function () {
@@ -118,12 +158,16 @@ test('a helper\'s parameter the body writes reads its declared value before the 
         ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['helper_joined' => 'Banana']);
 });
 
-// The tag names another model, so past the block a member read joins the old model's and the tag's.
+// The tag names another model, so past the block a read joins the old model and the tag's, for a member and a value.
 test('a parameter joins the model a nested @var declares for its write past its block', function () {
     expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))
-        ->toMatchArray(['declared_joined_id?' => 'number | null'])
-        ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['declared_joined_id' => 5])
-        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['declared_joined_id' => 3]);
+        ->toMatchArray(['declared_joined_id?' => 'number | null', 'declared_joined?' => 'User | Comment | null'])
+        ->and(joinedSends(JoinedParametersResource::class, true))
+        ->toMatchArray(['declared_joined_id' => 5, 'declared_joined' => ['id' => 5, 'content' => 'hi']])
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray([
+            'declared_joined_id' => 3,
+            'declared_joined' => ['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com'],
+        ]);
 });
 
 // A written value no rule types is left out of the join, as a receiver keeps the old binding past it.
@@ -140,18 +184,27 @@ test('a parameter keeps its old value past a nested write the engine cannot type
 });
 
 test('a nested @var types the value a join carries past its block', function () {
-    $post = new Post;
-    $post->forceFill(['id' => 7, 'title' => 'Banana']);
-    $user = new User()->forceFill(['id' => 3, 'name' => 'Ann']);
-    $user->setRelation('posts', new EloquentCollection([$post]));
-    $guest = new User()->forceFill(['id' => 0]);
-
     expect(publishedResourceKeyTypes(JoinedDeclaredLocalsResource::class, User::class))
-        ->toBe(['t' => 'string | null', 'post' => 'Post | null'])
-        ->and(json_encode(new JoinedDeclaredLocalsResource($user)->resolve(Request::create('/'))))
-        ->toBe(json_encode(['t' => 'Banana', 'post' => ['id' => 7, 'title' => 'Banana']]))
-        ->and(json_encode(new JoinedDeclaredLocalsResource($guest)->resolve(Request::create('/'))))
-        ->toBe(json_encode(['t' => null, 'post' => null]));
+        ->toMatchArray(['t' => 'string | null', 'post' => 'Post | null'])
+        ->and(joinedDeclaredSends(false))->toMatchArray(['t' => 'Banana', 'post' => ['id' => 7, 'title' => 'Banana']])
+        ->and(joinedDeclaredSends(true))->toMatchArray(['t' => null, 'post' => null]);
+});
+
+// data_get() of one key reads the relation, which the value takes; the tag types the receiver it names nothing for.
+test('a nested @var naming a collection types the collection a join carries past its block', function () {
+    expect(publishedResourceKeyTypes(JoinedDeclaredLocalsResource::class, User::class))
+        ->toMatchArray(['posts' => 'Post[] | null', 'posts_first_title' => 'string | null'])
+        ->and(joinedDeclaredSends(false))
+        ->toMatchArray(['posts' => [['id' => 7, 'title' => 'Banana']], 'posts_first_title' => 'Banana'])
+        ->and(joinedDeclaredSends(true))->toMatchArray(['posts' => null, 'posts_first_title' => null]);
+});
+
+// The tag declares `$other`, not `$o`, so the join reads data_get() alone, though Laravel sends the title.
+test('a nested @var naming another variable leaves the join\'s own reading', function () {
+    expect(publishedResourceKeyTypes(JoinedDeclaredLocalsResource::class, User::class))
+        ->toMatchArray(['other_title' => 'unknown'])
+        ->and(joinedDeclaredSends(false))->toMatchArray(['other_title' => 'Banana'])
+        ->and(joinedDeclaredSends(true))->toMatchArray(['other_title' => null]);
 });
 
 test('a local another name or a closure can write through a reference is never joined', function () {

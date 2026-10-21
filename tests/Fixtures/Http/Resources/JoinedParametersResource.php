@@ -118,6 +118,18 @@ final class JoinedParametersResource extends JsonResource
 
                 return $author?->id;
             }),
+            'declared_joined' => $this->whenLoaded('author', function ($author) {
+                foreach ($this->comments as $comment) {
+                    if ($this->is_pinned && $comment->content !== '') {
+                        /** @var Comment|null $author */
+                        $author = data_get($this->resource, 'comments.0');
+
+                        break;
+                    }
+                }
+
+                return $author;
+            }),
             'post_write_nested' => $this->transform($this->title, function ($title) {
                 $title = trim($title);
 

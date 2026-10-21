@@ -182,6 +182,11 @@ describe('an inline @var on a local assignment', function () {
             '$x->a; if (true) { /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->b; } $x->c;',
             [null, [CartTotals::class], null],
         ],
+        // The span kept for a join holds no read, and a local written once is joined nowhere.
+        'a tag on its block\'s last statement, for no read past the block' => [
+            '$x->a; if (true) { /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); } $x->c;',
+            [null, null],
+        ],
         'a tag nested in a loop, up to the statement holding its next write' => [
             'foreach ([1] as $i) { $x->a; /** @var \Workbench\App\ValueObjects\CartTotals $x */ $x = json_decode(""); $x->b; if (true) { $x = null; } $x->c; }',
             [null, [CartTotals::class], null],

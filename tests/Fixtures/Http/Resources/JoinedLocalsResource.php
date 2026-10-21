@@ -10,9 +10,9 @@ use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
- * Locals written more than once, each read past its writes: in sequence and in a branch, over a `null` through `?->`,
- * in a loop that breaks, past an unset() or a closure that writes it by reference, across a try, its catch and a
- * finally, and in its own rewrite; and ones a reference or a variable variable writes.
+ * Locals written more than once, each read past its writes: in sequence and in a branch, a model and a `null` either
+ * way round through `?->`, in a loop that breaks, past an unset() or a closure that writes it by reference, across a
+ * try, its catch and a finally, and in its own rewrite; and ones a reference or a variable variable writes.
  *
  * @mixin Post
  */
@@ -33,6 +33,12 @@ final class JoinedLocalsResource extends JsonResource
 
         if ($this->is_pinned) {
             $author = $this->author;
+        }
+
+        $editor = $this->author;
+
+        if ($this->is_pinned) {
+            $editor = null;
         }
 
         $first = null;
@@ -93,6 +99,7 @@ final class JoinedLocalsResource extends JsonResource
         return [
             'status' => $status,
             'author_name' => $author?->name,
+            'editor_name' => $editor?->name,
             'first' => $first,
             'removed' => $removed,
             'captured' => $captured,
