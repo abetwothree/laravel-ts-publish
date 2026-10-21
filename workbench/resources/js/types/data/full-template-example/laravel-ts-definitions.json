@@ -8159,7 +8159,7 @@
                 },
                 {
                     "name": "dynamic_totals",
-                    "type": "unknown[]"
+                    "type": "{ [key: `k${string}`]: unknown | undefined }"
                 },
                 {
                     "name": "length_callable",
@@ -17045,6 +17045,31 @@
                 {
                     "name": "attachment_hidden",
                     "type": "Pick<Attachment, 'id' | 'internal_notes'>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\PostBuiltValuesResource": {
+            "name": "PostBuiltValuesResource",
+            "properties": [
+                {
+                    "name": "built",
+                    "type": "{ id: number; title: string }",
+                    "optional": true
+                },
+                {
+                    "name": "branched",
+                    "type": "{ id: number; flag: string | number }",
+                    "optional": true
+                },
+                {
+                    "name": "key_written",
+                    "type": "{ id: number } | { id: number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "unset_beside",
+                    "type": "{ id: number }",
                     "optional": false
                 }
             ]

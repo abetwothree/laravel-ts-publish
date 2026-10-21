@@ -1422,7 +1422,7 @@ declare global {
             /** The same four filters on the model itself, read as a getter body. */
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
             /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
-            dynamic_totals: unknown[];
+            dynamic_totals: { [key: `k${string}`]: unknown | undefined };
             /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
             length_callable: Record<string, never>;
             /** The same for a first-class callable on the model's own method. */
@@ -4483,6 +4483,17 @@ declare global {
             attachment: { id: number; filename: string; attachable: workbench.app.models.Post };
             attachment_public: Pick<workbench.app.models.Attachment, 'id' | 'filename'>;
             attachment_hidden: Pick<workbench.app.models.Attachment, 'id' | 'internal_notes'>;
+        }
+        /**
+         * Exercises: a value-position closure, and a helper read as a value, that build an array in a variable through key
+         * writes and return it. Each reads the variable through its writes, as a method's own returned variable is read, and
+         * a helper's literal return stands beside it as one more arm.
+         */
+        export interface PostBuiltValuesResource {
+            built?: { id: number; title: string };
+            branched?: { id: number; flag: string | number };
+            key_written: { id: number } | { id: number; title: string };
+            unset_beside: { id: number };
         }
         export interface PostCollection {
             data: PostResource[];

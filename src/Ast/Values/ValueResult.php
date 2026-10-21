@@ -233,14 +233,21 @@ final class ValueResult
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
      * duplicate types are removed and import metadata is collected from all branches.
      *
-     * With $firstIsChecked, the first expression is the checked operand of a short `?:`.
+     * With $firstIsChecked, the first expression is the checked operand of a short `?:`; $resolve resolves each one in
+     * the engine's place, as a closure reads its returns.
      *
      * @param  list<Expr>  $returns
+     * @param  (Closure(Expr): ValueExpressionResult)|null  $resolve
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope, bool $firstIsChecked = false): array
-    {
-        $results = array_map($engine->resolve(...), $returns);
+    public static function analyzeClosureUnion(
+        array $returns,
+        ExpressionEngine $engine,
+        AnalysisScope $scope,
+        bool $firstIsChecked = false,
+        ?Closure $resolve = null,
+    ): array {
+        $results = array_map($resolve ?? $engine->resolve(...), $returns);
 
         if ($firstIsChecked) {
             $results[0] = self::checkedOperand($results[0]);

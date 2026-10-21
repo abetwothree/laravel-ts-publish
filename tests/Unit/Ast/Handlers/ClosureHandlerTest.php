@@ -21,6 +21,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -236,6 +237,15 @@ it('merges a multi-return closure body into a union via ValueResult::unionResult
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
     expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
+});
+
+it('reads each returned variable of a multi-return closure body through the walk over its writes', function () {
+    $closure = new AstParser()->parseSource('<?php return function () { if ($this->is_pinned) { return null; } '
+        .'$d = ["id" => $this->id]; $d["title"] = $this->title; return $d; };')[0];
+
+    expect($closure)->toBeInstanceOf(Return_::class)
+        ->and(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($closure->expr)['type'])
+        ->toBe('{ id: number; title: string } | null');
 });
 
 it('falls back to the native return-type annotation when the body resolves to unknown', function () {

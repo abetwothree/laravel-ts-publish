@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -295,6 +296,7 @@ final class AstEngine
 
     /**
      * A function-like body's own returns, merged strictly; null if it yields, may return a callable, or one is unknown.
+     * A returned variable is read through the walk over its writes where the engine reads one.
      *
      * @return ValueExpressionResult|null
      */
@@ -311,7 +313,9 @@ final class AstEngine
             return null;
         }
 
-        $results = array_map($engine->resolve(...), $returns);
+        $results = array_map($engine instanceof ResolvesReturnedValues
+            ? fn (Expr $returned): array => $engine->resolveReturned($returned, $stmts)
+            : $engine->resolve(...), $returns);
 
         // unionResults() would drop a return typed unknown and claim less than PHP can return, so the read declines.
         if (array_any($results, fn (array $result): bool => $result['type'] === 'unknown')) {

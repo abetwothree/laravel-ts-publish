@@ -98,6 +98,7 @@ use PhpParser\Node;
 use Workbench\App\Enums\Status;
 use Workbench\App\Events\ManifestAssembled;
 use Workbench\App\Http\Resources\CategoryBranchesResource;
+use Workbench\App\Http\Resources\PostBuiltValuesResource;
 use Workbench\App\Http\Resources\ReturnedParentVariableResource;
 use Workbench\App\Http\Resources\ReturnedVariableBranchesResource;
 use Workbench\App\Http\Resources\ReturnedVariableResource;
@@ -119,6 +120,35 @@ function returnedVariableMembers(string $class): string
     return collect((new ResourceTransformer($class))->properties)
         ->map(fn (array $p, string $name): string => $name.($p['optional'] ? '?' : '').': '.$p['type'])
         ->implode('; ');
+}
+
+/**
+ * The members a resource publishes for the named keys, one `name: type` or `name?: type` per key, in order.
+ *
+ * @param  class-string  $class
+ * @param  list<string>  $keys
+ */
+function returnedVariableMembersOf(string $class, array $keys): string
+{
+    return collect((new ResourceTransformer($class))->properties)
+        ->only($keys)
+        ->map(fn (array $p, string $name): string => $name.($p['optional'] ? '?' : '').': '.$p['type'])
+        ->implode('; ');
+}
+
+/**
+ * What Laravel sends for a post with the given attributes, under a request with the given query.
+ *
+ * @param  array<string, mixed>  $attributes
+ * @param  array<string, string>  $query
+ * @return array<array-key, mixed>
+ */
+function sentPostBuiltValues(array $attributes, array $query = []): array
+{
+    $post = new Post;
+    $post->forceFill(['id' => 4, 'title' => 'Hello', ...$attributes]);
+
+    return new PostBuiltValuesResource($post)->resolve(Request::create('/', 'GET', $query));
 }
 
 /**
@@ -745,4 +775,26 @@ test('an unset() of a literal key keeps a signature entry that can name it, whic
         ->toBe('id: number; [key: `slug${string}`]: string | undefined')
         ->and($sent(''))->toBe(['id' => 9])
         ->and($sent('_x'))->toBe(['id' => 9, 'slug_x' => 'php']);
+});
+
+test('a closure in value position that builds a variable by key writes publishes the keys', function () {
+    $published = ['published_at' => now()];
+
+    expect(returnedVariableMembersOf(PostBuiltValuesResource::class, ['built', 'branched']))
+        ->toBe('built?: { id: number; title: string }; branched?: { id: number; flag: string | number }')
+        ->and(sentPostBuiltValues([...$published, 'is_pinned' => true]))->toMatchArray([
+            'built' => ['id' => 4, 'title' => 'Hello'],
+            'branched' => ['id' => 4, 'flag' => 'pinned'],
+        ])
+        ->and(sentPostBuiltValues([...$published, 'is_pinned' => false])['branched'])->toBe(['id' => 4, 'flag' => 0])
+        ->and(array_keys(sentPostBuiltValues(['published_at' => null])))->toBe(['key_written', 'unset_beside']);
+});
+
+test('a helper read as a value with a multi-write returned variable beside literal returns publishes each shape', function () {
+    expect(returnedVariableMembersOf(PostBuiltValuesResource::class, ['key_written', 'unset_beside']))
+        ->toBe('key_written: { id: number } | { id: number; title: string }; unset_beside: { id: number }')
+        ->and(sentPostBuiltValues(['published_at' => null]))
+        ->toBe(['key_written' => ['id' => 4, 'title' => 'Hello'], 'unset_beside' => ['id' => 4]])
+        ->and(sentPostBuiltValues(['published_at' => null], ['short' => '1']))
+        ->toBe(['key_written' => ['id' => 4], 'unset_beside' => ['id' => 4]]);
 });

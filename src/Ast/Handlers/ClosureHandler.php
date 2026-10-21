@@ -10,8 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -75,9 +77,10 @@ final class ClosureHandler implements ExpressionHandler
                     $this->bindForeachLoopVariables($expr->stmts, $scope);
                 }
 
+                $resolve = $this->returnResolver($expr, $engine);
                 $bodyResult = count($closureReturns) === 1
-                    ? $engine->resolve($closureReturns[0])
-                    : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope);
+                    ? $resolve($closureReturns[0])
+                    : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
 
                 if ($bodyResult['type'] !== 'unknown') {
                     return $bodyResult;
@@ -96,6 +99,19 @@ final class ClosureHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * How a closure's returns resolve: a closure body's returned variable through the walk over its writes, where the
+     * engine reads one, and any other return as the engine resolves it.
+     *
+     * @return Closure(Expr): ValueExpressionResult
+     */
+    private function returnResolver(ArrowFunction|ClosureExpr $closure, ExpressionEngine $engine): Closure
+    {
+        return $closure instanceof ClosureExpr && $engine instanceof ResolvesReturnedValues
+            ? fn (Expr $returned): array => $engine->resolveReturned($returned, $closure->stmts)
+            : $engine->resolve(...);
     }
 
     /**

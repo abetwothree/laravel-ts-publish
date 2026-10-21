@@ -267,6 +267,7 @@
     "app\/Http\/Resources\/PassedArgumentHelpersResource.php",
     "app\/Http\/Resources\/PermissionsSpreadResource.php",
     "app\/Http\/Resources\/PostAttachmentFilterResource.php",
+    "app\/Http\/Resources\/PostBuiltValuesResource.php",
     "app\/Http\/Resources\/PostCollection.php",
     "app\/Http\/Resources\/PostCommentAuthorsResource.php",
     "app\/Http\/Resources\/PostEnumCaseResource.php",

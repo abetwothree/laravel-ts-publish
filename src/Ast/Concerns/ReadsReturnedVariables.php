@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -121,6 +123,25 @@ trait ReadsReturnedVariables
      * @return TAnalysis|null
      */
     abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
+
+    /**
+     * Resolve what a body returns, a returned variable the scope cannot type read through the walk over its writes.
+     *
+     * ResolvesReturnedValues entry point for a closure's returns and those of a method read as a value.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body that returns $returned
+     * @return ValueExpressionResult
+     */
+    public function resolveReturned(Expr $returned, array $stmts): array
+    {
+        $result = $this->analyzeValueExpression($returned);
+
+        if ($result['type'] !== 'unknown' || ! $returned instanceof Variable || ! is_string($returned->name)) {
+            return $result;
+        }
+
+        return $this->walkedValue($stmts, $returned->name) ?? $result;
+    }
 
     /**
      * Resolve properties from a method that builds an array variable and returns it.
@@ -376,6 +397,25 @@ trait ReadsReturnedVariables
         $read = $this->readVariable($stmts, $varName, $topLevel);
 
         return $read !== null && $read->readsCompletely ? $read : null;
+    }
+
+    /**
+     * The inline object a variable's walk over a body reads; null where the walk reads it only partly, or reads no key.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return ValueExpressionResult|null
+     */
+    private function walkedValue(array $stmts, string $varName): ?array
+    {
+        $branch = $this->variableBranch($stmts, $varName, topLevel: false);
+
+        if ($branch === null || $branch->properties === []) {
+            return null;
+        }
+
+        resolve(IndexSignatureReconciler::class)->reconcile($branch);
+
+        return new InlineArrayHandler()->inlineObjectResult($branch);
     }
 
     /**
