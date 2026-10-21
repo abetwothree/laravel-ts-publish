@@ -139,9 +139,9 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   `CollectionPipelineHandlerTest` pins this pair instead of the matrix.
 - **The map arm**: `VariableHandler` claims a `map()` over any receiver but a bare `$this`, after
   `RelationCollectionChainHandler` and `CollectionPipelineHandler` decline it. It declines a receiver the resolver names
-  outside a collection or a paginator, which runs its own `map()`, and a resource collection's items. Each map writer
-  reads its callback through `ClosureHandler`, so the matrix gives every handler one; it claims no `MethodCall`, so it
-  joins no pair.
+  outside a collection or a paginator, which runs its own `map()`, and a resource collection's items, and adds the
+  `null` a `?->` in the receiver sends. Each map writer reads its callback through `ClosureHandler`, so the matrix gives
+  every handler one; it claims no `MethodCall`, so it joins no pair.
 - **`$this->method()`**: `SubjectMethodTypeResolver` declines when nothing in scope declares the method, or when the
   declaration PHP runs types nothing, so `RelationCollectionChainHandler` never floors `$this->when()` or `$this->can()`
   at `unknown`. It rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded
@@ -216,14 +216,15 @@ claim drops each parameter name from every table, its binding end included, and 
 reads the value the call passes before it claims, since the claim can release a name that value shares, then binds the
 parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no
 writer claimed, such as a `whenNull()` value closure. It then binds each parameter whose native type names one class and
-that no writer bound to a class: a non-null concrete model in `varModelBindings`, any other class in
-`varDeclaredBindings`, before it seeds the body, so a write that replaces the parameter ends that binding.
+that no writer bound to a class, or to a value that names one or is `null`: a non-null concrete model in
+`varModelBindings`, any other class in `varDeclaredBindings`, before it seeds the body, so a write that replaces the
+parameter ends that binding.
 
 Each writer binds the first parameter to what Laravel passes the closure:
 
 | Writer | Laravel passes | First parameter bound to |
 | --- | --- | --- |
-| `BindsMapCallbacks::resolveMapCallback()`, for every `map()` | `($value, $key)` | The model a model hint names, else the element's model, in `varModelBindings`; else the element's value. Never the key |
+| `BindsMapCallbacks::resolveMapCallback()`, for every `map()` | `($value, $key)` | The element's model, or a concrete model hint it does not extend, in `varModelBindings`; else the element's value. Never the key |
 | `whenLoaded()` | The loaded relation | Its model, its collection in `varCollectionBindings`, or its `morphTo` targets |
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
