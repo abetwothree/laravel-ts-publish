@@ -7410,7 +7410,7 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
     expect(resourceKeyTypes(UnseenWritesResource::class, Post::class))->toBe([
         'caught' => 'unknown',
         'declared_caught' => 'unknown',
-        'matches' => 'unknown',
+        'matches' => 'string[]',
         'sorted' => 'unknown',
         'static_filled' => 'unknown',
         'instance_filled' => 'unknown',
@@ -7427,6 +7427,13 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
         'items' => 'number[]',
         'author' => 'User',
     ]);
+
+    // The fixture throws as a whole, so the list of strings preg_match() writes is checked on its own statement.
+    preg_match('/(H)(e)/', 'Hello', $matches);
+    preg_match('/(H)(e)/', 'Bye', $unmatched);
+
+    expect($matches)->toBe(['He', 'H', 'e'])
+        ->and($unmatched)->toBe([]);
 });
 
 it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
@@ -7544,7 +7551,7 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'walked_key' => 'unknown',
         'walked_named' => 'unknown',
         'looped_other' => 'unknown',
-        'matched' => 'unknown',
+        'matched' => 'string[]',
         'object_member_sorted' => 'unknown',
         'dynamic_member_sorted' => 'unknown',
         'walked_nested_other' => 'unknown',
@@ -7564,6 +7571,12 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'tmp' => 'string',
         'shuffled' => 'number[]',
     ]);
+
+    // The fixture throws as a whole, so the list of strings preg_match() writes is checked on its own statement.
+    $matched = [];
+    preg_match('/a/', 'a', $matched);
+
+    expect($matched)->toBe(['a']);
 });
 
 it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {

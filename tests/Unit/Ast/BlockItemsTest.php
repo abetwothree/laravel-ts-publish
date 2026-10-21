@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -103,3 +104,19 @@ test('an offset read takes the member each arm of its holder names, and declines
     'a holder that is only null' => ['null', '$x["a"]', null],
     'a string' => ['string', '$x["a"]', null],
 ]);
+
+// A named group keys the groups and a flag nests them, so both still publish only the `[]` beside them, a known gap.
+test('preg_match() with no flag and no named group writes a list of strings, over a value it may leave in place', function () {
+    expect(publishedResourceKeyTypes(PregMatchResource::class, Post::class))->toBe([
+        'm' => 'string[] | never[]',
+        'bare' => 'string[]',
+        'named' => 'never[]',
+        'offsets' => 'never[]',
+        'kept' => 'unknown',
+        'maybe' => 'string[] | never[]',
+    ])
+        ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/'))))
+        ->toBe('{"m":["Ba","B","a"],"bare":["Ba","B","a"],"named":{"0":"B","first":"B","1":"B"},"offsets":[["B",0],["B",0]],"kept":"none","maybe":[]}')
+        ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/', 'GET', ['match' => 1]))))
+        ->toContain('"kept":["B","B"],"maybe":["B","B"]');
+});

@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
@@ -158,6 +159,11 @@ final class VariableHandler implements ExpressionHandler
         $value = $span === null
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
+
+        // A by-reference call writing a whole value, as preg_match() writes its matches, types a name nothing binds.
+        if ($value === null && $this->writtenWhole($expr, $scope)) {
+            $value = [...ValueResult::unknown(), 'optional' => false];
+        }
 
         $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
 
@@ -444,6 +450,22 @@ final class VariableHandler implements ExpressionHandler
         }
 
         return [...$value, 'type' => $type];
+    }
+
+    /**
+     * Whether the first by-reference call a read of a variable falls past writes a whole value, whatever it held.
+     */
+    private function writtenWhole(Variable $read, AnalysisScope $scope): bool
+    {
+        $position = $read->getStartFilePos();
+
+        foreach (is_string($read->name) ? $scope->byReferenceForms[$read->name] ?? [] : [] as $form) {
+            if ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])) {
+                return $form['effect'] === ByReferenceEffect::WritesMatches && $form['path'] === [];
+            }
+        }
+
+        return false;
     }
 
     /**

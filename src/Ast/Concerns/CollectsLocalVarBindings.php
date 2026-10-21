@@ -489,10 +489,12 @@ trait CollectsLocalVarBindings
         };
         $declared = $scope->varDeclaredBindings[$name] ?? null;
 
-        // A by-reference call keeps only an array or a number, never the object a class binding holds.
+        // A by-reference call keeps only an array or a number, never the object a class binding holds; the matches
+        // preg_match() writes keep nothing.
         if ($form !== null) {
             return $form['effect'] === ByReferenceEffect::KeepsAny
-                || ($form['effect'] !== ByReferenceEffect::Replaces && $classes === null && $declared === null && $element === null);
+                || (! in_array($form['effect'], [ByReferenceEffect::Replaces, ByReferenceEffect::WritesMatches], true)
+                    && $classes === null && $declared === null && $element === null);
         }
 
         // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
