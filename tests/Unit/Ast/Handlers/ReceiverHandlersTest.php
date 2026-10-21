@@ -2244,6 +2244,30 @@ describe('a collection step that keeps its items', function () {
             $contents,
             ['alpha', 'beta'],
         ],
+        'unique() without a key on a relation chain, which re-indexes' => [
+            'return $this->comments->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'unique() without a key on a relation chain past a sortBy()' => [
+            'return $this->comments->sortBy(\'content\')->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'map() on a relation chain past a key-less unique()' => [
+            'return $this->comments->sortBy(\'content\')->unique()->map(fn ($c) => $c->content)->all();',
+            'string[]',
+            $same,
+            ['alpha', 'beta'],
+        ],
+        'unique() by a key on a relation chain, which keeps the keys a sortBy() left' => [
+            'return $this->comments->sortBy(\'content\')->unique(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
         'unique() on a base collection, which keeps the keys' => [
             'return '.$query.'->sortBy(\'content\')->toBase()->unique()->all();',
             'Comment[] | Record<string, Comment>',

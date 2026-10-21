@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -186,6 +187,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 $sequentialKeys = match ($op['name']) {
                     'values' => true,
                     'take' => $sequentialKeys && $this->isFrontAnchoredTake($op['node']),
+                    'unique' => ! resolve(ReceiverClassResolver::class)->eloquentKeyedAfter($op['node'], 'unique', ! $sequentialKeys),
                     'load', 'loadMissing', 'all' => $sequentialKeys,
                     default => false,
                 };
