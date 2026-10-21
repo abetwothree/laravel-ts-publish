@@ -907,6 +907,9 @@ class ResourceAstAnalyzer implements ExpressionEngine
         );
 
         $readsAttributeNames = $this->readsKeylessAttributeNames;
+        // The helper's body is seeded with its own locals, whatever closure or local read the caller is in.
+        [$closureImports, $readingLocals] = [$this->closureImports, $this->readingLocals];
+        [$this->closureImports, $this->readingLocals] = [null, []];
 
         try {
             $this->seedVarBindings($method, $targetMethod->stmts, $passed);
@@ -931,6 +934,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
+            [$this->closureImports, $this->readingLocals] = [$closureImports, $readingLocals];
             $this->scope->leaveSubjectMethod($methodName, $caller);
         }
 

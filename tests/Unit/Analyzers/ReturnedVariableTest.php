@@ -8,9 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadLocalHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchReplacedResource;
@@ -666,6 +668,21 @@ test('a merge closure adds a local with + only where it imports the local and ne
         ->and(new MergeClosureLocalPlusResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'name' => 'php', 'note' => 'none', 'slug' => 'php-slug', 'flag' => true]);
 });
+
+test('a spread helper reads its own locals inside a merge closure, and while its caller reads a local of the same name', function (string $class, string $members, array $sent) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php']);
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(new $class($tag)->resolve(Request::create('/')))->toBe($sent);
+})->with([
+    'inside a merge closure' => [
+        MergeClosureHelperLocalsResource::class, 'id: number; note: string; name: string', ['id' => 9, 'note' => 'none', 'name' => 'php'],
+    ],
+    'while its caller reads $defaults' => [
+        ReadLocalHelperLocalsResource::class, 'id: number; note: string; x: number', ['id' => 9, 'note' => 'none', 'x' => 1],
+    ],
+]);
 
 test('a mixed unset() removes each literal key and leaves only the unnamed one unread', function () {
     $mixed = walkedVariable('$d = ["a" => 1, "b" => 2, "c" => 3]; unset($d["a"], $d[$k]);');
