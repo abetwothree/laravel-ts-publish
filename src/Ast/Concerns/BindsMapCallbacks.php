@@ -32,8 +32,9 @@ trait BindsMapCallbacks
      * the parameter declares where the element model is not one; else its value. Null for a callable that is no
      * closure, or a variadic first parameter.
      *
-     * $arrayed says JsonResource::filter() reaches the result as an array. $relationClosure says the body counts as a
-     * relation closure: a relation chain's map, a whenLoaded() collection's, or a variable's with a model hint.
+     * $arrayed says JsonResource::filter() reaches the result as an array. $relationClosure says whether the body is a
+     * relation closure, as a relation chain's map, a whenLoaded() collection's or a variable's with a model hint is, or
+     * not one; null leaves the enclosing closure's answer in place.
      *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
@@ -44,7 +45,7 @@ trait BindsMapCallbacks
         ?string $elementModel,
         ?array $elementValue,
         bool $arrayed,
-        bool $relationClosure,
+        ?bool $relationClosure,
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
@@ -70,9 +71,9 @@ trait BindsMapCallbacks
             $scope->filtersNestedResources = $filters && $arrayed;
             $scope->mapResultArrayed = false;
 
-            // Only a relation closure opens ResolvesEnumPropertyArgTypes's gate; any other map keeps the enclosing one.
-            if ($relationClosure) {
-                $scope->closureRelationModelClass = $model;
+            // Only a relation closure opens ResolvesEnumPropertyArgTypes's gate, so a map that is not one closes it.
+            if ($relationClosure !== null) {
+                $scope->closureRelationModelClass = $relationClosure ? $model : null;
             }
 
             $scope->claimParameters($callback);

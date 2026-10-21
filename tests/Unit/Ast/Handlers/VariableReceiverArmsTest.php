@@ -117,11 +117,13 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
 });
 
 // Only a relation closure, a hinted map among them, drops the column's null (F24, for the owner); a map over a query,
-// a local or a collect() of a relation keeps it, as Laravel sends it.
+// a local or a collect() of a relation keeps it, as Laravel sends it, and so does one nested in a relation closure. A
+// collect() pipeline nested in one keeps the enclosing closure's drop (F24).
 it('keeps a nullable enum column\'s null arm in a map over a query, a local or a collect() of a relation', function () {
     $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $team = (new Team)->forceFill(['id' => 9]);
     $team->setRelation('members', new EloquentCollection([$member]));
+    $team->setRelation('owner', $member);
 
     expect(publishedResourceKeyTypes(MappedEnumColumnResource::class, Team::class))->toBe([
         'query_roles' => '(AsEnum<typeof Role> | null)[]',
@@ -129,9 +131,21 @@ it('keeps a nullable enum column\'s null arm in a map over a query, a local or a
         'hinted_local_roles' => 'AsEnum<typeof Role>[]',
         'collected_roles' => '(AsEnum<typeof Role> | null)[]',
         'chain_roles' => 'AsEnum<typeof Role>[]',
+        'nested_query_roles?' => '(AsEnum<typeof Role> | null)[]',
+        'nested_local_roles?' => '(AsEnum<typeof Role> | null)[]',
+        'nested_collected_roles?' => 'AsEnum<typeof Role>[]',
     ])
-        ->and(new MappedEnumColumnResource($team)->response(request())->getContent())
-        ->toBe('{"data":{"query_roles":[null],"local_roles":[null],"hinted_local_roles":[null],"collected_roles":[null],"chain_roles":[null]}}');
+        ->and(json_decode((string) new MappedEnumColumnResource($team)->response(request())->getContent(), true))
+        ->toBe(['data' => [
+            'query_roles' => [null],
+            'local_roles' => [null],
+            'hinted_local_roles' => [null],
+            'collected_roles' => [null],
+            'chain_roles' => [null],
+            'nested_query_roles' => [null],
+            'nested_local_roles' => [null],
+            'nested_collected_roles' => [null],
+        ]]);
 });
 
 // The narrowing outranks the parameter's own model, so the subclass types the read.

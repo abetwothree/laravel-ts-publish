@@ -12,7 +12,8 @@ use Workbench\App\Models\User;
 
 /**
  * Wraps each user's nullable `role` column in maps over a query, a local holding one, with and without a model hint, a
- * `collect()` of a relation and the relation itself. EnumResource sends null for a null role.
+ * `collect()` of a relation and the relation itself, and in the first two and a `collect()` nested in a whenLoaded()
+ * closure. EnumResource sends null for a null role.
  *
  * @mixin Team
  */
@@ -31,6 +32,15 @@ class MappedEnumColumnResource extends JsonResource
             'hinted_local_roles' => $users->map(fn (User $user) => EnumResource::make($user->role))->all(),
             'collected_roles' => collect($this->members)->map(fn ($member) => EnumResource::make($member->role))->all(),
             'chain_roles' => $this->members->map(fn ($member) => EnumResource::make($member->role))->all(),
+            'nested_query_roles' => $this->whenLoaded('owner', function ($owner) {
+                return User::query()->get()->map(fn ($user) => EnumResource::make($user->role))->all();
+            }),
+            'nested_local_roles' => $this->whenLoaded('owner', function ($owner) {
+                $users = User::query()->get();
+
+                return $users->map(fn ($user) => EnumResource::make($user->role))->all();
+            }),
+            'nested_collected_roles' => $this->whenLoaded('members', fn ($members) => collect($members)->map(fn ($member) => EnumResource::make($member->role))->all()),
         ];
     }
 }
