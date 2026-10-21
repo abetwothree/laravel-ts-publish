@@ -39,7 +39,12 @@ final class SubjectMethodTypeResolver
     {
         // PHP runs the subject's own declaration, so a namesake it shadows never answers for it.
         if ($scope->subjectReflection->hasMethod($methodName)) {
-            return $this->resolveOn($scope->subjectReflection, $methodName, $site);
+            /** @var class-string $class */
+            $class = $scope->subjectReflection->getName();
+            // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
+            $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;
+
+            return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing);
         }
 
         // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.

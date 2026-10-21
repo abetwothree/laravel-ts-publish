@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenHelperResource;
 use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -27,6 +28,8 @@ use PhpParser\NodeFinder;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
+use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -258,4 +261,24 @@ test('an instanceof ternary on a $this->prop narrows the reads through it', func
         ->toBe('{"title":"Banana","key":7,"either_key":7,"open_key":7}')
         ->and(json_encode(new MemberNarrowedResource($productImage)->resolve(Request::create('/'))))
         ->toBe('{"title":null,"key":null,"either_key":null,"open_key":"p-1"}');
+});
+
+// The helper's body reads `$this->resource` as the class the caller's test proves, a relation only that subclass has.
+test('a helper read as a value under the caller\'s instanceof proof reads the proven model', function () {
+    $owner = new User;
+    $owner->forceFill(['name' => 'Ann']);
+    $subscribed = new SubscribedTeam;
+    $subscribed->forceFill(['name' => 'T']);
+    $subscribed->setRelation('subscriber', $owner);
+    $team = new Team;
+    $team->forceFill(['name' => 'U']);
+
+    expect(publishedResourceKeyTypes(ProvenHelperResource::class, Team::class))->toBe([
+        'proven' => 'string | null',
+        'unproven' => 'string',
+    ])
+        ->and(json_encode(new ProvenHelperResource($subscribed)->resolve(Request::create('/'))))
+        ->toBe('{"proven":"Ann","unproven":"T"}')
+        ->and(json_encode(new ProvenHelperResource($team)->resolve(Request::create('/'))))
+        ->toBe('{"proven":null,"unproven":"U"}');
 });

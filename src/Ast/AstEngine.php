@@ -89,11 +89,12 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @return ValueExpressionResult|null
      *
      * @internal
      */
-    public function analyzeMethodValue(string $class, string $method, array $passed = []): ?array
+    public function analyzeMethodValue(string $class, string $method, array $passed = [], ?string $backing = null): ?array
     {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -102,6 +103,7 @@ final class AstEngine
         }
 
         $modelClass = match (true) {
+            $backing !== null => $backing,
             is_a($class, Model::class, true) => $class,
             is_a($class, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($context->reflection),
             default => null,
