@@ -119,6 +119,7 @@ final class ClosureHandler implements ExpressionHandler
                 || isset($scope->varClassBindings[$name])
                 || isset($scope->closureParamExprBindings[$name])
                 || isset($scope->requestVarNames[$name])
+                || $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
             ) {
                 continue;
             }
@@ -132,6 +133,21 @@ final class ClosureHandler implements ExpressionHandler
                 $scope->varDeclaredBindings[$name] = [$class];
             }
         }
+    }
+
+    /**
+     * Whether a value a writer bound names a class of its own, such as an enum case, or is only null, as an unpassed
+     * `= null` default is: either says more about the parameter than the class its type declares.
+     *
+     * @param  ValueExpressionResult|null  $value
+     */
+    private function bindsClassOrNull(?array $value): bool
+    {
+        return $value !== null && ($value['type'] === 'null'
+            || isset($value['modelFqcn'])
+            || isset($value['enumFqcn'])
+            || isset($value['directEnumFqcn'])
+            || isset($value['resourceFqcn']));
     }
 
     /**

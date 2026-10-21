@@ -6,8 +6,11 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DockCode;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MapOption;
+use BackedEnum;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use UnitEnum;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
@@ -34,6 +37,11 @@ class TypedClosureParameterResource extends JsonResource
 
                 return ['id' => $option->code];
             })->all(),
+            // when() passes nothing, so each parameter holds its default, which says more than its declared class.
+            'null_default' => $this->when(true, fn (?DockCode $code = null) => $code),
+            'null_default_member' => $this->when(true, fn (?DockCode $code = null) => $code?->code),
+            'enum_default' => $this->when(true, fn (BackedEnum $status = Status::Published) => $status->value),
+            'unit_enum_default' => $this->when(true, fn (UnitEnum $status = Status::Published) => $status->name),
         ];
     }
 

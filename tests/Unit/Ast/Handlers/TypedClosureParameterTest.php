@@ -18,6 +18,27 @@ it('binds a closure parameter to the class its native type names', function () {
         'options' => '{ id: number; d: number }[]',
         'nullable_options' => '{ id: number }[]',
         'replaced_options' => '{ id: string }[]',
+        'null_default?' => 'null',
+        'null_default_member?' => 'unknown',
+        'enum_default?' => 'number',
+        'unit_enum_default?' => 'string',
+    ]);
+});
+
+// A writer's value binding that names a class, or is only null, says more than the class the parameter declares.
+it('binds no declared class over a default that names an enum case or is null', function () {
+    $sent = new TypedClosureParameterResource(new Post)->resolve(request());
+
+    expect(publishedResourceKeyTypes(TypedClosureParameterResource::class, Post::class))->toMatchArray([
+        'null_default?' => 'null',
+        'null_default_member?' => 'unknown',
+        'enum_default?' => 'number',
+        'unit_enum_default?' => 'string',
+    ])->and($sent)->toMatchArray([
+        'null_default' => null,
+        'null_default_member' => null,
+        'enum_default' => 1,
+        'unit_enum_default' => 'Published',
     ]);
 });
 
