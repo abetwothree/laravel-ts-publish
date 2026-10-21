@@ -237,7 +237,7 @@ describe('an inline @var on a local assignment', function () {
         expect(new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class)->resolve($closure)['type'])
             ->toBe('string');
     });
-    test('keeps a reading the declaration admits, and the loaded relation\'s model a vague declaration admits', function () {
+    test('keeps a reading the declaration admits, and reads a vaguely declared local\'s relation from its value', function () {
         config()->set('ts-publish.output_to_files', false);
 
         expect(resolve(ResourceGenerator::class, ['findable' => DeclaredReadingResource::class])->content)
