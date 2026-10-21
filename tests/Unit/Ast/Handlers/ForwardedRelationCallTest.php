@@ -111,7 +111,9 @@ it('names the class whose declaration answers a call a relation or an Eloquent b
 // Relation::__call() and Builder::__call() run a macro under the name before they forward anything.
 it('forwards no call a macro answers', function () {
     $post = forwardedRelationCallPost(User::create(['name' => 'Cy', 'email' => 'cy@example.com', 'password' => 'secret']), ['alpha']);
+    $relationMacros = new ReflectionProperty(Relation::class, 'macros');
     $globalMacros = new ReflectionProperty(Builder::class, 'macros');
+    $savedRelation = $relationMacros->getValue();
     $saved = $globalMacros->getValue();
 
     Relation::macro('count', fn (): string => 'relation macro');
@@ -123,7 +125,7 @@ it('forwards no call a macro answers', function () {
             ->and($post->comments()->count())->toBe('relation macro')
             ->and($post->comments()->average('id'))->toBe('builder macro');
     } finally {
-        Relation::flushMacros();
+        $relationMacros->setValue(null, $savedRelation);
         $globalMacros->setValue(null, $saved);
     }
 });
