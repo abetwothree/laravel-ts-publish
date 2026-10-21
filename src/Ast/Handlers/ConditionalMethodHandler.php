@@ -673,11 +673,10 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     private function isResourceCollectionCall(StaticCall $call, AnalysisScope $scope): bool
     {
-        $className = $call->name instanceof Identifier && $call->name->toLowerString() === 'collection' && $call->class instanceof Name
-            ? $this->subjectClassName($call->class, $scope->subjectReflection)
-            : null;
-
-        return $className !== null && is_a($className, JsonResource::class, true);
+        return $call->name instanceof Identifier
+            && $call->name->toLowerString() === 'collection'
+            && $call->class instanceof Name
+            && $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
     }
 
     /**

@@ -185,7 +185,7 @@ final class VariableHandler implements ExpressionHandler
      */
     private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
     {
-        return $value['type'] !== 'null' && ValueResult::hasNullArm($value['type']) && $this->isProvenNonNull($read, $scope)
+        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && ValueResult::hasNullArm($value['type'])
             ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
             : $value;
     }
