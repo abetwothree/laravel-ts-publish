@@ -113,7 +113,7 @@ A method that builds an array in a variable and returns it publishes the keys it
   other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
   reads instead; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
-  variable merges what the walk reads too, so a key an `unset()` it cannot name may remove stays required there.
+  variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 

@@ -380,13 +380,13 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
-  included, a returned variable the walk reads completely, or returns alone, and any other value `mergedValueAnalysis()`
-  reads are branches: the resource's own model, as `Model::toArray()` writes it, or a whole array
-  `analyzeArrayExpression()` reads, such as `$this->method()`. The same values passed without a closure merge alike,
-  since Laravel merges `value($value)`. A side read as no array is an empty branch; one the analysis cannot read leaves
-  the merge, and a variable holding it, not read completely. A key set before a merge keeps its value and presence, as
-  `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+`
-  alike, keeping each signature entry.
+  included, a returned variable the walk reads completely, or returns alone with no `unset()` it cannot name, and any
+  other value `mergedValueAnalysis()` reads are branches: the resource's own model, as `Model::toArray()` writes it, or
+  a whole array `analyzeArrayExpression()` reads, such as `$this->method()`. The same values passed without a closure
+  merge alike, since Laravel merges `value($value)`. A side read as no array is an empty branch; one the analysis cannot
+  read leaves the merge, and a variable holding it, not read completely. A key set before a merge keeps its value and
+  presence, as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and
+  PHP's `+` alike, keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`, unless the value hands it to a resource's

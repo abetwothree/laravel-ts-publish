@@ -124,9 +124,10 @@ without them. A shared key would cut that read short and make the published type
 ## What stays vague
 
 The body step inherits the engine's limits and adds only the declines above. Loop-built keys, as in
-`Release::dynamicTotals()`, stay `unknown[]`, and a body that delegates to an untyped helper gets whatever the engine
-makes of that call. The fix for those is an accurate `@return Attribute<Get, Set>`, which is read before the body; see
-the tolki [annotation checklist](https://tolki.abe.dev/ts/models.html#annotation-checklist).
+`Release::dynamicTotals()`, publish the signature entry the returned-variable walk reads, its values untyped, and a body
+that delegates to an untyped helper gets whatever the engine makes of that call. The fix for those is an accurate
+`@return Attribute<Get, Set>`, which is read before the body; see the tolki
+[annotation checklist](https://tolki.abe.dev/ts/models.html#annotation-checklist).
 
 ## Related
 
