@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -16,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenBlockHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenThisHelperResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -321,10 +324,28 @@ test('a helper read as a value under the caller\'s instanceof proof reads the pr
 
     expect(publishedResourceKeyTypes(ProvenHelperResource::class, Team::class))->toBe([
         'proven' => 'string | null',
-        'unproven' => 'string',
+        'unproven' => 'unknown',
+        'name' => 'string',
     ])
         ->and(json_encode(new ProvenHelperResource($subscribed)->resolve(Request::create('/'))))
-        ->toBe('{"proven":"Ann","unproven":"T"}')
+        ->toBe('{"proven":"Ann","unproven":"Ann","name":"T"}')
         ->and(json_encode(new ProvenHelperResource($team)->resolve(Request::create('/'))))
-        ->toBe('{"proven":null,"unproven":"U"}');
+        ->toBe('{"proven":null,"unproven":null,"name":"U"}')
+        ->and(publishedResourceKeyTypes(ProvenBlockHelperResource::class, Team::class))->toBe(['subscriber' => 'string | null'])
+        ->and(json_encode(new ProvenBlockHelperResource($subscribed)->resolve(Request::create('/'))))->toBe('{"subscriber":"Ann"}')
+        ->and(json_encode(new ProvenBlockHelperResource($team)->resolve(Request::create('/'))))->toBe('{"subscriber":null}');
+});
+
+// The backing joins the memo key, so a read under a proof and one without each keep their own answer, in either order.
+test('a helper read under a proof and the same helper read without it never share a memoized answer', function () {
+    $read = fn (?string $backing): ?string => resolve(MethodReturnTypeResolver::class)
+        ->resolve(ProvenHelperResource::class, 'subscriberName', backing: $backing)['type'] ?? null;
+
+    resolve(AnalysisMemo::class)->reset();
+    $provenFirst = [$read(SubscribedTeam::class), $read(null)];
+    resolve(AnalysisMemo::class)->reset();
+    $unprovenFirst = [$read(null), $read(SubscribedTeam::class)];
+
+    expect($provenFirst)->toBe(['string | null', null])
+        ->and($unprovenFirst)->toBe([null, 'string | null']);
 });

@@ -10,7 +10,7 @@ use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\Team;
 
 /**
- * A helper read as a value under the caller's `instanceof` proof on `$this->resource`.
+ * A helper read as a value under the caller's `instanceof` proof on `$this->resource`, and without it.
  *
  * @mixin Team
  */
@@ -21,7 +21,8 @@ final class ProvenHelperResource extends JsonResource
     {
         return [
             'proven' => $this->resource instanceof SubscribedTeam ? $this->subscriberName() : null,
-            'unproven' => $this->name,
+            'unproven' => $this->subscriberName(),
+            'name' => $this->name,
         ];
     }
 
