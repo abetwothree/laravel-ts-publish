@@ -182,6 +182,9 @@ trait CollectsLocalVarBindings
      * value it assigns, past a statement whose writes are all nested `$x = …` the values before it and theirs, and past
      * a `try` what its body, a catch and its finally leave. Any other write leaves it unbound until such a write.
      *
+     * A name a reference can write through, made by `=&`, `use (&$x)`, `global`, `static` or `foreach (… as &$x)`, is
+     * never joined: another name or a closure may write it at any point, as blockSpanEnd() also declines.
+     *
      * A parameter, or a seeded name, starts holding its binding, which nested writes join for a value read only. While
      * that binding holds, its own `$x = …;` or a write of another kind stops the walk, leaving the rest to
      * endBindingsAtWrites(); past a write that ended it, the name walks as a local.
@@ -199,6 +202,10 @@ trait CollectsLocalVarBindings
 
         foreach ($byName as $name => $own) {
             $bound = $scope->bindsName((string) $name);
+
+            if (array_any($own, fn (array $write): bool => $this->writeKind($write[1], $write[2])->makesReference())) {
+                continue;
+            }
 
             if ($bound || count($own) > 1) {
                 $this->joinStatements((string) $name, $stmts, $stmts, $own, $bound ? [[], true, true] : [null, false, false], null, $scope);

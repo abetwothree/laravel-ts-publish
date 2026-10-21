@@ -8,9 +8,10 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
- * A post titled Banana, pinned or not, with one comment `hi` (id 5), as the joined fixtures read it.
+ * A post titled Banana, pinned or not, with one comment `hi` (id 5) and its author Ann, as the joined fixtures read it.
  */
 function joinedPost(bool $pinned): Post
 {
@@ -19,6 +20,7 @@ function joinedPost(bool $pinned): Post
     $post = new Post;
     $post->forceFill(['id' => 7, 'title' => 'Banana', 'is_pinned' => $pinned]);
     $post->setRelation('comments', new EloquentCollection([$comment]));
+    $post->setRelation('author', new User()->forceFill(['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']));
 
     return $post;
 }
@@ -67,6 +69,14 @@ test('a parameter written inside a block joins its old value and the write\'s', 
         'opaque_joined?' => 'unknown',
     ])
         ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['joined' => 5, 'vague_joined' => 5, 'opaque_joined' => 5]);
+});
+
+test('a local another name or a closure can write through a reference is never joined', function () {
+    expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray([
+        'aliased' => 'unknown',
+        'closed' => 'unknown',
+    ])
+        ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['aliased' => 1, 'closed' => 1]);
 });
 
 test('a local that reads itself in its own reassignment keeps both values', function () {

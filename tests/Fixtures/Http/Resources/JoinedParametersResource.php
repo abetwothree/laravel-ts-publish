@@ -6,11 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 use Workbench\App\Models\Post;
 
 /**
- * transform() callback parameters a write inside a block may replace, read past that block: passed the title, a
- * property no rule types or a call no rule types.
+ * Closure parameters a write inside a block may replace, read past that block: transform()'s passed the title, a
+ * property no rule types or a call no rule types, and ones, whenLoaded()'s too, that a value no rule types replaces.
  *
  * @mixin Post
  */
@@ -46,6 +47,27 @@ final class JoinedParametersResource extends JsonResource
                 }
 
                 return $value;
+            }),
+            'kept_upper' => $this->transform($this->title, function ($title) {
+                if ($this->is_pinned) {
+                    $title = Str::upper($title);
+                }
+
+                return $title;
+            }),
+            'kept_filtered' => $this->transform($this->options, function ($options) {
+                if ($this->is_pinned) {
+                    $options = array_filter($options);
+                }
+
+                return $options;
+            }),
+            'kept_author' => $this->whenLoaded('author', function ($author) {
+                if ($this->is_pinned) {
+                    $author = json_decode('{}');
+                }
+
+                return $author;
             }),
             'opaque_joined' => $this->transform($this->opaque(), function ($value) {
                 foreach ($this->comments as $comment) {

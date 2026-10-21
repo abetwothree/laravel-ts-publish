@@ -11,7 +11,8 @@ use Workbench\App\Models\Post;
 
 /**
  * Locals written more than once, each read past its writes: in sequence and in a branch, in a loop that breaks, past
- * an unset() or a closure that writes it by reference, across a try, its catch and a finally, and in its own rewrite.
+ * an unset() or a closure that writes it by reference, across a try, its catch and a finally, and in its own rewrite;
+ * and ones a reference or a variable variable writes.
  *
  * @mixin Post
  */
@@ -63,6 +64,21 @@ final class JoinedLocalsResource extends JsonResource
             $finally = 1;
         }
 
+        $aliased = 'a';
+        $alias = &$aliased;
+        $aliased = 'b';
+        $alias = 1;
+
+        $closed = 'a';
+        $set = function () use (&$closed): void {
+            $closed = 1;
+        };
+        $closed = 'b';
+        $set();
+
+        $key = 'a';
+        $$key = 5;
+
         $self = 'a';
         $self = $self.$this->title;
         $wrapped = $this->title;
@@ -78,6 +94,9 @@ final class JoinedLocalsResource extends JsonResource
             'caught_read' => $this->caughtRead(),
             'self' => $self,
             'wrapped' => $wrapped,
+            'aliased' => $aliased,
+            'closed' => $closed,
+            'key' => $key,
         ];
     }
 
