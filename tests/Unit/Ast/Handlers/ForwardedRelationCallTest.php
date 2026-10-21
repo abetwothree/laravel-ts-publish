@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedFirstReadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedFirstValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedRelationCallResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\ForwardedRelationCallMetadataProvider;
 use Illuminate\Database\Eloquent\Builder;
@@ -132,4 +134,68 @@ it('forwards no call to a builder method the relation cannot reach', function ()
 
     expect(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass(HasMany::class, 'addHasWhere'))->toBeNull()
         ->and(fn () => $relation->addHasWhere($relation->getQuery(), $relation, '>=', 1, 'and'))->toThrow(BadMethodCallException::class);
+});
+
+/**
+ * What Laravel sends for ForwardedFirstValueResource over a post with two comments and over a post with none.
+ *
+ * @return array{commented: array<string, mixed>, uncommented: array<string, mixed>}
+ */
+function forwardedFirstValueSends(): array
+{
+    $user = User::create(['name' => 'Ed', 'email' => 'ed@example.com', 'password' => 'secret']);
+    $sent = [];
+
+    foreach (['commented' => ['alpha', 'beta'], 'uncommented' => []] as $label => $contents) {
+        /** @var array{data: array<string, mixed>} $response */
+        $response = json_decode((string) new ForwardedFirstValueResource(forwardedRelationCallPost($user, $contents))->response(request())->getContent(), true);
+        $sent[$label] = $response['data'];
+    }
+
+    return $sent;
+}
+
+// first() finds no comment on a post without one, so the value it hands on, bare or through a helper, is null there.
+it('types the model a query\'s first() hands on as the model or null', function () {
+    $sent = forwardedFirstValueSends();
+
+    expect(publishedResourceKeyTypes(ForwardedFirstValueResource::class, Post::class))->toBe([
+        'first' => 'Comment | null',
+        'passed' => 'Comment | null',
+        'passed_first_where' => 'Comment | null',
+        'passed_query' => 'Post | null',
+        'declared_nullable' => 'Comment | null',
+        'first_content' => 'string | null',
+    ])
+        ->and(array_map(fn (mixed $value): mixed => is_array($value) ? $value['content'] : $value, $sent['commented']))->toBe([
+            'first' => 'alpha',
+            'passed' => 'alpha',
+            'passed_first_where' => 'alpha',
+            'passed_query' => null,
+            'declared_nullable' => 'alpha',
+            'first_content' => 'alpha',
+        ])
+        ->and($sent['uncommented'])->toBe([
+            'first' => null,
+            'passed' => null,
+            'passed_first_where' => null,
+            'passed_query' => null,
+            'declared_nullable' => null,
+            'first_content' => null,
+        ]);
+});
+
+// A plain read of a missing model and a non-null parameter given null both throw, so every response holds the model.
+it('keeps a plain read of first()\'s model and a non-null parameter holding it non-null', function () {
+    $user = User::create(['name' => 'Flo', 'email' => 'flo@example.com', 'password' => 'secret']);
+    $uncommented = new ForwardedFirstReadResource(forwardedRelationCallPost($user, []));
+
+    /** @var array{data: array{content: string, declared: array{content: string}}} $sent */
+    $sent = json_decode((string) new ForwardedFirstReadResource(forwardedRelationCallPost($user, ['alpha']))->response(request())->getContent(), true);
+
+    expect(publishedResourceKeyTypes(ForwardedFirstReadResource::class, Post::class))->toBe(['content' => 'string', 'declared' => 'Comment'])
+        ->and($sent['data']['content'])->toBe('alpha')
+        ->and($sent['data']['declared']['content'])->toBe('alpha')
+        ->and(fn () => $uncommented->response(request()))->toThrow(ErrorException::class)
+        ->and(fn () => new ReflectionMethod($uncommented, 'comment')->invoke($uncommented, null))->toThrow(TypeError::class);
 });

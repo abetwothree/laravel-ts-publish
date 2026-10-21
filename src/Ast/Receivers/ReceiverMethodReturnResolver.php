@@ -282,6 +282,11 @@ final class ReceiverMethodReturnResolver
             return $items;
         }
 
+        // first() and firstWhere() find the model the query builds, or null where no row matches.
+        if ($receiver->relatedModel !== null && resolve(ReceiverClassResolver::class)->findsQueriedModel($class, $methodName)) {
+            return $this->publishedModelOrNull($receiver->relatedModel);
+        }
+
         $modelRule = $this->modelRule($class, $methodName);
 
         if ($modelRule !== null) {
@@ -354,7 +359,7 @@ final class ReceiverMethodReturnResolver
 
         // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
         if (in_array($methodName, self::ROUTE_BINDINGS, true) && $this->runsModelMethod($class, $methodName)) {
-            return fn (): ?array => $this->publishedSelfType($class);
+            return fn (): ?array => $this->publishedModelOrNull($class);
         }
 
         // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
@@ -649,12 +654,12 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The receiver class itself or null, as a route binding returns it, where the class is a published model.
+     * A model or null, as a route binding or a query's first() returns it, where the class is a published model.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function publishedSelfType(string $class): ?array
+    private function publishedModelOrNull(string $class): ?array
     {
         $bound = $this->selfType($class, nullable: true);
 

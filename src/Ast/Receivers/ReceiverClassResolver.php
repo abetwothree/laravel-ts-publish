@@ -538,6 +538,26 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Whether a query, relation or factory method declares the model it builds beside `null`, as `first()` and
+     * `firstWhere()` do, on the class itself or the one its query forwards the call to.
+     */
+    public function findsQueriedModel(string $class, string $method): bool
+    {
+        $answering = $this->isCallable($class, $method, false)
+            ? $class
+            : resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass($class, $method);
+        $template = $answering === null ? null : $this->queryTemplate($answering);
+
+        if ($answering === null || $template === null) {
+            return false;
+        }
+
+        $declared = $this->declaredReturn($answering, $method);
+
+        return $declared !== null && $this->returnsTemplate($declared, $template, besideNull: true);
+    }
+
+    /**
      * Whether one node fills the model a variable holds: a write to a member or offset through it, a call to an
      * attribute writer on it, or a statement calling a method on it.
      */
@@ -1361,10 +1381,7 @@ final class ReceiverClassResolver
      */
     private function queriedModel(string $class, string $method, string $queried): ?ReceiverType
     {
-        $template = array_find(
-            self::QUERY_MODEL_TEMPLATES,
-            fn (string $name, string $queryClass): bool => is_a($class, $queryClass, true),
-        );
+        $template = $this->queryTemplate($class);
         $factory = is_a($class, Factory::class, true);
 
         if ($template === null || ($factory && in_array($method, self::FACTORY_COUNTS, true))) {
@@ -1457,15 +1474,27 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Whether a docblock return is the template, alone or beside `null`, as `first()`'s `TValue|null` binds `TModel`.
-     *
-     * A `?->` read carries the `null`, and a plain read of a missing model throws, so no response sends it.
+     * The docblock template a query, relation or factory class binds to the model it builds, or null for another class.
      */
-    private function returnsTemplate(string $declared, string $template): bool
+    private function queryTemplate(string $class): ?string
     {
-        $arms = array_map(fn (string $arm): string => ltrim(trim($arm), '?\\'), LaravelTsPublish::splitPhpDocUnionType($declared));
+        return array_find(self::QUERY_MODEL_TEMPLATES, fn (string $name, string $queryClass): bool => is_a($class, $queryClass, true));
+    }
 
-        return array_values(array_filter($arms, fn (string $arm): bool => strtolower($arm) !== 'null')) === [$template];
+    /**
+     * Whether a docblock return is the template, alone or beside `null`, as `first()`'s `TValue|null` binds `TModel`;
+     * with `$besideNull`, only beside it.
+     *
+     * A receiver names the model without the `null`: a `?->` read adds it, and a plain read of a missing model throws.
+     */
+    private function returnsTemplate(string $declared, string $template, bool $besideNull = false): bool
+    {
+        $parts = LaravelTsPublish::splitPhpDocUnionType($declared);
+        $arms = array_map(fn (string $arm): string => ltrim(trim($arm), '?\\'), $parts);
+        $null = array_any($parts, fn (string $arm): bool => str_starts_with(trim($arm), '?') || strtolower(trim($arm)) === 'null');
+
+        return array_values(array_filter($arms, fn (string $arm): bool => strtolower($arm) !== 'null')) === [$template]
+            && ($null || ! $besideNull);
     }
 
     /**
