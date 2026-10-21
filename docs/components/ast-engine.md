@@ -374,12 +374,13 @@ nested `$x = …` the values before it and theirs, and past a `try` what its bod
 write in a block that always exits reaches no read past it. Any other write leaves the name unbound until its next
 top-level `$x = …;`, and a name a reference can write through is never joined. A parameter takes the same walk from its
 own binding, for values only. Its own `$x = …;` replaces the value it binds, alone or beside a class, and a model's
-where the write names no class, so `$t = json_decode($t)` reads `unknown` past it; any other class binding alone, or
-any other write, stops the walk. An expression binding the receiver resolver names a class for, such as a relation
-read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no class a member read
-keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a model's own write of a
-value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine cannot
-type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read.
+where the write is a typed value naming no class, so `$t = json_decode($t)` reads `unknown` past it while a model's
+untyped write keeps the model (O11); any other class binding alone, or any other write, stops the walk. An expression
+binding the receiver resolver names a class for, such as a relation read, holds that class beside its value. Its gaps
+carry `receiversKeep`: past a write naming no class a member read keeps the old binding, until the write
+`endBindingsAtWrites()` returns as ending it, but past a model's own write of a value the scan types, such as a column
+read, it does not. A value read leaves out a nested write the engine cannot type wherever an earlier value, the
+binding's or its own `$x = …;`'s, still reaches the read.
 `CollectsLocalVarBindings::writeKind()` classifies each write once, as the scan records it. The cycle guard,
 `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
 value `$s` held before.
@@ -440,9 +441,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
   or an operator such as `.=`, leaves a class binding standing, since only the old binding is known, though a value
-  read takes what its own `$x = …;` writes where it binds a value or a model, and past a write nested in a block the
-  old value or the one written; a `foreach`, `catch` or by-reference write ends it, but a call that keeps the value's
-  form.
+  read takes what its own `$x = …;` writes where it binds a value, or a model the write gives a typed value, and past
+  a write nested in a block the old value or the one written; a `foreach`, `catch` or by-reference write ends it, but
+  a call that keeps the value's form.
 
 ## Subject mode
 
