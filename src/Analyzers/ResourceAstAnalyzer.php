@@ -687,7 +687,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         [$branches, $complete] = $this->resolveProvenNonNull(
             $condition === null ? [] : $this->nonNullReads($condition, $isMergeWhen),
             $this->scope,
-            fn (): array => $this->resolveMergedBranches($value->value),
+            fn (): array => $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($value->value, $this->scope)),
         );
 
         if (! $isMerge) {
@@ -696,7 +696,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             // Laravel calls a default closure with no argument, so one requiring an argument never merges an array.
             [$defaultBranches, $defaultComplete] = $default === null || $this->closureRequiresArguments($default)
                 ? [[], true]
-                : $this->resolveMergedBranches($default);
+                : $this->resolveMergedBranches(FirstClassCallableHandler::heldCallable($default, $this->scope));
             $complete = $complete && $defaultComplete;
 
             // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.

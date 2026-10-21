@@ -4,16 +4,26 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use Illuminate\Http\Request;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Stmt;
+use PhpParser\NodeFinder;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
  * A post titled Banana, as the fixtures here read it.
@@ -24,6 +34,47 @@ function blockItemsPost(): Post
     $post->forceFill(['id' => 7, 'title' => 'Banana']);
 
     return $post;
+}
+
+/**
+ * What heldCallable() answers for each `$c` a `$this->when()` call passes, in source order: whether it reads the read
+ * as the first-class callable the variable holds there.
+ *
+ * @param  array<string, class-string>  $parameters  each parameter's model, bound before the body is seeded
+ * @return list<bool>
+ */
+function blockItemsHeldCallables(string $body, array $parameters = []): array
+{
+    $scope = new AnalysisScope(new ReflectionClass(HeldCallableResource::class), Post::class);
+    $scope->varModelBindings = $parameters;
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the scope from the body, as every body reader does.
+         *
+         * @param  list<Stmt>  $stmts
+         */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+    $calls = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof MethodCall
+        && $node->name instanceof Identifier
+        && $node->name->toString() === 'when');
+
+    return array_map(function (Node $call) use ($scope): bool {
+        $read = $call instanceof MethodCall ? $call->getArgs()[1]->value : null;
+
+        return $read !== null && FirstClassCallableHandler::heldCallable($read, $scope) !== $read;
+    }, $calls);
 }
 
 /**
@@ -65,6 +116,46 @@ function blockItemsOffsetRead(string $holder, string $read): ?string
 
     return new OffsetReadHandler()->resolve($expr, new AnalysisScope(new ReflectionClass(OffsetReadResource::class)), $engine)['type'] ?? null;
 }
+
+test('a first-class callable held in a local reads as its call where Laravel calls the value, and warns of nothing', function () {
+    AnalysisWarnings::reset();
+    $loaded = blockItemsPost();
+    $author = new User;
+    $author->forceFill(['name' => 'Ann']);
+    $loaded->setRelation('author', $author);
+
+    expect(publishedResourceKeyTypes(HeldCallableResource::class, Post::class))->toBe([
+        'label?' => 'string',
+        'fallback' => 'number | string',
+        'not_null' => 'string',
+        'author?' => 'string',
+        'shouted?' => 'string',
+        'has_title?' => 'string',
+        'held?' => 'number',
+        'merged_default?' => 'string',
+        'merged?' => 'boolean',
+    ])
+        ->and(AnalysisWarnings::all())->toBe([])
+        ->and(json_encode(new HeldCallableResource($loaded)->resolve(Request::create('/', 'GET', ['label' => 1, 'held' => 1, 'plain' => 1, 'merged' => 1]))))
+        ->toBe('{"label":"BANANA","fallback":"BANANA","not_null":"BANANA","author":"Ann","shouted":"BANANA","has_title":"BANANA","held":1,"merged_default":"x","merged":true}')
+        ->and(json_encode(new HeldCallableResource(blockItemsPost())->resolve(Request::create('/', 'GET', ['none' => 1]))))
+        ->toBe('{"fallback":1,"not_null":"BANANA","shouted":"BANANA","has_title":"BANANA"}');
+});
+
+test('heldCallable() reads the first-class callable a local holds where it is read, and leaves any other read as written', function (string $body, array $parameters, array $held) {
+    expect(blockItemsHeldCallables($body, $parameters))->toBe($held);
+})->with([
+    'a top-level write' => ['$c = $this->label(...); $this->when(true, $c);', [], [true]],
+    'a local written twice' => ['$c = $this->label(...); $c = $this->upper(...); $this->when(true, $c);', [], [false]],
+    'a call, which holds its result' => ['$c = $this->label(); $this->when(true, $c);', [], [false]],
+    'a block write, read in its block and past it' => [
+        'if ($x) { $c = $this->label(...); $this->when(true, $c); } $this->when(true, $c);',
+        [],
+        [true, false],
+    ],
+    'a write an inline @var declares' => ['/** @var \Closure $c */ $c = $this->label(...); $this->when(true, $c);', [], [true]],
+    'a parameter read before the write' => ['$this->when(true, $c); $c = $this->label(...);', ['c' => User::class], [false]],
+]);
 
 test('a literal-key read types the member of the shape its holder binds, and a key the shape lacks declines', function () {
     expect(publishedResourceKeyTypes(OffsetReadResource::class, Post::class))->toBe([

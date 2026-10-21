@@ -69,6 +69,30 @@ final class FirstClassCallableHandler implements ExpressionHandler
     }
 
     /**
+     * The first-class callable a variable holds where it is read, so a caller that calls its value reads the call: the
+     * write an inline `@var` spans, the one-value gap a block write opens, or the local's single write. Any other
+     * expression comes back unchanged, as does a read a parameter's own binding answers.
+     */
+    public static function heldCallable(Expr $value, AnalysisScope $scope): Expr
+    {
+        if (! $value instanceof Variable || ! is_string($value->name)) {
+            return $value;
+        }
+
+        $span = $scope->declaredAt($value);
+        $holds = $scope->holdsBinding($value);
+        $gap = $span !== null || $holds ? null : $scope->gapAt($value);
+        $held = match (true) {
+            $span !== null => $span['expr'],
+            $gap !== null => ! $gap[3] && count($gap[2] ?? []) === 1 ? $gap[2][0] : null,
+            $holds && $scope->bindsName($value->name) => null,
+            default => $scope->localVarBindings[$value->name] ?? null,
+        };
+
+        return $held !== null && self::isFirstClassCallable($held) ? $held : $value;
+    }
+
+    /**
      * Whether this handler reads a first-class callable as the call it stands for, as the caller invokes it.
      */
     public function invokesCallables(): bool

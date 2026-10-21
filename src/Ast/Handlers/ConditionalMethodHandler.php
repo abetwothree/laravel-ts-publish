@@ -233,7 +233,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
             $scope->bindUnpassedParameters($valueArg->value, 0, $engine);
 
-            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
+            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall(FirstClassCallableHandler::heldCallable($valueArg->value, $scope)));
         } finally {
             $scope->restoreNameBindings($previousNameBindings);
         }
@@ -402,13 +402,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $called = $stripNull ? $this->calledWithNothing($valueArg->value, $scope, $engine) : null;
+        $held = FirstClassCallableHandler::heldCallable($valueArg->value, $scope);
+        $called = $stripNull ? $this->calledWithNothing($held, $scope, $engine) : null;
 
         if ($called !== null) {
             return $called;
         }
 
-        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
+        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($held));
 
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
@@ -437,7 +438,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($valueExpr !== null && ! $this->isNullConstFetch($valueExpr)) {
             // Laravel calls a callable with the loaded relation, so a first-class one binds it as a closure does.
-            $valueExpr = FirstClassCallableHandler::passingOneValue($valueExpr);
+            $valueExpr = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($valueExpr, $scope));
             // Resolve the related model so accesses on local variables inside the closure can be typed.
             $previousRelationModel = $scope->closureRelationModelClass;
             $previousNameBindings = $scope->nameBindings();
@@ -563,7 +564,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $value = $valueArg->value;
             $resolvedValue = $engine->resolve($value);
             $model = $this->filledModel($value, $resolvedValue, $scope);
-            $callback = FirstClassCallableHandler::passingOneValue($callbackArg->value);
+            $callback = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($callbackArg->value, $scope));
 
             $scope->claimParameters($callback);
             $this->bindPassedValue($callback, $value, $resolvedValue, $previousNameBindings, $scope, $engine, model: $model);
@@ -754,6 +755,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
     private function resolveConditionalDefault(Expr $default, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $previousNameBindings = $scope->nameBindings();
+        $default = FirstClassCallableHandler::heldCallable($default, $scope);
         $default = $passed === null ? $default : FirstClassCallableHandler::passingOneValue($default);
 
         try {
@@ -827,6 +829,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         }
 
         $previousNameBindings = $scope->nameBindings();
+        $value = FirstClassCallableHandler::heldCallable($value, $scope);
         $value = $argument === null ? $value : FirstClassCallableHandler::passingOneValue($value);
 
         try {
