@@ -37,7 +37,7 @@ reflection answers, a decline included.
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
-| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `forwardedQueryClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `forwardedQueryClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
 | `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
 | `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
@@ -210,13 +210,13 @@ Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relati
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks eight convention rules on each class before
+`ReceiverMethodReturnResolver` checks nine convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all eight loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
+Laravel declares all nine loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
 `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to `Record<string, unknown>`,
 `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`, `Collection::all()` declares
-`array<TKey, TValue>`, and `resolveRouteBinding()` declares `Model|null`. Each rule answers only on the receiver it
-names:
+`array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the template `TValue|null`. Each
+rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -254,6 +254,9 @@ names:
 - **`Model`'s bare arrays**: on a concrete model that inherits the method, what it holds, from
   `ReceiverMethodReturnResolver::MODEL_ARRAY_RETURNS`: a list of names such as `getAppends()`'s `string[]`,
   `getCasts()`'s `Record<string, string>`, or a map keyed by name such as `getRelations()`'s `Record<string, unknown>`.
+- **`first()`, `firstWhere()`**: on a query or relation with `relatedModel` set, where the method, or the one its query
+  forwards the call to, declares the model template beside `null` (`ReceiverClassResolver::findsQueriedModel()`), the
+  model or `null`: `Comment | null`. A helper the value is passed to keeps the `null`.
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
@@ -280,7 +283,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the eight on a resource collection's items alone:
+One more rule reads no model, and runs before the nine on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
@@ -294,8 +297,9 @@ One more rule reads no model, and runs before the eight on a resource collection
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `ReceiverMethodReturnResolver::forwardedQueryClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
 whose `__call()` sends a name its `$passthru` lists to `Query\Builder`. A macro under the name runs first, so it
-forwards nowhere. `$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`,
-so it stays `unknown`.
+forwards nowhere, and a builder method that is not public is out of the relation's reach, so it declines.
+`$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`, so it stays
+`unknown`.
 
 ### The order for one class
 
