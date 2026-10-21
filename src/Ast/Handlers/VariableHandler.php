@@ -458,8 +458,8 @@ final class VariableHandler implements ExpressionHandler
      * model, else the element model or the list element of the collection the receiver resolver names. The body wraps
      * as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
      *
-     * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), an unnamed one but a
-     * variable a model hint binds, and a receiver whose element nothing names.
+     * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), a resource collection's
+     * items, an unnamed one but a variable a model hint binds, and a receiver whose element nothing names.
      *
      * @return ValueExpressionResult|null
      */
@@ -474,7 +474,11 @@ final class VariableHandler implements ExpressionHandler
         $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
         $declared = $this->declaredMapModel($callback->params[0] ?? null);
 
-        if ($receiver === null ? ! $this->mayHoldCollection($call->var, $declared, $scope) : ! $receiver->within(self::MAPS_ITEMS)) {
+        // A resource collection's items are the API resources it built, or what it was given if it collects none.
+        if ($receiver === null
+            ? ! $this->mayHoldCollection($call->var, $declared, $scope)
+            : ! $receiver->within(self::MAPS_ITEMS) || $receiver->collectedItems
+        ) {
             return null;
         }
 
