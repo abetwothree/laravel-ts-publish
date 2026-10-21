@@ -11,14 +11,14 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * A post titled Banana, pinned or not, with one comment `hi` (id 5) and its author Ann, as the joined fixtures read it.
+ * A post titled Banana, pinned or not, with options a=x and an empty b, one comment `hi` (id 5) and its author Ann.
  */
 function joinedPost(bool $pinned): Post
 {
     $comment = new Comment;
     $comment->forceFill(['id' => 5, 'content' => 'hi']);
     $post = new Post;
-    $post->forceFill(['id' => 7, 'title' => 'Banana', 'is_pinned' => $pinned]);
+    $post->forceFill(['id' => 7, 'title' => 'Banana', 'is_pinned' => $pinned, 'options' => ['a' => 'x', 'b' => '']]);
     $post->setRelation('comments', new EloquentCollection([$comment]));
     $post->setRelation('author', new User()->forceFill(['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']));
 
@@ -69,6 +69,19 @@ test('a parameter written inside a block joins its old value and the write\'s', 
         'opaque_joined?' => 'unknown',
     ])
         ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['joined' => 5, 'vague_joined' => 5, 'opaque_joined' => 5]);
+});
+
+// A written value no rule types is left out of the join, as a receiver keeps the old binding past it.
+test('a parameter keeps its old value past a nested write the engine cannot type', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
+        'kept_upper?' => 'string',
+        'kept_filtered?' => 'Record<string, string> | null',
+        'kept_author?' => 'User',
+    ])
+        ->and(joinedSends(JoinedParametersResource::class, true))
+        ->toMatchArray(['kept_upper' => 'BANANA', 'kept_filtered' => ['a' => 'x'], 'kept_author' => []])
+        ->and(joinedSends(JoinedParametersResource::class, false))
+        ->toMatchArray(['kept_upper' => 'Banana', 'kept_filtered' => ['a' => 'x', 'b' => ''], 'kept_author' => ['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']]);
 });
 
 test('a local another name or a closure can write through a reference is never joined', function () {

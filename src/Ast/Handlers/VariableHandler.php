@@ -267,9 +267,13 @@ final class VariableHandler implements ExpressionHandler
             fn (Expr $written): ?array => $this->boundExpressionValue($name, $written, $scope, $engine),
             $gap[2] ?? [],
         ));
-        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : $values;
+        $untyped = fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown';
+        // A parameter's write the engine cannot type leaves the read on the old value, as fromGap() leaves a receiver.
+        $keepsOld = $gap[3] || ($gap[4] && array_any($values, $untyped));
+        $values = $gap[4] ? array_filter($values, fn (?array $arm): bool => ! $untyped($arm)) : $values;
+        $arms = $keepsOld ? [$this->heldValue($name, $scope, $engine), ...$values] : array_values($values);
 
-        return $gap[2] === null || $arms === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
+        return $gap[2] === null || $arms === [] || array_any($arms, $untyped)
             ? null
             : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
     }
