@@ -456,7 +456,8 @@ a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` termina
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.
 - **`array_filter($a)` is `$a`'s own array, keys kept**: a list adds the `Record<number, T>` its gaps make, which an
-  API resource re-indexes away, and with no callback no value is `null`. A shape or a tuple declines.
+  API resource re-indexes away, and with no callback no value is `null`. A `null` arm is left out, since PHP throws a
+  `TypeError` on it, and a shape or a tuple declines.
 
 `VariableHandler` types a `map()` over any other receiver, such as a local, a model parameter's relation, a query or
 `getRelation()`, and peels a trailing `values()` or `all()` off a chain it can type or a variable whose element the

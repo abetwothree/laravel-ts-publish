@@ -372,12 +372,13 @@ nested `$x = …` the values before it and theirs, and past a `try` what its bod
 write in a block that always exits reaches no read past it. Any other write leaves the name unbound until its next
 top-level `$x = …;`, and a name a reference can write through is never joined. A parameter takes the same walk from its
 own binding, for values only. Its own `$x = …;` replaces the value it binds, alone or beside a class, so
-`$t = json_decode($t)` reads `unknown` past it; a class binding alone, or any other write, stops the walk. Its gaps
-carry `receiversKeep`: past a write naming no class a member read keeps the old binding, and where the old value may
-still hold, a value read takes it in place of a written one the engine cannot type.
-`CollectsLocalVarBindings::writeKind()` classifies each write once for these passes. The cycle guard,
-`AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
-value `$s` held before.
+`$t = json_decode($t)` reads `unknown` past it; a class binding alone, or any other write, stops the walk. An expression
+binding the receiver resolver names a class for, such as a relation read, holds that class beside its value. Its gaps
+carry `receiversKeep`: past a write naming no class a member read keeps the old binding, until the write
+`endBindingsAtWrites()` returns as ending it. A value read leaves out a nested write the engine cannot type wherever
+an earlier value, the binding's or its own `$x = …;`'s, still reaches the read. `CollectsLocalVarBindings::writeKind()`
+classifies each write once for these passes. The cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by
+its name and the bound expression, so `$s = $s . 'x'` reads the value `$s` held before.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
