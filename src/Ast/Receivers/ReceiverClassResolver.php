@@ -205,8 +205,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The model a variable's own model binding names, while the variable reads as exactly that model; null where a
-     * narrowing or a guard names another class, which the receiver handlers then type from.
+     * The model a variable's own model binding names, while the variable reads as no narrower class: null where a
+     * narrowing or a guard names a subclass, which the receiver handlers then type from. A test for a class the model
+     * already is, such as `Model` or `Arrayable`, keeps it.
      *
      * @return class-string<Model>|null
      */
@@ -216,11 +217,12 @@ final class ReceiverClassResolver
             ? $scope->varModelBindings[$variable->name] ?? null
             : null;
 
-        return $model !== null && $this->resolve($variable, $scope)?->classes === [$model] ? $model : null;
+        return $model !== null && $this->namesNothingNarrower($this->resolve($variable, $scope), $model) ? $model : null;
     }
 
     /**
-     * The element model a variable's own collection binding names, while the variable reads as a collection of it.
+     * The element model a variable's own collection binding names, while the variable reads as a collection of it, or
+     * as a class its Eloquent collection already is, which names no element of its own.
      *
      * @return class-string<Model>|null
      */
@@ -230,7 +232,16 @@ final class ReceiverClassResolver
             ? $scope->varCollectionBindings[$variable->name]['modelFqcn'] ?? null
             : null;
 
-        return $element !== null && $this->resolve($variable, $scope)?->elementModel === $element ? $element : null;
+        if ($element === null) {
+            return null;
+        }
+
+        $held = $this->resolve($variable, $scope);
+
+        return $held?->elementModel === $element
+            || ($held?->elementModel === null && $this->namesNothingNarrower($held, EloquentCollection::class))
+                ? $element
+                : null;
     }
 
     /**
@@ -2054,6 +2065,15 @@ final class ReceiverClassResolver
         }
 
         return true;
+    }
+
+    /**
+     * Whether a receiver names no class narrower than a binding's: each class it names is one the binding already is,
+     * or it names none.
+     */
+    private function namesNothingNarrower(?ReceiverType $held, string $bound): bool
+    {
+        return $held === null || array_all($held->classes, fn (string $class): bool => is_a($bound, $class, true));
     }
 
     /**

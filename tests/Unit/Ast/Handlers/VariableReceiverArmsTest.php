@@ -7,11 +7,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClos
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SupertypeGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnboundClosureVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Team;
@@ -145,4 +147,37 @@ it('reads a model-bound parameter under an instanceof test as the subclass it na
         ->toBe('{"data":{"word_count":"12","shouted_title":"ABC"}}')
         ->and(new NarrowedBoundPostResource($post)->response(request())->getContent())
         ->toBe('{"data":{"word_count":null,"shouted_title":null}}');
+});
+
+// A test for a class the binding already is proves nothing narrower, so the bound model and collection still type.
+it('keeps a bound model or collection under an instanceof test for a class it already is', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id, 'word_count' => 12]);
+
+    foreach (['alpha', 'beta'] as $content) {
+        Comment::create(['content' => $content, 'post_id' => $post->id, 'user_id' => $user->id]);
+    }
+
+    /** @var array{data: array<string, mixed>} $sent */
+    $sent = json_decode((string) new SupertypeGuardedPostResource(Post::with('comments')->findOrFail($post->id))
+        ->response(request())->getContent(), true);
+
+    expect(publishedResourceKeyTypes(SupertypeGuardedPostResource::class, Post::class))->toBe([
+        'model_guarded_title' => 'string | null',
+        'model_guarded_word_count' => 'number | null',
+        'interface_guarded_title' => 'string | null',
+        'model_ternary_title' => 'string | null',
+        'spread_title?' => 'string',
+        'spread_publishable?' => 'boolean',
+        'narrowed_contents?' => 'string[] | null',
+        'narrowed_spread?' => 'Comment[] | null',
+    ])->and($sent['data'])->toMatchArray([
+        'model_guarded_title' => 'First',
+        'model_guarded_word_count' => 12,
+        'interface_guarded_title' => 'First',
+        'model_ternary_title' => 'First',
+        'spread_title' => 'First',
+        'spread_publishable' => false,
+        'narrowed_contents' => ['alpha', 'beta'],
+    ])->and(array_column($sent['data']['narrowed_spread'], 'content'))->toBe(['alpha', 'beta']);
 });
