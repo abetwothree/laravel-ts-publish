@@ -301,6 +301,23 @@ it('passes a variable inside a gap on as one past its end', function () {
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
 });
 
+// The old binding may still hold where it is passed, so the parameter holds it and the writes the gap carries alike.
+it('passes a variable inside a gap its old binding may hold past as that binding joined with the gap\'s writes', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $written = new Variable('written');
+    $captured['bindingEnds'] = [];
+    $captured['bindingGaps']['item'] = [[5, 9, [$written], true, true]];
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 6]), 'param', $captured);
+
+    expect($scope->varModelBindings)->toBe(['param' => User::class])
+        ->and($scope->varValueBindings)->toBe(['param' => ['type' => 'string', 'optional' => false]])
+        ->and($scope->bindingEnds)->toBe([])
+        ->and($scope->bindingGaps)->toBe(['param' => [[PHP_INT_MIN, PHP_INT_MAX, [$written], true, true]]])
+        ->and($scope->gapAt(new Variable('param', ['startFilePos' => 0])))->toBe([PHP_INT_MIN, PHP_INT_MAX, [$written], true, true]);
+});
+
 it('binds a name a parameter or a seeded binding holds, never one only the body\'s own tables hold', function () {
     $scope = analysisScopeWithEveryTableBound();
     $bodyOnly = new AnalysisScope(new ReflectionClass(stdClass::class));

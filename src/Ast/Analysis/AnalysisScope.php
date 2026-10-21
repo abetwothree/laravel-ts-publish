@@ -794,7 +794,8 @@ final class AnalysisScope
      * proof, which spells the read it proves under the variable's own name, and a binding end or gap, offsets in the
      * caller's body. Past its end or inside a gap, only the body's own bindings pass, a gap's one write among them.
      *
-     * The `instanceof` guard in force where the variable is passed holds for every read of the parameter.
+     * Inside a gap the old binding may still hold past, both pass: the parameter's every read joins the two. The
+     * `instanceof` guard in force where the variable is passed holds for every read of the parameter.
      *
      * @param  NameBindingsSnapshot  $snapshot
      */
@@ -807,16 +808,23 @@ final class AnalysisScope
         $from = $passed->name;
         $offset = $passed->getStartFilePos();
         $local = $snapshot['localVarBindings'][$from] ?? null;
+        $holds = self::holdsAt($from, $offset, $snapshot['bindingEnds'], $snapshot['bindingGaps']);
+        $gap = $holds ? null : self::latestGap($snapshot['bindingGaps'][$from] ?? [], $offset);
+        $joins = $gap !== null && $gap[3];
 
-        if (! self::holdsAt($from, $offset, $snapshot['bindingEnds'], $snapshot['bindingGaps'])) {
+        if ($joins) {
+            // The old binding may still hold, so every read of the parameter joins it with the writes the gap carries.
+            $this->bindingGaps[$to] = [[PHP_INT_MIN, PHP_INT_MAX, $gap[2], true, $gap[4]]];
+        } elseif (! $holds) {
             // The parameter's own binding ends before any read, so no reader guesses a class for it.
             $this->bindingEnds[$to] = PHP_INT_MIN;
-            $gap = self::latestGap($snapshot['bindingGaps'][$from] ?? [], $offset);
 
-            if ($gap !== null && ! $gap[3] && count($gap[2] ?? []) === 1) {
+            if ($gap !== null && count($gap[2] ?? []) === 1) {
                 $local = $gap[2][0];
             }
-        } else {
+        }
+
+        if ($holds || $joins) {
             if (isset($snapshot['closureParamExprBindings'][$from])) {
                 $this->closureParamExprBindings[$to] = $snapshot['closureParamExprBindings'][$from];
             }

@@ -74,6 +74,16 @@ test('a parameter written inside a block joins its old value and the write\'s', 
         ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['caught_joined' => 3]);
 });
 
+// A variable passed in a gap whose old value may still hold passes both, for the value and for a receiver alike.
+test('a parameter passed on past a nested write passes its old value and the write\'s', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
+        'passed_joined?' => 'string | number',
+        'passed_joined_id?' => 'number',
+    ])
+        ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['passed_joined' => 7, 'passed_joined_id' => 5])
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['passed_joined' => 'Banana', 'passed_joined_id' => 3]);
+});
+
 // The declared string holds for a read before the body's write, and joins a branch's write for a read past it.
 test('a helper\'s parameter the body writes reads its declared value before the write, and a branch\'s write past it', function () {
     expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([

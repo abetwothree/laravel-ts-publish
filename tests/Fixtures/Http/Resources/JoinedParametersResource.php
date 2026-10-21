@@ -12,8 +12,8 @@ use Workbench\App\Models\Post;
 
 /**
  * Parameters a write inside a block may replace, read past that block: transform()'s passed the title, a property no
- * rule types or a call no rule types, ones, whenLoaded()'s too, that a value no rule types replaces, one a `try`
- * writes, and a helper's, which declares a string, read before and past its writes.
+ * rule types or a call no rule types, ones a value no rule types replaces, one a `try` writes, ones passed on to
+ * another transform(), and a helper's, which declares a string, read before and past its writes.
  *
  * @mixin Post
  */
@@ -89,6 +89,20 @@ final class JoinedParametersResource extends JsonResource
                 }
 
                 return $title;
+            }),
+            'passed_joined' => $this->transform($this->title, function ($title) {
+                if ($this->is_pinned) {
+                    $title = $this->id;
+                }
+
+                return $this->transform($title, fn ($value) => $value);
+            }),
+            'passed_joined_id' => $this->transform($this->author, function ($author) {
+                if ($this->is_pinned) {
+                    $author = $this->comments->first();
+                }
+
+                return $this->transform($author, fn ($value) => $value->id);
             }),
             'helper_joined' => $this->labelFor($this->title),
             'helper_copy' => $this->copyBefore($this->title),
