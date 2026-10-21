@@ -121,6 +121,9 @@ Every other pair is inert: the two handlers never answer the same expression, or
 | `FuncCall` | `FirstClassCallableHandler`, `ArrayMergeHandler`, `KnownFunctionCallHandler` | `FirstClassCallableHandler` first: `KnownFunctionCallHandler` types `strlen(...)` from the function's return, though the value is a `Closure` | `KnownFunctionCallHandler` rejects `array_merge()`'s reflected `unknown[]`. `ArrayMergeHandler` stays first in case that changes. |
 | `BinaryOp\Coalesce` | `BinaryOpHandler`, which claims all of `BinaryOp`, and `CoalesceHandler` | None | `BinaryOpHandler` has no `Coalesce` branch |
 
+`OffsetReadHandler`, a literal-key read such as `$data['a']` from each object-literal or tuple arm of its holder, sits
+after `MatchHandler` and is the only claimant of `ArrayDimFetch`, so it is in no pair.
+
 These `MethodCall` pairs are the ones most likely to break under an edit:
 
 - **Attribute filters**: on a model-backed scope, `RelationCollectionChainHandler` and
@@ -378,13 +381,16 @@ back to the list it was, a tuple to the list of its members; a count out-paramet
 within, and `array_walk_recursive()` each leaf. A walk's callback values are read in the callback's own scope, its
 parameters bound to the element and its key, and `.=` or an arithmetic operator as the operation it performs. A
 `foreach` element written before the loop counts only when a loop around both can run it again. A call on a literal key
-of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. Every other callee, or a
-computed key, replaces the value, as `preg_match()`'s `$matches` does. `seedBody()` counts no keeping call as a write
-and records its form in `AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end
-or gap is: a copy taken before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or
-drops a read whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader
-that takes a local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a
-local out.
+of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` with no flags
+and a literal pattern naming no group writes its `$matches` variable a list of strings, `WritesMatches`. That replaces
+only a value the scan never typed or an empty or string list, since a call that may not run leaves what the variable
+held, and `VariableHandler` reads it for a name nothing else binds. Every other callee, a flag, a named group or a
+computed key replaces the value. `seedBody()` counts no keeping call as a write and records its form in
+`AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end or gap is: a copy taken
+before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or drops a read whose
+value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's, and `WritesMatches` ends
+every binding. A reader that takes a local by its syntax, such as an array literal's keys, reads
+`literalLocalBindings()`, which leaves such a local out.
 
 ### What deliberately stays unbound
 

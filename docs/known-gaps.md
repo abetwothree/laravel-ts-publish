@@ -21,7 +21,9 @@ one of the two tests.
 
 `$cond ? $untypable : null` and `$this->opaque() ?: null` publish `null`, because the engine drops the arm it cannot
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
-drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's key or a model
+drop). `$matches ?? []` past a `preg_match()` that passes flags, or whose pattern names a group, publishes `never[]`
+the same way, though Laravel sends the groups nested or keyed by name. Widening the union to `unknown` would be more
+honest but less specific. A spread helper's key or a model
 accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
 `null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole
 call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose
@@ -609,10 +611,9 @@ instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
 as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
 helper method the action calls, are read as that method's own values, so a first-class callable there publishes
-`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
-to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
-read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead. A closure held in a
-local and passed to a helper, read as a value or spread, publishes what it returns, as in `$f = fn () => 1;
+`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. Use a closure such as
+`fn () => $this->label()` there instead. A closure held in a local and passed to a helper, read as a value or spread,
+publishes what it returns, as in `$f = fn () => 1;
 $this->hold($f)` where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that
 key with `#[TsCasts]`.
 
