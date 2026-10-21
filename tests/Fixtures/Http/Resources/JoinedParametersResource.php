@@ -7,13 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
+use JsonException;
 use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
  * Parameters a write inside a block may replace, read past that block: transform()'s passed the title, a property no
- * rule types or a call no rule types, ones a value no rule types replaces, one a `try` writes, ones passed on to
- * another transform(), and a helper's, which declares a string, read before and past its writes.
+ * rule types or a call no rule types, ones a value no rule types replaces, ones a `try` writes, ones passed on to
+ * another transform(), ones their own write replaced first, and a helper's, which declares a string.
  *
  * @mixin Post
  */
@@ -103,6 +104,38 @@ final class JoinedParametersResource extends JsonResource
                 }
 
                 return $this->transform($author, fn ($value) => $value->id);
+            }),
+            'post_write_nested' => $this->transform($this->title, function ($title) {
+                $title = trim($title);
+
+                if ($this->is_pinned) {
+                    $title = json_decode($title);
+                }
+
+                return $title;
+            }),
+            'post_write_nested_typed' => $this->transform($this->title, function ($title) {
+                $title = trim($title);
+
+                if ($this->is_pinned) {
+                    $title = strlen($title);
+                }
+
+                return $title;
+            }),
+            'both_paths' => $this->transform($this->title, function ($title) {
+                try {
+                    $title = json_decode($title, flags: JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    $title = [];
+                }
+
+                return $title;
+            }),
+            'expr_value' => $this->transform($this->title, function ($title) {
+                $title = $this->opaque();
+
+                return $title;
             }),
             'helper_joined' => $this->labelFor($this->title),
             'helper_copy' => $this->copyBefore($this->title),

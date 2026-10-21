@@ -263,14 +263,23 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // The old binding may still hold past a write nested in a block that falls through, so both are read.
+        $written = $gap[2] ?? [];
         $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
-            fn (Expr $written): ?array => $this->boundExpressionValue($name, $written, $scope, $engine),
-            $gap[2] ?? [],
+            fn (Expr $value): ?array => $this->boundExpressionValue($name, $value, $scope, $engine),
+            $written,
         ));
         $untyped = fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown';
-        // Where a parameter's old value may still hold, a written value the engine cannot type is left out of the join.
-        $values = $gap[3] && $gap[4] ? array_filter($values, fn (?array $arm): bool => ! $untyped($arm)) : $values;
-        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : array_values($values);
+        $nested = $gap[5] ?? [];
+        // An earlier value still reaches past a parameter's nested write, so a value it wrote the engine cannot type is
+        // left out of the join, as fromGap() leaves a receiver.
+        $reaches = $gap[3] || array_any($written, fn (Expr $value): bool => ! in_array($value, $nested, true));
+        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine)] : [];
+
+        foreach ($values as $index => $arm) {
+            if (! $reaches || ! $untyped($arm) || ! in_array($written[$index], $nested, true)) {
+                $arms[] = $arm;
+            }
+        }
 
         return $gap[2] === null || $arms === [] || array_any($arms, $untyped)
             ? null

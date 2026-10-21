@@ -84,6 +84,21 @@ test('a parameter passed on past a nested write passes its old value and the wri
         ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['passed_joined' => 'Banana', 'passed_joined_id' => 3]);
 });
 
+// The value a parameter's own write left still reaches past a nested write, so one the engine cannot type is left out.
+// With no earlier value reaching, past a top-level write or a `try` and `catch` that both write, it reads unknown.
+test('a parameter past its own write leaves out a nested write the engine cannot type', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
+        'post_write_nested?' => 'string',
+        'post_write_nested_typed?' => 'string | number',
+        'both_paths?' => 'unknown',
+        'expr_value?' => 'unknown',
+    ])
+        ->and(joinedSends(JoinedParametersResource::class, true))
+        ->toMatchArray(['post_write_nested' => null, 'post_write_nested_typed' => 6, 'both_paths' => [], 'expr_value' => 's'])
+        ->and(joinedSends(JoinedParametersResource::class, false))
+        ->toMatchArray(['post_write_nested' => 'Banana', 'post_write_nested_typed' => 'Banana']);
+});
+
 // The declared string holds for a read before the body's write, and joins a branch's write for a read past it.
 test('a helper\'s parameter the body writes reads its declared value before the write, and a branch\'s write past it', function () {
     expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([

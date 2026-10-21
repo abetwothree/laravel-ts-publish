@@ -78,7 +78,7 @@ use ReflectionClass;
  *      before: int|null,
  *      sole: bool
  * }
- * @phpstan-type BindingGap array{int, int, list<Expr>|null, bool, bool}
+ * @phpstan-type BindingGap array{0: int, 1: int, 2: list<Expr>|null, 3: bool, 4: bool, 5?: list<Expr>}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
@@ -330,7 +330,8 @@ final class AnalysisScope
      * A name written more than once, or a parameter a write may replace, has one past each statement that writes it.
      *
      * Each carries its writes' values, or null where one assigns none the scan reads, whether the old binding may still
-     * hold, past a write that may not run, and whether a receiver keeps it past a write whose value names no class.
+     * hold, past a write that may not run, and whether a receiver keeps it past a write whose value names no class. A
+     * parameter's gap also lists the values its nested writes added, past which an earlier value still reaches.
      *
      * @var BindingGapsMap
      */
@@ -813,8 +814,8 @@ final class AnalysisScope
         $joins = $gap !== null && $gap[3];
 
         if ($joins) {
-            // The old binding may still hold, so every read of the parameter joins it with the writes the gap carries.
-            $this->bindingGaps[$to] = [[PHP_INT_MIN, PHP_INT_MAX, $gap[2], true, $gap[4]]];
+            $joined = [PHP_INT_MIN, PHP_INT_MAX, $gap[2], true, $gap[4]];
+            $this->bindingGaps[$to] = [isset($gap[5]) ? [...$joined, $gap[5]] : $joined];
         } elseif (! $holds) {
             // The parameter's own binding ends before any read, so no reader guesses a class for it.
             $this->bindingEnds[$to] = PHP_INT_MIN;
