@@ -74,7 +74,8 @@ use ReflectionClass;
  *      path: list<string>,
  *      callback: ArrowFunction|ClosureExpr|null,
  *      after: int,
- *      before: int|null
+ *      before: int|null,
+ *      sole: bool
  * }
  * @phpstan-type BindingGap array{int, int, list<Expr>|null, bool}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
@@ -288,6 +289,8 @@ final class AnalysisScope
      * The by-reference calls that keep a variable's value, or the member a key path names, only in some forms, by the
      * name each writes: `sort()` keeps a list, `asort()` an object. Written by CollectsLocalVarBindings, which binds
      * the variable across them; a read past a call, and before the end of a block it returns from, takes its form.
+     *
+     * A form's `sole` says no write but calls of its effect reaches the name, so the name holds nothing before them.
      *
      * @var ByReferenceFormsMap
      */

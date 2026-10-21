@@ -196,8 +196,9 @@ test('an offset read takes the member each arm of its holder names, and declines
     'a string' => ['string', '$x["a"]', null],
 ]);
 
-// A named group keys the groups and a flag nests them, so both still publish only the `[]` beside them, a known gap.
-test('preg_match() with no flag and no named group writes a list of strings, over a value it may leave in place', function () {
+// A named group keys the groups and a flag nests them, so both still publish only the `[]` beside them, a known gap. A
+// call that may not run leaves what the name held, so it writes only over a name nothing else writes, or a string list.
+test('preg_match() with no flag and no named group writes a list of strings, but not over a value a skipped call leaves', function () {
     expect(publishedResourceKeyTypes(PregMatchResource::class, Post::class))->toBe([
         'm' => 'string[] | never[]',
         'bare' => 'string[]',
@@ -205,9 +206,20 @@ test('preg_match() with no flag and no named group writes a list of strings, ove
         'offsets' => 'never[]',
         'kept' => 'unknown',
         'maybe' => 'string[] | never[]',
+        'decoded' => 'unknown',
+        'flagged' => 'unknown',
+        'else_null' => 'unknown',
+        'else_number' => 'unknown',
+        'list' => 'unknown',
+        'parameter' => 'unknown',
+        'listed_parameter' => 'string[][]',
+        'run_parameter' => 'unknown',
     ])
         ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/'))))
-        ->toBe('{"m":["Ba","B","a"],"bare":["Ba","B","a"],"named":{"0":"B","first":"B","1":"B"},"offsets":[["B",0],["B",0]],"kept":"none","maybe":[]}')
+        ->toBe('{"m":["Ba","B","a"],"bare":["Ba","B","a"],"named":{"0":"B","first":"B","1":"B"},"offsets":[["B",0],["B",0]],'
+            .'"kept":"none","maybe":[],"decoded":{"x":1},"flagged":[["B",0],["B",0]],"else_null":null,"else_number":5,'
+            .'"list":[1],"parameter":["ab"],"listed_parameter":[["x"]],"run_parameter":[["a","a"]]}')
         ->and(json_encode(new PregMatchResource(blockItemsPost())->resolve(Request::create('/', 'GET', ['match' => 1]))))
-        ->toContain('"kept":["B","B"],"maybe":["B","B"]');
+        ->toContain('"kept":["B","B"],"maybe":["B","B"],"decoded":["B","B"],"flagged":["B","B"],"else_null":["B","B"],'
+            .'"else_number":["B","B"],"list":["B","B"],"parameter":[["a","a"]],"listed_parameter":[["a","a"]]');
 });

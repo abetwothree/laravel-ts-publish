@@ -113,6 +113,7 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'preg_match()\'s matches over a named group' => ['preg_match("/(?<n>a)/", "b", $x);', ByReferenceEffect::Replaces],
     'preg_match()\'s matches over a P-named group' => ['preg_match("/(?P<n>a)/", "b", $x);', ByReferenceEffect::Replaces],
     'preg_match()\'s matches over a quote-named group' => ['preg_match("/(?\'n\'a)/", "b", $x);', ByReferenceEffect::Replaces],
+    'preg_match()\'s matches over a group with a non-ASCII name' => ['preg_match("/(?<é>a)/u", "a", $x);', ByReferenceEffect::Replaces],
     'preg_match()\'s matches over a computed pattern' => ['preg_match($p, "b", $x);', ByReferenceEffect::Replaces],
     'settype()' => ['settype($x, "int");', ByReferenceEffect::Replaces],
     'a by-value argument of a known built-in' => ['str_replace($x, "b", "c", $n);', ByReferenceEffect::Replaces],

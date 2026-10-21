@@ -160,9 +160,8 @@ final class VariableHandler implements ExpressionHandler
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
-        // A by-reference call writing a whole value, as preg_match() writes its matches, types a name nothing binds.
         if ($value === null && $this->writtenWhole($expr, $scope)) {
-            $value = [...ValueResult::unknown(), 'optional' => false];
+            $value = [...ValueResult::unknown(), 'type' => 'string[]', 'optional' => false];
         }
 
         $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
@@ -453,15 +452,21 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether the first by-reference call a read of a variable falls past writes a whole value, whatever it held.
+     * Whether a read holds the list of strings preg_match() writes into a name no binding and no other write reaches: a
+     * call the read falls past was its first write, since a skipped call leaves the name undefined, which Laravel
+     * throws on and `??` replaces with its default.
      */
     private function writtenWhole(Variable $read, AnalysisScope $scope): bool
     {
+        if (! is_string($read->name) || $scope->bindsName($read->name)) {
+            return false;
+        }
+
         $position = $read->getStartFilePos();
 
-        foreach (is_string($read->name) ? $scope->byReferenceForms[$read->name] ?? [] : [] as $form) {
+        foreach ($scope->byReferenceForms[$read->name] ?? [] as $form) {
             if ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])) {
-                return $form['effect'] === ByReferenceEffect::WritesMatches && $form['path'] === [];
+                return $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === [];
             }
         }
 

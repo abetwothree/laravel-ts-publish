@@ -100,7 +100,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $expr;
-        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null]];
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;

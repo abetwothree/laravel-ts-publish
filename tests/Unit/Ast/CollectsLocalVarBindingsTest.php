@@ -346,6 +346,7 @@ it('keeps a parameter\'s value binding across a by-reference built-in that keeps
     'ksort()' => ['ksort($p); return $p;', [true, true]],
     'array_push()' => ['array_push($p, "x"); return $p;', [true, true]],
     'preg_match()\'s matches' => ['preg_match("/x/", "s", $p); return $p;', [false, false]],
+    'preg_match()\'s matches in a call that may not run' => ['if ($c) { preg_match("/x/", "s", $p); } return $p;', [true, true]],
 ]);
 
 // No form a by-reference built-in keeps is an object's, but ksort(), which keeps any value it can take.
@@ -357,4 +358,6 @@ it('ends a class binding at a by-reference built-in that keeps a value in anothe
     'sort()' => ['sort($p); return $p;', [false, false]],
     'a count out-parameter' => ['str_replace("a", "b", "c", $p); return $p;', [false, false]],
     'ksort()' => ['ksort($p); return $p;', [true, true]],
+    'preg_match()\'s matches' => ['preg_match("/x/", "s", $p); return $p;', [false, false]],
+    'preg_match()\'s matches in a call that may not run' => ['$c && preg_match("/x/", "s", $p); return $p;', [true, true]],
 ]);

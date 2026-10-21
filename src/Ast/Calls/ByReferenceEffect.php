@@ -45,8 +45,8 @@ enum ByReferenceEffect
     /** Anything else: the callee writes a value the scan does not follow. */
     case Replaces;
 
-    /** What preg_match()'s matches replace: a value the scan never typed, or an empty or string list. */
-    private const array MATCHES_REPLACE = ['unknown', 'never[]', '[]', 'string[]'];
+    /** What preg_match()'s matches replace: an empty or string list, which a list of strings stands for either way. */
+    private const array MATCHES_REPLACE = ['never[]', '[]', 'string[]'];
 
     /**
      * The type a value of a type holds once the call returns, or null when the scan cannot tell: the type itself while

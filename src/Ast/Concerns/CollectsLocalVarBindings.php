@@ -97,9 +97,15 @@ trait CollectsLocalVarBindings
             }
         }
 
+        // A name only preg_match() writes holds nothing before its first call, so a read past it holds the matches.
+        $written = array_column([...$replacing, ...array_filter(
+            $kept,
+            fn (array $write): bool => $write[1]['effect'] !== ByReferenceEffect::WritesMatches,
+        )], 0);
+
         foreach ($kept as [$name, $form]) {
             if ($form['effect'] !== ByReferenceEffect::KeepsAny) {
-                $scope->byReferenceForms[$name][] = $form;
+                $scope->byReferenceForms[$name][] = [...$form, 'sole' => ! in_array($name, $written, true)];
             }
         }
 
@@ -489,12 +495,15 @@ trait CollectsLocalVarBindings
         };
         $declared = $scope->varDeclaredBindings[$name] ?? null;
 
-        // A by-reference call keeps only an array or a number, never the object a class binding holds; the matches
-        // preg_match() writes keep nothing.
+        // preg_match() may not run unless it is a statement of the body, and a skipped call leaves the binding.
+        if ($form !== null && $form['effect'] === ByReferenceEffect::WritesMatches) {
+            return ! $topLevel;
+        }
+
+        // A by-reference call keeps only an array or a number, never the object a class binding holds.
         if ($form !== null) {
             return $form['effect'] === ByReferenceEffect::KeepsAny
-                || (! in_array($form['effect'], [ByReferenceEffect::Replaces, ByReferenceEffect::WritesMatches], true)
-                    && $classes === null && $declared === null && $element === null);
+                || ($form['effect'] !== ByReferenceEffect::Replaces && $classes === null && $declared === null && $element === null);
         }
 
         // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
@@ -777,6 +786,7 @@ trait CollectsLocalVarBindings
             'callback' => $callback,
             'after' => PHP_INT_MIN,
             'before' => null,
+            'sole' => false,
         ];
     }
 

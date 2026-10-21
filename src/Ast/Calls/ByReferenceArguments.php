@@ -35,8 +35,8 @@ final class ByReferenceArguments
     /** By-reference functions that only move an array's internal pointer, so the value keeps its type. */
     private const array POINTER_FUNCTIONS = ['end', 'next', 'prev', 'reset'];
 
-    /** A named group in a PCRE pattern: `(?<name>`, `(?P<name>` or `(?'name'`, but no lookbehind. */
-    private const string NAMED_GROUP = '/\(\?(?:P?<[A-Za-z_]|\')/';
+    /** A named group in a PCRE pattern, whatever letters its name uses: `(?<name>`, `(?P<name>` or `(?'name'`. */
+    private const string NAMED_GROUP = '/\(\?(?:P?<(?![=!])|\')/';
 
     /** The sort flags that compare int keys as numbers, so ksort() leaves a list's keys in order. */
     private const array NUMERIC_SORT_FLAGS = ['SORT_REGULAR', 'SORT_NUMERIC'];
