@@ -1738,6 +1738,23 @@ describe('resolveGenericContainerType() key refinements', function () {
     });
 });
 
+describe('PHPDoc integer subtypes', function () {
+    test('reads an integer range or a named integer subtype as a number, through every docblock reader', function (string $phpType) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe('number')
+            ->and($this->service->resolvePhpDocTypeToTs("{$phpType}|null", [], ''))->toBe('number | null')
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe('number')
+            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", [], '')['type'] ?? null)->toBe('number[]');
+    })->with([
+        'a range up to max' => ['int<0, max>'],
+        'a bounded range' => ['int<1, 10>'],
+        'positive-int' => ['positive-int'],
+        'non-negative-int' => ['non-negative-int'],
+        'negative-int' => ['negative-int'],
+        'non-positive-int' => ['non-positive-int'],
+        'non-zero-int' => ['non-zero-int'],
+    ]);
+});
+
 describe('trait @template binding', function () {
     test('binds a trait template from the consumer @use tag', function () {
         $method = new ReflectionMethod(DocblockGenericsFixture::class, 'childItems');

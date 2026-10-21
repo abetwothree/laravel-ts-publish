@@ -105,6 +105,9 @@ class LaravelTsPublish
     public const string CARBON_INTERVAL_OBJECT_TYPE = '{ y: number; m: number; d: number; h: number; i: number; s: number; '
         .'f: number; invert: number; days: number | false; from_string: false }';
 
+    /** The PHPDoc integer subtypes PHPStan names, each holding an int as an `int<min, max>` range does. */
+    protected const array INTEGER_SUBTYPES = ['positive-int', 'negative-int', 'non-negative-int', 'non-positive-int', 'non-zero-int'];
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -948,7 +951,7 @@ class LaravelTsPublish
             return $alias;
         }
 
-        $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($part) ? 'int' : $this->resolveDocblockTypeName($part, $useMap, $namespace);
 
         return $this->isUnreadForm($resolved, '<{(')
             ? $this->emptyTypeScriptInfo()
@@ -1288,7 +1291,7 @@ class LaravelTsPublish
             return $alias['type'];
         }
 
-        $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
 
         // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
         // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
@@ -2499,7 +2502,7 @@ class LaravelTsPublish
             return $alias;
         }
 
-        $resolved = $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($valueType) ? 'int' : $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
 
         // '<' is left to toTsType(), whose partial match reads `class-string<X>` as the string it is.
         return $this->isUnreadForm($resolved, '{(')
@@ -2731,6 +2734,14 @@ class LaravelTsPublish
     protected function isUnreadForm(string $resolved, string $brackets): bool
     {
         return strpbrk($resolved, $brackets) !== false && ! str_starts_with($resolved, '($');
+    }
+
+    /**
+     * Whether a PHPDoc type is an integer range such as `int<0, max>` or a named subtype such as `positive-int`.
+     */
+    protected function isIntegerSubtype(string $phpType): bool
+    {
+        return preg_match('/^int\s*<[^<>]+>$/i', $phpType) === 1 || in_array(strtolower($phpType), self::INTEGER_SUBTYPES, true);
     }
 
     /**
