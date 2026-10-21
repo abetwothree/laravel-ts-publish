@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnboundClosureVariableResource;
@@ -85,4 +86,19 @@ it('a captured outer local keeps its own binding inside a whenLoaded() closure',
         'captured_use?' => 'string',
         'captured_arrow?' => 'string',
     ]);
+});
+
+// Only inside a relation closure does the enum branch drop the column's null; anywhere else the read keeps it.
+it('keeps a nullable enum column\'s null arm for a model bound outside a relation closure', function () {
+    $owner = (new User)->forceFill(['id' => 1, 'role' => null]);
+    $team = (new Team)->forceFill(['id' => 9]);
+    $team->setRelation('owner', $owner);
+    $team->setRelation('members', new EloquentCollection([$owner]));
+
+    expect(publishedResourceKeyTypes(BoundEnumColumnResource::class, Team::class))->toBe([
+        'owner_role?' => 'AsEnum<typeof Role> | null',
+        'member_role?' => 'AsEnum<typeof Role> | null',
+    ])
+        ->and(new BoundEnumColumnResource($team)->response(request())->getContent())
+        ->toBe('{"data":{"owner_role":null,"member_role":null}}');
 });

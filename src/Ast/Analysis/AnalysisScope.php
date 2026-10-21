@@ -181,8 +181,8 @@ final class AnalysisScope
     public bool $mapResultArrayed = false;
 
     /**
-     * Related model set while a whenLoaded() or map() closure resolves; only InlineArrayHandler reads it, for a spread
-     * `...$variable->toArray()` no binding names.
+     * Related model set while a whenLoaded() or map() closure resolves. InlineArrayHandler takes a model from it for a
+     * spread `...$variable->toArray()` no binding names; ResolvesEnumPropertyArgTypes reads only whether it is set.
      *
      * @var class-string<Model>|null
      */

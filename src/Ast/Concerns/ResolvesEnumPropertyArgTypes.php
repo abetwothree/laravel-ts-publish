@@ -76,9 +76,10 @@ trait ResolvesEnumPropertyArgTypes
                 }
             }
 
-            // `$variable->property` on the model the variable is bound to, such as a whenLoaded() or map() parameter.
+            // `$variable->property` inside a whenLoaded() or map() closure, on the model the variable is bound to.
             if (
-                $argExpr instanceof PropertyFetch
+                $scope->closureRelationModelClass !== null
+                && $argExpr instanceof PropertyFetch
                 && $argExpr->var instanceof Variable
                 && is_string($argExpr->var->name)
                 && $argExpr->name instanceof Identifier
