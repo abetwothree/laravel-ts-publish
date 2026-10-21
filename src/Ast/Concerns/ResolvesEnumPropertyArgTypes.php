@@ -46,9 +46,6 @@ trait ResolvesEnumPropertyArgTypes
     /**
      * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
      *
-     * Handles `$this->property` against the resource's own model, and `$variable->property` against
-     * `$closureRelationModelClass` inside a whenLoaded() closure.
-     *
      * @return ValueExpressionResult|null
      */
     protected function resolveEnumFromPropertyArg(Expr $argExpr, AnalysisScope $scope): ?array
@@ -79,16 +76,17 @@ trait ResolvesEnumPropertyArgTypes
                 }
             }
 
-            // Handle $variable->property inside a whenLoaded closure.
+            // `$variable->property` on the model the variable is bound to, such as a whenLoaded() or map() parameter.
             if (
                 $argExpr instanceof PropertyFetch
                 && $argExpr->var instanceof Variable
+                && is_string($argExpr->var->name)
                 && $argExpr->name instanceof Identifier
-                && $scope->closureRelationModelClass !== null
                 && $scope->holdsBinding($argExpr->var)
+                && isset($scope->varModelBindings[$argExpr->var->name])
             ) {
                 $propName = $argExpr->name->toString();
-                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->closureRelationModelClass, $propName);
+                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->varModelBindings[$argExpr->var->name], $propName);
 
                 /** @var class-string|null $enumFqcn */
                 $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;

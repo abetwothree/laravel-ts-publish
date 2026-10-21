@@ -152,7 +152,7 @@ trait GuessesModelResources
 
             return $scope->varModelBindings[$receiver->name]
                 ?? $scope->varCollectionBindings[$receiver->name]['modelFqcn']
-                ?? $scope->closureRelationModelClass;
+                ?? null;
         }
 
         if ($receiver instanceof PropertyFetch && $this->isThisPropertyFetch($receiver) && $receiver->name instanceof Identifier) {

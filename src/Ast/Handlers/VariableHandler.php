@@ -152,7 +152,7 @@ final class VariableHandler implements ExpressionHandler
             // A rule types what reflection reads loosely, and the receiver order reads what it cannot, such as an
             // untyped method's body, so both go on to ReceiverMethodCallHandler.
             if ($boundModel !== null && ! resolve(ReceiverMethodReturnResolver::class)->typesByRule($boundModel, $method)) {
-                $result = $this->analyzeRelatedModelMethodCall($method, $scope, $boundModel);
+                $result = $this->analyzeRelatedModelMethodCall($method, $boundModel);
 
                 if ($result['type'] !== 'unknown') {
                     return $result;

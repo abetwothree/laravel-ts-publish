@@ -181,7 +181,8 @@ final class AnalysisScope
     public bool $mapResultArrayed = false;
 
     /**
-     * Related model set while analyzing a whenLoaded closure, so `$variable->prop`/`->method()` inside it resolve.
+     * Related model set while a whenLoaded() or map() closure resolves; only InlineArrayHandler reads it, for a spread
+     * `...$variable->toArray()` no binding names.
      *
      * @var class-string<Model>|null
      */
@@ -616,7 +617,7 @@ final class AnalysisScope
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        // A relation closure's model answers an unbound `$variable->prop`, but the method's body reads the subject.
+        // A relation closure's model answers an unbound `...$variable->toArray()`, but the method's body reads the subject.
         $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
 

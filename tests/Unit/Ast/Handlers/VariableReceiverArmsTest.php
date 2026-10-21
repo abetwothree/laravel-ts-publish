@@ -41,12 +41,19 @@ function mappedProfileWrapSends(string $key): string
     }
 }
 
-// A read through a variable no writer binds goes on to the receiver handlers, which never guess the relation's model.
+// A read through a variable no writer binds goes on to the receiver handlers, which never guess the relation's model;
+// the same reads through the relation's own parameter keep its model.
 it('types a variable read inside whenLoaded() only from the variable\'s own binding', function () {
     expect(publishedResourceKeyTypes(UnboundClosureVariableResource::class, Post::class))->toBe([
         'unbound_prop?' => 'unknown',
         'unbound_method?' => 'unknown',
         'unbound_pluck?' => 'unknown',
+        'static_guess?' => 'unknown',
+        'static_bound?' => 'boolean',
+        'to_resource_bound?' => 'UserResource',
+        'enum_bound?' => 'AsEnum<typeof Role>',
+        'to_resource_guess?' => 'unknown',
+        'enum_guess?' => 'unknown',
         'local_post?' => 'string',
         'author_relations?' => '{ posts: Post[]; profile: Profile | null }',
         's_author' => 'User',
