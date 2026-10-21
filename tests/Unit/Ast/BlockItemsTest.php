@@ -78,7 +78,7 @@ function blockItemsHeldCallables(string $body, array $parameters = []): array
 }
 
 /**
- * What OffsetReadHandler answers for an offset read of a holder of the given type.
+ * What OffsetReadHandler answers for an offset read of a holder of the given type, `?` marking an optional read.
  */
 function blockItemsOffsetRead(string $holder, string $read): ?string
 {
@@ -114,7 +114,9 @@ function blockItemsOffsetRead(string $holder, string $read): ?string
     $expr = new AstParser()->parseSource('<?php '.$read.';')[0]->expr;
     assert($expr instanceof ArrayDimFetch);
 
-    return new OffsetReadHandler()->resolve($expr, new AnalysisScope(new ReflectionClass(OffsetReadResource::class)), $engine)['type'] ?? null;
+    $read = new OffsetReadHandler()->resolve($expr, new AnalysisScope(new ReflectionClass(OffsetReadResource::class)), $engine);
+
+    return $read === null ? null : ($read['optional'] ? '?' : '').$read['type'];
 }
 
 test('a first-class callable held in a local reads as its call where Laravel calls the value, and warns of nothing', function () {
@@ -157,6 +159,7 @@ test('heldCallable() reads the first-class callable a local holds where it is re
     'a parameter read before the write' => ['$this->when(true, $c); $c = $this->label(...);', ['c' => User::class], [false]],
 ]);
 
+// A when() slot holds a MissingValue, which `??` passes through and the response leaves out, so it never sends null.
 test('a literal-key read types the member of the shape its holder binds, and a key the shape lacks declines', function () {
     expect(publishedResourceKeyTypes(OffsetReadResource::class, Post::class))->toBe([
         'param' => '{ a: number | null }',
@@ -164,9 +167,13 @@ test('a literal-key read types the member of the shape its holder binds, and a k
         'mapped' => 'number[]',
         'missing' => 'null',
         'tuple' => 'string',
+        'slot?' => 'number',
+        'slot_or_none?' => 'number | string',
     ])
         ->and(json_encode(new OffsetReadResource(blockItemsPost())->resolve(Request::create('/'))))
-        ->toBe('{"param":{"a":1},"local":"x","mapped":[1,2],"missing":null,"tuple":"Banana"}');
+        ->toBe('{"param":{"a":1},"local":"x","mapped":[1,2],"missing":null,"tuple":"Banana"}')
+        ->and(json_encode(new OffsetReadResource(blockItemsPost())->resolve(Request::create('/', 'GET', ['a' => 1]))))
+        ->toContain('"tuple":"Banana","slot":1,"slot_or_none":1}');
 });
 
 // A list, a Record and an index signature name no key the array is sure to hold, so their reads decline.
@@ -174,7 +181,8 @@ test('an offset read takes the member each arm of its holder names, and declines
     expect(blockItemsOffsetRead($holder, $read))->toBe($type);
 })->with([
     'an object member' => ['{ a: number; b: string }', '$x["b"]', 'string'],
-    'an optional member' => ['{ a?: number }', '$x["a"]', 'number | null'],
+    'an optional member' => ['{ a?: number }', '$x["a"]', '?number'],
+    'an optional member beside a null arm' => ['{ a?: number } | null', '$x["a"]', '?number | null'],
     'a nullable member' => ['{ a: string | null }', '$x["a"]', 'string | null'],
     'a quoted key' => ["{ 'a-b': number }", '$x["a-b"]', 'number'],
     'an int key of an object' => ['{ 0: string; 2: boolean }', '$x[2]', 'boolean'],
@@ -182,7 +190,8 @@ test('an offset read takes the member each arm of its holder names, and declines
     'two object arms' => ['{ a: number } | { a: string }', '$x["a"]', 'number | string'],
     'a tuple element' => ['[number, string]', '$x[1]', 'string'],
     'a tuple element by a numeric string' => ['[number, string]', '$x["0"]', 'number'],
-    'an optional tuple element' => ['[number, string?]', '$x[1]', 'string | null'],
+    'an optional tuple element' => ['[number, string?]', '$x[1]', '?string'],
+    'an optional tuple element of a union' => ['[number, (string | boolean)?]', '$x[1]', '?string | boolean'],
     'a list' => ['string[]', '$x[0]', null],
     'a Record' => ['Record<string, number>', '$x["a"]', null],
     'an index signature' => ['{ [key: string]: number }', '$x["a"]', null],
