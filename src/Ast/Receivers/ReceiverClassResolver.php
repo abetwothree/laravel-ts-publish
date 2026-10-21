@@ -785,16 +785,25 @@ final class ReceiverClassResolver
     }
 
     /**
-     * Resolve a variable inside a gap through the values its writes assigned, joined with the binding the name came in
-     * with where that may still hold, or where the gap keeps it for a write naming no class; null when one names none.
+     * Resolve a variable inside a gap through the values its writes assigned, a `null` aside, joined with the binding
+     * the name came in with where that may still hold, or where the gap keeps it for a write naming no class; null when
+     * one names none.
      *
      * @param  BindingGap  $gap
      */
     private function fromGap(Variable $read, string $name, array $gap, AnalysisScope $scope): ?ReceiverType
     {
-        $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
-            fn (Expr $value): ?ReceiverType => $this->fromBoundExpression($name, $value, $scope),
+        // A member read of `null` reads null or throws, as fromArms() leaves the arm out; a gap that keeps the old
+        // binding past a write naming no class keeps it for this one too.
+        $values = array_values(array_filter(
             $gap[2] ?? [],
+            fn (Expr $value): bool => $gap[4]
+                || ! $value instanceof ConstFetch
+                || $value->name->toLowerString() !== 'null',
+        ));
+        $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $value): ?ReceiverType => $this->fromWrite($name, $value, $scope),
+            $values,
         ));
         $keepsOld = $gap[3] || ($gap[4] && in_array(null, $written, true));
         $written = $gap[4] ? array_values(array_filter($written)) : $written;
@@ -814,6 +823,18 @@ final class ReceiverClassResolver
                 fn (ReceiverType $receiver): array => $receiver->classes,
                 $receivers,
             )))));
+    }
+
+    /**
+     * Resolve a value a gap's write assigned, as the inline `@var` on it declares where it is nested in a block.
+     */
+    private function fromWrite(string $name, Expr $value, AnalysisScope $scope): ?ReceiverType
+    {
+        $span = $scope->declaredWrite($name, $value);
+
+        return $span === null
+            ? $this->fromBoundExpression($name, $value, $scope)
+            : $this->resolveDeclared($name, $span, $scope);
     }
 
     /**

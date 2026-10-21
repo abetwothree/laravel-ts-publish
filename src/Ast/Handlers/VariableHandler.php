@@ -265,7 +265,7 @@ final class VariableHandler implements ExpressionHandler
         // The old binding may still hold past a write nested in a block that falls through, so both are read.
         $written = $gap[2] ?? [];
         $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
-            fn (Expr $value): ?array => $this->boundExpressionValue($name, $value, $scope, $engine),
+            fn (Expr $value): ?array => $this->writtenValue($name, $value, $scope, $engine),
             $written,
         ));
         $untyped = fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown';
@@ -384,6 +384,20 @@ final class VariableHandler implements ExpressionHandler
         return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
             ? [...$declared, 'optional' => $reading['optional'] ?? false]
             : $reading;
+    }
+
+    /**
+     * A value a gap's write assigned, as the inline `@var` on it declares where it is nested in a block.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function writtenValue(string $name, Expr $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $span = $scope->declaredWrite($name, $value);
+
+        return $span === null
+            ? $this->boundExpressionValue($name, $value, $scope, $engine)
+            : $this->declaredLocalValue($name, $span, $scope, $engine);
     }
 
     /**

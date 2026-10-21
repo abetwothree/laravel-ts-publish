@@ -9,12 +9,13 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
 /**
  * Parameters a write inside a block may replace, read past that block: transform()'s passed the title, a property no
  * rule types or a call no rule types, ones a value no rule types replaces, ones a `try` writes, ones passed on to
- * another transform(), ones their own write replaced first, and a helper's, which declares a string.
+ * another transform(), ones their own write replaced first, one an inline `@var` there retypes, and a helper's.
  *
  * @mixin Post
  */
@@ -104,6 +105,18 @@ final class JoinedParametersResource extends JsonResource
                 }
 
                 return $this->transform($author, fn ($value) => $value->id);
+            }),
+            'declared_joined_id' => $this->whenLoaded('author', function ($author) {
+                foreach ($this->comments as $comment) {
+                    if ($this->is_pinned && $comment->content !== '') {
+                        /** @var Comment|null $author */
+                        $author = data_get($this->resource, 'comments.0');
+
+                        break;
+                    }
+                }
+
+                return $author?->id;
             }),
             'post_write_nested' => $this->transform($this->title, function ($title) {
                 $title = trim($title);

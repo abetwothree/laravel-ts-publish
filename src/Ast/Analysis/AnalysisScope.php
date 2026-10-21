@@ -61,7 +61,8 @@ use ReflectionClass;
  *      context: ReflectionClass<object>,
  *      after: int,
  *      before: int|null,
- *      expr: Expr
+ *      expr: Expr,
+ *      nested?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
@@ -500,6 +501,20 @@ final class AnalysisScope
         }
 
         return null;
+    }
+
+    /**
+     * The inline `@var` on a write nested in a block that assigned a value, which still types that value where a join
+     * carries it past the block, or null.
+     *
+     * @return VarDocBinding|null
+     */
+    public function declaredWrite(string $name, Expr $value): ?array
+    {
+        return array_find(
+            $this->varDocBindings[$name] ?? [],
+            fn (array $binding): bool => isset($binding['nested']) && $binding['expr'] === $value,
+        );
     }
 
     /**

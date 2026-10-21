@@ -193,7 +193,7 @@ test('ends a parameter\'s binding at a nested write a tag declares another class
     expect(blockScopedReadClasses(
         '$x->a; if (true) { /** @var \Workbench\App\Models\Comment $x */ $x = json_decode(""); $x->b; } $x->c;',
         ['x' => User::class],
-    ))->toBe([[User::class], [Comment::class], null]);
+    ))->toBe([[User::class], [Comment::class], [User::class, Comment::class]]);
 });
 
 // Base kept the gap for the capture's read; a body that writes a name drops only an unbound name's outer gaps.

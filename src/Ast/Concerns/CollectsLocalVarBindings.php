@@ -498,6 +498,8 @@ trait CollectsLocalVarBindings
     /**
      * Bind a variable to the type an inline `@var` on its assignment declares, for the reads past $after and, when it
      * is set, before $before.
+     *
+     * @param  bool  $nested  the assignment is nested in a block, which a join may carry its value past
      */
     private function bindDeclaredSpan(
         ExpressionStmt $assignment,
@@ -506,6 +508,7 @@ trait CollectsLocalVarBindings
         int $after,
         ?int $before,
         AnalysisScope $scope,
+        bool $nested = false,
     ): void {
         if ($assignment->getDocComment() === null) {
             return;
@@ -518,13 +521,14 @@ trait CollectsLocalVarBindings
             return;
         }
 
-        $scope->varDocBindings[$name][] = [
+        $binding = [
             'type' => $tag[0],
             'context' => $scope->declaringFileClass,
             'after' => $after,
             'before' => $before,
             'expr' => $assign->expr,
         ];
+        $scope->varDocBindings[$name][] = $nested ? [...$binding, 'nested' => true] : $binding;
     }
 
     /**
@@ -570,14 +574,17 @@ trait CollectsLocalVarBindings
     ): void {
         $after = $statement->getEndFilePos();
         $end = $this->blockSpanEnd($name, $after, $block, $writes);
+        $bound = $scope->bindsName($name);
 
-        if ($end === null || $end <= $after) {
+        // With nothing of its block past it, the `@var` still types the value a local's join carries past the block. A
+        // bound name's would end its binding in keepsBinding(): a member only the old class types would read unknown.
+        if ($end === null || ($end <= $after && $bound)) {
             return;
         }
 
-        $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope);
+        $this->bindDeclaredSpan($statement, $assign, $name, $after, $end + 1, $scope, nested: true);
 
-        if (! $scope->bindsName($name)) {
+        if ($end > $after && ! $bound) {
             $scope->bindingGaps[$name][] = [$after, $end, [$assign->expr], false, false];
         }
     }
