@@ -560,9 +560,10 @@ it('keeps a local holding a model across a write through it, and no array an off
 });
 
 /**
- * Whether the `new` a parsed body's first statement assigns to `$p` holds attributes once markFilled() reads the body.
+ * Whether the `new` a parsed body's `$p = new Post;` assigns, past $before, holds attributes once markFilled() reads
+ * the body, as the binding pass does.
  */
-function marksFilled(string $body): bool
+function marksFilled(string $body, string $before = ''): bool
 {
     $host = new class
     {
@@ -575,12 +576,12 @@ function marksFilled(string $body): bool
          */
         public function mark(New_ $new, array $stmts): void
         {
-            $this->markFilled($new, 'p', $stmts);
+            $this->markFilled($new, 'p', $stmts, $this->collectVariableWrites($stmts));
         }
     };
 
     /** @var array<Node\Stmt> $stmts */
-    $stmts = new AstParser()->parseSource('<?php $p = new \\Workbench\\App\\Models\\Post; '.$body);
+    $stmts = new AstParser()->parseSource('<?php '.$before.'$p = new \\Workbench\\App\\Models\\Post; '.$body);
     $new = new NodeFinder()->findFirstInstanceOf($stmts, New_::class);
     assert($new instanceof New_);
     $host->mark($new, $stmts);
@@ -589,8 +590,8 @@ function marksFilled(string $body): bool
 }
 
 // Laravel sends what a body wrote through the variable, before the read or after it, so its `new` holds attributes.
-it('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, bool $fills) {
-    expect(marksFilled($body))->toBe($fills);
+it('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, bool $fills, string $before = '') {
+    expect(marksFilled($body, $before))->toBe($fills);
 })->with([
     'a member write' => ['$p->title = "x";', true],
     'a coalescing member write' => ['$p->title ??= "x";', true],
@@ -599,7 +600,20 @@ it('marks a variable\'s new as holding attributes where its body fills the model
     'fill() as a statement' => ['$p->fill([]);', true],
     'forceFill() inside an expression' => ['$q = $p->forceFill([]);', true],
     'any method called as a statement' => ['$p->save();', true],
-    'a nested closure writing it' => ['$f = function () use ($p) { $p->title = "x"; };', true],
+    'a relation method called as a statement' => ['$p->author()->associate($u);', true],
+    'a closure a call runs' => ['collect([1])->each(function () use ($p) { $p->title = "x"; });', true],
+    'an arrow function a call runs' => ['collect([1])->each(fn () => $p->title = "x");', true],
+    'a closure the body calls' => ['$f = function () use (&$p) { $p->title = "x"; }; $f();', true],
+    'a closure the body never calls' => ['$f = function () use ($p) { $p->title = "x"; };', false],
+    'a closure parameter of the name' => ['collect([1])->each(function ($p) { $p->save(); });', false],
+    'an arrow function parameter of the name' => ['collect([1])->each(fn ($p) => $p->title = "x");', false],
+    'a closure not importing the name' => ['collect([1])->each(function () { $p->title = "x"; });', false],
+    'a nested class' => ['$o = new class { public function m($p) { $p->save(); } };', false],
+    'a write through a relation' => ['$p->author->name = "x";', false],
+    'an attribute writer on a relation' => ['$q = $p->author->fill([]);', false],
+    'a method called on a relation as a statement' => ['$p->author->save();', false],
+    'a write before the assignment' => ['', false, '$p->title = "x"; '],
+    'a write past the next assignment' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = "x";', false],
     'a member read' => ['$t = $p->title;', false],
     'a method read as a value' => ['$k = $p->getKey();', false],
     'another variable written' => ['$q = new \\Workbench\\App\\Models\\Post; $q->title = "x";', false],

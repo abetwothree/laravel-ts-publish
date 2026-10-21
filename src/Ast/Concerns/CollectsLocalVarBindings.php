@@ -42,6 +42,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\StaticVar;
@@ -162,7 +163,7 @@ trait CollectsLocalVarBindings
             }
 
             $name = $stmt->expr->var->name;
-            $this->markFilled($stmt->expr->expr, $name, $stmts);
+            $this->markFilled($stmt->expr->expr, $name, $stmts, $writes);
 
             if (($writeCounts[$name] ?? 0) === 1) {
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
@@ -360,19 +361,26 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Mark the `new` a variable is bound to as holding attributes where its body fills the model, before the read or
-     * after it: Laravel then sends what was written. A write to a member or offset through the variable fills it, as
-     * does a call to an attribute writer on it, or any method called on it as a statement.
+     * Mark the `new` a variable is bound to as holding attributes where its body fills that model, before a read or
+     * after it but before the variable's next write: Laravel then sends what was written. A write to a member or offset
+     * of the variable fills it, as does a call to an attribute writer on it, or a chain of calls on it as a statement.
      *
      * @param  array<Node>  $body
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
      */
-    protected function markFilled(Expr $bound, string $name, array $body): void
+    protected function markFilled(Expr $bound, string $name, array $body, array $writes): void
     {
         if (! $bound instanceof New_ || $bound->args !== []) {
             return;
         }
 
-        if (new NodeFinder()->findFirst($body, fn (Node $node): bool => $this->fills($node, $name)) !== null) {
+        $from = $bound->getEndFilePos();
+        // A by-reference `use` imports the variable; a write inside that closure is a write of its own.
+        $next = array_filter($writes, fn (array $write): bool => $write[0] === $name && $write[1]->getStartFilePos() > $from
+            && $write[3] !== VariableWrite::MemberOrOffset && $write[3] !== VariableWrite::InClosure);
+        $to = min([PHP_INT_MAX, ...array_map(fn (array $write): int => $write[1]->getStartFilePos(), $next)]);
+
+        if ($this->fillsWithin($body, $name, $from, $to, $this->parkedClosures($body))) {
             $bound->setAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES, true);
         }
     }
@@ -388,10 +396,12 @@ trait CollectsLocalVarBindings
         }
 
         foreach ($closure->params as $param) {
-            if ($param->var instanceof Variable && is_string($param->var->name) && $param->default !== null
+            if ($param->var instanceof Variable && is_string($param->var->name) && $param->default instanceof New_
                 && ($scope->closureParamExprBindings[$param->var->name] ?? null) === $param->default
             ) {
-                $this->markFilled($param->default, $param->var->name, $closure->getStmts());
+                $body = $closure->getStmts();
+                $writes = $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass);
+                $this->markFilled($param->default, $param->var->name, $body, $writes);
             }
         }
     }
@@ -487,7 +497,7 @@ trait CollectsLocalVarBindings
                 && $stmt->expr->var instanceof Variable
                 && is_string($stmt->expr->var->name)
             ) {
-                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body);
+                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body, $writes);
                 $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
             }
 
@@ -1480,43 +1490,116 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Whether one node fills the model a variable holds: a write to a member or offset through it, a call to an
-     * attribute writer on it, or a statement calling a method on it.
+     * Whether nodes between two offsets fill the model a variable holds, outside a nested class or function, and a
+     * closure that never runs or has a variable of that name of its own. A node the source does not place is read.
+     *
+     * @param  array<mixed>|Node  $nodes
+     * @param  list<ArrowFunction|ClosureExpr>  $parked  the closures that never run
+     */
+    private function fillsWithin(array|Node $nodes, string $name, int $from, int $to, array $parked): bool
+    {
+        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
+            if (is_array($node) && $this->fillsWithin($node, $name, $from, $to, $parked)) {
+                return true;
+            }
+
+            if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_
+                || ($node->getStartFilePos() >= 0 && ($node->getEndFilePos() < $from || $node->getStartFilePos() >= $to))
+                || (($node instanceof ClosureExpr || $node instanceof ArrowFunction) && ! $this->sharesVariable($node, $name, $parked))
+            ) {
+                continue;
+            }
+
+            if ($node->getStartFilePos() > $from && $this->fills($node, $name)) {
+                return true;
+            }
+
+            foreach ($node->getSubNodeNames() as $subNode) {
+                $child = $node->{$subNode};
+
+                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $from, $to, $parked)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether one node fills the model a variable holds: a write to a member or offset of it, a call to an attribute
+     * writer on it, or a statement calling a chain of methods on it, such as a relation's associate().
      */
     private function fills(Node $node, string $name): bool
     {
         if ($node instanceof Assign || $node instanceof AssignOp || $node instanceof AssignRef
             || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
         ) {
-            return ! $node->var instanceof Variable && $this->rootedAt($node->var, $name);
+            return ($node->var instanceof PropertyFetch || $node->var instanceof ArrayDimFetch)
+                && $this->callsOn($node->var->var, $name);
         }
 
         if ($node instanceof MethodCall || $node instanceof NullsafeMethodCall) {
             return $node->name instanceof Identifier
                 && in_array($node->name->toString(), self::ATTRIBUTE_WRITERS, true)
-                && $this->rootedAt($node->var, $name);
+                && $node->var instanceof Variable && $node->var->name === $name;
         }
 
         return $node instanceof ExpressionStmt
             && ($node->expr instanceof MethodCall || $node->expr instanceof NullsafeMethodCall)
-            && $this->rootedAt($node->expr, $name);
+            && $this->callsOn($node->expr->var, $name);
     }
 
     /**
-     * Whether a chain of member reads, offsets and calls starts at a variable, the bare variable included.
+     * Whether an expression is the variable, or a chain of method calls on it.
      */
-    private function rootedAt(Expr $expr, string $name): bool
+    private function callsOn(Expr $expr, string $name): bool
     {
-        while ($expr instanceof PropertyFetch
-            || $expr instanceof NullsafePropertyFetch
-            || $expr instanceof ArrayDimFetch
-            || $expr instanceof MethodCall
-            || $expr instanceof NullsafeMethodCall
-        ) {
+        while ($expr instanceof MethodCall || $expr instanceof NullsafeMethodCall) {
             $expr = $expr->var;
         }
 
         return $expr instanceof Variable && $expr->name === $name;
+    }
+
+    /**
+     * Whether a nested function shares a variable of the body around it and can run: a closure importing it, or an
+     * arrow function with no parameter of its name, neither one that never runs.
+     *
+     * @param  list<ArrowFunction|ClosureExpr>  $parked
+     */
+    private function sharesVariable(ArrowFunction|ClosureExpr $function, string $name, array $parked): bool
+    {
+        return ! in_array($function, $parked, true) && ($function instanceof ClosureExpr
+            ? array_any($function->uses, fn (ClosureUse $use): bool => $use->var->name === $name)
+            : ! array_any($function->params, fn (Param $param): bool => $param->var instanceof Variable && $param->var->name === $name));
+    }
+
+    /**
+     * The closures and arrow functions a body assigns to a variable it spells nowhere else, which nothing can call.
+     *
+     * @param  array<Node>  $body
+     * @return list<ArrowFunction|ClosureExpr>
+     */
+    private function parkedClosures(array $body): array
+    {
+        $finder = new NodeFinder;
+        $spelled = array_count_values(array_map(
+            fn (Variable $variable): string => is_string($variable->name) ? $variable->name : '',
+            $finder->findInstanceOf($body, Variable::class),
+        ));
+        $parked = [];
+
+        foreach ($finder->findInstanceOf($body, Assign::class) as $assign) {
+            if (($assign->expr instanceof ClosureExpr || $assign->expr instanceof ArrowFunction)
+                && $assign->var instanceof Variable && is_string($assign->var->name)
+                && ($spelled[$assign->var->name] ?? 0) === 1
+            ) {
+                $parked[] = $assign->expr;
+            }
+        }
+
+        return $parked;
     }
 
     /**
