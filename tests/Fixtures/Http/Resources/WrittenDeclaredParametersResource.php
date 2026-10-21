@@ -39,6 +39,7 @@ final class WrittenDeclaredParametersResource extends JsonResource
             'model_copied' => $this->modelCopied($this->resource),
             'model_decoded' => $this->modelDecoded($this->resource),
             'model_through' => $this->modelThrough($this->resource),
+            'model_same' => $this->modelSame($this->resource),
             'loaded_name' => $this->whenLoaded('author', function (User $author) {
                 $author = $author->name;
 
@@ -123,6 +124,16 @@ final class WrittenDeclaredParametersResource extends JsonResource
     private function modelDecoded(Post $post)
     {
         $post = json_decode('{}');
+
+        return $post;
+    }
+
+    /**
+     * The post as an untyped helper hands it back, written over the parameter.
+     */
+    private function modelSame(Post $post)
+    {
+        $post = $this->same($post);
 
         return $post;
     }

@@ -179,8 +179,9 @@ test('a parameter holding a class beside a value reads its value before its own 
             'replica_title' => 'string',
             'model_title' => 'string',
             'model_copied' => 'Post',
-            'model_decoded' => 'unknown',
+            'model_decoded' => 'Post',
             'model_through' => 'string',
+            'model_same' => 'Post',
             'loaded_name' => '?string',
         ])
         ->and(json_decode((string) json_encode(new WrittenDeclaredParametersResource($post)->resolve(Request::create('/'))), true))
@@ -194,6 +195,7 @@ test('a parameter holding a class beside a value reads its value before its own 
             'model_copied' => ['id' => 7, 'title' => 'Banana', 'author' => ['id' => 3, 'name' => 'Ann']],
             'model_decoded' => [],
             'model_through' => 'Banana',
+            'model_same' => ['id' => 7, 'title' => 'Banana', 'author' => ['id' => 3, 'name' => 'Ann']],
             'loaded_name' => 'Ann',
         ]);
 });
