@@ -142,10 +142,9 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   at `unknown`. It rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded
   `$this->getKey()` or `$this->resource->getKey()`.
 
-One `PropertyFetch` pair can disagree where the corpus is silent. `VariableHandler` types `$x->member` from the
-attributes of the model `varModelBindings` binds to `$x`, or of a `whenLoaded()` closure's relation model. It answers a
-relation there as `unknown` instead of declining, where `ReceiverPropertyFetchHandler` would type it. No fixture reads a
-relation that way.
+`VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`, never from a
+`whenLoaded()` closure's relation model. It declines anything else, a relation included, so
+`ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
 The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
 `InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
@@ -195,9 +194,9 @@ you believe you wrote.
 
 Closure writers and `ClosureHandler` snapshot with `AnalysisScope::nameBindings()` and restore with
 `restoreNameBindings()`. `NarrowsInstanceofSubjects::resolveNarrowed()` hand-rolls its snapshot.
-`ResourceAstAnalyzer::bindForeachLoopVariables()` takes none, because a `foreach` binding is method-wide by design. The
-closure writers' snapshots restore over it, so a same-named closure parameter still resolves against its own binding, as
-`ClosureParamShadowResource` pins.
+`ResolvesModelRelationTypes::bindForeachLoopVariables()` takes none, because a `foreach` binding holds for the whole
+body by design, and `ClosureHandler` calls it inside its own snapshot. The closure writers' snapshots restore over it,
+so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
 
 #### A closure parameter owns its name
 
@@ -325,15 +324,14 @@ An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBinding
 that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
-`VariableHandler::declaredLocalValue()` applies that to a value, `ReceiverClassResolver::fromVariable()` to a receiver,
-and `VariableHandler::ambientModel()` to the ambient model inside a `whenLoaded()` closure. Each states its own test for
-vague. A parameter's own binding holds until the body's first write that replaces it with a value naming another class.
-`AnalysisScope::$bindingEnds` records where, and past it every read takes the body's own binding, a ternary narrowing it
-only past its test, as `ReassignedClosureParamResource` pins. A write in an `if`, `elseif`, `else` or `case` block that
-always leaves the function, outside a `try` whose `catch` or `finally` could resume past it, ends it only inside that
-block, in `AnalysisScope::$bindingGaps`, where a read takes the value the block's own `$x = …;` assigned. Past a write
-nested there in a block that falls through, a read takes that value or the old binding's. A span still outlives a write
-through a by-reference parameter of a callee the scan cannot name.
+`VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
+receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
+it with a value naming another class. `AnalysisScope::$bindingEnds` records where, and past it every read takes the
+body's own binding, a ternary narrowing it only past its test, as `ReassignedClosureParamResource` pins. A write in an
+`if`, `elseif`, `else` or `case` block that always leaves the function, outside a `try` whose `catch` or `finally` could
+resume past it, ends it only inside that block, in `AnalysisScope::$bindingGaps`, where a read takes the value the
+block's own `$x = …;` assigned. Past a write nested there in a block that falls through, a read takes that value or the
+old binding's. A span still outlives a write through a by-reference parameter of a callee the scan cannot name.
 
 `VarTypeWhitelist` lists the forms a tag may use. A callable inside a shape reads `unknown` by design, so
 `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and

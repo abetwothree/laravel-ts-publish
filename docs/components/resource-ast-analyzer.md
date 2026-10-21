@@ -406,7 +406,9 @@ conditional call, such as `Resource::make($this->whenLoaded(...))`, which publis
 `ReadsNullablePayloads::resourceWrapType()` adds `| null` to a resource built around a payload that can be `null`,
 such as `Resource::make($this->parent)`, and publishes `null` alone for a payload that is only ever `null`, such as
 `new Resource(null)` or a parameter holding a `null` default, inside a resource only; a collection never takes either,
-and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)).
+and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)). Nor does a wrap
+in a `map()` body, unless a trailing `->all()` turns the mapped `Collection` into an array: `JsonResource::filter()`
+recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
