@@ -733,6 +733,14 @@ parameter on a receiver the scan cannot resolve, such as `$other->fill($this->ta
 all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
 it a `@var` docblock.
 
+### A column a body writes publishes its declared type, not the value written
+
+A read of a column the body wrote through the model, such as `$this->resource->title = null;` then
+`'title' => $this->title`, publishes the column's declared type, `string`, though Laravel sends `null`: the package
+reads a column from the model's declaration, never from a write to it. On a local holding a new model, a write the
+package cannot show the column holds leaves the local unread instead, so `$p = new Post; $p->title = null; $p->title`
+publishes `unknown`.
+
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
 A parameter keeps its binding past a write whose value names no class: after

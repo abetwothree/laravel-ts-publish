@@ -344,9 +344,10 @@ that assigns the read or `setRelation()`, is not seen as a write, so the proof s
 
 `ClosureHandler` runs both passes over a `Closure`'s statements after unsetting every name the body writes from the
 outer `localVarBindings` and `varDocBindings`. So a body-local shadows an outer one even when written twice. Any other
-outer binding of a name the body assigns, and neither declares nor imports by reference, ends past the body's first
-`$x = …` of it, as do that name's outer gaps and guards. A write inside a nested function reaches the body around it
-only through a `use (&$x)`: an arrow function or a by-value `use` writes its own copy.
+outer binding of a name the body assigns, and neither declares nor imports by reference, ends where the body first
+assigns it, as do that name's outer gaps and guards: past that `$x = …;` when it is a statement of the body, else before
+the statement holding it. A write inside a nested function reaches the body around it only through a `use (&$x)`: an
+arrow function or a by-value `use` writes its own copy.
 
 [Receiver types § A ternary's `instanceof` condition][ternary] covers how a proven arm's classes narrow, and
 [known gaps][gap-narrowing] records what each spelling publishes.
@@ -376,8 +377,9 @@ own binding, for values only. Its own `$x = …;` replaces the value it binds, a
 where the write names no class, so `$t = json_decode($t)` reads `unknown` past it; any other class binding alone, or
 any other write, stops the walk. An expression binding the receiver resolver names a class for, such as a relation
 read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no class a member read
-keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it. A value read leaves out a nested
-write the engine cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read.
+keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a model's own write of a
+value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine cannot
+type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read.
 `CollectsLocalVarBindings::writeKind()` classifies each write once, as the scan records it. The cycle guard,
 `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
 value `$s` held before.
@@ -431,8 +433,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
   until its next top-level `$x = …;`. A key write, such as `$data['k'] = …` or `+=`, does too; only a returned
   variable's walk reads one. A local a reference can write through, made by `=&`, `use (&$x)`, `global`, `static` or
   `foreach (… as &$x)`, stays unbound past every write. A member or key write on a local holding only models, such as
-  `$p->title = …`, is no write of it, since Laravel stores the value in that model; neither is the key a variable
-  reads, `$k` in `$a[$k] = …`, nor a variable variable's write.
+  `$p->title = 'x'`, is no write of it, since Laravel stores the value in that model, where the scan shows the column
+  holds it (a constant, `.=`, `+=` or `++`) and no key write lands on a local that may be `null`. Neither is the key a
+  variable reads, `$k` in `$a[$k] = …`, nor a variable variable's write.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
