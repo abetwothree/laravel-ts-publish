@@ -20,9 +20,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenBlockHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenThisHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -282,6 +285,24 @@ test('a spread helper keeps an instanceof proof on a $this->prop unless its body
     ])
         ->and(json_encode(new RewrittenThisHelperResource($image)->resolve(Request::create('/'))))
         ->toBe('{"kept":{"key":7},"rewritten":{"key":"p-1"}}');
+});
+
+// Only a write that replaces `$this->resource` whole can change what the caller's test saw on it.
+test('a spread helper keeps an instanceof proof on the items unless its body replaces $this->resource', function () {
+    $post = new ProxyCollectedPost;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $sent = json_encode(new RewrittenPageCollection(new LengthAwarePaginator([$post], 1, 15))->resolve(Request::create('/')));
+    $items = 'ProxyCollectedPostResource[] | LengthAwarePaginator<ProxyCollectedPostResource> | '
+        .'SimplePaginator<ProxyCollectedPostResource> | CursorPaginator<ProxyCollectedPostResource>';
+
+    expect(publishedResourceKeyTypes(RewrittenPageCollection::class, ProxyCollectedPost::class))->toBe([
+        'marked' => '{ pager: LengthAwarePaginator<ProxyCollectedPostResource> } | null',
+        'replaced' => '{ pager: '.$items.' } | null',
+    ])
+        ->and($sent)->toContain('"marked":{"pager":{"current_page":1,"data":[{"id":7,"title":"Banana"}]')
+        ->and($sent)->toContain('"replaced":{"pager":[{"id":7,"title":"Banana"}]}')
+        ->and(json_encode(new RewrittenPageCollection(collect([$post]))->resolve(Request::create('/'))))
+        ->toBe('{"marked":null,"replaced":null}');
 });
 
 // The proof replaces only the classes, so a relation collection keeps its element model, and its first() the model.

@@ -86,15 +86,29 @@ trait CollectsInstanceofGuards
     }
 
     /**
-     * Whether a subject method's body may rewrite what an `instanceof` proof in force holds `$this` to: it writes
-     * through `$this` while a proof on `$this->resource` or a `$this->prop` path holds.
+     * The `$this` read paths a subject method's body writes whole, such as `resource` for `$this->resource = …`, while
+     * an `instanceof` proof on `$this->resource` or a `$this->prop` path holds; none otherwise.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @return list<list<string>>
      */
-    protected function rewritesProvenThis(array $stmts, AnalysisScope $scope): bool
+    protected function rewrittenThisPaths(array $stmts, AnalysisScope $scope): array
     {
-        return ($scope->provenProxy !== null || $scope->narrowedReads !== [])
-            && in_array('this', $this->collectWrittenVariableNames($stmts, $scope), true);
+        if ($scope->provenProxy === null && $scope->narrowedReads === []) {
+            return [];
+        }
+
+        $paths = [];
+
+        foreach ($this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, , $target]) {
+            $path = $name === 'this' ? $this->thisReadPath($target) : null;
+
+            if ($path !== null) {
+                $paths[] = $path;
+            }
+        }
+
+        return $paths;
     }
 
     /**

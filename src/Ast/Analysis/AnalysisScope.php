@@ -645,10 +645,10 @@ final class AnalysisScope
      *
      * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
-     * @param  bool  $writesThis  the body writes through `$this`, so no `instanceof` proof on it holds there
+     * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
      * @return CallerState
      */
-    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, bool $writesThis = false): array
+    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, array $rewritten = []): array
     {
         $caller = [
             'bindings' => $this->nameBindings(),
@@ -659,10 +659,13 @@ final class AnalysisScope
             'narrowedReads' => $this->narrowedReads,
         ];
 
-        if ($writesThis) {
-            $this->provenProxy = null;
-            $this->narrowedReads = [];
-        }
+        // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
+        $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
+        $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
+        $this->narrowedReads = $replacesProxy ? [] : array_values(array_filter(
+            $this->narrowedReads,
+            fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
+        ));
 
         $this->visitedSpreadMethods[$method] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);

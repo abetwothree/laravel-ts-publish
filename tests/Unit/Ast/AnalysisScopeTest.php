@@ -19,6 +19,7 @@ use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
+use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 it('constructs with the given subject reflection and model class', function () {
@@ -415,20 +416,28 @@ it('restores every field a subject method read sets aside, the relation closure\
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
 
-// A body that writes through `$this` may replace what the caller's test saw, so the proofs on `$this` stay outside it.
-it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body unless the body writes through $this', function (bool $writesThis) {
+// A write replaces what the caller's test saw on that path and every path through it, and only those.
+it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $scope->provenProxy = [SubscribedTeam::class];
-    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)]];
+    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)], [['author', 'team'], ReceiverType::of(Team::class)]];
+    $before = $scope->narrowedReads;
 
-    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, [], $writesThis);
-    $inside = [$scope->provenProxy, $scope->narrowedReads];
+    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, [], $rewritten);
+    $inside = [$scope->provenProxy, array_column($scope->narrowedReads, 0)];
     $scope->leaveSubjectMethod('helper', $caller);
 
-    expect($inside)->toBe($writesThis ? [null, []] : [[SubscribedTeam::class], $caller['narrowedReads']])
+    expect($inside)->toBe([$keepsProxy ? [SubscribedTeam::class] : null, $kept])
         ->and($scope->provenProxy)->toBe([SubscribedTeam::class])
-        ->and($scope->narrowedReads)->toBe($caller['narrowedReads']);
-})->with(['a body that reads $this' => [false], 'a body that writes through $this' => [true]]);
+        ->and($scope->narrowedReads)->toBe($before);
+})->with([
+    'a body that writes nothing' => [[], true, [['author'], ['author', 'team']]],
+    'an unrelated $this->marker' => [[['marker']], true, [['author'], ['author', 'team']]],
+    'a member of $this->resource' => [[['resource', 'title']], true, [['author'], ['author', 'team']]],
+    'the inner path' => [[['author', 'team']], true, [['author']]],
+    'the outer path, and every path through it' => [[['author']], true, []],
+    '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
+]);
 
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));

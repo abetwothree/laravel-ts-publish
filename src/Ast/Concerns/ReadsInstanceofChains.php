@@ -85,6 +85,24 @@ trait ReadsInstanceofChains
     }
 
     /**
+     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
+     * for `$this->owner?->team`; null for any other expression.
+     *
+     * @return list<string>|null
+     */
+    private function thisReadPath(Expr $expr): ?array
+    {
+        $path = [];
+
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($path, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+    }
+
+    /**
      * Whether two expressions spell the same variable or property read.
      *
      * A method call is never the same read: a second call may return another value than the one the test saw.

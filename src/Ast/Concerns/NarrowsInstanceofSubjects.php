@@ -9,10 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\NullsafePropertyFetch;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Identifier;
 
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
@@ -102,23 +99,5 @@ trait NarrowsInstanceofSubjects
             $scope->modelClass = $previousModelClass;
             $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
         }
-    }
-
-    /**
-     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
-     * for `$this->owner?->team`; null for any other expression.
-     *
-     * @return list<string>|null
-     */
-    private function thisReadPath(Expr $expr): ?array
-    {
-        $path = [];
-
-        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
-            array_unshift($path, $expr->name->toString());
-            $expr = $expr->var;
-        }
-
-        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
     }
 }
