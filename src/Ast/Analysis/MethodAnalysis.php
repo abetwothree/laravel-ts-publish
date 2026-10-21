@@ -287,6 +287,31 @@ class MethodAnalysis
     }
 
     /**
+     * Queue, in branch order, the class each branch of a merge types a key with where two branches type it apart, as a
+     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import.
+     *
+     * @param  list<self>  $branches
+     */
+    public function queueSplitClasses(array $branches): void
+    {
+        [$this->nestedResources, $this->inlineResourceFqcns] = self::queuedSplitClasses(
+            $this->nestedResources,
+            $this->inlineResourceFqcns,
+            array_map(fn (self $branch): array => [$branch->nestedResources, $branch->inlineResourceFqcns], $branches),
+        );
+        [$this->directEnumFqcns, $this->inlineEnumFqcns] = self::queuedSplitClasses(
+            $this->directEnumFqcns,
+            $this->inlineEnumFqcns,
+            array_map(fn (self $branch): array => [$branch->directEnumFqcns, $branch->inlineEnumFqcns], $branches),
+        );
+        [$this->modelFqcns, $this->inlineModelFqcns] = self::queuedSplitClasses(
+            $this->modelFqcns,
+            $this->inlineModelFqcns,
+            array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
+        );
+    }
+
+    /**
      * Add classes a cast carried, once each per kind.
      *
      * @param  CarriedMap  $carried
@@ -371,6 +396,52 @@ class MethodAnalysis
         }
 
         unset($property);
+    }
+
+    /**
+     * A class map and its queue map with each key the branches type with different classes moved onto its queue: every
+     * branch's class there in branch order, each kept for its import under its own FQCN, as an embedded class is.
+     *
+     * @param  ClassMapType  $classes
+     * @param  FqcnQueueMap  $queues
+     * @param  list<array{ClassMapType, FqcnQueueMap}>  $branches
+     * @return array{ClassMapType, FqcnQueueMap}
+     */
+    private static function queuedSplitClasses(array $classes, array $queues, array $branches): array
+    {
+        $byKey = [];
+
+        foreach ($branches as [$branchClasses]) {
+            foreach ($branchClasses as $name => $fqcn) {
+                $byKey[$name][$fqcn] = true;
+            }
+        }
+
+        foreach ($byKey as $name => $fqcns) {
+            if (count($fqcns) < 2) {
+                continue;
+            }
+
+            $queue = [];
+
+            foreach ($branches as [$branchClasses, $branchQueues]) {
+                if (isset($branchClasses[$name])) {
+                    $queue[] = $branchClasses[$name];
+                }
+
+                array_push($queue, ...$branchQueues[$name] ?? []);
+            }
+
+            unset($classes[$name]);
+
+            foreach (array_keys($fqcns) as $fqcn) {
+                $classes[$fqcn] = $fqcn;
+            }
+
+            $queues[$name] = $queue;
+        }
+
+        return [$classes, $queues];
     }
 
     /**

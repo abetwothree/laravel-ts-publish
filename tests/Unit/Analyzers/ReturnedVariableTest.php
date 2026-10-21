@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessP
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchReplacedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassBranchesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedBareSpreadResource;
@@ -480,6 +482,22 @@ test('a value a branch cannot type drops beside a typed one, and a lone null sta
     'beside a value held before' => ['$d = ["a" => 1]; if ($x) { $d["a"] = $nowhere; }', 'a: number'],
     'beside a lone null' => ['$d = []; if ($x) { $d["b"] = null; } else { $d["b"] = $nowhere; }', 'b: null'],
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
+]);
+
+test('each branch keeps the class it types a key with, so every class a merged key spells is imported', function (string $class, string $members) {
+    $imports = collect(new ResourceTransformer($class)->typeImports)->flatten()->sort()->values()->all();
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and($imports)->toBe(['Category', 'CategoryResource', 'PriorityType', 'StatusType', 'User', 'UserResource']);
+})->with([
+    'a variable a branch re-sets' => [
+        ReturnedClassResetResource::class,
+        'id: number; x: UserResource | CategoryResource | null; s: StatusType | PriorityType | null; who: User | Category | null',
+    ],
+    'two returned literals' => [
+        ReturnedClassBranchesResource::class,
+        'id: number; x: CategoryResource | UserResource | null; s: PriorityType | StatusType | null; who: Category | User | null',
+    ],
 ]);
 
 test('a key\'s queued classes hold one copy per write of it, however many joins it passes', function (string $body, int $writes, bool $author) {

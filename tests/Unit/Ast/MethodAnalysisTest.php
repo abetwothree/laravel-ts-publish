@@ -313,6 +313,37 @@ it('drops the queued classes and custom imports a branch of a join only repeats 
         ->and($branch->customImports)->toBe(['@/x' => ['Y']]);
 });
 
+it('queues in branch order each class the branches of a merge type a key with, where they type it apart', function () {
+    $first = new MethodAnalysis(
+        nestedResources: ['x' => 'App\\UserResource', 42 => 'App\\TagResource', 'App\\R' => 'App\\R'],
+        directEnumFqcns: ['s' => 'App\\Status'],
+        modelFqcns: ['who' => 'App\\User'],
+        inlineResourceFqcns: ['x' => ['App\\R']],
+    );
+    $second = new MethodAnalysis(
+        nestedResources: ['x' => 'App\\CategoryResource', 42 => 'App\\TagResource'],
+        directEnumFqcns: ['s' => 'App\\Status'],
+        modelFqcns: ['who' => 'App\\Category'],
+    );
+    $merged = new MethodAnalysis;
+    $merged->merge($first);
+    $merged->merge($second);
+
+    $merged->queueSplitClasses([$first, $second]);
+
+    expect($merged->nestedResources)->toBe([
+        42 => 'App\\TagResource',
+        'App\\R' => 'App\\R',
+        'App\\UserResource' => 'App\\UserResource',
+        'App\\CategoryResource' => 'App\\CategoryResource',
+    ])
+        ->and($merged->inlineResourceFqcns)->toBe(['x' => ['App\\UserResource', 'App\\R', 'App\\CategoryResource']])
+        ->and($merged->directEnumFqcns)->toBe(['s' => 'App\\Status'])
+        ->and($merged->inlineEnumFqcns)->toBe([])
+        ->and($merged->modelFqcns)->toBe(['App\\User' => 'App\\User', 'App\\Category' => 'App\\Category'])
+        ->and($merged->inlineModelFqcns)->toBe(['who' => ['App\\User', 'App\\Category']]);
+});
+
 describe('MethodAnalysis::addProperty()', function () {
     test('routes every channel a resolved value can carry', function () {
         $analysis = new MethodAnalysis;

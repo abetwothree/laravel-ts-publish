@@ -396,6 +396,8 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
         }
 
+        $channels->queueSplitClasses($analyses);
+
         /** @var AnalyzedPropertyList */
         $properties = [];
 
