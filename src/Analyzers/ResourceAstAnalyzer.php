@@ -849,6 +849,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
             $methodName,
             LaravelTsPublish::methodDeclaringFileClass($method),
             $this->proofsAcrossCall($this->scope, $call),
+            $this->rewritesProvenThis($targetMethod->stmts, $this->scope),
         );
 
         $readsAttributeNames = $this->readsKeylessAttributeNames;

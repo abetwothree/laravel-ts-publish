@@ -79,6 +79,7 @@ final class SubjectHelperReturnResolver
             $name,
             LaravelTsPublish::methodDeclaringFileClass($method),
             $this->proofsAcrossCall($scope, $call),
+            $this->rewritesProvenThis($stmts, $scope),
         );
 
         try {

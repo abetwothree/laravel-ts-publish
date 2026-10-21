@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -413,6 +414,21 @@ it('restores every field a subject method read sets aside, the relation closure\
         ->and($scope->declaringFileClass)->toBe($declaring)
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });
+
+// A body that writes through `$this` may replace what the caller's test saw, so the proofs on `$this` stay outside it.
+it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body unless the body writes through $this', function (bool $writesThis) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->provenProxy = [SubscribedTeam::class];
+    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)]];
+
+    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, [], $writesThis);
+    $inside = [$scope->provenProxy, $scope->narrowedReads];
+    $scope->leaveSubjectMethod('helper', $caller);
+
+    expect($inside)->toBe($writesThis ? [null, []] : [[SubscribedTeam::class], $caller['narrowedReads']])
+        ->and($scope->provenProxy)->toBe([SubscribedTeam::class])
+        ->and($scope->narrowedReads)->toBe($caller['narrowedReads']);
+})->with(['a body that reads $this' => [false], 'a body that writes through $this' => [true]]);
 
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));

@@ -86,6 +86,18 @@ trait CollectsInstanceofGuards
     }
 
     /**
+     * Whether a subject method's body may rewrite what an `instanceof` proof in force holds `$this` to: it writes
+     * through `$this` while a proof on `$this->resource` or a `$this->prop` path holds.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    protected function rewritesProvenThis(array $stmts, AnalysisScope $scope): bool
+    {
+        return ($scope->provenProxy !== null || $scope->narrowedReads !== [])
+            && in_array('this', $this->collectWrittenVariableNames($stmts, $scope), true);
+    }
+
+    /**
      * Whether a block always leaves the function: its last statement returns, throws or exits, and no `break` or
      * `continue` in it leaves the block first.
      *

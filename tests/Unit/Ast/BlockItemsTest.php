@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationP
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RewrittenThisHelperResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node;
@@ -264,6 +265,20 @@ test('an instanceof ternary on a $this->prop narrows the reads through it', func
         ->toBe('{"title":"Banana","key":7,"either_key":7,"open_key":7}')
         ->and(json_encode(new MemberNarrowedResource($productImage)->resolve(Request::create('/'))))
         ->toBe('{"title":null,"key":null,"either_key":null,"open_key":"p-1"}');
+});
+
+// A helper read in the arm reads the same object, so the proof holds in its body, unless that writes through `$this`.
+test('a spread helper keeps an instanceof proof on a $this->prop unless its body writes through $this', function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+    $image = new Image;
+    $image->setRelation('imageable', blockItemsPost());
+
+    expect(publishedResourceKeyTypes(RewrittenThisHelperResource::class, Image::class))->toBe([
+        'kept' => '{ key: number } | null',
+        'rewritten' => '{ key: number | string } | null',
+    ])
+        ->and(json_encode(new RewrittenThisHelperResource($image)->resolve(Request::create('/'))))
+        ->toBe('{"kept":{"key":7},"rewritten":{"key":"p-1"}}');
 });
 
 // The proof replaces only the classes, so a relation collection keeps its element model, and its first() the model.

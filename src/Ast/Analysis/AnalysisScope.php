@@ -103,7 +103,9 @@ use ReflectionClass;
  *      bindings: NameBindingsSnapshot,
  *      resolvingLocalVars: array<string, true>,
  *      declaringFileClass: ReflectionClass<object>,
- *      closureRelationModelClass: class-string<Model>|null
+ *      closureRelationModelClass: class-string<Model>|null,
+ *      provenProxy: non-empty-list<class-string>|null,
+ *      narrowedReads: list<NarrowedRead>
  * }
  *
  * @internal
@@ -643,16 +645,24 @@ final class AnalysisScope
      *
      * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
+     * @param  bool  $writesThis  the body writes through `$this`, so no `instanceof` proof on it holds there
      * @return CallerState
      */
-    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs): array
+    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, bool $writesThis = false): array
     {
         $caller = [
             'bindings' => $this->nameBindings(),
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'declaringFileClass' => $this->declaringFileClass,
             'closureRelationModelClass' => $this->closureRelationModelClass,
+            'provenProxy' => $this->provenProxy,
+            'narrowedReads' => $this->narrowedReads,
         ];
+
+        if ($writesThis) {
+            $this->provenProxy = null;
+            $this->narrowedReads = [];
+        }
 
         $this->visitedSpreadMethods[$method] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
@@ -676,6 +686,8 @@ final class AnalysisScope
         $this->resolvingLocalVars = $caller['resolvingLocalVars'];
         $this->declaringFileClass = $caller['declaringFileClass'];
         $this->closureRelationModelClass = $caller['closureRelationModelClass'];
+        $this->provenProxy = $caller['provenProxy'];
+        $this->narrowedReads = $caller['narrowedReads'];
         unset($this->visitedSpreadMethods[$method]);
     }
 
