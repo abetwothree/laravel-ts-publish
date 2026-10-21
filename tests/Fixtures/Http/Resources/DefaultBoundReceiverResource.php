@@ -26,10 +26,19 @@ class DefaultBoundReceiverResource extends JsonResource
             'not_null_author' => $this->whenNotNull(fn ($post = new Post) => $post->author?->name),
             'not_null_status' => $this->whenNotNull(fn ($status = Status::Draft) => $status->name),
             'not_null_rating' => $this->whenNotNull(fn () => $this->rating),
+            'not_null_callable' => $this->whenNotNull($this->ratingOrNull(...)),
             'callable_first' => $this->whenLoaded('comments', $this->firstContent(...)),
             'helper_first' => $this->firstContent($this->comments),
             'closure_first' => $this->whenLoaded('comments', fn ($comments) => ['first' => $comments->first()?->content]),
         ];
+    }
+
+    /**
+     * The post's rating, null while unrated.
+     */
+    private function ratingOrNull(): ?string
+    {
+        return $this->rating;
     }
 
     /**
