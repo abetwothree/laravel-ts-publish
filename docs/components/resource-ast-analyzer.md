@@ -82,7 +82,10 @@ every profile, the order handlers run in decides which one answers; see
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
-  written in a branch publishing optional.
+  written in a branch publishing optional. A local written once reads as its value (`writtenLocal()`), and the walk
+  names a key such a local holds (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot
+  name leaves the variable not read completely. A merge closure's body is not seeded, so inside one these read only a
+  method local the closure imports by value and never writes (`$closureImports`).
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`

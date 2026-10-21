@@ -109,10 +109,10 @@ A method that builds an array in a variable and returns it publishes the keys it
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
-  does not read, such as `$data[] = …`, a dynamic or nested key, `sort($data)` or any other by-reference call, or a
-  `??=` to a key it does not hold. When no branch read completely has a key and every `return` is a literal or a
-  variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk reads instead; with a
-  `return` of another kind, the first `return` is read.
+  does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or any
+  other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
+  `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
+  reads instead; with a `return` of another kind, the first `return` is read.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -717,7 +717,8 @@ or on the left of `+`.
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
-adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
+adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value. Type the
+operand with a docblock, or the key with `#[TsCasts]`.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
