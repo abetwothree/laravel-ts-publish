@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
@@ -198,14 +199,14 @@ trait CollectsLocalVarBindings
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
                 || ! $this->replacesVariable($target, $name)
-                || $this->keepsBinding(
-                    $name,
-                    $node,
-                    $this->byReferenceForm($node, $target, $writes, $stmts, $scope),
-                    $scope,
-                    $this->isStatementOf($stmts, $node),
-                )
             ) {
+                continue;
+            }
+
+            $kind = $this->writeKind($node, $target);
+            $form = $this->byReferenceForm($node, $target, $writes, $stmts, $scope);
+
+            if ($this->keepsBinding($name, $node, $kind, $form, $scope, $this->isStatementOf($stmts, $node))) {
                 continue;
             }
 
@@ -224,12 +225,13 @@ trait CollectsLocalVarBindings
 
             // A write nested in a block that falls through, or a `??=`, may leave the old binding standing past it.
             $nested = ! $this->isStatementOf($block, $node);
-            $assigned = ($node instanceof Assign || $node instanceof CoalesceAssign) && $node->var instanceof Variable;
+            $assigned = ($kind === VariableWrite::Replaces || $kind === VariableWrite::Coalesces)
+                && ($node instanceof Assign || $node instanceof CoalesceAssign);
             $this->addGap($scope, $name, [
                 $end,
                 $block[array_key_last($block)]->getEndFilePos(),
                 $assigned ? [$node->expr] : null,
-                $nested || $node instanceof CoalesceAssign,
+                $nested || $kind === VariableWrite::Coalesces,
             ]);
         }
     }
@@ -478,11 +480,15 @@ trait CollectsLocalVarBindings
      * @param  ByReferenceForm|null  $form  what a by-reference call or `foreach` leaves, when one makes the write
      * @param  bool  $topLevel  the write is a statement of the body itself, not of a block
      */
-    private function keepsBinding(string $name, Node $node, ?array $form, AnalysisScope $scope, bool $topLevel): bool
-    {
-        if (($node instanceof AssignOp && ! $node instanceof CoalesceAssign)
-            || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
-        ) {
+    private function keepsBinding(
+        string $name,
+        Node $node,
+        VariableWrite $kind,
+        ?array $form,
+        AnalysisScope $scope,
+        bool $topLevel,
+    ): bool {
+        if ($kind === VariableWrite::Compounds) {
             return true;
         }
 
@@ -507,7 +513,9 @@ trait CollectsLocalVarBindings
         }
 
         // A `foreach` target, `catch`, `unset()` or destructuring write holds a value this does not read.
-        if ((! $node instanceof Assign && ! $node instanceof CoalesceAssign) || ! $node->var instanceof Variable) {
+        if (($kind !== VariableWrite::Replaces && $kind !== VariableWrite::Coalesces)
+            || (! $node instanceof Assign && ! $node instanceof CoalesceAssign)
+        ) {
             return false;
         }
 
@@ -888,6 +896,27 @@ trait CollectsLocalVarBindings
         }
 
         return $target instanceof Variable && $target->name === $name;
+    }
+
+    /**
+     * What a write node does to the variable a target of it names; the one place a pass that ends, gaps or joins a
+     * binding tells writes apart.
+     */
+    private function writeKind(Node $node, Expr $target): VariableWrite
+    {
+        return match (true) {
+            $node instanceof ClosureExpr => VariableWrite::InClosure,
+            $node instanceof CallLike, $node instanceof AssignRef, $node instanceof Global_, $node instanceof Static_,
+            $node instanceof Foreach_ && $node->byRef => VariableWrite::ByReference,
+            $node instanceof Foreach_ => VariableWrite::Foreach,
+            $node instanceof Catch_ => VariableWrite::Catches,
+            $node instanceof Unset_ => VariableWrite::Unsets,
+            $target instanceof List_, $target instanceof Array_ => VariableWrite::Destructures,
+            ! $target instanceof Variable => VariableWrite::MemberOrOffset,
+            $node instanceof CoalesceAssign => VariableWrite::Coalesces,
+            $node instanceof Assign => VariableWrite::Replaces,
+            default => VariableWrite::Compounds,
+        };
     }
 
     /**
