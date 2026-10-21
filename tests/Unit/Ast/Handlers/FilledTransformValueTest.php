@@ -28,7 +28,8 @@ function filledTransformValueSends(): array
     return $sent;
 }
 
-// Laravel sends the rating for a rated post and leaves each key out for an unrated one; only the default gets the null.
+// Laravel sends the rating for a rated post and leaves each conditional key out for an unrated one, but the default's
+// null; the proven ternary and the guarded helper send `none` instead, and a when() over a null local sends nothing.
 it('reads transform()\'s callback parameter without the value\'s null', function () {
     expect(publishedResourceKeyTypes(FilledTransformValueResource::class, Post::class))->toBe([
         'scalar?' => 'string',
@@ -37,6 +38,9 @@ it('reads transform()\'s callback parameter without the value\'s null', function
         'helper?' => 'string',
         'default' => 'string | null',
         'when_proved?' => 'string',
+        'only_null?' => 'null',
+        'ternary' => 'string',
+        'guarded' => 'string',
     ])
         ->and(filledTransformValueSends())->toBe([
             'rated' => [
@@ -46,7 +50,9 @@ it('reads transform()\'s callback parameter without the value\'s null', function
                 'helper' => '4.50',
                 'default' => '4.50',
                 'when_proved' => '4.50',
+                'ternary' => '4.50',
+                'guarded' => '4.50',
             ],
-            'unrated' => ['default' => null],
+            'unrated' => ['default' => null, 'ternary' => 'none', 'guarded' => 'none'],
         ]);
 });
