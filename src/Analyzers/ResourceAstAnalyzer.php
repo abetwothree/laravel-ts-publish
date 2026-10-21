@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsResourceSubject;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsReturnedVariables;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -65,6 +66,7 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -90,6 +92,7 @@ use ReflectionMethod;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
+ * @phpstan-import-type VarGuardBinding from AnalysisScope
  *
  * @internal
  */
@@ -101,6 +104,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use InspectsResourceSubject;
+    use NarrowsInstanceofSubjects;
     use ParsesTsCasts;
     use ReadsNonNullGuards;
 
@@ -644,13 +648,26 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
-     * Analyze a value expression and return its type + optional status.
+     * Analyze a value expression and return its type + optional status. A value inside a block an `instanceof` test on
+     * `$this->resource` proves resolves under the narrowing a ternary's proven arm gets.
      *
      * @return ValueExpressionResult
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
-        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+        $guard = isset($this->scope->varGuardBindings[AnalysisScope::PROXY_GUARDS]) && $this->scope->provenProxy === null
+            ? $this->proxyGuardAt($expr)
+            : null;
+
+        $narrowed = $guard === null ? null : $this->resolveNarrowed(
+            new PropertyFetch(new Variable('this'), 'resource'),
+            $guard['classes'],
+            $expr,
+            $this->scope,
+            fn (): array => $this->dispatchValue($expr),
+        );
+
+        return $narrowed ?? $this->dispatchValue($expr);
     }
 
     /**
@@ -1145,6 +1162,26 @@ class ResourceAstAnalyzer implements ExpressionEngine
     private function runtimeClass(): ReflectionClass
     {
         return $this->runtimeClass ?? $this->scope->subjectReflection;
+    }
+
+    /**
+     * The proof on `$this->resource` a value's position falls within, the one that starts latest, or null.
+     *
+     * @return VarGuardBinding|null
+     */
+    private function proxyGuardAt(Expr $expr): ?array
+    {
+        return $this->scope->guardAt(new Variable(AnalysisScope::PROXY_GUARDS, ['startFilePos' => $expr->getStartFilePos()]));
+    }
+
+    /**
+     * Resolve a value through the dispatcher, unknown where no handler types it.
+     *
+     * @return ValueExpressionResult
+     */
+    private function dispatchValue(Expr $expr): array
+    {
+        return $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
     }
 
     /**

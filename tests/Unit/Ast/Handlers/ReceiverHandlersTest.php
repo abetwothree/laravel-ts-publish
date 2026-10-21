@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyBranchPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
@@ -58,6 +59,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
@@ -103,6 +105,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Fluent;
 use PhpParser\Node\Expr;
@@ -2021,6 +2024,22 @@ describe('a ResourceCollection holds its items, never the collected model', func
         ['$this->resource instanceof \Illuminate\Pagination\CursorPaginator ? $this->resource : null', 'CursorPaginator<ProxyCollectedPostResource> | null'],
         ['! $this->resource instanceof \Illuminate\Pagination\LengthAwarePaginator ? null : $this->resource', 'LengthAwarePaginator<ProxyCollectedPostResource> | null'],
     ]);
+
+    // A positive test holds in the block it runs, and a nested guard to the end of its block, never past them.
+    test('an instanceof if on the items narrows them inside the block the test proves', function () {
+        $post = new ProxyCollectedPost;
+        $post->forceFill(['id' => 7, 'title' => 'Banana']);
+        $sent = fn (mixed $items, array $query): string|false => json_encode(
+            new ProxyBranchPageCollection($items)->resolve(Request::create('/', 'GET', $query)),
+        );
+
+        expect(collect(pipelineAnalyzer(ProxyBranchPageCollection::class)->analyze()->properties)->keyBy('name')['pager']['type'])
+            ->toBe('LengthAwarePaginator<ProxyCollectedPostResource> | null')
+            ->and($sent(new LengthAwarePaginator([$post], 1, 15), []))->toContain('"pager":{"current_page":1,"data":[{"id":7,"title":"Banana"}]')
+            ->and($sent(new LengthAwarePaginator([$post], 1, 15), ['nested' => 1]))->toContain('"pager":{"current_page":1,')
+            ->and($sent(collect([$post]), []))->toBe('{"pager":null,"nested":false}')
+            ->and($sent(collect([$post]), ['nested' => 1]))->toBe('{"pager":null,"nested":true}');
+    });
 
     // A guard holds only inside its branch, so `page`, read past it, keeps every class the items may arrive in.
     test('a guard on a paginator keeps the items answer', function (string $key, string $type) {

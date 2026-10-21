@@ -109,6 +109,9 @@ use ReflectionClass;
  */
 final class AnalysisScope
 {
+    /** The varGuardBindings key of the proofs on an API resource's `$this->resource`, a name no variable spells. */
+    public const string PROXY_GUARDS = '$this->resource';
+
     /** Every name-keyed binding table, empty: a function scope no caller's name reaches. */
     public const array NO_NAME_BINDINGS = [
         'closureParamExprBindings' => [],
@@ -216,6 +219,8 @@ final class AnalysisScope
      * Variables an `instanceof` test proves to hold one of some classes, each proof for the reads between its offsets:
      * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
      * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
+     *
+     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS.
      *
      * @var VarGuardBindingsMap
      */

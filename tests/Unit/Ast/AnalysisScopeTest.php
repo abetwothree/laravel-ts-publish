@@ -255,6 +255,25 @@ it('passes a parameter the guard in force where its variable is passed, for ever
         ->and($passedAt(35))->toBe(['param' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]]]);
 });
 
+// The proofs on `$this->resource` sit under a key no variable spells, and their offsets are the body's that set them.
+it('keeps the proofs on $this->resource from every parameter, and sets them aside for a subject method\'s body', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $proof = [['classes' => [SubscribedTeam::class], 'after' => 0, 'before' => 99]];
+    $scope->varGuardBindings = [AnalysisScope::PROXY_GUARDS => $proof, 'item' => $proof];
+    $captured = $scope->nameBindings();
+
+    $scope->claimParameters(new ArrowFunction(['params' => [new Param(new Variable('item'))], 'expr' => new Variable('item')]));
+    $scope->copyBindings(new Variable('item', ['startFilePos' => 5]), 'param', $captured);
+    $claimed = array_keys($scope->varGuardBindings);
+    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, []);
+    $inside = $scope->varGuardBindings;
+    $scope->leaveSubjectMethod('helper', $caller);
+
+    expect($claimed)->toBe([AnalysisScope::PROXY_GUARDS, 'param'])
+        ->and($inside)->toBe([])
+        ->and($scope->varGuardBindings[AnalysisScope::PROXY_GUARDS])->toBe($proof);
+});
+
 it('lifts one gap for a read, and puts it back', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $lifted = [10, 30, null, true];

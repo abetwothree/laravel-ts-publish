@@ -13,9 +13,11 @@ use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Exit_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -145,7 +147,7 @@ trait CollectsInstanceofGuards
     /**
      * What a condition proves of variables when it holds, or fails: each `instanceof` test on a variable that must then
      * pass, through `!`, an `&&` that holds and an `||` that fails, or one `||` chain of tests on one variable that
-     * holds, with the classes and the test.
+     * holds, with the classes and the test. A test on `$this->resource` proves under AnalysisScope::PROXY_GUARDS.
      *
      * @return VariableProofs
      */
@@ -161,9 +163,12 @@ trait CollectsInstanceofGuards
 
         $proof = $holds ? $this->instanceofProof($cond) : null;
 
-        return $proof !== null && $proof[0] instanceof Variable && is_string($proof[0]->name)
-            ? [[$proof[0]->name, $proof[1], $cond]]
-            : [];
+        return match (true) {
+            $proof === null => [],
+            $proof[0] instanceof Variable && is_string($proof[0]->name) => [[$proof[0]->name, $proof[1], $cond]],
+            $this->spellsResourceFetch($proof[0]) => [[AnalysisScope::PROXY_GUARDS, $proof[1], $cond]],
+            default => [],
+        };
     }
 
     /**
@@ -260,6 +265,11 @@ trait CollectsInstanceofGuards
      */
     private function bindGuard(AnalysisScope $scope, string $name, array $classes, int $after, ?int $before): void
     {
+        // Outside an API resource, `$this->resource` is a member like any other.
+        if ($name === AnalysisScope::PROXY_GUARDS && ! $scope->hasResourceProxy()) {
+            return;
+        }
+
         $around = $scope->guardAt(new Variable($name, ['startFilePos' => $after + 1]));
 
         $scope->varGuardBindings[$name][] = [
@@ -279,6 +289,18 @@ trait CollectsInstanceofGuards
             || $stmt instanceof Break_
             || $stmt instanceof Continue_
             || ($stmt instanceof ExpressionStmt && ($stmt->expr instanceof Throw_ || $stmt->expr instanceof Exit_));
+    }
+
+    /**
+     * Whether an expression is spelled `$this->resource`; bindGuard() records its proofs only on an API resource.
+     */
+    private function spellsResourceFetch(Expr $expr): bool
+    {
+        return $expr instanceof PropertyFetch
+            && $expr->var instanceof Variable
+            && $expr->var->name === 'this'
+            && $expr->name instanceof Identifier
+            && $expr->name->toString() === 'resource';
     }
 
     /**
@@ -418,7 +440,8 @@ trait CollectsInstanceofGuards
      */
     private function writtenWithin(string $name, int $from, ?int $to, array $exits, array $writes): bool
     {
-        foreach ($this->writesFrom($name, $from, $writes) as $node) {
+        // `$this->resource` is written through the `this` variable.
+        foreach ($this->writesFrom($name === AnalysisScope::PROXY_GUARDS ? 'this' : $name, $from, $writes) as $node) {
             // A `foreach` around the test assigns its value before each pass, so never between the test and a read.
             if ($node instanceof Foreach_ && ! $node->byRef && $node->getStartFilePos() < $from) {
                 continue;
