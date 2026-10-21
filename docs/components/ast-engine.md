@@ -334,6 +334,14 @@ An inline `/** @var T $x */` on a top-level `$x = …;` records a `varDocBinding
 `CollectsLocalVarBindings::bindDeclaredType()`. The span runs from after that statement to the next top-level statement
 that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`, a trait's file for a trait's method.
 
+A `$x = …;` nested in a block binds `$x` past its statement, to the end of that block or to the start of the block's
+statement holding the next write (`bindBlockLocals()`), as a binding gap holding the value; a `@var` on it spans the
+same reads. A block may not run and a loop runs it again, so a read before the write or past the block stays unbound,
+as does a name a reference can write through (`=&`, `use (&$x)`, `global`, `static`). A name a parameter or a seeded
+binding holds gets no gap, since the rules below end that binding. A body drops the outer gaps of each name it writes,
+so a closure's own `$x` never reads its enclosing block's, and `AnalysisScope::copyBindings()` passes a closure
+parameter the value of the gap one write opened.
+
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
