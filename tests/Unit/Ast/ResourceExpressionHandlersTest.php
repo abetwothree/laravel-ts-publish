@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
@@ -95,6 +96,7 @@ function resourceExpressionHandlerOrder(): array
         VariableHandler::class,
         TernaryHandler::class,
         MatchHandler::class,
+        OffsetReadHandler::class,
         ReceiverPropertyFetchHandler::class,
         ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
@@ -129,7 +131,7 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 27 handlers in the documented dispatch order', function () {
+it('returns all 28 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
@@ -153,7 +155,7 @@ it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFil
         ], true),
     ));
 
-    expect($classes)->toHaveCount(24)
+    expect($classes)->toHaveCount(25)
         ->and($classes)->toBe($expected);
 });
 
@@ -169,7 +171,7 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMe
         fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
     ));
 
-    expect($classes)->toHaveCount(25)
+    expect($classes)->toHaveCount(26)
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
@@ -182,7 +184,7 @@ it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same r
         ResourceExpressionHandlers::forNonResourceSubjects(),
     );
 
-    expect($classes)->toHaveCount(26)
+    expect($classes)->toHaveCount(27)
         ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
 });
 

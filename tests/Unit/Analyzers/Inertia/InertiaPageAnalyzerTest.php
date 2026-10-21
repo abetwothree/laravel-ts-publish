@@ -210,7 +210,7 @@ it('types a list a key-keeping sort leaves out of order as an object of its elem
 // keyBy() keys the rows by id, so Inertia sends an object unless the ids run 0..n-1.
 it('a keyed map and an offset read type in a page\'s props', function () {
     expect(pageData(MappedPagePropsController::class.'@show')['pageType'] ?? null)
-        ->toContain('rows: { id: number }[] | Record<string, { id: number }>');
+        ->toBe('Inertia.SharedData & { rows: { id: number }[] | Record<string, { id: number }>, a: number }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract
