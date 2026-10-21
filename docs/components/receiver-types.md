@@ -136,9 +136,18 @@ as with the backing model standing in for each it is or extends, so `@var Model`
 its unproven answer. A redeclaration that admits null is the exception: the test rules the `null` out, so
 `instanceof Post` on `@var Post|null` records `Post`.
 
+On a `$this->prop` subject, a read in the arm of the same property names on `$this`, through `->` or `?->`, holds the
+classes the test leaves (`AnalysisScope::$narrowedReads`): under `$this->imageable instanceof Post`, the arm's
+`$this->imageable->title` publishes `string`.
+
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
-holds `Post`, not every target.
+holds `Post`, not every target. On an API resource it narrows `$this->resource` for each value inside a block it
+proves, so a collection's items read as the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
+
+A subject method the proven arm or block calls as a value reads its body with `$this->resource` backed by the one model
+the proof leaves: `SubjectMethodTypeResolver` passes it as `MethodReturnTypeResolver::resolve()`'s `$backing`, and the
+`method-return:` key gains `@backing:<model>`. Two or more proven models back nothing.
 
 These stay un-narrowed:
 
@@ -146,7 +155,6 @@ These stay un-narrowed:
   a `$this->x` arm.
 - `&&`, a negation inside an `||` chain, or an `||` operand that is not an `instanceof` test on the arm.
 - The arm the test does not prove, so `$x instanceof C ? null : $x` does not remove `C`.
-- A member read through a `$this->prop` subject.
 - `?:` and `??`, which prove nothing.
 
 The rule narrows receivers only. `TernaryHandler` narrows reads made inside the proven arm, so `$x->prop` there narrows,

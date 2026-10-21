@@ -296,15 +296,20 @@ Check which spelling you wrote before you assume a value is `unknown`:
   at all, even for reads before that write.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
-- **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x` in `A`, and the negated test
-  narrows it in `B` ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)).
+- **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
+  on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
+  ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
+  the one model a test on it leaves.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
 
-On an API resource, `$this->resource` narrows in either polarity, for the whole method
-(`ResourceAstAnalyzer::resolveInstanceOfType()`), so a resource that guards on it needs no `#[TsCasts]` for what the
-guard proves.
+On an API resource, an `if` narrows `$this->resource` as it does `$x`, for each value inside a block its test proves,
+so a resource collection's items read as the paginator a block tests. A resource with no backing model also takes the
+class of the first `if` that tests `$this->resource` alone, in either polarity, as what it holds for the whole method
+(`ResourceAstAnalyzer::resolveInstanceOfType()`), so it needs no `#[TsCasts]` for what the guard proves. A ternary that
+tests such a resource for two or more models still publishes `null` for an attribute its arm reads, such as
+`$this->title` (#127).
 
 ### A shape whose values name a class loses those values, in one of two ways
 

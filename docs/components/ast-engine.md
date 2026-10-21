@@ -164,12 +164,18 @@ the matrix does not run these profiles.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These six facts span other classes:
+docblocks say what each binding table holds. These seven facts span other classes:
 
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
-  `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm resolves, for `TernaryHandler` and
-  `ReceiverClassResolver` alike, then restores all three. The narrowing happens below `AstEngine`'s `analysis:` memo
-  key, so the key does not describe the model a nested resolution ran under.
+  `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
+  proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,
+  then restores all three. The narrowing happens below `AstEngine`'s `analysis:` memo key, so the key does not describe
+  the model a nested resolution ran under. A subject method read as a value under a one-model proof is the exception:
+  its `method-return:` key gains `@backing:<model>`.
+- **`varGuardBindings` reserves `PROXY_GUARDS`**: the proofs on an API resource's `$this->resource` sit under the key
+  `'$this->resource'`, which no variable spells, so no parameter claim or `copyBindings()` reaches them, and
+  `enterSubjectMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
+  holds, is a stack, not a name table, so `nameBindings()` leaves it out.
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
@@ -295,7 +301,8 @@ sends as `{}`.
 
 ### Narrowing
 
-Two mechanisms decide which class a variable holds at one point in a body, and each restores its binding in a `finally`:
+Two mechanisms decide which class a variable, `$this->resource` or a `$this->prop` read holds at one point in a body,
+and each restores its binding in a `finally`:
 
 - **An `if` chain's tests**: [`CollectsInstanceofGuards`] reads every `if` in every block of the body, and binds what
   its `instanceof` tests prove in `varGuardBindings`, each proof with the offsets it holds between: a branch's block,
@@ -304,11 +311,15 @@ Two mechanisms decide which class a variable holds at one point in a body, and e
   `break` or `continue` skips, and a nested block also by a last `break` or `continue`, whatever its level.
   `instanceofProofs()` reads a test through `!`, an `&&` that holds, an `||` that fails, or an `||` chain on one
   variable. An earlier `return` and a guard's own body read `$x` unnarrowed, and a proof inside another holds what both
-  prove (`ReceiverClassResolver::provenClasses()`).
+  prove (`ReceiverClassResolver::provenClasses()`). On an API resource a test on `$this->resource` binds under
+  `AnalysisScope::PROXY_GUARDS`, and `ResourceAstAnalyzer::analyzeValueExpression()` resolves a value inside one of its
+  spans through `resolveNarrowed()`, as a ternary's proven arm.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varGuardBindings` past its test, or records `provenProxy` for `$this->resource`, setting
-  `modelClass` too when one model is left. A test that rules out no class `$resource` is redeclared as, and no `null` it
-  admits, records nothing, and an arm that writes its subject is not narrowed.
+  `modelClass` too when one model is left, or pushes a chain of property reads on `$this` onto `narrowedReads`, which
+  `ReceiverClassResolver::fromPropertyFetch()` answers for a read of the same property names. A test that rules out no
+  class `$resource` is redeclared as, and no `null` it admits, records nothing, and an arm that writes its subject is
+  not narrowed.
 
 `AnalysisScope::guardAt()` gives the proof a read falls within, the one that starts latest. `fromVariable()` narrows
 whatever binds the variable by it, so a `morphTo` parameter's targets narrow and a collection keeps its element, and a
