@@ -1267,6 +1267,20 @@ describe('narrowing', function () {
             'foreach ([] as $i) { switch ($k) { case 1: if (! $x instanceof \Workbench\App\Models\Post) { continue 2; } $a = $x->title; break; } $b = $x->title; }',
             ['x' => [[[Post::class], '$a = $x->title; break;']]],
         ],
+        'an interface proof, then a test for a class that does not implement it, holds the class' => [
+            'if (! $x instanceof \Countable) { return; } if (! $x instanceof \Workbench\App\Models\Post) { return; } $y = 1;',
+            ['x' => [
+                [[Countable::class], 'if (! $x instanceof \Workbench\App\Models\Post) { return; } $y = 1;'],
+                [[Post::class], '$y = 1;'],
+            ]],
+        ],
+        'a class proof, then a test for an interface it does not implement, keeps the class' => [
+            'if (! $x instanceof \Workbench\App\Models\Post) { return; } if (! $x instanceof \Countable) { return; } $y = 1;',
+            ['x' => [
+                [[Post::class], 'if (! $x instanceof \Countable) { return; } $y = 1;'],
+                [[Post::class], '$y = 1;'],
+            ]],
+        ],
         'a test inside another holds what both prove, the later one where they disagree' => [
             'if ($a instanceof \Illuminate\Database\Eloquent\Model) { if ($a instanceof \Workbench\App\Models\Post) { if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; } } }',
             ['a' => [

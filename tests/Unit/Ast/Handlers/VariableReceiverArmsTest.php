@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDraftCommentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterfaceGuardedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SupertypeGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnboundClosureVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CountedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
@@ -179,6 +182,20 @@ it('publishes a model-bound variable read bare under an instanceof test as the s
     ])
         ->and($sent($draft))->toBe('{"data":{"guarded_draft":{"p":{"id":4,"title":"abc"}},"narrowed_draft":{"id":4,"title":"abc"}}}')
         ->and($sent((new Post)->forceFill(['id' => 5, 'title' => 'abc'])))->toBe('{"data":{"guarded_draft":null,"narrowed_draft":null}}');
+});
+
+// A value that is both an interface and a class it proves is best named by the class, in whichever order it is proven.
+it('reads a value proven to be an interface and a class that does not implement it as the class', function () {
+    $analysis = resolve(AstEngine::class)->analyze(InterfaceGuardedResource::class, 'toArray', null);
+    $types = array_column($analysis->properties, 'type', 'name');
+
+    expect($types)->toBe([
+        'interface_then_class' => 'string',
+        'class_then_interface' => 'string',
+        'declared_interface' => 'string',
+    ])
+        ->and(new InterfaceGuardedResource((new CountedPost)->forceFill(['title' => 'abc']))->response(request())->getContent())
+        ->toBe('{"data":{"interface_then_class":"abc","class_then_interface":"abc","declared_interface":"abc"}}');
 });
 
 // A test for a class the binding already is proves nothing narrower, so the bound model and collection still type. A

@@ -1260,8 +1260,9 @@ final class ReceiverClassResolver
     }
 
     /**
-     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing. An
-     * interface on either side of a test keeps it, since a subclass may pass that test and no one class names the pair.
+     * What one class a true arm resolves to becomes under its tests: itself, the tested subclasses, or nothing. A
+     * tested interface keeps it, since a subclass may pass that test and no one class names the pair, but a tested
+     * class replaces an interface it resolves to, since that class names a value that is both.
      *
      * @param  class-string  $class
      * @param  non-empty-list<class-string>  $tested
@@ -1276,7 +1277,7 @@ final class ReceiverClassResolver
                 return [$class];
             }
 
-            if (is_a($test, $class, true)) {
+            if (is_a($test, $class, true) || (interface_exists($class) && ! interface_exists($test))) {
                 $subclasses[] = $test;
 
                 continue;
