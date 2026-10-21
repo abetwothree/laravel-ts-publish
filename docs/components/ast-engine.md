@@ -176,7 +176,8 @@ docblocks say what each binding table holds. These seven facts span other classe
   `'$this->resource'`, which no variable spells, so no parameter claim or `copyBindings()` reaches them, and
   `enterSubjectMethod()` sets them aside with every name table. `narrowedReads`, the `$this->prop` paths a proven arm
   holds, is a stack, not a name table, so `nameBindings()` leaves it out. It and `provenProxy` reach a subject method's
-  body unless the body writes through `$this` (`CollectsInstanceofGuards::rewritesProvenThis()`).
+  body, except a path the body writes whole or one that runs through such a path, and neither does once the body
+  replaces `$this->resource` (`CollectsInstanceofGuards::rewrittenThisPaths()`).
 - **The resource proxy has one home**: `hasResourceProxy()` says whether `$this->resource` is the proxy, true on every
   API resource, model or not, and nowhere else. `proxyTargetFor()` derives `forwardsUndeclaredMembersTo` for the
   constructor, `rebase()` and `ResourceAstAnalyzer`. Handlers ask through
