@@ -39,7 +39,7 @@ reflection answers, a decline included.
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
 | `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, marked unsaved for `UNSAVED_QUERY_MODELS`; the same query where it returns itself, as `where()` does. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
-| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`; `SAME_ITEMS` and a `take()` of a literal count keep it; `SAME_ITEMS_KEYED` set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
+| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
 | `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
 | `X::all()` | An `Eloquent\Collection` with `X` as `elementModel` on a concrete model, from `Model::all()`'s `Collection<int, static>` |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
@@ -71,7 +71,7 @@ answers:
 2. `varGuardBindings`: an early-exit guard's class, for a read past the guard.
 3. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file, with the one concrete model a collection generic such as
-   `Collection<int, Comment>` lists as `elementModel`. See
+   `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
    [AST engine § Declared locals](ast-engine.md#declared-locals).
 4. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
    `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, then `requestVarNames`, then a

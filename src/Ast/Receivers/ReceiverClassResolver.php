@@ -64,6 +64,7 @@ use Throwable;
  *
  * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
  * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool, nullable: bool}
+ * @phpstan-type CollectionGeneric array{key: string|null, element: string}
  *
  * @phpstan-import-type InstanceofProof from ReadsInstanceofChains
  * @phpstan-import-type VarDocBinding from AnalysisScope
@@ -127,6 +128,9 @@ final class ReceiverClassResolver
         'skipUntil', 'skipWhile', 'slice', 'reverse', 'forPage', 'take', 'diff', 'intersect', 'except', 'only',
         'fresh',
     ];
+
+    /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
+    private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];
 
     /** The docblock template each query, relation and factory class binds to the model it builds. */
     private const array QUERY_MODEL_TEMPLATES = [
@@ -468,8 +472,11 @@ final class ReceiverClassResolver
         }
 
         $element = $this->declaredElementModel($span, $declared);
+        $keyed = in_array($this->declaredGeneric($span, $declared)['key'] ?? null, ['string', 'array-key'], true);
 
-        return $element === null ? $declared : new ReceiverType($declared->classes, elementModel: $element);
+        return $element === null && ! $keyed
+            ? $declared
+            : new ReceiverType($declared->classes, elementModel: $element, keyed: $keyed);
     }
 
     /**
@@ -533,6 +540,30 @@ final class ReceiverClassResolver
      */
     private function declaredElementModel(array $span, ReceiverType $declared): ?string
     {
+        $generic = $this->declaredGeneric($span, $declared);
+
+        if ($generic === null) {
+            return null;
+        }
+
+        $element = LaravelTsPublish::resolveDocblockTypeName(
+            $generic['element'],
+            LaravelTsPublish::parseFileUseStatements($span['context']),
+            $span['context']->getNamespaceName(),
+        );
+
+        return $this->isConcreteModel($element) ? $element : null;
+    }
+
+    /**
+     * The key and element an inline `@var` spells for its one collection, as `Collection<string, Comment>` does, a
+     * `null` arm aside; the key is null where the generic names only the element, and null for any other spelling.
+     *
+     * @param  VarDocBinding  $span
+     * @return CollectionGeneric|null
+     */
+    private function declaredGeneric(array $span, ReceiverType $declared): ?array
+    {
         $arms = array_values(array_filter(
             LaravelTsPublish::splitPhpDocUnionType($span['type']),
             fn (string $arm): bool => strtolower($arm) !== 'null',
@@ -540,18 +571,12 @@ final class ReceiverClassResolver
 
         if (count($arms) !== 1
             || ! $declared->within([Enumerable::class])
-            || preg_match('/^\??[\\\\\w]+<\s*(?:(?:int|array-key|string)\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
+            || preg_match('/^\??[\\\\\w]+<\s*(?:(int|array-key|string)\s*,\s*)?([\\\\\w]+)\s*>$/', $arms[0], $match) !== 1
         ) {
             return null;
         }
 
-        $element = LaravelTsPublish::resolveDocblockTypeName(
-            $match[1],
-            LaravelTsPublish::parseFileUseStatements($span['context']),
-            $span['context']->getNamespaceName(),
-        );
-
-        return $this->isConcreteModel($element) ? $element : null;
+        return ['key' => $match[1] === '' ? null : $match[1], 'element' => $match[2]];
     }
 
     /**
@@ -1676,19 +1701,51 @@ final class ReceiverClassResolver
             DependencyRecorder::recordClass($class);
         }
 
-        $keyed = match (true) {
-            $method === 'values' => false,
-            $method === 'take' => $receiver->keyed || ! $this->takesFromFront($call),
-            $keepsKeys => $receiver->keyed,
-            default => true,
-        };
-
         return new ReceiverType(
             in_array($method, ['collect', 'toBase'], true) ? [Collection::class] : $receiver->classes,
             $shortCircuits,
             elementModel: $receiver->elementModel,
-            keyed: $keyed,
+            keyed: $keepsKeys ? $receiver->keyed : $this->keyedAfter($call, $method, $receiver),
         );
+    }
+
+    /**
+     * Whether a step that may move a collection's keys leaves them out of 0..n-1: `values()` re-indexes, as an
+     * Eloquent\Collection's ELOQUENT_RELISTS steps do for most arguments; a front `take()` or a bare `sortKeys()`
+     * keeps a list a list, while a callback, a flag or any other step may reorder or gap it.
+     */
+    private function keyedAfter(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): bool
+    {
+        return match (true) {
+            $method === 'values' => false,
+            $method === 'take' => $receiver->keyed || ! $this->takesFromFront($call),
+            $method === 'sortKeys' => $receiver->keyed || $call->getArgs() !== [],
+            in_array($method, self::ELOQUENT_RELISTS, true) && $receiver->within([EloquentCollection::class]) => $this->eloquentKeyedAfter($call, $method, $receiver->keyed),
+            default => true,
+        };
+    }
+
+    /**
+     * Whether an Eloquent\Collection's own `only()`, `except()`, `unique()`, `diff()` or `intersect()` leaves the keys
+     * out of 0..n-1: each re-indexes the models it keeps, but for `only(null)` and `except(null)`, which keep every
+     * key, and a `unique()` by a key, which Support\Collection's own runs.
+     */
+    private function eloquentKeyedAfter(MethodCall|NullsafeMethodCall $call, string $method, bool $keyed): bool
+    {
+        if ($method === 'diff' || $method === 'intersect') {
+            return false;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
+        $filters = $method === 'only' || $method === 'except';
+        $passed = $arguments->named($filters ? 'keys' : 'key')?->value;
+        $nothing = $passed === null || ($passed instanceof ConstFetch && $passed->name->toLowerString() === 'null');
+
+        return match (true) {
+            $arguments->hasUnpack() => true,
+            $filters => $nothing && $keyed,
+            default => ! $nothing,
+        };
     }
 
     /**

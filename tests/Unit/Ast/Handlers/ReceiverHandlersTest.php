@@ -2066,6 +2066,12 @@ describe('a collection step that keeps its items', function () {
         return Closure::bind(eval('return function () { '.$body.' };'), $resource, $resource)();
     };
 
+    /** Each comment's content under the key it was sent under, which tells a list from an object. */
+    $contents = fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments);
+    $keys = fn (array $items): array => array_keys($items);
+    $same = fn (mixed $value): mixed => $value;
+    $query = '\Workbench\App\Models\Comment::query()->get()';
+
     test('keeps a collection\'s element and keys through item-keeping steps, a query, Model::all() and a @var', function (string $body, string $type, Closure $read, mixed $sent) use ($run) {
         expect(collectionFactsType($body))->toBe($type)
             ->and($read($run($body)))->toBe($sent);
@@ -2073,13 +2079,13 @@ describe('a collection step that keeps its items', function () {
         'sortBy()->first()' => [
             'return $this->comments->sortBy(\'content\')->first()?->content;',
             'string | null',
-            fn (?string $content): ?string => $content,
+            $same,
             'alpha',
         ],
         'keyBy()->all(), whose string keys json_encode() writes as an object' => [
             'return $this->comments->keyBy(\'content\')->all();',
             'Comment[] | Record<string, Comment>',
-            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            $contents,
             ['beta' => 'beta', 'alpha' => 'alpha'],
         ],
         'Model::all()->toResourceCollection()' => [
@@ -2089,42 +2095,142 @@ describe('a collection step that keeps its items', function () {
             [PostResource::class],
         ],
         'a query\'s get()->first()' => [
-            'return \Workbench\App\Models\Comment::query()->get()->first()?->content;',
+            'return '.$query.'->first()?->content;',
             'string | null',
-            fn (?string $content): ?string => $content,
+            $same,
             'beta',
         ],
         'a @var collection over a value that names no class' => [
             '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $vague */ '
                 .'$vague = $this->resource->getRelationValue(\'comments\'); return $vague->first()?->content;',
             'string | null',
-            fn (?string $content): ?string => $content,
+            $same,
             'beta',
+        ],
+        'a @var collection that admits null' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment>|null $maybe */ '
+                .'$maybe = $this->resource->getRelationValue(\'comments\'); return $maybe?->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
+        'a @var collection keyed by string' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<string, \Workbench\App\Models\Comment> $byName */ '
+                .'$byName = $this->resource->getRelationValue(\'comments\')->keyBy(\'content\'); return $byName->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            ['beta' => 'beta', 'alpha' => 'alpha'],
         ],
         'values()->all(), a list' => [
             'return $this->comments->values()->all();',
             'Comment[]',
-            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            $contents,
             ['beta', 'alpha'],
         ],
         'keyBy()->values()->all(), a list again' => [
             'return $this->comments->keyBy(\'content\')->values()->all();',
             'Comment[]',
-            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            $contents,
             ['beta', 'alpha'],
         ],
-        'take() of a literal count, which keeps the keys a sortBy() left' => [
-            'return \Workbench\App\Models\Comment::query()->get()->sortBy(\'content\')->take(1)->all();',
+        'a ternary of a keyed and a listed collection' => [
+            'return ($this->resource->id > 0 ? $this->comments->keyBy(\'content\') : $this->comments)->all();',
             'Comment[] | Record<string, Comment>',
-            fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments),
+            $contents,
+            ['beta' => 'beta', 'alpha' => 'alpha'],
+        ],
+        'take() of a literal count on a list, a list' => [
+            'return '.$query.'->take(1)->all();',
+            'Comment[]',
+            $contents,
+            ['beta'],
+        ],
+        'take() of a literal count, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->take(1)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
             [1 => 'alpha'],
+        ],
+        'take() of a count a variable holds, which may take from the end' => [
+            '$n = -1; return '.$query.'->take($n)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha'],
+        ],
+        'sortKeys() with no arguments on a list, a list' => [
+            'return '.$query.'->sortKeys()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'sortKeysUsing(), whose callback may reverse a list' => [
+            'return '.$query.'->sortKeysUsing(fn ($a, $b) => $b <=> $a)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'only() on an Eloquent collection, which re-indexes the models it keeps' => [
+            'return '.$query.'->sortBy(\'content\')->only([1, 2])->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'except(null) on an Eloquent collection, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->except(null)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'unique() without a key on an Eloquent collection, which re-indexes' => [
+            'return '.$query.'->sortBy(\'content\')->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'unique() by a key, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->unique(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'diff() on an Eloquent collection, which re-indexes' => [
+            'return '.$query.'->sortBy(\'content\')->diff([])->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'unique() on a base collection, which keeps the keys' => [
+            'return '.$query.'->sortBy(\'content\')->toBase()->unique()->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'modelKeys() of a keyed collection' => [
+            'return '.$query.'->sortBy(\'content\')->modelKeys();',
+            'number[] | Record<string, number>',
+            $keys,
+            [1, 0],
+        ],
+        'toArray() of a keyed collection' => [
+            'return '.$query.'->sortBy(\'content\')->toArray();',
+            'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
+            $keys,
+            [1, 0],
         ],
     ]);
 
-    test('declines modelKeys() once toBase() hands the models over in a base collection, which has no such method', function () use ($run) {
-        $body = 'return $this->comments->toBase()->modelKeys();';
-
+    test('declines a step the receiver class does not run, which throws', function (string $body) use ($run) {
         expect(collectionFactsType($body))->toBe('unknown')
             ->and(fn () => $run($body))->toThrow(BadMethodCallException::class);
+    })->with([
+        'modelKeys() once toBase() hands the models over in a base collection' => ['return $this->comments->toBase()->modelKeys();'],
+        'load() on a base collection' => ['return $this->comments->toBase()->load(\'user\')->first()?->content;'],
+    ]);
+
+    test('names no element for makeMany(), whose models no row backs yet', function () use ($run) {
+        $body = 'return $this->resource->comments()->makeMany([[\'content\' => \'new\']])->first()->getKey();';
+
+        expect(collectionFactsType($body))->toBe('unknown')
+            ->and($run($body))->toBeNull();
     });
 });
