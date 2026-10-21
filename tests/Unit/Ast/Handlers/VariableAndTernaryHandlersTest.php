@@ -404,6 +404,19 @@ it('keeps a typed map over a relation the model does not declare through a trail
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 
+// A collection of plain values names no element model, so each value its list holds binds instead; a keyed list's
+// elements could come from either arm, so it declines.
+it('binds a map parameter to the value a list of plain values holds', function (string $local, string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
+    $scope->localVarBindings['values'] = new AstParser()->parseSource('<?php '.$local.';')[0]->expr;
+
+    expect(variableHandlersResolveOn($php, Post::class, $scope)['type'])->toBe($type);
+})->with([
+    'a plucked column' => ['$this->comments->pluck("id")', '$values->map(fn ($id) => $id)', 'number[]'],
+    'an earlier map()' => ['$this->comments->map(fn (\Workbench\App\Models\Comment $c) => $c->content)', '$values->map(fn ($c) => ["c" => $c])', '{ c: string }[]'],
+    'a keyed pluck' => ['$this->comments->pluck("content", "id")', '$values->map(fn ($c) => $c)', 'unknown'],
+]);
+
 // Only the map arm's own answer passes through an unnamed receiver: nothing is invented,
 // and a named model still declines.
 it('declines a trailing values()/all() the map arm does not answer, or on a variable that holds a model', function (string $php, string $model) {
