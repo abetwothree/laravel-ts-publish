@@ -620,7 +620,8 @@ final class AnalysisScope
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        // A relation closure's model answers an unbound `...$variable->toArray()`, but the method's body reads the subject.
+        // A relation closure's model answers an unbound `...$variable->toArray()`, but the method's body reads the
+        // subject.
         $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
 

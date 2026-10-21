@@ -160,9 +160,9 @@ final class CollectionPipelineHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve a `map()` closure body with its first parameter bound to the pipeline's element type.
+     * Resolve a `map()` closure body with its first parameter bound to the pipeline's element type; $arrayed says the
+     * chain ends in all(), so JsonResource::filter() reaches the mapped items.
      *
-     * @param  bool  $arrayed  the chain ends in all(), so JsonResource::filter() reaches the mapped items
      * @return ValueExpressionResult|null
      */
     private function resolveMapBody(MethodCall $mapNode, string $element, bool $arrayed, AnalysisScope $scope, ExpressionEngine $engine): ?array

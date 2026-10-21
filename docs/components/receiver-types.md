@@ -84,7 +84,7 @@ first write that replaces a parameter, step 5's `localVarBindings` answers.
 The narrowing tables come first because a narrowed variable is usually also a plain `$x = …;` local, which step 5 would
 read unnarrowed. Ranking them above `varModelBindings` guards the same case for a closure parameter or loop variable, a
 case no fixture exercises. An unbound variable is `null`. No reader of a variable's members guesses its model from the
-ambient `closureRelationModelClass`; only a `...$x->toArray()` spread no binding names still reads it.
+ambient `closureRelationModelClass`; only a `...$x->toArray()` spread no binding names still takes its model from it.
 [AST engine § Narrowing](ast-engine.md#narrowing) covers what writes the first two tables.
 
 ### `self` and `parent`

@@ -15,11 +15,10 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Foreach_;
 
 /**
- * Resolve a `$this->{name}` property as a relation on the scope's backing model.
+ * Resolve a `$this->{name}` property as a relation on the scope's backing model, and bind a body's `foreach` over one.
  *
- * The single home for this: five handlers plus ResourceAstAnalyzer carried byte-identical copies
- * before this trait. Any other trait the consuming class uses must not declare these names — PHP
- * collides on method name alone and PHPStan compiles the resulting fatal cleanly.
+ * Any other trait the consuming class uses must not declare its concrete methods: PHP collides on method name alone,
+ * and PHPStan compiles the resulting fatal cleanly. The abstract isThisPropertyFetch() comes from InspectsAstNodes.
  *
  * @phpstan-import-type RelationTypeInfo from ModelAttributeResolver
  *

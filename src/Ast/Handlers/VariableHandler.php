@@ -137,8 +137,8 @@ final class VariableHandler implements ExpressionHandler
         }
 
         // $variable->method() — resolve against the variable's own bound model. An only()/except() filter is skipped:
-        // the receiver rules own it, and reflecting it here reads Model::except()'s `@return array` as a list or filters
-        // a collection by key.
+        // the receiver rules own it, and reflecting it here reads Model::except()'s `@return array` as a list or
+        // filters a collection by key.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
