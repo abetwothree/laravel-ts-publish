@@ -83,9 +83,10 @@ every profile, the order handlers run in decides which one answers; see
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
   are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
   written in a branch publishing optional. A local written once reads as its value (`writtenLocal()`), and the walk
-  names a key such a local holds (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot
-  name leaves the variable not read completely. A merge closure's body is not seeded, so inside one these read only a
-  method local the closure imports by value and never writes (`$closureImports`).
+  names a key such a local holds (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name
+  leaves the variable not read completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a
+  local it assigns shadows the method's of its name. A closure's returns and a method's read as a value share the walk
+  (`ResolvesReturnedValues::resolveReturned()`), and so does a value read of a local built by keys (`walkedLocal()`).
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
@@ -379,13 +380,13 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   value and a passed default as branches through `mergeReturnBranches()`, so a key both set is required with both
   types and a key one sets is optional. An untypable side drops out of the union, as
   [a spread helper's branch does](#a-spread-helper-drops-an-untypable-branch). A closure's returned arrays, `[]`
-  included, a returned variable the walk reads completely, and any other value `mergedValueAnalysis()` reads are
-  branches: the resource's own model, as `Model::toArray()` writes it, or a whole array `analyzeArrayExpression()`
-  reads, such as `$this->method()`. The same values passed without a closure merge alike, since Laravel merges
-  `value($value)`. A side read as no array is an empty branch; one the analysis cannot read leaves the merge, and a
-  variable holding it, not read completely. A key set before a merge keeps its value and presence, as `mergeData()`
-  unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+` alike, keeping
-  each signature entry.
+  included, a returned variable the walk reads completely, or returns alone, and any other value `mergedValueAnalysis()`
+  reads are branches: the resource's own model, as `Model::toArray()` writes it, or a whole array
+  `analyzeArrayExpression()` reads, such as `$this->method()`. The same values passed without a closure merge alike,
+  since Laravel merges `value($value)`. A side read as no array is an empty branch; one the analysis cannot read leaves
+  the merge, and a variable holding it, not read completely. A key set before a merge keeps its value and presence, as
+  `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and PHP's `+`
+  alike, keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`, unless the value hands it to a resource's

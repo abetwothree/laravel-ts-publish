@@ -433,12 +433,13 @@ keys, reads `literalLocalBindings()`, which leaves such a local out.
 These shapes stay unbound on purpose, so they resolve as `unknown` rather than as a guess:
 
 - **A local past a write the join cannot read**: a `foreach`, `unset()`, `.=` or a by-reference call leaves it unbound
-  until its next top-level `$x = …;`. A key write, such as `$data['k'] = …` or `+=`, does too; only a returned
-  variable's walk reads one. A local a reference can write through, made by `=&`, `use (&$x)`, `global`, `static` or
-  `foreach (… as &$x)`, stays unbound past every write. A member or key write on a local holding only models, such as
-  `$p->title = 'x'`, is no write of it, since Laravel stores the value in that model, where the scan shows the column
-  holds it (a constant, `.=`, `+=` or `++`) and no key write lands on a local that may be `null`. Neither is the key a
-  variable reads, `$k` in `$a[$k] = …`, nor a variable variable's write.
+  until its next top-level `$x = …;`. A key write, such as `$data['k'] = …` or `+=`, does too; a returned variable's
+  walk reads one, and so does a value read of a local the body assigns whole (`AnalysisScope::$keyBuiltLocals`), over
+  the statements before the one holding the read, unless that one writes it too. A local a reference can write through,
+  made by `=&`, `use (&$x)`, `global`, `static` or `foreach (… as &$x)`, stays unbound past every write. A member or key
+  write on a local holding only models, such as `$p->title = 'x'`, is no write of it, since Laravel stores the value in
+  that model, where the scan shows the column holds it (a constant, `.=`, `+=` or `++`) and no key write lands on a
+  local that may be `null`. Neither is the key a variable reads, `$k` in `$a[$k] = …`, nor a variable variable's write.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
