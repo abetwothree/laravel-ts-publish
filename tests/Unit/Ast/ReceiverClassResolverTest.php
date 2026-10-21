@@ -262,6 +262,7 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->toEqual(ReceiverType::of(Comment::class))
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->first()'), postScope()))->toEqual(ReceiverType::of(Post::class))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->count()'), postScope()))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->addHasWhere($query, $relation)'), postScope()))->toBeNull()
             ->and($relation->where('id', '>', 0))->toBe($relation)
             ->and($relation->clone())->toBeInstanceOf(Builder::class)
             ->and($relation->first())->toBeInstanceOf(Comment::class)

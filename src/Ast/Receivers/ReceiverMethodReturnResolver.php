@@ -247,7 +247,7 @@ final class ReceiverMethodReturnResolver
         if (is_a($class, Relation::class, true)) {
             return match (true) {
                 Relation::hasMacro($methodName) => null,
-                method_exists(Builder::class, $methodName) => Builder::class,
+                method_exists(Builder::class, $methodName) && new ReflectionMethod(Builder::class, $methodName)->isPublic() => Builder::class,
                 default => $this->forwardedQueryClass(Builder::class, $methodName),
             };
         }

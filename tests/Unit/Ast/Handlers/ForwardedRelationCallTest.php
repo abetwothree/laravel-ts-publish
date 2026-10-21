@@ -125,3 +125,11 @@ it('forwards no call a macro answers', function () {
         $globalMacros->setValue(null, $saved);
     }
 });
+
+// A protected builder method is beyond the relation's reach, so the call reaches the base query, which throws.
+it('forwards no call to a builder method the relation cannot reach', function () {
+    $relation = forwardedRelationCallPost(User::create(['name' => 'Di', 'email' => 'di@example.com', 'password' => 'secret']), [])->comments();
+
+    expect(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass(HasMany::class, 'addHasWhere'))->toBeNull()
+        ->and(fn () => $relation->addHasWhere($relation->getQuery(), $relation, '>=', 1, 'and'))->toThrow(BadMethodCallException::class);
+});
