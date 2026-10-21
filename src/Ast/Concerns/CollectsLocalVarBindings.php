@@ -160,8 +160,12 @@ trait CollectsLocalVarBindings
      * @param  VariableWrites|null  $writes  the body's writes that replace a variable, when the caller has sorted them
      * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
-    protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null, ?array &$parked = null): void
-    {
+    protected function collectLocalVarBindings(
+        array $stmts,
+        AnalysisScope $scope,
+        ?array $writes = null,
+        ?array &$parked = null,
+    ): void {
         $writes ??= $this->bindingWrites($this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
             $stmts,
@@ -617,37 +621,53 @@ trait CollectsLocalVarBindings
     private function endCapturedBindings(ClosureExpr $closure, array $stmts, AnalysisScope $scope, array $writes): void
     {
         $own = [
-            ...array_map(fn (Param $param): mixed => $param->var instanceof Variable ? $param->var->name : null, $closure->params),
+            ...array_map(
+                fn (Param $param): mixed => $param->var instanceof Variable ? $param->var->name : null,
+                $closure->params,
+            ),
             ...array_map(fn (ClosureUse $use): mixed => $use->byRef ? $use->var->name : null, $closure->uses),
         ];
 
         foreach ($writes as [$name, $node, , $kind]) {
             $end = $this->endWithin($stmts, $node);
 
-            if ($kind !== VariableWrite::Replaces || $end === null || in_array($name, $own, true) || ! $scope->bindsName($name)
-                || ($scope->bindingEnds[$name] ?? PHP_INT_MAX) <= $end
+            if ($kind !== VariableWrite::Replaces || $end === null || in_array($name, $own, true)
+                || ! $scope->bindsName($name) || ($scope->bindingEnds[$name] ?? PHP_INT_MAX) <= $end
             ) {
                 continue;
             }
 
             $scope->bindingEnds[$name] = $end;
-            $gaps = array_filter(
-                array_map(fn (array $gap): array => [...$gap, 1 => min($gap[1], $end)], $scope->bindingGaps[$name] ?? []),
-                fn (array $gap): bool => $gap[0] < $gap[1],
-            );
-            $guards = array_filter(
-                array_map(fn (array $guard): array => [...$guard, 'before' => min($guard['before'] ?? $end, $end)], $scope->varGuardBindings[$name] ?? []),
-                fn (array $guard): bool => $guard['after'] < $guard['before'],
-            );
-            unset($scope->bindingGaps[$name], $scope->varGuardBindings[$name]);
+            $this->clipSpans($scope, $name, $end);
+        }
+    }
 
-            if ($gaps !== []) {
-                $scope->bindingGaps[$name] = array_values($gaps);
-            }
+    /**
+     * Cut a name's binding gaps and guards off at an offset, dropping each left holding no read.
+     */
+    private function clipSpans(AnalysisScope $scope, string $name, int $end): void
+    {
+        $gaps = [];
+        $guards = [];
 
-            if ($guards !== []) {
-                $scope->varGuardBindings[$name] = array_values($guards);
-            }
+        foreach ($scope->bindingGaps[$name] ?? [] as $gap) {
+            $gap[1] = min($gap[1], $end);
+            $gaps = $gap[0] < $gap[1] ? [...$gaps, $gap] : $gaps;
+        }
+
+        foreach ($scope->varGuardBindings[$name] ?? [] as $guard) {
+            $guard['before'] = min($guard['before'] ?? $end, $end);
+            $guards = $guard['after'] < $guard['before'] ? [...$guards, $guard] : $guards;
+        }
+
+        unset($scope->bindingGaps[$name], $scope->varGuardBindings[$name]);
+
+        if ($gaps !== []) {
+            $scope->bindingGaps[$name] = $gaps;
+        }
+
+        if ($guards !== []) {
+            $scope->varGuardBindings[$name] = $guards;
         }
     }
 
@@ -788,7 +808,8 @@ trait CollectsLocalVarBindings
 
         return array_values(array_filter(
             $writes,
-            fn (array $write): bool => $write[3] !== VariableWrite::MemberOrOffset || ! ($holdsModels[$write[0]] ?? false),
+            fn (array $write): bool => $write[3] !== VariableWrite::MemberOrOffset
+                || ! ($holdsModels[$write[0]] ?? false),
         ));
     }
 
@@ -854,8 +875,9 @@ trait CollectsLocalVarBindings
         [$holder, $member] = $this->writtenMember($node) ?? [null, '', false];
         $relation = $holder instanceof PropertyFetch && $holder->var instanceof Variable && $holder->var->name === $name
             && $holder->name instanceof Identifier ? $holder->name->toString() : null;
+        $relations = resolve(ModelAttributeResolver::class);
         $related = $relation === null ? [] : array_map(
-            fn (string $model): ?string => resolve(ModelAttributeResolver::class)->resolveRelation($model, $relation)['modelFqcn'],
+            fn (string $model): ?string => $relations->resolveRelation($model, $relation)['modelFqcn'],
             $models,
         );
         $holds = match (true) {
@@ -1190,7 +1212,7 @@ trait CollectsLocalVarBindings
                     : [
                         [$assigned],
                         false,
-                        $state[2] && $own[0][1] !== $ender && ($this->bindsValue($name, $scope) || ! $this->typedAtSeed($assigned, $scope)),
+                        $state[2] && $own[0][1] !== $ender && $this->keepsReceiverPast($name, $assigned, $scope),
                         $this->nothingNested($state),
                     ],
                 default => $this->joinNested($own, $state),
@@ -1426,15 +1448,24 @@ trait CollectsLocalVarBindings
     }
 
     /**
+     * Whether a receiver keeps a name's binding past its own `$x = …;`: beside a value binding, or past a model's
+     * write of a value the scan cannot type.
+     */
+    private function keepsReceiverPast(string $name, Expr $written, AnalysisScope $scope): bool
+    {
+        return $this->bindsValue($name, $scope) || ! $this->typedAtSeed($written, $scope);
+    }
+
+    /**
      * Whether the scan types a value without the engine, so a model's receiver need not outlast a write of it: a
      * constant, a scalar cast, a string built by `.` or interpolation, or a column a model holds.
      */
     private function typedAtSeed(Expr $value, AnalysisScope $scope): bool
     {
-        $member = ($value instanceof PropertyFetch || $value instanceof NullsafePropertyFetch) && $value->name instanceof Identifier
-            ? $value->name->toString()
-            : null;
-        $models = $member === null ? [] : resolve(ReceiverClassResolver::class)->resolve($value->var, $scope)?->models() ?? [];
+        $member = ($value instanceof PropertyFetch || $value instanceof NullsafePropertyFetch)
+            && $value->name instanceof Identifier ? $value->name->toString() : null;
+        $held = $member === null ? null : resolve(ReceiverClassResolver::class)->resolve($value->var, $scope);
+        $models = $held?->models() ?? [];
 
         return $this->constantType($value, $scope) !== null
             || ($value instanceof Cast && ! $value instanceof Cast\Object_ && ! $value instanceof Cast\Unset_)
@@ -1657,8 +1688,14 @@ trait CollectsLocalVarBindings
      * @param  list<ArrowFunction|ClosureExpr>  $parked  the closures that never run
      * @param  list<string>  $members
      */
-    private function fillsWithin(array|Node $nodes, string $name, Closure $fill, array $cuts, array $parked, array &$members): bool
-    {
+    private function fillsWithin(
+        array|Node $nodes,
+        string $name,
+        Closure $fill,
+        array $cuts,
+        array $parked,
+        array &$members,
+    ): bool {
         foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
             if (is_array($node) && $this->fillsWithin($node, $name, $fill, $cuts, $parked, $members)) {
                 return true;
@@ -1669,7 +1706,8 @@ trait CollectsLocalVarBindings
 
             if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_
                 || ($start >= 0 && $cut($start) && $cut($node->getEndFilePos()))
-                || (($node instanceof ClosureExpr || $node instanceof ArrowFunction) && ! $this->sharesVariable($node, $name, $parked))
+                || (($node instanceof ClosureExpr || $node instanceof ArrowFunction)
+                    && ! $this->sharesVariable($node, $name, $parked))
             ) {
                 continue;
             }
@@ -1685,7 +1723,9 @@ trait CollectsLocalVarBindings
             foreach ($node->getSubNodeNames() as $subNode) {
                 $child = $node->{$subNode};
 
-                if (($child instanceof Node || is_array($child)) && $this->fillsWithin($child, $name, $fill, $cuts, $parked, $members)) {
+                if (($child instanceof Node || is_array($child))
+                    && $this->fillsWithin($child, $name, $fill, $cuts, $parked, $members)
+                ) {
                     return true;
                 }
             }
@@ -1754,21 +1794,23 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The holder and the column a write through a member or a literal key stores into, and whether a key names it, or
+     * The holder and the column a write through a member or a literal key stores into, and whether a key names it;
      * null for any other write.
      *
      * @return array{Expr, string, bool}|null
      */
     private function writtenMember(Node $node): ?array
     {
-        $target = $node instanceof Assign || $node instanceof AssignOp || $node instanceof PreInc || $node instanceof PostInc
-            || $node instanceof PreDec || $node instanceof PostDec ? $node->var : null;
+        $target = $node instanceof Assign || $node instanceof AssignOp || $node instanceof PreInc
+            || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec ? $node->var : null;
 
-        return match (true) {
-            $target instanceof PropertyFetch && $target->name instanceof Identifier => [$target->var, $target->name->toString(), false],
-            $target instanceof ArrayDimFetch && $target->dim instanceof String_ => [$target->var, $target->dim->value, true],
-            default => null,
-        };
+        if ($target instanceof PropertyFetch && $target->name instanceof Identifier) {
+            return [$target->var, $target->name->toString(), false];
+        }
+
+        return $target instanceof ArrayDimFetch && $target->dim instanceof String_
+            ? [$target->var, $target->dim->value, true]
+            : null;
     }
 
     /**
@@ -1829,9 +1871,11 @@ trait CollectsLocalVarBindings
      */
     private function sharesVariable(ArrowFunction|ClosureExpr $function, string $name, array $parked): bool
     {
+        $declares = fn (Param $param): bool => $param->var instanceof Variable && $param->var->name === $name;
+
         return ! in_array($function, $parked, true) && ($function instanceof ClosureExpr
             ? array_any($function->uses, fn (ClosureUse $use): bool => $use->var->name === $name)
-            : ! array_any($function->params, fn (Param $param): bool => $param->var instanceof Variable && $param->var->name === $name));
+            : ! array_any($function->params, $declares));
     }
 
     /**
@@ -1853,7 +1897,8 @@ trait CollectsLocalVarBindings
         foreach ($finder->findInstanceOf($body, ExpressionStmt::class) as $stmt) {
             $assign = $stmt->expr;
 
-            if ($assign instanceof Assign && ($assign->expr instanceof ClosureExpr || $assign->expr instanceof ArrowFunction)
+            if ($assign instanceof Assign
+                && ($assign->expr instanceof ClosureExpr || $assign->expr instanceof ArrowFunction)
                 && $assign->var instanceof Variable && is_string($assign->var->name)
                 && ($spelled[$assign->var->name] ?? 0) === 1
             ) {

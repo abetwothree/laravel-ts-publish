@@ -1890,8 +1890,10 @@ final class ReceiverClassResolver
             $unsaved = $unsaved || $type->unsaved;
             $keyed = $keyed || $type->keyed;
             $attributeless = $attributeless || $type->attributeless;
-            // Each part with no attributes holds only the columns written into all of them.
-            $filled = ! $type->attributeless ? $filled : ($filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled)));
+            if ($type->attributeless) {
+                // Each part with no attributes holds only the columns written into all of them.
+                $filled = $filled === null ? $type->filled : array_values(array_intersect($filled, $type->filled));
+            }
         }
 
         if ($classes === []) {

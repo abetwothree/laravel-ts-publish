@@ -59,13 +59,14 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         $name = $expr->name->toString();
+        $attributeless = $receiver->attributeless && ! in_array($name, $receiver->filled, true);
         $results = [];
 
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
-                ? $this->modelMember($class, $name, $scope->carriesImports, $receiver->attributeless && ! in_array($name, $receiver->filled, true))
+                ? $this->modelMember($class, $name, $scope->carriesImports, $attributeless)
                 : $this->reflectedProperty($class, $name);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
