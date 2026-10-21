@@ -337,12 +337,16 @@ that writes `$x`, and `T` resolves against `AnalysisScope::$declaringFileClass`,
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
-it with a value naming another class. `AnalysisScope::$bindingEnds` records where, and past it every read takes the
-body's own binding, a ternary narrowing it only past its test, as `ReassignedClosureParamResource` pins. A write in an
-`if`, `elseif`, `else` or `case` block that always leaves the function, outside a `try` whose `catch` or `finally` could
-resume past it, ends it only inside that block, in `AnalysisScope::$bindingGaps`, where a read takes the value the
-block's own `$x = …;` assigned. Past a write nested there in a block that falls through, a read takes that value or the
-old binding's. A span still outlives a write through a by-reference parameter of a callee the scan cannot name.
+it with a value naming another class, or a collection binding's with a base collection of other values, as `pluck()` and
+`map()` hand back; a `merge()`'s Eloquent collection keeps it. A plain value's binding also ends at a top-level
+`$x = …;` naming no class (`keepsBinding()`). `AnalysisScope::$bindingEnds` records where, and past it every read takes
+the body's own binding, a ternary narrowing it only past its test, as `ReassignedClosureParamResource` pins. Past a
+top-level write that keeps a collection binding, such as `$c = $c->keyBy('id');`, a receiver reads the keys it moved
+(`ReceiverClassResolver::rekeyedBefore()`). A write in an `if`, `elseif`, `else` or `case` block that always leaves the
+function, outside a `try` whose `catch` or `finally` could resume past it, ends it only inside that block, in
+`AnalysisScope::$bindingGaps`, where a read takes the value the block's own `$x = …;` assigned. Past a write nested
+there in a block that falls through, a read takes that value or the old binding's. A span still outlives a write through
+a by-reference parameter of a callee the scan cannot name.
 
 `VarTypeWhitelist` lists the forms a tag may use. A callable inside a shape reads `unknown` by design, so
 `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the tag has callables, and
@@ -376,8 +380,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
-  or an operator such as `.=`, leaves the binding standing, since only the old binding is known; a `foreach`, `catch`
-  or by-reference write ends it, but a call that keeps the value's form.
+  or an operator such as `.=`, leaves a class binding standing, since only the old binding is known, and a plain
+  value's past a nested write only; a `foreach`, `catch` or by-reference write ends it, but a call that keeps the
+  value's form.
 
 ## Subject mode
 
