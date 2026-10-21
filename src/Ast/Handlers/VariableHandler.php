@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
@@ -55,6 +56,7 @@ final class VariableHandler implements ExpressionHandler
     use CollectsLocalVarBindings;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
+    use ReadsNonNullGuards;
     use ResolvesMapProxyElementModels;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
@@ -169,7 +171,23 @@ final class VariableHandler implements ExpressionHandler
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
-        return $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
+        $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
+
+        return $kept === null ? null : $this->provenNonNull($expr, $kept, $scope);
+    }
+
+    /**
+     * A bare read's value without its null arm where a guard or a filled-value callback, such as transform()'s, proves
+     * the read non-null; a value that is only null keeps it, since nothing else is left to publish.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
+    {
+        return $value['type'] !== 'null' && ValueResult::hasNullArm($value['type']) && $this->isProvenNonNull($read, $scope)
+            ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
+            : $value;
     }
 
     /**
