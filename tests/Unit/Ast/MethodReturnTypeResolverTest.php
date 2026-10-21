@@ -104,7 +104,7 @@ test('the value read declines a returned closure, a generator, a vendor method a
     'two locals bound to each other' => [NamesakeEdgeResource::class, 'cyclicLocals', null],
     'a generator' => [PostMetaService::class, 'generatedMeta', 'unknown[]'],
     'an iterable, with an iterator return nothing types' => [PostMetaService::class, 'iterableMeta', 'unknown[]'],
-    'a vendor method, whose conditional @return needs a rule of its own' => [Str::class, 'upper', null],
+    'a vendor method, whose conditional @return types nothing' => [Str::class, 'contains', null],
     'a method of this package, which an application installs under vendor/' => [CastHandler::class, 'nodeClasses', 'unknown[]'],
     'a return nothing types' => [NamesakeInvoiceResource::class, 'opaque', null],
 ]);

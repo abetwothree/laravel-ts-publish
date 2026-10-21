@@ -1157,10 +1157,22 @@ describe('extractReturnTypeFromDocblock', function () {
         'a callable spaced before its colon' => ['/** @return callable(int) : string The callback */', 'callable(int) : string'],
     ]);
 
-    test('keeps the first-token reading of a conditional return type', function () {
-        expect($this->service->extractReturnTypeFromDocblock("/** @return (\$value is '' ? '' : string) */"))
-            ->toBe('($value');
-    });
+    test('reads a conditional return type whose every branch is a string as string', function (string $doc) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string');
+    })->with([
+        'an empty literal or a string' => ["/** @return (\$value is '' ? '' : string) */"],
+        'an intersection of string types' => ["/** @return (\$value is '' ? '' : non-empty-string&uppercase-string) */"],
+        'a nested conditional' => ["/** @return (\$value is '' ? (\$cap is '' ? '' : non-empty-string) : non-empty-string) */"],
+        'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
+    ]);
+
+    test('keeps the first-token reading of a conditional return type a branch of which is no string', function (string $doc, string $reading) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+    })->with([
+        'a list branch' => ['/** @return ($value is string ? string : string[]) */', '($value'],
+        'a false branch' => ["/** @return (\$haystack is '' ? false : string) */", '($haystack'],
+        'a union branch' => ["/** @return (\$string is '' ? '' : string|false) */", '($string'],
+    ]);
 
     test('keeps the first-token reading of a conditional return type Laravel declares', function (
         string $class,
@@ -1175,9 +1187,10 @@ describe('extractReturnTypeFromDocblock', function () {
 
         expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
     })->with([
-        'Str::upper' => [Str::class, 'upper', '($value'],
+        'Str::upper' => [Str::class, 'upper', 'string'],
+        'Str::lower' => [Str::class, 'lower', 'string'],
         'Str::contains' => [Str::class, 'contains', '($needles'],
-        'Str::password' => [Str::class, 'password', '($letters'],
+        'Str::password' => [Str::class, 'password', 'string'],
         'Arr::random' => [Arr::class, 'random', '($number'],
         'Collection::sum' => [Collection::class, 'sum', '($callback'],
     ]);

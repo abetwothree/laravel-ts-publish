@@ -18346,7 +18346,7 @@
                 },
                 {
                     "name": "formatted",
-                    "type": "unknown",
+                    "type": "string",
                     "optional": false
                 },
                 {

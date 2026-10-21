@@ -1099,9 +1099,9 @@ class LaravelTsPublish
             return null;
         }
 
-        // A conditional keeps its first-token reading: whole, toTsType()'s partial match would guess from its arms.
+        // Any other conditional keeps its first token: whole, toTsType()'s partial match would guess from its arms.
         if (preg_match('/^\(\s*(\S+)\s+is\s/', $type, $condition) === 1) {
-            return '('.$condition[1];
+            return $this->isStringConditional($type) ? 'string' : '('.$condition[1];
         }
 
         return $this->normalizeDocblockWhitespace($type);
@@ -2715,6 +2715,31 @@ class LaravelTsPublish
 
         // An escape past U+10FFFF, or a raw `\x..` byte, leaves no text a .ts file can hold.
         return preg_match('//u', $value) === 1 ? $value : null;
+    }
+
+    /**
+     * Whether every branch a conditional return type `($x is T ? A : B)` takes, a nested conditional's too, is a string
+     * type: a string literal, `string` or a `…-string` subtype, alone or in a union or an intersection of them.
+     */
+    protected function isStringConditional(string $type): bool
+    {
+        if (! TsTypeShape::isWrapped($type, '(', ')')) {
+            return false;
+        }
+
+        $test = TsTypeShape::splitTopLevel(substr($type, 1, -1), ['?']);
+        $branches = count($test) === 2 ? TsTypeShape::splitTopLevel($test[1], [':']) : [];
+
+        return count($branches) === 2 && array_all($branches, fn (string $branch): bool => $this->isStringConditional($branch)
+            || array_all(TsTypeShape::splitTopLevel($branch, ['|', '&']), $this->isPhpDocStringType(...)));
+    }
+
+    /**
+     * Whether a PHPDoc type is a string literal, `string` or a `…-string` subtype such as `non-empty-string`.
+     */
+    protected function isPhpDocStringType(string $phpType): bool
+    {
+        return preg_match('/^(?:[a-z]+-)*string$/i', $phpType) === 1 || $this->phpDocStringLiteral($phpType) !== null;
     }
 
     /**

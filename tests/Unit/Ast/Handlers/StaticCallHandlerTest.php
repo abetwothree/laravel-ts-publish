@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
@@ -958,6 +959,15 @@ it('reads self and static as the subject in any case, and leaves parent out', fu
     'new SELF()' => ['new SELF($this->author)', 'PostResource'],
     'parent::make()' => ['parent::make($this->author)', 'unknown'],
 ]);
+
+// Each branch of the conditional `@return` both declare is a string.
+it('reads Str::upper() and Str::lower() of a string as the string Laravel sends', function () {
+    $post = new Post;
+    $post->forceFill(['title' => 'First', 'options' => []]);
+
+    expect(publishedResourceKeyTypes(DirectCallsResource::class, Post::class))->toMatchArray(['upper' => 'string', 'lower' => 'string'])
+        ->and(new DirectCallsResource($post)->resolve(Request::create('/')))->toMatchArray(['upper' => 'FIRST', 'lower' => 'first']);
+});
 
 // Inside a resource's toArray(), filter() serializes a nested resource whose payload is null as null.
 it('adds the null arm a nullable payload gives a nested resource, only inside a resource', function (string $subject, string $type) {

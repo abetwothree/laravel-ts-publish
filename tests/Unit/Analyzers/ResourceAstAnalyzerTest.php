@@ -1907,10 +1907,11 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
             ->and($dynamic['optional'])->toBeTrue();
     });
 
-    test('resolves non-resource static call as unknown', function () {
+    // Str::upper() declares a conditional `@return` whose every branch is a string; even a null note sends `''`.
+    test('resolves a non-resource static call by the return type it declares', function () {
         $formatted = collect($this->analysis->properties)->firstWhere('name', 'formatted');
 
-        expect($formatted['type'])->toBe('unknown');
+        expect($formatted['type'])->toBe('string');
     });
 
     test('resolves Resource::make with non-conditional arg as non-optional', function () {
@@ -7627,8 +7628,8 @@ test('a resource method whose own declaration is vague publishes what its return
     'a string or a number' => ['branchy', 'string | number'],
 ]);
 
-// The last three need rules of their own: a conditional return type, a finder in this profile, keys() in a pipeline.
-test('a helper read as a value publishes what its returns hold, and three whenHas() callbacks stay unread', function (string $key, string $type) {
+// The last two need rules of their own: a finder in this profile, keys() in a pipeline.
+test('a helper read as a value publishes what its returns hold, and two whenHas() callbacks stay unread', function (string $key, string $type) {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
@@ -7644,7 +7645,7 @@ test('a helper read as a value publishes what its returns hold, and three whenHa
     'an untyped attribute read' => ['untyped_title', 'string'],
     'a variable returned after a closure\'s own return' => ['closure_first', '{ title: string; active: number }'],
     'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
-    'Str::upper()' => ['str_static', '?unknown'],
+    'Str::upper(), whose conditional return is a string either way' => ['str_static', '?string'],
     'a finder' => ['find', '?unknown'],
     'keys()' => ['keys', '?unknown'],
 ]);
