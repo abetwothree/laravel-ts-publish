@@ -382,15 +382,15 @@ within, and `array_walk_recursive()` each leaf. A walk's callback values are rea
 parameters bound to the element and its key, and `.=` or an arithmetic operator as the operation it performs. A
 `foreach` element written before the loop counts only when a loop around both can run it again. A call on a literal key
 of a local, such as `sort($groups['x'])`, needs the member at that key to keep the form. `preg_match()` with no flags
-and a literal pattern naming no group writes its `$matches` variable a list of strings, `WritesMatches`. That replaces
-only a value the scan never typed or an empty or string list, since a call that may not run leaves what the variable
-held, and `VariableHandler` reads it for a name nothing else binds. Every other callee, a flag, a named group or a
-computed key replaces the value. `seedBody()` counts no keeping call as a write and records its form in
-`AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end or gap is: a copy taken
-before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or drops a read whose
-value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's, and `WritesMatches` ends
-every binding. A reader that takes a local by its syntax, such as an array literal's keys, reads
-`literalLocalBindings()`, which leaves such a local out.
+and a literal pattern naming no group writes its `$matches` variable a list of strings, `WritesMatches`. A call may not
+run, so the list replaces a held value only where that is an empty or string list, and a parameter's binding ends only
+at a call that is a statement of the body. A name no binding and no other write reaches holds the list past the call,
+the form's `sole`: a skipped call leaves it undefined, which Laravel throws on and `??` replaces. Every other callee, a
+flag, a named group or a computed key replaces the value. `seedBody()` counts no keeping call as a write and records its
+form in `AnalysisScope::$byReferenceForms`, with the span of reads it holds for, placed as a binding end or gap is: a
+copy taken before the call reads the value as it was. `VariableHandler` reads the value the forms leave, or drops a read
+whose value lacks one. A class binding ends there, since no form but `ksort()`'s is an object's. A reader that takes a
+local by its syntax, such as an array literal's keys, reads `literalLocalBindings()`, which leaves such a local out.
 
 ### What deliberately stays unbound
 

@@ -21,14 +21,13 @@ one of the two tests.
 
 `$cond ? $untypable : null` and `$this->opaque() ?: null` publish `null`, because the engine drops the arm it cannot
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
-drop). `$matches ?? []` past a `preg_match()` that passes flags, or whose pattern names a group, publishes `never[]`
-the same way, though Laravel sends the groups nested or keyed by name. Widening the union to `unknown` would be more
-honest but less specific. A spread helper's key or a model
-accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
-`null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole
-call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose
-untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
-`#[TsCasts]`, and it comes back.
+drop). `$matches ?? []` past a `preg_match()` that passes flags, or whose pattern names a group, publishes `never[]` the
+same way, though Laravel sends the groups nested or keyed by name. Widening the union to `unknown` would be more honest
+but less specific. A spread helper's key or a model accessor's getter body left with only that `null` publishes
+`unknown` instead, while a getter that only ever returns `null` still publishes `null`. A method read as a value is the
+exception: one return it cannot type leaves the whole call `unknown`, or the vague type it declares. So is
+`$this->resource` read whole under its own `instanceof` test, whose untypable class leaves the whole ternary `unknown`.
+Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes back.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -613,9 +612,8 @@ as `strlen(...)` is read by where it sits. Props an Inertia controller delegates
 helper method the action calls, are read as that method's own values, so a first-class callable there publishes
 `Record<string, never>`, and `ts:publish` warns, though Inertia calls it. Use a closure such as
 `fn () => $this->label()` there instead. A closure held in a local and passed to a helper, read as a value or spread,
-publishes what it returns, as in `$f = fn () => 1;
-$this->hold($f)` where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that
-key with `#[TsCasts]`.
+publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns `['v' => $v]`:
+`{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 
