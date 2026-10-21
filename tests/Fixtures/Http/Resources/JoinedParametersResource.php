@@ -11,9 +11,9 @@ use RuntimeException;
 use Workbench\App\Models\Post;
 
 /**
- * Closure parameters a write inside a block may replace, read past that block: transform()'s passed the title, a
- * property no rule types or a call no rule types, ones, whenLoaded()'s too, that a value no rule types replaces, and
- * one a `try` writes.
+ * Parameters a write inside a block may replace, read past that block: transform()'s passed the title, a property no
+ * rule types or a call no rule types, ones, whenLoaded()'s too, that a value no rule types replaces, one a `try`
+ * writes, and a helper's, which declares a string, read before and past its writes.
  *
  * @mixin Post
  */
@@ -90,6 +90,8 @@ final class JoinedParametersResource extends JsonResource
 
                 return $title;
             }),
+            'helper_joined' => $this->labelFor($this->title),
+            'helper_copy' => $this->copyBefore($this->title),
         ];
     }
 
@@ -107,5 +109,28 @@ final class JoinedParametersResource extends JsonResource
     private function risky(): int
     {
         return $this->is_pinned ? throw new RuntimeException('pinned') : 3;
+    }
+
+    /**
+     * The label, or the post's key for a pinned post.
+     */
+    private function labelFor(string $label)
+    {
+        if ($this->is_pinned) {
+            $label = $this->id;
+        }
+
+        return $label;
+    }
+
+    /**
+     * The label as it was passed, copied before the body writes it.
+     */
+    private function copyBefore(string $label)
+    {
+        $copy = $label;
+        $label = 5;
+
+        return $copy;
     }
 }

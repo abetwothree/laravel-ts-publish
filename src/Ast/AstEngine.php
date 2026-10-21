@@ -170,7 +170,7 @@ final class AstEngine
             $method = $context->reflection->getMethod($methodName);
             $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
 
-            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+            resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
         }
 
         $this->seedBody($stmts, $scope);

@@ -186,8 +186,8 @@ trait CollectsLocalVarBindings
      * never joined: another name or a closure may write it at any point, as blockSpanEnd() also declines.
      *
      * A parameter, or a seeded name, starts holding its binding, which nested writes join for a value read only. While
-     * it holds, a write of another kind, or a class binding's own `$x = …;`, stops the walk, leaving the rest to
-     * endBindingsAtWrites(); a value binding's own `$x = …;` replaces it. Past an ending write it walks as a local.
+     * it holds, a write of another kind, or its own `$x = …;` where it binds no value, stops the walk, leaving the rest
+     * to endBindingsAtWrites(); else that `$x = …;` replaces the value. Past an ending write it walks as a local.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites  $writes  the body's writes that replace a variable
@@ -932,8 +932,8 @@ trait CollectsLocalVarBindings
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
                 $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $state, $scope),
-                // Past its own `$x = …;` a parameter's class binding is endBindingsAtWrites()'s to keep or end.
-                $assigned !== null => $state[2] && ! $this->bindsValueOnly($name, $scope) ? null : [[$assigned], false, $state[2]],
+                // Past its own `$x = …;` a value read takes what it wrote; a class alone is endBindingsAtWrites()'s.
+                $assigned !== null => $state[2] && ! $this->bindsValue($name, $scope) ? null : [[$assigned], false, $state[2]],
                 default => $this->joinNested($own, $state),
             };
 
@@ -1129,6 +1129,14 @@ trait CollectsLocalVarBindings
         }
 
         return $target instanceof Variable && $target->name === $name;
+    }
+
+    /**
+     * Whether a name binds a value, alone or beside the class a receiver reads, which a value read takes.
+     */
+    private function bindsValue(string $name, AnalysisScope $scope): bool
+    {
+        return isset($scope->varValueBindings[$name]) || $this->bindsValueOnly($name, $scope);
     }
 
     /**

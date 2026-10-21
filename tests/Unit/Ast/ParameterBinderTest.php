@@ -7,8 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -16,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperParamsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -23,7 +22,6 @@ use Illuminate\Http\Request;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 use Workbench\App\Events\PostHelperPayloadEvent;
 use Workbench\App\Http\Resources\CallableValueResource;
 use Workbench\App\Http\Resources\PostHelperParamsResource;
@@ -70,16 +68,6 @@ function parameterBinderPassed(array $arguments): array
     }
 
     return $passed;
-}
-
-/**
- * The body a HelperParameterKindsResource helper declares.
- *
- * @return array<Stmt>
- */
-function parameterBinderBody(string $method): array
-{
-    return resolve(MethodLocator::class)->locate(HelperParameterKindsResource::class, $method)?->method->stmts ?? [];
 }
 
 /**
@@ -160,7 +148,7 @@ test('each kind of declared parameter binds as the value a call passes it', func
     ]);
 });
 
-// A value binding outlives a write naming no class, so a written parameter binds none: its single-write local answers.
+// A value binding ends past the parameter's own top-level `$x = …;`, whose value reads the parameter's old one.
 test('a helper that replaces its typed parameter with a value of another type reads what the body wrote', function () {
     expect(parameterBinderKinds())->toMatchArray([
         'amount' => 'string',
@@ -172,6 +160,17 @@ test('a helper that replaces its typed parameter with a value of another type re
         'p_title' => 'string',
         'filled' => '{ p_title: string }',
     ]);
+});
+
+// The class a receiver reads stays past a write naming none, but the value read takes what the body wrote.
+test('a helper\'s parameter that declares a class reads its value before its own write, and the written value past it', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+
+    expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(WrittenDeclaredParametersResource::class, 'toArray', Post::class)->properties))
+        ->toBe(['title_of' => 'string | null', 'copied' => 'Post | null', 'decoded' => 'unknown', 'views_of' => 'number'])
+        ->and(json_decode((string) json_encode(new WrittenDeclaredParametersResource($post)->resolve(Request::create('/'))), true))
+        ->toBe(['title_of' => 'Banana', 'copied' => ['id' => 7, 'title' => 'Banana'], 'decoded' => [], 'views_of' => 1]);
 });
 
 test('a spread call passes its argument to an untyped by-reference parameter', function () {
@@ -241,7 +240,7 @@ test('binds each parameter into the table its declared type belongs in, and leav
     $scope = new AnalysisScope($reflection, Post::class);
 
     foreach (['nullableModel', 'union', 'valueObject', 'request', 'scalar'] as $method) {
-        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), parameterBinderBody($method), [], $scope);
+        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), [], $scope);
     }
 
     expect($scope->varModelBindings)->toBe([])
@@ -256,8 +255,8 @@ test('binds a Request parameter as a request, unless the subject is an API resou
     $event = new AnalysisScope(new ReflectionClass(RequestRoleHelperEvent::class));
     $resource = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
 
-    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(RequestRoleHelperEvent::class, 'roleOf'), [], [], $event);
-    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(HelperParameterKindsResource::class, 'request'), parameterBinderBody('request'), [], $resource);
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(RequestRoleHelperEvent::class, 'roleOf'), [], $event);
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(HelperParameterKindsResource::class, 'request'), [], $resource);
 
     expect($event->requestVarNames)->toBe(['request' => Request::class])
         ->and($event->varDeclaredBindings)->toBe([])
@@ -274,28 +273,29 @@ test('passes a value without the caller\'s optional or its absent-field marker',
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostHelperParamsResource::class), Post::class);
 
-    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(PostHelperParamsResource::class, 'card'), [], [], $scope);
+    resolve(ParameterBinder::class)->bindCall(new ReflectionMethod(PostHelperParamsResource::class, 'card'), [], $scope);
 
     expect($scope->varModelBindings)->toBe(['post' => Post::class])
         ->and($scope->varValueBindings)->toBe([]);
 });
 
-// The body's write ends a class binding where it replaces the value, but a value binding would outlive it.
-test('binds the classes of a parameter the body writes but not its value, and a name already bound stays as it is', function () {
+// seedBody() ends each binding where a write replaces it, so a read before the write still has the parameter's value.
+test('binds a parameter the body writes by its classes and its value, and a name already bound stays as it is', function () {
     $reflection = new ReflectionClass(HelperParameterKindsResource::class);
     $written = new AnalysisScope($reflection, Post::class);
     $seeded = new AnalysisScope($reflection, Post::class);
     $seeded->varModelBindings['post'] = User::class;
 
     foreach (['written', 'filled', 'formatted', 'joined'] as $method) {
-        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), parameterBinderBody($method), [], $written);
+        resolve(ParameterBinder::class)->bindCall($reflection->getMethod($method), [], $written);
     }
 
-    resolve(ParameterBinder::class)->bindCall($reflection->getMethod('written'), parameterBinderBody('written'), [], $seeded);
+    resolve(ParameterBinder::class)->bindCall($reflection->getMethod('written'), [], $seeded);
 
     expect($written->varModelBindings)->toBe(['post' => Post::class])
         ->and($written->varDeclaredBindings)->toBe(['p' => [Post::class]])
-        ->and($written->varValueBindings)->toBe([])
+        ->and(array_map(fn (array $value): string => $value['type'], $written->varValueBindings))
+        ->toBe(['p' => 'Post | null', 'amount' => 'number', 'tags' => 'string[]'])
         ->and($seeded->varModelBindings)->toBe(['post' => User::class]);
 });
 
@@ -303,7 +303,7 @@ test('binds what a spread call passes: one concrete model by its class, a nullab
     $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
     $nullable = ['type' => 'Post | null', 'optional' => true, 'modelFqcn' => Post::class];
 
-    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
+    resolve(ParameterBinder::class)->bindPassed(parameterBinderPassed([
         'post' => ['value' => ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class], 'receiver' => ReceiverType::of(Post::class)],
         'maybe' => ['value' => $nullable, 'receiver' => ReceiverType::of(Post::class)],
         'owner' => ['value' => ['type' => 'Post | User', 'optional' => false], 'receiver' => new ReceiverType([Post::class, User::class])],
@@ -327,7 +327,7 @@ test('binds a passed model that may short-circuit by its value alone, and one no
     $post = ['type' => 'Post', 'optional' => false, 'modelFqcn' => Post::class];
     $either = ['type' => 'Post | User', 'optional' => false];
 
-    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
+    resolve(ParameterBinder::class)->bindPassed(parameterBinderPassed([
         'shortCircuits' => ['value' => $post, 'receiver' => ReceiverType::of(Post::class, shortCircuits: true)],
         'unsaved' => ['value' => $post, 'receiver' => ReceiverType::of(Post::class)->asUnsaved()],
         'copy' => ['value' => $either, 'receiver' => new ReceiverType([Post::class, User::class], unsaved: true)],
@@ -349,7 +349,7 @@ test('binds a passed Eloquent collection of one model by its element, unless a s
     $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
     $comments = ['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class];
 
-    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
+    resolve(ParameterBinder::class)->bindPassed(parameterBinderPassed([
         'listed' => ['value' => $comments, 'receiver' => new ReceiverType([EloquentCollection::class], elementModel: Comment::class)],
         'keyed' => ['value' => $comments, 'receiver' => new ReceiverType([EloquentCollection::class], elementModel: Comment::class, keyed: true)],
     ]), $scope);
@@ -358,20 +358,6 @@ test('binds a passed Eloquent collection of one model by its element, unless a s
         ->and($scope->varDeclaredBindings)->toBe(['keyed' => [EloquentCollection::class]])
         ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('listed'), $scope)?->elementModel)->toBe(Comment::class)
         ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('keyed'), $scope)?->elementModel)->toBeNull();
-});
-
-test('binds the classes a spread call passes a parameter the body writes, but not its value', function () {
-    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
-    /** @var array<Stmt> $stmts */
-    $stmts = new AstParser()->parseSource('<?php $owner = $owner->author; $title = trim($title);');
-
-    resolve(ParameterBinder::class)->bindPassed($stmts, parameterBinderPassed([
-        'owner' => ['value' => ['type' => 'Post | User', 'optional' => false], 'receiver' => new ReceiverType([Post::class, User::class])],
-        'title' => ['value' => ['type' => 'string', 'optional' => false], 'receiver' => null],
-    ]), $scope);
-
-    expect($scope->varDeclaredBindings)->toBe(['owner' => [Post::class, User::class]])
-        ->and($scope->varValueBindings)->toBe([]);
 });
 
 test('reads one parameter\'s @phpstan-param, @psalm-param or @param tag, and declines a form the whitelist refuses', function (string $doc, ?string $expected) {

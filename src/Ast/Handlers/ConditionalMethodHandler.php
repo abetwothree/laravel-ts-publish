@@ -1055,7 +1055,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $binding = $binder->passedBinding($filled, $model);
 
             if ($binding !== null) {
-                $binder->bindPassed($callback->getStmts(), [$name => $binding], $scope);
+                $binder->bindPassed([$name => $binding], $scope);
             }
 
             return;

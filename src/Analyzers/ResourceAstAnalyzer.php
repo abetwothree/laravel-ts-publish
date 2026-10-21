@@ -584,7 +584,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function seedVarBindings(?ReflectionMethod $method, array $stmts, array $passed = []): void
     {
         if ($method !== null) {
-            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $this->scope);
+            resolve(ParameterBinder::class)->bindCall($method, $passed, $this->scope);
         }
 
         $this->seedBody($stmts, $this->scope);

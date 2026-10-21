@@ -74,6 +74,16 @@ test('a parameter written inside a block joins its old value and the write\'s', 
         ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['caught_joined' => 3]);
 });
 
+// The declared string holds for a read before the body's write, and joins a branch's write for a read past it.
+test('a helper\'s parameter the body writes reads its declared value before the write, and a branch\'s write past it', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
+        'helper_joined' => 'string | number',
+        'helper_copy' => 'string',
+    ])
+        ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['helper_joined' => 7, 'helper_copy' => 'Banana'])
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['helper_joined' => 'Banana']);
+});
+
 // A written value no rule types is left out of the join, as a receiver keeps the old binding past it.
 test('a parameter keeps its old value past a nested write the engine cannot type', function () {
     expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([

@@ -83,7 +83,7 @@ final class SubjectHelperReturnResolver
         );
 
         try {
-            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+            resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
             $this->seedBody($stmts, $scope);
 
             $result = ValueResult::analyzeClosureUnion($returns, $engine, $scope);
