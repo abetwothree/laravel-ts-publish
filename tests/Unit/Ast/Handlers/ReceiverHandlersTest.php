@@ -814,7 +814,8 @@ describe('ReceiverPropertyFetchHandler', function () {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 
         expect(new ReceiverPropertyFetchHandler()->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine())['type'] ?? null)
-            ->toBe($type);
+            ->toBe($type)
+            ->and((new Product)->id)->toBeNull();
     })->with([
         ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number | null'],
         ['($this->status ? new '.Product::class.' : $this->author)?->id', 'string | number | null'],
