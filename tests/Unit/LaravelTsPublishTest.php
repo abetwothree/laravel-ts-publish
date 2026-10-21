@@ -1739,19 +1739,20 @@ describe('resolveGenericContainerType() key refinements', function () {
 });
 
 describe('PHPDoc integer subtypes', function () {
-    test('reads an integer range or a named integer subtype as a number, through every docblock reader', function (string $phpType) {
-        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe('number')
-            ->and($this->service->resolvePhpDocTypeToTs("{$phpType}|null", [], ''))->toBe('number | null')
-            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe('number')
-            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", [], '')['type'] ?? null)->toBe('number[]');
+    test('reads an integer range or a named integer subtype as a number, through every docblock reader', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolvePhpDocTypeToTs("{$phpType}|null", [], ''))->toBe("{$expected} | null")
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected)
+            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", [], '')['type'] ?? null)->toBe("{$expected}[]");
     })->with([
-        'a range up to max' => ['int<0, max>'],
-        'a bounded range' => ['int<1, 10>'],
-        'positive-int' => ['positive-int'],
-        'non-negative-int' => ['non-negative-int'],
-        'negative-int' => ['negative-int'],
-        'non-positive-int' => ['non-positive-int'],
-        'non-zero-int' => ['non-zero-int'],
+        'a range up to max' => ['int<0, max>', 'number'],
+        'a bounded range' => ['int<1, 10>', 'number'],
+        'positive-int' => ['positive-int', 'number'],
+        'non-negative-int' => ['non-negative-int', 'number'],
+        'negative-int' => ['negative-int', 'number'],
+        'non-positive-int' => ['non-positive-int', 'number'],
+        'non-zero-int' => ['non-zero-int', 'number'],
+        'a range inside a shape' => ['array{a: int<1, 5>}', '{ a: number }'],
     ]);
 });
 
