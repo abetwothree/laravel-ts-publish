@@ -326,18 +326,20 @@ trait ReadsReturnedVariables
      * The branches a closure's returns can merge, none when no branch sets a key.
      *
      * One per returned array, `[]` included, one per returned variable the walk reads completely, however often it is
-     * returned, and one per other value mergedValueBranch() reads, with whether every return was read completely.
+     * returned, and one per other value mergedValueBranch() reads, with whether every return was read completely. A
+     * variable returned alone is read for the keys its walk sees, as a method's lone returned variable is.
      *
      * @return array{list<TAnalysis>, bool}
      */
     protected function closureReturnBranches(Expr $closure): array
     {
         $stmts = $closure instanceof ClosureExpr ? $closure->stmts : [];
+        $returns = $this->resolveClosureReturnExpressions($closure);
         $branches = [];
         $read = [];
         $complete = true;
 
-        foreach ($this->resolveClosureReturnExpressions($closure) as $returned) {
+        foreach ($returns as $returned) {
             if ($returned instanceof Array_) {
                 $branches[] = $this->mergedArrayAnalysis($returned);
 
@@ -350,7 +352,9 @@ trait ReadsReturnedVariables
                 }
 
                 $read[$returned->name] = true;
-                $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
+                $branch = count($returns) === 1
+                    ? $this->resolveVariableReturnAnalysis($stmts, $returned->name, topLevel: false)
+                    : $this->variableBranch($stmts, $returned->name, topLevel: false);
             } else {
                 $branch = $this->mergedValueBranch($returned);
             }

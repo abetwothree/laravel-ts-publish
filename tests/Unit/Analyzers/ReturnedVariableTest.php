@@ -47,6 +47,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedJoinedKey
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalOperandsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLoopResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeClosureVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMixedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
@@ -741,7 +742,9 @@ test('an unset() of a key a literal local holds removes that key', function (str
         [['slim' => '0'], ['id' => 9, 'name' => 'php', 'slug' => 'php']],
         [['slim' => '1'], ['id' => 9]],
     ]],
-    'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string', [
+    // The second closure returns alone a variable an unset() it cannot name may shrink: read leniently, as a method's
+    // lone variable is, its keys stay required (a known gap), though `?hide=color` drops `color`.
+    'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string; color: string | null; label: string', [
         [['hide' => ''], ['id' => 9, 'name' => 'php', 'color' => null, 'label' => 'php']],
         [['hide' => 'color'], ['id' => 9, 'name' => 'php', 'label' => 'php']],
     ]],
@@ -797,4 +800,13 @@ test('a helper read as a value with a multi-write returned variable beside liter
         ->toBe(['key_written' => ['id' => 4, 'title' => 'Hello'], 'unset_beside' => ['id' => 4]])
         ->and(sentPostBuiltValues(['published_at' => null], ['short' => '1']))
         ->toBe(['key_written' => ['id' => 4], 'unset_beside' => ['id' => 4]]);
+});
+
+test('a merge closure\'s lone returned variable merges the keys the walk reads', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9]);
+
+    expect(returnedVariableMembers(ReturnedMergeClosureVariableResource::class))->toBe('id: number; x21_a?: number')
+        ->and(new ReturnedMergeClosureVariableResource($tag)->resolve(Request::create('/', 'GET', ['key' => 'extra'])))
+        ->toBe(['id' => 9, 'x21_a' => 9, 'extra' => 1]);
 });
