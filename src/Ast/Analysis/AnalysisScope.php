@@ -543,6 +543,14 @@ final class AnalysisScope
     }
 
     /**
+     * Whether a name holds a parameter's or a seeded binding other than a plain value, which may name a class.
+     */
+    public function bindsClassName(string $name): bool
+    {
+        return array_any($this->classBindingTables(), fn (array $table): bool => isset($table[$name]));
+    }
+
+    /**
      * Whether any name holds a parameter's or a seeded binding, so a body's writes can end one.
      */
     public function bindsAnyName(): bool
@@ -857,12 +865,21 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
+        return [...$this->classBindingTables(), $this->varValueBindings];
+    }
+
+    /**
+     * The tables that hold a parameter's or a seeded binding other than a plain value.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function classBindingTables(): array
+    {
         return [
             $this->varModelBindings,
             $this->varDeclaredBindings,
             $this->varCollectionBindings,
             $this->varClassBindings,
-            $this->varValueBindings,
             $this->closureParamExprBindings,
             $this->requestVarNames,
         ];

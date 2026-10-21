@@ -113,12 +113,7 @@ final class ClosureHandler implements ExpressionHandler
                 || $class === null
                 || $param->variadic
                 || (! class_exists($class) && ! interface_exists($class))
-                || isset($scope->varModelBindings[$name])
-                || isset($scope->varDeclaredBindings[$name])
-                || isset($scope->varCollectionBindings[$name])
-                || isset($scope->varClassBindings[$name])
-                || isset($scope->closureParamExprBindings[$name])
-                || isset($scope->requestVarNames[$name])
+                || $scope->bindsClassName($name)
                 || $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
             ) {
                 continue;

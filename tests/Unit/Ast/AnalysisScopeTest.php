@@ -260,6 +260,23 @@ it('binds a name a parameter or a seeded binding holds, never one only the body\
         ->and($scope->bindsName('missing'))->toBeFalse();
 });
 
+it('binds a class name from every parameter table but the plain values', function () {
+    $scope = analysisScopeWithEveryTableBound();
+    $bodyOnly = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $bodyOnly->localVarBindings['item'] = new Variable('outer');
+    $tables = ['varModelBindings', 'varDeclaredBindings', 'varCollectionBindings', 'varClassBindings', 'varValueBindings', 'closureParamExprBindings', 'requestVarNames'];
+
+    foreach ($tables as $table) {
+        $one = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $one->{$table}['item'] = $scope->{$table}['item'];
+
+        expect($one->bindsClassName('item'))->toBe($table !== 'varValueBindings', $table);
+    }
+
+    expect($bodyOnly->bindsClassName('item'))->toBeFalse()
+        ->and($scope->bindsClassName('missing'))->toBeFalse();
+});
+
 // Past its end the variable holds only what the body assigned, so the parameter must not inherit the old class.
 it('copies only the body\'s own bindings of a variable passed past its end, and ends the parameter\'s before any read', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
