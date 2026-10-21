@@ -535,8 +535,10 @@ trait ReadsReturnedVariables
 
         $branches = [...($mayRunNone ? [clone $into] : []), ...$walked];
 
-        foreach (array_slice($branches, 1) as $branch) {
-            $branch->dropRepeatsOf($branches[0]);
+        foreach ($branches as $index => $branch) {
+            foreach (array_slice($branches, 0, $index) as $earlier) {
+                $branch->dropRepeatsOf($earlier);
+            }
         }
 
         $into->replaceWith($this->joinedBranches($branches));

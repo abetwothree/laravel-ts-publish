@@ -482,17 +482,30 @@ test('a value a branch cannot type drops beside a typed one, and a lone null sta
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
 ]);
 
-test('a key no branch rewrites keeps one copy of its queued classes however many joins it passes', function () {
-    $chains = implode(' ', array_map(
-        fn (int $i): string => "if (\$x{$i}) { \$d['k{$i}'] = {$i}; } else { \$d['k{$i}'] = 'v'; }",
-        range(1, 4),
-    ));
-    $walk = walkedVariable('$d = ["meta" => ["status" => $this->status, "author" => $this->author]]; '
-        .$chains.' foreach ($rows as $row) { $d["n"] = 1; }');
+test('a key\'s queued classes hold one copy per write of it, however many joins it passes', function (string $body, int $writes, bool $author) {
+    $walk = walkedVariable($body);
 
-    expect($walk->inlineEnumFqcns['meta'] ?? null)->toBe([Status::class])
-        ->and($walk->inlineModelFqcns['meta'] ?? null)->toBe([User::class]);
-});
+    expect($walk->inlineEnumFqcns['meta'] ?? null)->toBe(array_fill(0, $writes, Status::class))
+        ->and($walk->inlineModelFqcns['meta'] ?? null)->toBe($author ? [User::class] : null);
+})->with([
+    'no branch rewrites it' => [
+        '$d = ["meta" => ["status" => $this->status, "author" => $this->author]]; '.implode(' ', array_map(
+            fn (int $i): string => "if (\$x{$i}) { \$d['k{$i}'] = {$i}; } else { \$d['k{$i}'] = 'v'; }",
+            range(1, 4),
+        )).' foreach ($rows as $row) { $d["n"] = 1; }',
+        1,
+        true,
+    ],
+    'the first body of each chain rewrites it, and the later ones keep it' => [
+        '$d = ["meta" => ["status" => $this->status]]; '.implode(' ', array_map(
+            fn (int $i): string => "if (\$x{$i}) { \$d['meta'] = ['status' => \$this->status, 'k' => {$i}]; } "
+                ."elseif (\$y{$i}) { \$d['p{$i}'] = 1; } else { \$d['q{$i}'] = 1; }",
+            range(1, 4),
+        )),
+        5,
+        false,
+    ],
+]);
 
 test('a whole write that always runs in a branch replaces an unread write before it', function (string $body, string $keys, bool $complete) {
     $walk = walkedVariable($body);
