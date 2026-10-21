@@ -10,7 +10,8 @@ use Workbench\App\Models\Post;
 
 /**
  * Locals the body writes through a member or an offset once it assigns them: a model stays the one model, which Laravel
- * stores the write in, while an array the offset write extends no longer holds the literal assigned.
+ * stores the write in, while an array the offset write extends no longer holds the literal assigned, and neither does a
+ * local that may be null, which the offset write makes an array.
  *
  * @mixin Post
  */
@@ -31,6 +32,8 @@ final class MemberWrittenLocalsResource extends JsonResource
         $key = 'a';
         $counts = [];
         $counts[$key] = 1;
+        $maybe = $this->is_pinned ? new Post : null;
+        $maybe['title'] = 'm';
 
         return [
             'draft_title' => $draft->title,
@@ -44,6 +47,7 @@ final class MemberWrittenLocalsResource extends JsonResource
             }),
             'options' => $options,
             'key' => $key,
+            'maybe' => $maybe,
         ];
     }
 }

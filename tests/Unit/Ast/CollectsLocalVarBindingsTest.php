@@ -358,6 +358,8 @@ it('keeps a local\'s model across a write through its member or offset', functio
     'a member written a value the scan cannot type' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = $t; $p->x;', [null]],
     'a relation\'s member written null' => ['$p = $this->resource; $p->author->name = null; $p->x;', [null]],
     'an array, which an offset write extends' => ['$p = []; $p["k"] = $this->author; $p->x;', [null]],
+    'a model or null, which an offset write makes an array' => ['$p = $c ? $this->author : null; $p["name"] = "x"; $p->x;', [null]],
+    'a model or null, whose member write throws on null' => ['$p = $c ? $this->author : null; $p->name = "x"; $p->x;', [[User::class]]],
 ]);
 
 /**
@@ -549,6 +551,7 @@ it('keeps a local holding a model across a write through it, and no array an off
         'captured_title?' => 'string',
         'options' => 'unknown',
         'key' => 'string',
+        'maybe' => 'unknown',
     ])
         ->and(json_decode((string) json_encode(new MemberWrittenLocalsResource($post)->resolve(Request::create('/'))), true))
         ->toBe([
@@ -559,6 +562,7 @@ it('keeps a local holding a model across a write through it, and no array an off
             'captured_title' => 'Again',
             'options' => ['a' => 1, 'b' => 'x'],
             'key' => 'a',
+            'maybe' => ['title' => 'm'],
         ]);
 });
 

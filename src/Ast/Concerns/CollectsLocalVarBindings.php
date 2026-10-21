@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Closure;
@@ -34,6 +35,7 @@ use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\MethodCall;
@@ -806,15 +808,23 @@ trait CollectsLocalVarBindings
             }
         }
 
+        $nullable = ValueResult::hasNullArm($scope->varValueBindings[$name]['type'] ?? '');
+
         foreach ($values as $value) {
             $held = $classes === null ? null : resolve(ReceiverClassResolver::class)->resolve($value, $scope);
             $classes = $held === null ? null : [...$classes, ...$held->classes];
+            $nullable = $nullable || $held?->shortCircuits || new NodeFinder()->findFirst(
+                $value,
+                fn (Node $node): bool => $node instanceof ConstFetch && $node->name->toLowerString() === 'null',
+            ) !== null;
         }
 
         $models = array_values(array_unique($classes ?? []));
 
+        // A key write on null makes the variable an array.
         return $models !== [] && array_all($models, fn (string $class): bool => is_a($class, Model::class, true))
-            && array_all($through, fn (Node $node): bool => $this->keepsModelThrough($node, $name, $models, $scope));
+            && array_all($through, fn (Node $node): bool => ! ($nullable && ($this->writtenMember($node)[2] ?? false))
+                && $this->keepsModelThrough($node, $name, $models, $scope));
     }
 
     /**
@@ -825,7 +835,7 @@ trait CollectsLocalVarBindings
      */
     private function keepsModelThrough(Node $node, string $name, array $models, AnalysisScope $scope): bool
     {
-        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
+        [$holder, $member] = $this->writtenMember($node) ?? [null, '', false];
         $relation = $holder instanceof PropertyFetch && $holder->var instanceof Variable && $holder->var->name === $name
             && $holder->name instanceof Identifier ? $holder->name->toString() : null;
         $related = $relation === null ? [] : array_map(
@@ -1713,7 +1723,7 @@ trait CollectsLocalVarBindings
      */
     private function fills(Node $node, string $name, array $models, AnalysisScope $scope): true|string|null
     {
-        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
+        [$holder, $member] = $this->writtenMember($node) ?? [null, '', false];
 
         return match (true) {
             $holder !== null => $holder instanceof Variable && $holder->name === $name
@@ -1728,9 +1738,10 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The holder and the column a write through a member or a literal key stores into, or null for any other write.
+     * The holder and the column a write through a member or a literal key stores into, and whether a key names it, or
+     * null for any other write.
      *
-     * @return array{Expr, string}|null
+     * @return array{Expr, string, bool}|null
      */
     private function writtenMember(Node $node): ?array
     {
@@ -1738,8 +1749,8 @@ trait CollectsLocalVarBindings
             || $node instanceof PreDec || $node instanceof PostDec ? $node->var : null;
 
         return match (true) {
-            $target instanceof PropertyFetch && $target->name instanceof Identifier => [$target->var, $target->name->toString()],
-            $target instanceof ArrayDimFetch && $target->dim instanceof String_ => [$target->var, $target->dim->value],
+            $target instanceof PropertyFetch && $target->name instanceof Identifier => [$target->var, $target->name->toString(), false],
+            $target instanceof ArrayDimFetch && $target->dim instanceof String_ => [$target->var, $target->dim->value, true],
             default => null,
         };
     }
