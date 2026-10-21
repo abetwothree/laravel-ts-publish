@@ -22,12 +22,16 @@ one of the two tests.
 `$cond ? $untypable : null` and `$this->opaque() ?: null` publish `null`, because the engine drops the arm it cannot
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
 drop). `$matches ?? []` past a `preg_match()` that passes flags, or whose pattern names a group, publishes `never[]` the
-same way, though Laravel sends the groups nested or keyed by name. Widening the union to `unknown` would be more honest
-but less specific. A spread helper's key or a model accessor's getter body left with only that `null` publishes
-`unknown` instead, while a getter that only ever returns `null` still publishes `null`. A method read as a value is the
-exception: one return it cannot type leaves the whole call `unknown`, or the vague type it declares. So is
-`$this->resource` read whole under its own `instanceof` test, whose untypable class leaves the whole ternary `unknown`.
-Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes back.
+same way, though Laravel sends the groups nested or keyed by name. A parameter written in a block drops the value it
+came in with the same way: `transform($this->opaque(), …)` whose callback may set `$value = $comment->id` publishes
+`number`. So does the join of a local's branches, for a value one branch writes. Widening the union to `unknown` would
+be more honest but less specific. Where the drop leaves only `null` or `never[]`, the run output warns, naming the line
+and the arm left out; a class the generation cache serves prints nothing until a `--fresh` run. A spread helper's key or
+a model accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever
+returns `null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the
+whole call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test,
+whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
+`#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -758,7 +762,8 @@ takes what its own `$t = …;` writes, so `$t = json_decode($t)` publishes `unkn
 does too where the write is a typed value naming no class, so `$a = $a->name; return $a;` publishes `string`, while
 `$a = $this->untyped($a); return $a;` keeps `User`. Past such a write nested in a block, a value read takes the earlier
 value or the one written, and only the earlier one where the package cannot type the written one:
-`$t = trim($t); if ($c) { $t = json_decode($t); }` publishes `string`.
+`$t = trim($t); if ($c) { $t = json_decode($t); }` publishes `string`. Where it cannot type the earlier one, only the one
+written is read.
 `$a->comments->find(1)?->content` reads the comment's `content`, but the call alone publishes `unknown`, as `first()`
 does on a parameter's relation.
 

@@ -124,6 +124,10 @@ A declared PHP type too broad to publish usefully, such as `mixed` or `array`, w
 Proving a value's class for the reads a test covers, such as an `instanceof` check in an `if` or a ternary.
 _Avoid_: type guard, refinement
 
+**Dropped arm**:
+A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left.
+_Avoid_: lost arm, untyped branch
+
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.
 _Avoid_: reindex, renumber (renumbering is what `array_merge()` does to int keys)

@@ -382,7 +382,9 @@ binding alone, or any other write, stops the walk. An expression binding the rec
 as a relation read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no class a
 member read keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a model's own
 write of a value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine
-cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read.
+cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read, and an old value it
+cannot type beside writes that all type. A closure parameter nothing binds, as `transform($this->opaque(), …)` leaves
+its callback's, walks from the value its call passed, which has no type, once a nested write needs the join.
 `CollectsLocalVarBindings::writeKind()` classifies each write once, as the scan records it. The cycle guard,
 `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
 value `$s` held before.
@@ -588,23 +590,36 @@ the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known
 see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
 makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
-An arm left out still makes the union optional when it can be a `MissingValue`.
+An arm left out still makes the union optional when it can be a `MissingValue`. `ValueResult::unionResults()` folds an
+empty `[]`'s `never[]` into a list member beside it, which already admits the empty array: `$rows ?? []` over a list
+publishes the list.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
 `KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler`,
-`ConditionalMethodHandler::applyConditionalDefault()` and `MatchHandler`'s arms. `analyzeClosureUnion()` records because
-`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
-left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
-union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
-`applyConditionalDefault()` records a default only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()`
-records nothing for a spread helper's branches or a merge call's sides, since it unions type strings and cannot name the
-expression it drops. One arm is never left out: `$this->resource` read whole under its own `instanceof` proof, as the
-proven class with no published type, leaves the ternary `unknown`.
+`ConditionalMethodHandler::applyConditionalDefault()`, `MatchHandler`'s arms, `VariableHandler`'s join of a parameter
+past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
+where an earlier value still reaches the read) and the walk's branch join (`walk-branch-join`, naming the last key write
+or array item in the branch it reads as `unknown`). `analyzeClosureUnion()` records because `unionResults()` receives
+only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its left operand's `null` with
+`ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary union would keep. It unions
+both operands through `unionResults()`, which leaves an untyped one out. `applyConditionalDefault()` records a default
+only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()` records nothing for a spread helper's branches
+or a merge call's sides, since it unions type strings and cannot name the expression it drops; the walk's join names one
+only through the untyped writes `ReadsReturnedVariables` notes. One arm is never left out: `$this->resource` read whole
+under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
 answer.
+
+Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Where a drop leaves the union only `null`
+and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
+when nothing was dropped. `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a
+declared local's `@var` or a getter body that gives way to the model's declared type, and lets them through only where
+the reading stands. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
+`--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
+cast on the key leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
