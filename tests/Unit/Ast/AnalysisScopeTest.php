@@ -93,7 +93,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
     foreach (['item', 'key', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
-        $scope->varGuardBindings[$name] = ['classes' => [User::class], 'after' => 0];
+        $scope->varGuardBindings[$name] = [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varDeclaredBindings[$name] = [User::class];
@@ -167,7 +167,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->bindingGaps)->toBe([])
         ->and($scope->closureParamExprBindings['param'])->toBe($captured['closureParamExprBindings']['item'])
         ->and($scope->varClassBindings['param'])->toBe([User::class])
-        ->and($scope->varGuardBindings['param'])->toBe(['classes' => [User::class], 'after' => 0])
+        ->and($scope->varGuardBindings['param'])->toBe($captured['varGuardBindings']['item'])
         ->and($scope->varDocBindings['param'])->toBe($captured['varDocBindings']['item'])
         ->and($scope->varModelBindings['param'])->toBe(User::class)
         ->and($scope->varDeclaredBindings['param'])->toBe([User::class])
@@ -213,6 +213,46 @@ it('finds the gap a read falls in, the one whose write came latest', function ()
         ->and($scope->gapAt($at(25)))->toBe($second)
         ->and($scope->gapAt($at(45)))->toBe($third)
         ->and($scope->gapAt($at(35)))->toBeNull();
+});
+
+it('finds the guard a read falls in, the one that starts latest, or the one bound last where two start together', function () {
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $outer = ['classes' => [Post::class], 'after' => 10, 'before' => null];
+    $inner = ['classes' => [User::class], 'after' => 20, 'before' => 30];
+    $sameStart = ['classes' => [SubscribedTeam::class], 'after' => 20, 'before' => 30];
+    $scope->varGuardBindings['post'] = [$outer, $inner];
+    $at = fn (string $name, int $offset): Variable => new Variable($name, ['startFilePos' => $offset]);
+
+    expect($scope->guardAt($at('post', 10)))->toBeNull()
+        ->and($scope->guardAt($at('post', 15)))->toBe($outer)
+        ->and($scope->guardAt($at('post', 25)))->toBe($inner)
+        ->and($scope->guardAt($at('post', 30)))->toBe($inner)
+        ->and($scope->guardAt($at('post', 31)))->toBe($outer)
+        ->and($scope->guardAt($at('other', 25)))->toBeNull()
+        ->and($scope->guardAt(new Variable(new Variable('post'), ['startFilePos' => 25])))->toBeNull();
+
+    $scope->varGuardBindings['post'][] = $sameStart;
+
+    expect($scope->guardAt($at('post', 25)))->toBe($sameStart);
+});
+
+// The parameter holds the value the call passed, so the guard in force at the call holds for each of its reads.
+it('passes a parameter the guard in force where its variable is passed, for every read of the parameter', function () {
+    $captured = analysisScopeWithEveryTableBound()->nameBindings();
+    $captured['varGuardBindings']['item'] = [
+        ['classes' => [Post::class], 'after' => 10, 'before' => null],
+        ['classes' => [SubscribedTeam::class], 'after' => 20, 'before' => 30],
+    ];
+    $passedAt = function (int $offset) use ($captured): array {
+        $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+        $scope->copyBindings(new Variable('item', ['startFilePos' => $offset]), 'param', $captured);
+
+        return $scope->varGuardBindings;
+    };
+
+    expect($passedAt(5))->toBe([])
+        ->and($passedAt(25))->toBe(['param' => [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]]])
+        ->and($passedAt(35))->toBe(['param' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]]]);
 });
 
 it('lifts one gap for a read, and puts it back', function () {

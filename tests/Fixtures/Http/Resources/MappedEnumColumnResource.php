@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Team;
@@ -12,8 +13,8 @@ use Workbench\App\Models\User;
 
 /**
  * Wraps each user's nullable `role` column in maps over a query, a local holding one, with and without a model hint, a
- * `collect()` of a relation and the relation itself, and in the first two and a `collect()` nested in a whenLoaded()
- * closure. EnumResource sends null for a null role.
+ * `collect()` of a relation and the relation itself, in the first two and a `collect()` nested in a whenLoaded()
+ * closure, and under an `instanceof` test on a loaded relation. EnumResource sends null for a null role.
  *
  * @mixin Team
  */
@@ -41,6 +42,9 @@ class MappedEnumColumnResource extends JsonResource
                 return $users->map(fn ($user) => EnumResource::make($user->role))->all();
             }),
             'nested_collected_roles' => $this->whenLoaded('members', fn ($members) => collect($members)->map(fn ($member) => EnumResource::make($member->role))->all()),
+            'narrowed_member_roles' => $this->whenLoaded('members', fn ($members) => $members instanceof EloquentCollection
+                ? $members->map(fn ($member) => EnumResource::make($member->role))->all()
+                : null),
         ];
     }
 }

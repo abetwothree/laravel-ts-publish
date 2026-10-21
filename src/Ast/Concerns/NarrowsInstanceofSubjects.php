@@ -20,9 +20,9 @@ use PhpParser\Node\Expr\Variable;
 trait NarrowsInstanceofSubjects
 {
     /**
-     * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varClassBindings,
-     * its varGuardBindings past the write that ended its parameter binding, or what the `$this->resource` proxy holds),
-     * then restore the scope. Null for any other subject, or for an arm that writes it.
+     * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varGuardBindings,
+     * or what the `$this->resource` proxy holds), then restore the scope. Null for any other subject, or for an arm
+     * that writes it.
      *
      * @template TResult
      *
@@ -45,21 +45,15 @@ trait NarrowsInstanceofSubjects
         $classes = $receivers->narrowedSubject($subject, $tested, $scope);
 
         if ($subject instanceof Variable && $variable !== null) {
-            $previousVarClassBindings = $scope->varClassBindings;
             $previousVarGuardBindings = $scope->varGuardBindings;
 
             try {
-                // Past the write that ended its parameter binding, the proof holds only past the test, so the value
-                // that write assigned, read earlier, still reads the variable as the parameter it was.
-                if ($scope->holdsBinding($subject)) {
-                    $scope->varClassBindings[$variable] = $classes;
-                } else {
-                    $scope->varGuardBindings[$variable] = ['classes' => $classes, 'after' => $subject->getEndFilePos()];
-                }
+                // The proof holds only past the test, so a value assigned earlier and read in the arm reads the
+                // variable as it was then.
+                $scope->varGuardBindings[$variable][] = ['classes' => $classes, 'after' => $subject->getEndFilePos(), 'before' => null];
 
                 return $resolve();
             } finally {
-                $scope->varClassBindings = $previousVarClassBindings;
                 $scope->varGuardBindings = $previousVarGuardBindings;
             }
         }

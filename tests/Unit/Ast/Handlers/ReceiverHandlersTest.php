@@ -1015,14 +1015,15 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The classes of each guard binding collectInstanceofGuards() writes for one parsed method body.
+ * The guard bindings collectInstanceofGuards() writes for one parsed method body, and the source it parsed.
  *
- * @return array<string, non-empty-list<class-string>>
+ * @return array{array<string, list<array<string, mixed>>>, string}
  */
-function narrowingBindings(string $body): array
+function guardBindingsOf(string $body): array
 {
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
-    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $source = '<?php '.$body;
+    $stmts = new AstParser()->parseSource($source);
 
     $host = new class
     {
@@ -1038,7 +1039,35 @@ function narrowingBindings(string $body): array
 
     $host->run($stmts, $scope);
 
-    return array_map(fn (array $guard): array => $guard['classes'], $scope->varGuardBindings);
+    return [$scope->varGuardBindings, $source];
+}
+
+/**
+ * Each variable's classes, from the guard bindings that run to the end of the body: a guard's, never one block's.
+ *
+ * @return array<string, list<class-string>>
+ */
+function narrowingBindings(string $body): array
+{
+    return array_filter(array_map(
+        fn (array $guards): array => array_merge(...array_map(fn (array $guard): array => $guard['before'] === null ? $guard['classes'] : [], $guards)),
+        guardBindingsOf($body)[0],
+    ));
+}
+
+/**
+ * Every guard binding of each variable, in the order the pass binds them: its classes and the source it covers.
+ *
+ * @return array<string, list<array{list<class-string>, string}>>
+ */
+function blockNarrowingBindings(string $body): array
+{
+    [$bindings, $source] = guardBindingsOf($body);
+
+    return array_map(fn (array $guards): array => array_map(fn (array $guard): array => [
+        $guard['classes'],
+        trim(substr($source, $guard['after'] + 1, ($guard['before'] ?? strlen($source) - 1) - $guard['after'])),
+    ], $guards), $bindings);
 }
 
 describe('narrowing', function () {
@@ -1190,14 +1219,64 @@ describe('narrowing', function () {
         'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', []],
     ]);
 
-    test('an elseif, an else, or a positive instanceof test binds nothing', function () {
+    test('a chain whose leading branch always leaves binds past the chain, and a positive test only inside its block', function () {
         expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } elseif ($a) { return null; }'))
-            ->toBe([])
+            ->toBe(['a' => [Post::class]])
             ->and(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } else { return null; }'))
+            ->toBe(['a' => [Post::class]])
+            ->and(narrowingBindings('$a = $this->author; if ($a) { $b = 1; } elseif (! $a instanceof \Workbench\App\Models\Post) { return null; }'))
             ->toBe([])
             ->and(narrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
-            ->toBe([]);
+            ->toBe([])
+            ->and(blockNarrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
+            ->toBe(['a' => [[[Post::class], 'return $a->title;']]]);
     });
+
+    test('a test binds inside the blocks it proves, and a nested guard to the end of its block', function (string $body, array $bindings) {
+        expect(blockNarrowingBindings($body))->toBe($bindings);
+    })->with([
+        'a positive test, and the else of a negated one' => [
+            'if ($a instanceof \Workbench\App\Models\Post) { $x = 1; } if (! $b instanceof \Workbench\App\Models\User) { $x = 2; } else { $x = 3; }',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 3;']]],
+        ],
+        'an elseif, under the failed test before it' => [
+            'if (! $a instanceof \Workbench\App\Models\Post) { $x = 1; } elseif ($a instanceof \Workbench\App\Models\Post) { $x = 2; }',
+            ['a' => [[[Post::class], '$x = 2;'], [[Post::class], '$x = 2;']]],
+        ],
+        'an && of tests that hold, and an || chain on one variable' => [
+            'if ($a instanceof \Workbench\App\Models\Post && $b instanceof \Workbench\App\Models\User) { $x = 1; } if ($c instanceof \Workbench\App\Models\Post || $c instanceof \Workbench\App\Models\User) { $x = 2; }',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 1;']], 'c' => [[[Post::class, User::class], '$x = 2;']]],
+        ],
+        'an || of tests on two variables, or an && that fails' => [
+            'if ($a instanceof \Workbench\App\Models\Post || $b instanceof \Workbench\App\Models\User) { $x = 1; } if (! $a instanceof \Workbench\App\Models\Post && ! $b instanceof \Workbench\App\Models\User) { return; }',
+            [],
+        ],
+        'a guard leaving a loop body by continue, a try block by throw' => [
+            'foreach ([] as $i) { if (! $a instanceof \Workbench\App\Models\Post) { continue; } $x = 1; } try { if (! $b instanceof \Workbench\App\Models\User) { throw new \RuntimeException(); } $x = 2; } catch (\RuntimeException) {}',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 2;']]],
+        ],
+        'a nested guard that falls through, or one written in its block after the test' => [
+            'if ($c) { if (! $a instanceof \Workbench\App\Models\Post) { $x = 1; } $y = 1; } if ($c) { if (! $b instanceof \Workbench\App\Models\User) { return; } $b = 1; }',
+            [],
+        ],
+        'a write after the guard\'s block' => [
+            'if ($c) { if (! $a instanceof \Workbench\App\Models\Post) { return; } $y = 1; } $a = 1;',
+            ['a' => [[[Post::class], '$y = 1;']]],
+        ],
+        'a guard that exits through continue 2 binds to the end of its case, not past the switch' => [
+            'foreach ([] as $i) { switch ($k) { case 1: if (! $x instanceof \Workbench\App\Models\Post) { continue 2; } $a = $x->title; break; } $b = $x->title; }',
+            ['x' => [[[Post::class], '$a = $x->title; break;']]],
+        ],
+        'a test inside another holds what both prove, the later one where they disagree' => [
+            'if ($a instanceof \Illuminate\Database\Eloquent\Model) { if ($a instanceof \Workbench\App\Models\Post) { if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; } } }',
+            ['a' => [
+                [[Model::class], 'if ($a instanceof \Workbench\App\Models\Post) { if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; } }'],
+                [[Post::class], 'if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; }'],
+                [[Post::class], '$x = 1;'],
+                [[User::class], '$x = 2;'],
+            ]],
+        ],
+    ]);
 });
 
 describe('getKey()', function () {

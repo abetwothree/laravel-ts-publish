@@ -512,6 +512,21 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The classes a value proven to hold one of $held holds once a test for $tested passes too: each narrowed class by
+     * class, or the tested classes where none can pass, as a test on a variable a closure rewrote may find.
+     *
+     * @param  non-empty-list<class-string>  $held
+     * @param  non-empty-list<class-string>  $tested
+     * @return non-empty-list<class-string>
+     */
+    public function provenClasses(array $held, array $tested): array
+    {
+        $classes = $this->narrowedClasses($held, $tested);
+
+        return $classes === [] ? $tested : $classes;
+    }
+
+    /**
      * Whether an `instanceof` test leaves `$this->resource` holding every class its redeclaration names, the backing
      * class standing in for each it is or extends, and the redeclaration admits no null, so the test rules nothing out.
      *
@@ -668,7 +683,8 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
-     * what the body assigned; an unbound variable declines.
+     * what the body assigned, narrowed by the `instanceof` proof the read falls within; an unbound variable declines
+     * unless a proof names its classes.
      */
     private function fromVariable(Variable $variable, AnalysisScope $scope): ?ReceiverType
     {
@@ -678,32 +694,51 @@ final class ReceiverClassResolver
             return null;
         }
 
-        // First, so a narrowing outranks the localVarBindings fallback a guarded variable normally reaches
-        // through; varModelBindings is the same concern for a narrowed closure param or loop variable.
+        $held = $this->heldBy($variable, $name, $scope);
+        $guard = $scope->guardAt($variable);
+
+        return $guard === null ? $held : $this->guarded($held, $guard['classes']);
+    }
+
+    /**
+     * What a variable holds before any `instanceof` proof: a morphTo parameter's targets, what an inline `@var`
+     * declares, the binding its name came into the body with, or what the body assigned past the write that ended it.
+     */
+    private function heldBy(Variable $variable, string $name, AnalysisScope $scope): ?ReceiverType
+    {
+        // First: the targets outrank any other table a whenLoaded() parameter's name is in.
         if (isset($scope->varClassBindings[$name]) && $scope->holdsBinding($variable)) {
             return new ReceiverType($scope->varClassBindings[$name]);
         }
 
-        $guard = $scope->varGuardBindings[$name] ?? null;
-
-        // A guard proves its class only for a read past it: an earlier return still holds whatever the variable does.
-        if ($guard !== null && $variable->getStartFilePos() > $guard['after']) {
-            return new ReceiverType($guard['classes']);
-        }
-
         $span = $scope->declaredAt($variable);
 
-        if ($span === null) {
-            if ($scope->holdsBinding($variable)) {
-                return $this->fromBindings($name, $scope, $variable);
-            }
-
-            $gap = $scope->gapAt($variable);
-
-            return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($name, $gap, $scope);
+        if ($span !== null) {
+            return $this->resolveDeclared($name, $span, $scope);
         }
 
-        return $this->resolveDeclared($name, $span, $scope);
+        if ($scope->holdsBinding($variable)) {
+            return $this->fromBindings($name, $scope, $variable);
+        }
+
+        $gap = $scope->gapAt($variable);
+
+        return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($name, $gap, $scope);
+    }
+
+    /**
+     * What a variable holds under an `instanceof` proof: its own value narrowed class by class, never null, so its
+     * collection's element and keys still hold; the proven classes where it names none that can pass.
+     *
+     * @param  non-empty-list<class-string>  $proven
+     */
+    private function guarded(?ReceiverType $held, array $proven): ReceiverType
+    {
+        $classes = $held === null ? [] : $this->narrowedClasses($held->classes, $proven);
+
+        return $held === null || $classes === []
+            ? new ReceiverType($proven)
+            : $held->withClasses($classes)->withShortCircuit(false);
     }
 
     /**
@@ -1200,16 +1235,28 @@ final class ReceiverClassResolver
             return new ReceiverType($tested);
         }
 
-        $classes = [];
-
-        foreach ($arm->classes as $class) {
-            $classes = [...$classes, ...$this->narrowedClass($class, $tested)];
-        }
+        $classes = $this->narrowedClasses($arm->classes, $tested);
 
         // No class it resolves to can pass the test, so the arm never runs and any answer holds: keep the one it had.
-        return $classes === []
-            ? $arm
-            : $arm->withClasses(array_values(array_unique($classes)));
+        return $classes === [] ? $arm : $arm->withClasses($classes);
+    }
+
+    /**
+     * What some classes become under `instanceof` tests, each narrowed class by class; none where no class can pass.
+     *
+     * @param  list<class-string>  $classes
+     * @param  non-empty-list<class-string>  $tested
+     * @return list<class-string>
+     */
+    private function narrowedClasses(array $classes, array $tested): array
+    {
+        $narrowed = [];
+
+        foreach ($classes as $class) {
+            $narrowed = [...$narrowed, ...$this->narrowedClass($class, $tested)];
+        }
+
+        return array_values(array_unique($narrowed));
     }
 
     /**

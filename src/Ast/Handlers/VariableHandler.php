@@ -235,16 +235,18 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding; past
-     * the write that ended its parameter binding, from the local assignment alone, or inside a gap from the value its
-     * write assigned, joined with the old binding where that may still hold.
+     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding, a model
+     * as the subclass a guard proves it; past the write that ended its parameter binding, from the local assignment
+     * alone, or inside a gap from the value its write assigned, joined with the old binding where that may still hold.
      *
      * @return ValueExpressionResult|null
      */
     private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($scope->holdsBinding($variable)) {
-            return $this->heldValue($name, $scope, $engine);
+            $narrowed = $this->narrowedModel($variable, $name, $scope);
+
+            return $narrowed === null ? $this->heldValue($name, $scope, $engine) : $this->modelValue($narrowed);
         }
 
         $gap = $scope->gapAt($variable);
@@ -277,14 +279,7 @@ final class VariableHandler implements ExpressionHandler
         // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
         // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
         if (isset($scope->varModelBindings[$name])) {
-            $modelFqcn = $scope->varModelBindings[$name];
-
-            return [
-                ...ValueResult::unknown(),
-                'type' => class_basename($modelFqcn),
-                'optional' => false,
-                'modelFqcn' => $modelFqcn,
-            ];
+            return $this->modelValue($scope->varModelBindings[$name]);
         }
 
         // Bound to a whole relation collection (to-many whenLoaded param) — resolves to the collection type, e.g.
@@ -311,6 +306,40 @@ final class VariableHandler implements ExpressionHandler
         $boundExpr = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
 
         return $boundExpr === null ? null : $this->boundExpressionValue($name, $boundExpr, $scope, $engine);
+    }
+
+    /**
+     * The subclass of a variable's bound model a guard proves it to hold, where that is one published model, or null.
+     *
+     * @return class-string<Model>|null
+     */
+    private function narrowedModel(Variable $variable, string $name, AnalysisScope $scope): ?string
+    {
+        $bound = $scope->varModelBindings[$name] ?? null;
+
+        if ($bound === null || $scope->guardAt($variable) === null) {
+            return null;
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->resolve($variable, $scope)->classes ?? [];
+        $model = count($held) === 1 ? $held[0] : null;
+
+        return $model !== null
+            && is_subclass_of($model, $bound)
+            && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $model])
+                ? $model
+                : null;
+    }
+
+    /**
+     * A model's own value, as a bare variable bound to it reads: the model's published type.
+     *
+     * @param  class-string<Model>  $model
+     * @return ValueExpressionResult
+     */
+    private function modelValue(string $model): array
+    {
+        return [...ValueResult::unknown(), 'type' => class_basename($model), 'optional' => false, 'modelFqcn' => $model];
     }
 
     /**

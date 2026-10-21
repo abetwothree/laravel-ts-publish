@@ -602,14 +602,15 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
     public function __construct(private AnalysisScope $scope, private string $variable) {}
 
     /**
-     * Record the variable's class binding while a string-literal arm resolves, and type every arm as a string.
+     * Record the classes the guard in force at a string-literal arm binds the variable to, and type every arm a string.
      *
      * @return array<string, mixed>
      */
     public function resolve(Expr $expr): array
     {
         if ($expr instanceof String_) {
-            $this->classesPerArm[$expr->value] = $this->scope->varClassBindings[$this->variable] ?? null;
+            $read = new Variable($this->variable, ['startFilePos' => $expr->getStartFilePos()]);
+            $this->classesPerArm[$expr->value] = $this->scope->guardAt($read)['classes'] ?? null;
         }
 
         return ['type' => 'string', 'optional' => false];
@@ -642,7 +643,7 @@ it('binds the proven arm\'s subject to what the test leaves of its own classes, 
     (new TernaryHandler)->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr, $scope, $engine);
 
     expect($engine->classesPerArm)->toBe($classes)
-        ->and($scope->varClassBindings)->toBe([]);
+        ->and($scope->varGuardBindings)->toBe([]);
 })->with([
     'a supertype' => ['$post instanceof \Illuminate\Database\Eloquent\Model ? "if" : "else"', ['if' => [Post::class], 'else' => null]],
     'a negated interface' => ['! $post instanceof \JsonSerializable ? "if" : "else"', ['else' => [Post::class], 'if' => null]],

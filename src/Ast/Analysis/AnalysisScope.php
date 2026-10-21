@@ -52,7 +52,8 @@ use ReflectionClass;
  *
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
- * @phpstan-type VarGuardBindingsMap array<string, array{classes: non-empty-list<class-string>, after: int}>
+ * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
+ * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -203,18 +204,17 @@ final class AnalysisScope
     public array $closureParamExprBindings = [];
 
     /**
-     * Variables a ternary's `instanceof` test, or a morphTo `whenLoaded()` parameter's targets, prove to hold one of
-     * some classes. Read before varModelBindings, which a narrowed variable usually also has and which would otherwise
-     * win. Scoped: writers save and restore around the body.
+     * Variables a morphTo `whenLoaded()` parameter's targets bind to one of some classes. Read before varModelBindings,
+     * and narrowed by varGuardBindings like any binding. Scoped: writers save and restore around the body.
      *
      * @var VarClassBindingsMap
      */
     public array $varClassBindings = [];
 
     /**
-     * Variables an early-exit `instanceof` guard proves to hold a class, with the file offset the guard's `if` ends at:
-     * the proof holds only for a read past that offset. A ternary's test writes one too, while its arm resolves, for a
-     * subject past the write that ended its parameter binding. Read right after varClassBindings, and scoped like it.
+     * Variables an `instanceof` test proves to hold one of some classes, each proof for the reads between its offsets:
+     * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
+     * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
      *
      * @var VarGuardBindingsMap
      */
@@ -479,6 +479,19 @@ final class AnalysisScope
     }
 
     /**
+     * The `instanceof` proof a read of a variable falls within, the one that starts latest, or null. On a tie the one
+     * bound last wins, since it holds the classes of the one bound before it.
+     *
+     * @return VarGuardBinding|null
+     */
+    public function guardAt(Variable $variable): ?array
+    {
+        return is_string($variable->name)
+            ? self::latestGuard($this->varGuardBindings[$variable->name] ?? [], $variable->getStartFilePos())
+            : null;
+    }
+
+    /**
      * Whether a read of a variable still sees the binding its name came into the body with, not a write the body made.
      */
     public function holdsBinding(Variable $variable): bool
@@ -711,6 +724,8 @@ final class AnalysisScope
      * proof, which spells the read it proves under the variable's own name, and a binding end or gap, offsets in the
      * caller's body. Past its end or inside a gap, only the body's own bindings pass, a gap's one write among them.
      *
+     * The `instanceof` guard in force where the variable is passed holds for every read of the parameter.
+     *
      * @param  NameBindingsSnapshot  $snapshot
      */
     public function copyBindings(Variable $passed, string $to, array $snapshot): void
@@ -761,8 +776,10 @@ final class AnalysisScope
             }
         }
 
-        if (isset($snapshot['varGuardBindings'][$from])) {
-            $this->varGuardBindings[$to] = $snapshot['varGuardBindings'][$from];
+        $guard = self::latestGuard($snapshot['varGuardBindings'][$from] ?? [], $offset);
+
+        if ($guard !== null) {
+            $this->varGuardBindings[$to] = [['classes' => $guard['classes'], 'after' => PHP_INT_MIN, 'before' => null]];
         }
 
         if (isset($snapshot['varDocBindings'][$from])) {
@@ -814,6 +831,28 @@ final class AnalysisScope
         foreach ($gaps as $gap) {
             if ($offset > $gap[0] && $offset <= $gap[1] && ($latest === null || $gap[0] > $latest[0])) {
                 $latest = $gap;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * The guard of a name's that an offset falls within, the one that starts latest and, on a tie, the one bound last.
+     *
+     * @param  list<VarGuardBinding>  $guards
+     * @return VarGuardBinding|null
+     */
+    private static function latestGuard(array $guards, int $offset): ?array
+    {
+        $latest = null;
+
+        foreach ($guards as $guard) {
+            if ($offset > $guard['after']
+                && ($guard['before'] === null || $offset <= $guard['before'])
+                && ($latest === null || $guard['after'] >= $latest['after'])
+            ) {
+                $latest = $guard;
             }
         }
 

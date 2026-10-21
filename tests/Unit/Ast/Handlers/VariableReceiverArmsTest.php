@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDraftCommentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
@@ -118,7 +119,7 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
 
 // Only a relation closure, a hinted map among them, drops the column's null (F24, for the owner); a map over a query,
 // a local or a collect() of a relation keeps it, as Laravel sends it, and so does one nested in a relation closure. A
-// collect() pipeline nested in one keeps the enclosing closure's drop (F24).
+// collect() pipeline or an instanceof-proven map nested in one keeps the enclosing closure's drop (F24).
 it('keeps a nullable enum column\'s null arm in a map over a query, a local or a collect() of a relation', function () {
     $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $team = (new Team)->forceFill(['id' => 9]);
@@ -134,6 +135,7 @@ it('keeps a nullable enum column\'s null arm in a map over a query, a local or a
         'nested_query_roles?' => '(AsEnum<typeof Role> | null)[]',
         'nested_local_roles?' => '(AsEnum<typeof Role> | null)[]',
         'nested_collected_roles?' => 'AsEnum<typeof Role>[]',
+        'narrowed_member_roles?' => 'AsEnum<typeof Role>[] | null',
     ])
         ->and(json_decode((string) new MappedEnumColumnResource($team)->response(request())->getContent(), true))
         ->toBe(['data' => [
@@ -145,6 +147,7 @@ it('keeps a nullable enum column\'s null arm in a map over a query, a local or a
             'nested_query_roles' => [null],
             'nested_local_roles' => [null],
             'nested_collected_roles' => [null],
+            'narrowed_member_roles' => [null],
         ]]);
 });
 
@@ -163,7 +166,23 @@ it('reads a model-bound parameter under an instanceof test as the subclass it na
         ->toBe('{"data":{"word_count":null,"shouted_title":null}}');
 });
 
-// A test for a class the binding already is proves nothing narrower, so the bound model and collection still type.
+// The bare read sends the whole model, so the subclass a narrowing proves is what it publishes.
+it('publishes a model-bound variable read bare under an instanceof test as the subclass it narrows to', function () {
+    $draft = (new DraftPost)->forceFill(['id' => 4, 'title' => 'abc']);
+    $comment = (new Comment)->forceFill(['id' => 9]);
+    $sent = fn (Post $post): string => (string) new GuardedDraftCommentResource($comment->setRelation('post', $post))
+        ->response(request())->getContent();
+
+    expect(publishedResourceKeyTypes(GuardedDraftCommentResource::class, Comment::class))->toBe([
+        'guarded_draft?' => '{ p: DraftPost } | null',
+        'narrowed_draft?' => 'DraftPost | null',
+    ])
+        ->and($sent($draft))->toBe('{"data":{"guarded_draft":{"p":{"id":4,"title":"abc"}},"narrowed_draft":{"id":4,"title":"abc"}}}')
+        ->and($sent((new Post)->forceFill(['id' => 5, 'title' => 'abc'])))->toBe('{"data":{"guarded_draft":null,"narrowed_draft":null}}');
+});
+
+// A test for a class the binding already is proves nothing narrower, so the bound model and collection still type. A
+// collection's toArray() reads as it does untested: each comment's columns, never the Comment interface's accessors.
 it('keeps a bound model or collection under an instanceof test for a class it already is', function () {
     $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id, 'word_count' => 12]);
@@ -184,7 +203,7 @@ it('keeps a bound model or collection under an instanceof test for a class it al
         'spread_title?' => 'string',
         'spread_publishable?' => 'boolean',
         'narrowed_contents?' => 'string[] | null',
-        'narrowed_spread?' => 'Comment[] | null',
+        'narrowed_spread?' => 'Record<string, unknown>[] | null',
     ])->and($sent['data'])->toMatchArray([
         'model_guarded_title' => 'First',
         'model_guarded_word_count' => 12,
@@ -193,5 +212,6 @@ it('keeps a bound model or collection under an instanceof test for a class it al
         'spread_title' => 'First',
         'spread_publishable' => false,
         'narrowed_contents' => ['alpha', 'beta'],
-    ])->and(array_column($sent['data']['narrowed_spread'], 'content'))->toBe(['alpha', 'beta']);
+    ])->and(array_column($sent['data']['narrowed_spread'], 'content'))->toBe(['alpha', 'beta'])
+        ->and(array_keys($sent['data']['narrowed_spread'][0]))->not->toContain('preview', 'post');
 });

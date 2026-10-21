@@ -10830,6 +10830,31 @@
                     "name": "bytes",
                     "type": "number",
                     "optional": true
+                },
+                {
+                    "name": "loop_post_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "guarded_post_key",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "positive_title",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "positive_email",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "loaded_post_key",
+                    "type": "{ k: number } | null",
+                    "optional": true
                 }
             ]
         },

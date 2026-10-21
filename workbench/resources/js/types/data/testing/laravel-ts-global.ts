@@ -2632,10 +2632,21 @@ declare global {
         /** Parent resource that uses SharedExtendsInterface — tests BFS dedup when child also uses the same trait. */
         export interface BaseSharedResource extends SharedInterface {
         }
-        /** Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there. */
+        /**
+         * Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there; an early-exit
+         * `instanceof` guard nested in a block, for the rest of that block; and a positive `instanceof` test, in its block.
+         *
+         * `imageable` is a morphTo over int-keyed Post and User and string-keyed Product, so a narrowed key read loses the
+         * string arm.
+         */
         export interface BlockScopedBindingsResource {
             label?: string;
             bytes?: number;
+            loop_post_key?: number;
+            guarded_post_key?: number;
+            positive_title?: string;
+            positive_email?: string;
+            loaded_post_key?: { k: number } | null;
         }
         /**
          * Declares neither a toArray() nor a @mixin — pins parent-docblock model inheritance: the model

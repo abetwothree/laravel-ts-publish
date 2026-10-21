@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
+use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Exit_;
@@ -32,9 +35,11 @@ use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 
 /**
- * The guard pass: an early-exit `instanceof` guard narrows a variable, and an `if` condition proves reads non-null in
- * the blocks it runs and past the branches that exit. CollectsLocalVarBindings composes it: its write collection is
- * what decides a binding or a proof is safe, and both passes read the same statement list.
+ * The guard pass: an `if` condition narrows a variable by its `instanceof` tests, and proves reads non-null, in the
+ * blocks it runs and past the branches that leave. CollectsLocalVarBindings composes it: its write collection is what
+ * decides a binding or a proof is safe, and both passes read the same statement list.
+ *
+ * @phpstan-type InstanceofProofs = list<array{string, non-empty-list<class-string>, Expr}>
  *
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
@@ -46,11 +51,12 @@ trait CollectsInstanceofGuards
     use ReadsNonNullGuards;
 
     /**
-     * Bind variables an early-exit `if (! $x instanceof C)` guard proves to be a C, for the statements after it, and
-     * prove the reads the body's guards show non-null.
+     * Bind the variables an `instanceof` test proves to hold a class: in each block an `if` chain runs, where its test
+     * holds and every earlier one failed, and past the chain to the end of its block, where the tests of its leading
+     * branches that always leave failed. Then prove the reads the body's guards show non-null.
      *
-     * The binding carries the offset the guard ends at, so a return placed before the guard, or the guard's own body,
-     * still reads the variable unnarrowed. A variable written after the guard tests it is not bound at all.
+     * A binding carries the offsets it holds between, so a return placed before a guard, or a guard's own body, still
+     * reads the variable unnarrowed. A variable written between the test and the end of what it narrows is not bound.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
@@ -59,18 +65,7 @@ trait CollectsInstanceofGuards
     {
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
-        foreach ($stmts as $stmt) {
-            if (! $stmt instanceof If_ || $stmt->elseifs !== [] || $stmt->else !== null || ! $this->alwaysExits($stmt->stmts)) {
-                continue;
-            }
-
-            foreach ($this->negatedInstanceofs($stmt->cond) as [$name, $class, $test]) {
-                if (! $this->writtenWithin($name, $test->getStartFilePos(), null, [$stmt->stmts], $writes)) {
-                    $scope->varGuardBindings[$name] = ['classes' => [$class], 'after' => $stmt->getEndFilePos()];
-                }
-            }
-        }
-
+        $this->bindBlockGuards($stmts, null, $scope, $writes);
         $this->proveGuardedReads($stmts, $scope, $writes);
     }
 
@@ -148,23 +143,142 @@ trait CollectsInstanceofGuards
     }
 
     /**
-     * Every `! $var instanceof Class` operand of a condition, through `||` chains, with the operand itself.
+     * What a condition proves of variables when it holds, or fails: each `instanceof` test on a variable that must then
+     * pass, through `!`, an `&&` that holds and an `||` that fails, or one `||` chain of tests on one variable that
+     * holds, with the classes and the test.
      *
-     * @return list<array{string, class-string, Expr}>
+     * @return InstanceofProofs
      */
-    private function negatedInstanceofs(Expr $cond): array
+    private function instanceofProofs(Expr $cond, bool $holds): array
     {
-        $negated = [];
+        if ($cond instanceof BooleanNot) {
+            return $this->instanceofProofs($cond->expr, ! $holds);
+        }
 
-        foreach ($this->orOperands($cond) as $operand) {
-            $test = $operand instanceof BooleanNot ? $this->instanceofTest($operand->expr) : null;
+        if (($holds && $cond instanceof BooleanAnd) || (! $holds && $cond instanceof BooleanOr)) {
+            return [...$this->instanceofProofs($cond->left, $holds), ...$this->instanceofProofs($cond->right, $holds)];
+        }
 
-            if ($test !== null && $test[0] instanceof Variable && is_string($test[0]->name)) {
-                $negated[] = [$test[0]->name, $test[1], $operand];
+        $proof = $holds ? $this->instanceofProof($cond) : null;
+
+        return $proof !== null && $proof[0] instanceof Variable && is_string($proof[0]->name)
+            ? [[$proof[0]->name, $proof[1], $cond]]
+            : [];
+    }
+
+    /**
+     * Bind what each `if` chain of one block proves, then read every block its statements hold, never a closure's body.
+     * $end is the offset the block ends at, or null for a whole body.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @param  VariableWrites  $writes
+     */
+    private function bindBlockGuards(array $stmts, ?int $end, AnalysisScope $scope, array $writes): void
+    {
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof If_) {
+                $this->bindIfGuards($stmt, $end, $scope, $writes);
+            }
+
+            foreach ($this->innerBlocks($stmt) as $block) {
+                if ($block !== []) {
+                    $this->bindBlockGuards($block, $block[array_key_last($block)]->getEndFilePos(), $scope, $writes);
+                }
+            }
+        }
+    }
+
+    /**
+     * Bind what one `if` chain proves, as proveIfGuards() proves reads non-null: each branch's tests in its block, the
+     * failed tests of earlier branches in later ones and the `else`, and those of the leading branches that always
+     * leave for the statements after the chain, up to $end.
+     *
+     * @param  VariableWrites  $writes
+     */
+    private function bindIfGuards(If_ $if, ?int $end, AnalysisScope $scope, array $writes): void
+    {
+        $failed = [];
+        $leaving = true;
+        $exits = [];
+        $pastChain = [];
+
+        foreach ([$if, ...$if->elseifs] as $branch) {
+            $this->bindBranch([...$failed, ...$this->instanceofProofs($branch->cond, true)], $branch->stmts, $scope, $writes);
+            $failed = [...$failed, ...$this->instanceofProofs($branch->cond, false)];
+            $last = $branch->stmts === [] ? null : $branch->stmts[array_key_last($branch->stmts)];
+            // A whole body's branch must leave the function; a nested block's may also jump out of its loop or switch.
+            $leaving = $leaving && ($end === null
+                ? $this->alwaysExits($branch->stmts)
+                : $last !== null && $this->leavesBlock($last));
+
+            if ($leaving) {
+                $exits[] = $branch->stmts;
+                $pastChain = $failed;
             }
         }
 
-        return $negated;
+        if ($if->else !== null) {
+            $this->bindBranch($failed, $if->else->stmts, $scope, $writes);
+        }
+
+        foreach ($pastChain as [$name, $classes, $test]) {
+            // A body that always leaves never reaches the statements past the chain, so neither does a write inside it.
+            if (! $this->writtenWithin($name, $test->getStartFilePos(), $end, $exits, $writes)) {
+                $this->bindGuard($scope, $name, $classes, $if->getEndFilePos(), $end);
+            }
+        }
+    }
+
+    /**
+     * Bind the proofs a branch's block runs under, for its statements, of each variable nothing writes from its test to
+     * the block's end; a loop re-tests before it runs the block again.
+     *
+     * @param  InstanceofProofs  $proofs
+     * @param  array<Node\Stmt>  $block
+     * @param  VariableWrites  $writes
+     */
+    private function bindBranch(array $proofs, array $block, AnalysisScope $scope, array $writes): void
+    {
+        if ($block === []) {
+            return;
+        }
+
+        $before = $block[array_key_last($block)]->getEndFilePos();
+
+        foreach ($proofs as [$name, $classes, $test]) {
+            if (! $this->writtenWithin($name, $test->getStartFilePos(), $before, [], $writes)) {
+                $this->bindGuard($scope, $name, $classes, $block[0]->getStartFilePos() - 1, $before);
+            }
+        }
+    }
+
+    /**
+     * Bind a variable to the classes a test proves for the reads past $after and up to $before; inside another proof of
+     * the variable, to what both prove.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     */
+    private function bindGuard(AnalysisScope $scope, string $name, array $classes, int $after, ?int $before): void
+    {
+        $around = $scope->guardAt(new Variable($name, ['startFilePos' => $after + 1]));
+
+        $scope->varGuardBindings[$name][] = [
+            'classes' => $around === null ? $classes : resolve(ReceiverClassResolver::class)->provenClasses($around['classes'], $classes),
+            'after' => $after,
+            'before' => $before,
+        ];
+    }
+
+    /**
+     * Whether a nested block's last statement never runs on into the statement after the block: it returns, throws,
+     * exits, or jumps out of the loop or `switch` around it.
+     */
+    private function leavesBlock(Node\Stmt $stmt): bool
+    {
+        return $stmt instanceof Return_
+            || $stmt instanceof Break_
+            || $stmt instanceof Continue_
+            || ($stmt instanceof ExpressionStmt && ($stmt->expr instanceof Throw_ || $stmt->expr instanceof Exit_));
     }
 
     /**

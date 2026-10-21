@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedGuardsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedParameterGapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedReturnsResource;
@@ -23,8 +25,14 @@ use Workbench\App\Http\Resources\BlockScopedBindingsResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Product;
 use Workbench\App\Models\Tag;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
+
+beforeEach(function () {
+    resolve(ModelAttributeResolver::class)->buildMorphTargetMap([Image::class, Post::class, Product::class, User::class, CrmUser::class]);
+});
 
 /**
  * The classes each `$x->member` read of a body seeded as a Post-backed resource's resolves its receiver to, in source
@@ -117,7 +125,15 @@ test('a block-scoped binding types the reads it holds for, and no read outside i
             'closure_block?' => 'string | number',
             'first?' => 'string | number',
         ])
-        ->and($workbench)->toBe(['label?' => 'string', 'bytes?' => 'number'])
+        ->and($workbench)->toBe([
+            'label?' => 'string',
+            'bytes?' => 'number',
+            'loop_post_key?' => 'number',
+            'guarded_post_key?' => 'number',
+            'positive_title?' => 'string',
+            'positive_email?' => 'string',
+            'loaded_post_key?' => '{ k: number } | null',
+        ])
         // Past its block `$count` holds nothing the scan knows, so `?? 0` leaves its arm out.
         ->and(array_map(fn (array $arm): string => $arm['expression'].' '.$arm['site'], $dropped))
         ->toBe(['$count coalesce-left']);
@@ -195,7 +211,11 @@ test('sends what the block-scoped bindings publish', function () {
     $post = blockScopedPost();
     $image = new Image;
     $image->forceFill(['id' => 21, 'url' => 'https://example.com/a.png', 'size_bytes' => 9]);
-    $request = Request::create('/', 'GET', ['shadow' => 1, 'draft' => 1, 'closure' => 1, 'size' => 1]);
+    $image->setRelation('imageable', $post);
+    $userImage = new Image;
+    $userImage->forceFill(['id' => 22, 'url' => 'https://example.com/b.png', 'size_bytes' => 4]);
+    $userImage->setRelation('imageable', $post->author);
+    $request = Request::create('/', 'GET', ['shadow' => 1, 'draft' => 1, 'closure' => 1, 'size' => 1, 'post' => 1]);
 
     expect(json_encode(new BlockScopedLocalsResource($post)->resolve($request)))->toBe(json_encode([
         'id' => 7,
@@ -218,7 +238,37 @@ test('sends what the block-scoped bindings publish', function () {
         ->and(json_encode(new BlockScopedBindingsResource($image)->resolve($request)))->toBe(json_encode([
             'label' => 'https://example.com/a.png',
             'bytes' => 9,
+            'loop_post_key' => 7,
+            'guarded_post_key' => 7,
+            'positive_title' => 'Banana',
+            'loaded_post_key' => ['k' => 7],
         ]))
+        ->and(json_encode(new BlockScopedBindingsResource($userImage)->resolve(Request::create('/', 'GET'))))
+        ->toBe(json_encode(['bytes' => 4, 'positive_email' => 'ann@example.com', 'loaded_post_key' => null]))
         ->and(json_encode(new BlockScopedParameterGapsResource($post)->resolve($request)))
         ->toBe(json_encode(['captured' => 'Ann', 'passed' => 'Ann']));
+});
+
+// A guard nested in a block narrows the rest of that block alone; past the block the morph's string key arm is back.
+test('a guard nested in a block narrows the reads after it up to the end of that block, and no read past it', function () {
+    $post = blockScopedPost();
+    $image = new Image;
+    $image->forceFill(['id' => 21]);
+    $image->setRelation('imageable', $post);
+    $userImage = new Image;
+    $userImage->forceFill(['id' => 22]);
+    $userImage->setRelation('imageable', $post->author);
+
+    expect(publishedResourceKeyTypes(BlockScopedGuardsResource::class, Image::class))->toBe([
+        'if_key?' => 'number',
+        'loop_key?' => 'number',
+        'try_key?' => 'number',
+        'case_key?' => 'number',
+        'past_switch_key?' => 'number | string',
+        'after_blocks' => 'number | string',
+    ])
+        ->and(json_encode(new BlockScopedGuardsResource($image)->resolve(Request::create('/', 'GET', ['if' => 1]))))
+        ->toBe(json_encode(['if_key' => 7, 'loop_key' => 7, 'try_key' => 7, 'case_key' => 7, 'past_switch_key' => 7, 'after_blocks' => 7]))
+        ->and(json_encode(new BlockScopedGuardsResource($userImage)->resolve(Request::create('/', 'GET'))))
+        ->toBe(json_encode(['after_blocks' => 3]));
 });
