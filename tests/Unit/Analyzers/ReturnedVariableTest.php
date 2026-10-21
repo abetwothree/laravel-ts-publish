@@ -746,9 +746,8 @@ test('an unset() of a key a literal local holds removes that key', function (str
         [['slim' => '0'], ['id' => 9, 'name' => 'php', 'slug' => 'php']],
         [['slim' => '1'], ['id' => 9]],
     ]],
-    // The second closure returns alone a variable an unset() it cannot name may shrink: read leniently, as a method's
-    // lone variable is, its keys stay required (a known gap), though `?hide=color` drops `color`.
-    'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string; color: string | null; label: string', [
+    // The second closure returns alone a variable an unset() it cannot name may shrink, so it merges none of its keys.
+    'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string', [
         [['hide' => ''], ['id' => 9, 'name' => 'php', 'color' => null, 'label' => 'php']],
         [['hide' => 'color'], ['id' => 9, 'name' => 'php', 'label' => 'php']],
     ]],

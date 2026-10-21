@@ -349,9 +349,9 @@ trait ReadsReturnedVariables
     /**
      * The branches a closure's returns can merge, none when no branch sets a key.
      *
-     * One per returned array, `[]` included, one per returned variable the walk reads completely, however often it is
-     * returned, and one per other value mergedValueBranch() reads, with whether every return was read completely. A
-     * variable returned alone is read for the keys its walk sees, as a method's lone returned variable is.
+     * One per returned array, `[]` included, per returned variable the walk reads completely, however often returned,
+     * or returned alone with no unset() it cannot name, as a method's lone one is read, and per other value
+     * mergedValueBranch() reads, with whether every return was read completely.
      *
      * @return array{list<TAnalysis>, bool}
      */
@@ -376,7 +376,7 @@ trait ReadsReturnedVariables
                 }
 
                 $read[$returned->name] = true;
-                $branch = count($returns) === 1
+                $branch = count($returns) === 1 && ! $this->unsetsUnnamedKey($stmts, $returned->name)
                     ? $this->resolveVariableReturnAnalysis($stmts, $returned->name, topLevel: false)
                     : $this->variableBranch($stmts, $returned->name, topLevel: false);
             } else {
@@ -820,6 +820,27 @@ trait ReadsReturnedVariables
                 fn (array $property): bool => $property['name'] !== $key,
             ));
         }
+    }
+
+    /**
+     * Whether an unset() past the variable's last whole replacement takes from it a key the walk cannot name, which may
+     * be any key the walk reads.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function unsetsUnnamedKey(array $stmts, string $varName): bool
+    {
+        $unsets = new NodeFinder()->findInstanceOf($this->fromLastReplacement($stmts, $varName), Unset_::class);
+
+        foreach ($unsets as $unset) {
+            foreach ($unset->vars as $var) {
+                if ($this->keyRoot($var) === $varName && $this->namedUnsetKey($var, $varName) === null) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
