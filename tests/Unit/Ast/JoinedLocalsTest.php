@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedLocalsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JoinedParametersResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Workbench\App\Models\Comment;
@@ -25,7 +26,7 @@ function joinedPost(bool $pinned): Post
 /**
  * What Laravel sends for a joined fixture over the post, pinned or not.
  *
- * @param  class-string<JoinedLocalsResource>  $resource
+ * @param  class-string<JoinedLocalsResource|JoinedParametersResource>  $resource
  * @return array<string, mixed>
  */
 function joinedSends(string $resource, bool $pinned): array
@@ -55,6 +56,17 @@ test('a local the try body and a catch both assign joins both, and a finally wri
     ])
         ->and(joinedSends(JoinedLocalsResource::class, true))->toMatchArray(['caught' => null, 'finally' => 1, 'caught_read' => 'Banana'])
         ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['caught' => 'Banana', 'finally' => 1, 'caught_read' => 7]);
+});
+
+// An old value no rule types keeps the joined read unknown. A call no rule types binds the callback's parameter to
+// nothing, so the read past the block is a local's that one nested write leaves unbound.
+test('a parameter written inside a block joins its old value and the write\'s', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray([
+        'joined?' => 'string | number',
+        'vague_joined?' => 'unknown',
+        'opaque_joined?' => 'unknown',
+    ])
+        ->and(joinedSends(JoinedParametersResource::class, true))->toMatchArray(['joined' => 5, 'vague_joined' => 5, 'opaque_joined' => 5]);
 });
 
 test('a local that reads itself in its own reassignment keeps both values', function () {

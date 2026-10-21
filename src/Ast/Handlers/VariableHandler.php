@@ -269,7 +269,7 @@ final class VariableHandler implements ExpressionHandler
         ));
         $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : $values;
 
-        return $gap[2] === null || $gap[2] === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
+        return $gap[2] === null || $arms === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
             ? null
             : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
     }

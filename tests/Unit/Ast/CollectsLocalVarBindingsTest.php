@@ -5,12 +5,14 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\PostResource;
@@ -244,6 +246,77 @@ it('keeps an expression binding across a top-level write naming no class', funct
     'a column read' => ['$p = trim($p); return $p;', new PropertyFetch(new Variable('this'), 'title'), [true, true, true]],
     'a relation read' => ['$p = json_decode($p); return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, true]],
     'a passed model no row backs yet' => ['$p = json_decode($p); return $p;', new New_(new FullyQualified(User::class)), [true, true, true]],
+]);
+
+/**
+ * The classes the receiver of each `$p->x` read of a parsed body resolves to once the body is seeded, null for none.
+ *
+ * @param  Closure(AnalysisScope): void  $seed
+ * @return list<list<class-string>|null>
+ */
+function seededReceiverClasses(string $body, Closure $seed): array
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the body.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function seed(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $seed($scope);
+    $host->seed($stmts, $scope);
+
+    $reads = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof PropertyFetch
+        && $node->var instanceof Variable
+        && $node->var->name === 'p'
+        && $node->name instanceof Identifier
+        && $node->name->toString() === 'x');
+
+    return array_map(
+        fn (Node $read): ?array => $read instanceof PropertyFetch
+            ? resolve(ReceiverClassResolver::class)->resolve($read->var, $scope)?->classes
+            : null,
+        $reads,
+    );
+}
+
+// Past a nested write the receiver keeps what the parameter came in with, as when the write never ran, unless the
+// write ended it: its value names another class, which its own read of the parameter no longer reaches.
+it('keeps a parameter\'s receiver past a nested write naming no class', function (string $body, Closure $seed, array $classes) {
+    expect(seededReceiverClasses($body, $seed))->toBe($classes);
+})->with([
+    'a model binding, a value naming no class' => [
+        'if ($c) { $p = json_decode("x"); } $p->x;',
+        function (AnalysisScope $scope): void {
+            $scope->varModelBindings['p'] = User::class;
+        },
+        [[User::class]],
+    ],
+    'a model binding, a value naming another class' => [
+        'if ($c) { $p = $p->profile; } $p->x;',
+        function (AnalysisScope $scope): void {
+            $scope->varModelBindings['p'] = User::class;
+        },
+        [null],
+    ],
+    'an expression binding, a value naming no class' => [
+        'foreach ($cs as $c) { if ($c) { $p = $c; continue; } } $p->x;',
+        function (AnalysisScope $scope): void {
+            $scope->closureParamExprBindings['p'] = new PropertyFetch(new Variable('this'), 'author');
+        },
+        [[User::class]],
+    ],
 ]);
 
 /**

@@ -320,7 +320,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null, false]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
     }
 
     $before = $scope->nameBindings();

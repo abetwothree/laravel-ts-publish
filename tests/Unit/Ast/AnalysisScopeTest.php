@@ -106,7 +106,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null, false]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
     }
 
     return $scope;
@@ -194,7 +194,7 @@ it('holds a binding for a read up to its end, and always for a name with no end 
 
 it('holds no binding inside a gap, and holds it again past the gap', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $scope->bindingGaps['post'] = [[10, 20, null, false]];
+    $scope->bindingGaps['post'] = [[10, 20, null, false, false]];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
     expect($scope->holdsBinding($at(10)))->toBeTrue()
@@ -205,9 +205,9 @@ it('holds no binding inside a gap, and holds it again past the gap', function ()
 
 it('finds the gap a read falls in, the one whose write came latest', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $first = [10, 30, [new Variable('first')], false];
-    $second = [20, 30, [new Variable('second')], true];
-    $third = [40, 50, null, false];
+    $first = [10, 30, [new Variable('first')], false, false];
+    $second = [20, 30, [new Variable('second')], true, false];
+    $third = [40, 50, null, false, false];
     $scope->bindingGaps['post'] = [$first, $second, $third];
     $at = fn (int $offset): Variable => new Variable('post', ['startFilePos' => $offset]);
 
@@ -278,8 +278,8 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
 
 it('lifts one gap for a read, and puts it back', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $lifted = [10, 30, null, true];
-    $kept = [40, 50, null, false];
+    $lifted = [10, 30, null, true, false];
+    $kept = [40, 50, null, false, false];
     $scope->bindingGaps['post'] = [$lifted, $kept];
 
     $during = $scope->beforeGap('post', $lifted, fn (): array => $scope->bindingGaps);

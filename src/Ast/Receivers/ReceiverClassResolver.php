@@ -723,7 +723,7 @@ final class ReceiverClassResolver
 
         $gap = $scope->gapAt($variable);
 
-        return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($name, $gap, $scope);
+        return $gap === null ? $this->fromLocal($name, $scope) : $this->fromGap($variable, $name, $gap, $scope);
     }
 
     /**
@@ -854,17 +854,22 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable inside a gap through the values its writes assigned, joined with the binding the name came in
-     * with where that may still hold; null when one of them names no class.
+     * with where that may still hold, or where the gap keeps it for a write naming no class; null when one names none.
      *
      * @param  BindingGap  $gap
      */
-    private function fromGap(string $name, array $gap, AnalysisScope $scope): ?ReceiverType
+    private function fromGap(Variable $read, string $name, array $gap, AnalysisScope $scope): ?ReceiverType
     {
         $written = $scope->beforeGap($name, $gap, fn (): array => array_map(
             fn (Expr $value): ?ReceiverType => $this->fromBoundExpression($name, $value, $scope),
             $gap[2] ?? [],
         ));
-        $receivers = $gap[3] ? [$this->fromBindings($name, $scope), ...$written] : $written;
+        $keepsOld = $gap[3] || ($gap[4] && in_array(null, $written, true));
+        $written = $gap[4] ? array_values(array_filter($written)) : $written;
+        $old = $keepsOld && isset($scope->varClassBindings[$name])
+            ? new ReceiverType($scope->varClassBindings[$name])
+            : ($keepsOld ? $this->fromBindings($name, $scope, $read) : null);
+        $receivers = $keepsOld ? [$old, ...$written] : $written;
 
         if ($gap[2] === null || $receivers === [] || in_array(null, $receivers, true)) {
             return null;

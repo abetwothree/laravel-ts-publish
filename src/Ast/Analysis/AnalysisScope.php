@@ -78,7 +78,7 @@ use ReflectionClass;
  *      before: int|null,
  *      sole: bool
  * }
- * @phpstan-type BindingGap array{int, int, list<Expr>|null, bool}
+ * @phpstan-type BindingGap array{int, int, list<Expr>|null, bool, bool}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
@@ -327,8 +327,10 @@ final class AnalysisScope
      * in a block that always leaves the function to that block's end. A name with no binding has one for each `$x = …;`
      * nested in a block, from past that statement to its block's end or the block's statement holding the next write.
      *
-     * Each carries its writes' values, or null where one assigns none the scan reads, and whether the old binding may
-     * still hold there, past a write that may not run.
+     * A name written more than once, or a parameter a write may replace, has one past each statement that writes it.
+     *
+     * Each carries its writes' values, or null where one assigns none the scan reads, whether the old binding may still
+     * hold, past a write that may not run, and whether a receiver keeps it past a write whose value names no class.
      *
      * @var BindingGapsMap
      */
