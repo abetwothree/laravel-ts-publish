@@ -727,12 +727,11 @@ it a `@var` docblock.
 
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
-A parameter bound to a class keeps that binding past a write whose value names no class: after
+A parameter keeps its binding past a write whose value names no class: after
 `function (User $a) { $a = $this->untyped($a); return $a->name; }` the read still takes `User`'s `name`, whatever the
-helper returns. Annotate the assignment, `/** @var Comment $a */`, and the read follows it. A parameter holding a plain
-value keeps its binding only past a write nested in a block, such as an `if`; after a top-level `$t = json_decode($t)`,
-`$t` reads what was written. `$a->comments->find(1)?->content` reads the comment's `content`, but the call alone
-publishes `unknown`, as `first()` does on a parameter's relation.
+helper returns. Annotate the assignment, `/** @var Comment $a */`, and the read follows it. A closure parameter passed a
+value does the same: after `$t = json_decode($t)`, `$t` keeps the type it was passed. `$a->comments->find(1)?->content`
+reads the comment's `content`, but the call alone publishes `unknown`, as `first()` does on a parameter's relation.
 
 ### An abstract model's key type misses a subclass the run does not publish
 
