@@ -369,11 +369,12 @@ A name with no binding that the body writes more than once is joined statement b
 each span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all
 nested `$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A
 write in a block that always exits reaches no read past it. Any other write leaves the name unbound until its next
-top-level `$x = …;`. A parameter takes the same walk from its own binding, for values only, and stops at its own
-top-level `$x = …;` or any other write; its gaps carry `receiversKeep`, so a member read keeps the old binding past a
-write naming no class, until a write ends it. `CollectsLocalVarBindings::writeKind()` classifies each write once for
-these passes. The cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound
-expression, so `$s = $s . 'x'` reads the value `$s` held before.
+top-level `$x = …;`, and a name a reference can write through is never joined. A parameter takes the same walk from its
+own binding, for values only, and stops at its own top-level `$x = …;` or any other write. Its gaps carry
+`receiversKeep`: past a write naming no class a member read keeps the old binding, and a value read the old value in
+place of a written one the engine cannot type, until a write ends it. `CollectsLocalVarBindings::writeKind()`
+classifies each write once for these passes. The cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by
+its name and the bound expression, so `$s = $s . 'x'` reads the value `$s` held before.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
@@ -420,9 +421,10 @@ keys, reads `literalLocalBindings()`, which leaves such a local out.
 
 These shapes stay unbound on purpose, so they resolve as `unknown` rather than as a guess:
 
-- **A local past a write the join cannot read**: a `foreach`, `unset()`, `.=`, a by-reference call or a closure's
-  `use (&$x)` leaves it unbound until its next top-level `$x = …;`. A key write, such as `$data['k'] = …` or `+=`, does
-  too; only a returned variable's walk reads one.
+- **A local past a write the join cannot read**: a `foreach`, `unset()`, `.=` or a by-reference call leaves it unbound
+  until its next top-level `$x = …;`. A key write, such as `$data['k'] = …` or `+=`, does too; only a returned
+  variable's walk reads one. A local a reference can write through, made by `=&`, `use (&$x)`, `global`, `static` or
+  `foreach (… as &$x)`, stays unbound past every write.
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
