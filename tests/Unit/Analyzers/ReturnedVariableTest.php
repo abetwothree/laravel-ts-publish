@@ -8,9 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocalPlusResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchReplacedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
@@ -38,9 +40,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpolatedUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalOperandsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMergeVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedMixedUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedLoopResetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedNestedUnsetKeyResource;
@@ -657,3 +661,36 @@ test('a merge closure adds a local with + only where it imports the local and ne
         ->and(new MergeClosureLocalPlusResource($tag)->resolve(Request::create('/')))
         ->toBe(['id' => 9, 'name' => 'php', 'note' => 'none', 'slug' => 'php-slug', 'flag' => true]);
 });
+
+test('a mixed unset() removes each literal key and leaves only the unnamed one unread', function () {
+    $mixed = walkedVariable('$d = ["a" => 1, "b" => 2, "c" => 3]; unset($d["a"], $d[$k]);');
+    $named = walkedVariable('$d = ["a" => 1, "b" => 2, "c" => 3]; unset($d["a"], $d["b"]);');
+
+    expect(returnedVariableMembers(ReturnedMixedUnsetKeyResource::class))->toBe('id: number; slug: string')
+        ->and(array_column($mixed->properties, 'name'))->toBe(['b', 'c'])
+        ->and($mixed->readsCompletely)->toBeFalse()
+        ->and(array_column($named->properties, 'name'))->toBe(['c'])
+        ->and($named->readsCompletely)->toBeTrue();
+});
+
+test('an unset() of a key a literal local holds removes that key', function (string $class, string $members, array $paths) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php']);
+    $sent = fn (array $query): array => new $class($tag)->resolve(Request::create('/', 'GET', $query));
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(array_map($sent, array_column($paths, 0)))->toBe(array_column($paths, 1));
+})->with([
+    'beside a literal' => [ReturnedLocalKeyUnsetResource::class, 'id: number; name?: string', [
+        [['compact' => '1'], ['id' => 9, 'name' => 'php']],
+        [['compact' => '0'], ['id' => 9]],
+    ]],
+    'inside an if branch' => [ReturnedBranchLocalKeyUnsetResource::class, 'id: number; name?: string; slug?: string', [
+        [['slim' => '0'], ['id' => 9, 'name' => 'php', 'slug' => 'php']],
+        [['slim' => '1'], ['id' => 9]],
+    ]],
+    'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string', [
+        [['hide' => ''], ['id' => 9, 'name' => 'php', 'color' => null, 'label' => 'php']],
+        [['hide' => 'color'], ['id' => 9, 'name' => 'php', 'label' => 'php']],
+    ]],
+]);

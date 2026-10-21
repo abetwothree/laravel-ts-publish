@@ -79,6 +79,12 @@ trait ReadsReturnedVariables
     abstract protected function subjectReflection(): ReflectionClass;
 
     /**
+     * The string, int or class-constant literal a local holds where the host binds it, so a key write or an unset()
+     * through that local names its key; null for any other name.
+     */
+    abstract protected function literalLocal(string $name): ?Expr;
+
+    /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
      *
      * @return TAnalysis
@@ -684,19 +690,10 @@ trait ReadsReturnedVariables
 
     /**
      * Whether a statement writes the variable through a key the walk does not read: a dynamic, appended or nested key,
-     * an unset() of the variable or of a key namedUnsetKey() cannot name, or a compound write or an increment of a key
-     * the walk does not hold.
+     * or a compound write or an increment of a key the walk does not hold. removeUnsetKeys() judges an unset().
      */
     private function writesUnreadKey(Node\Stmt $stmt, string $varName, MethodAnalysis $into): bool
     {
-        if ($stmt instanceof Unset_) {
-            return array_any(
-                $stmt->vars,
-                fn (Expr $unset): bool => $this->keyRoot($unset) === $varName
-                    && $this->namedUnsetKey($unset, $varName) === null,
-            );
-        }
-
         $write = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
         $target = $write === null ? null : $this->writeTarget($write);
 
@@ -713,7 +710,8 @@ trait ReadsReturnedVariables
 
     /**
      * Remove each named key an unset() takes from the variable, with its import channels and cast, or make it optional
-     * where the unset() may not run.
+     * where the unset() may not run. An unset() of a key namedUnsetKey() cannot name may take any key, and one of the
+     * variable itself takes them all, so either leaves the variable not read completely.
      */
     private function removeUnsetKeys(Unset_ $stmt, string $varName, bool $isConditional, MethodAnalysis $into): void
     {
@@ -721,6 +719,8 @@ trait ReadsReturnedVariables
             $key = $this->namedUnsetKey($unset, $varName);
 
             if ($key === null) {
+                $into->readsCompletely = $into->readsCompletely && $this->keyRoot($unset) !== $varName;
+
                 continue;
             }
 
@@ -760,11 +760,14 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The key a write's dim names, read as resolveKeyName() reads a literal's key; null for any other.
+     * The key a write's dim names, read as resolveKeyName() reads a literal's key, a local holding one included; null
+     * for any other.
      */
     private function namedKey(Expr $dim): ?string
     {
-        return $this->resolveKeyName($dim, $this->subjectReflection());
+        $key = $dim instanceof Variable && is_string($dim->name) ? $this->literalLocal($dim->name) : $dim;
+
+        return $key === null ? null : $this->resolveKeyName($key, $this->subjectReflection());
     }
 
     /**

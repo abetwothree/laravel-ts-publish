@@ -62,6 +62,7 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
@@ -71,6 +72,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
@@ -581,6 +583,16 @@ class ResourceAstAnalyzer implements ExpressionEngine
     protected function newVariableAnalysis(): ResourceAnalysis
     {
         return new ResourceAnalysis;
+    }
+
+    /**
+     * The string, int or class-constant literal a local written once holds, as boundLocal() reads the local.
+     */
+    protected function literalLocal(string $name): ?Expr
+    {
+        $bound = $this->boundLocal($name);
+
+        return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
 
     /**
