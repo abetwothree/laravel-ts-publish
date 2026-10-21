@@ -12,13 +12,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
+use ReflectionClass;
 
 /**
  * Closures and arrow functions used as a property value — resolves the body's return type(s),
@@ -49,6 +53,10 @@ final class ClosureHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
+            return null;
+        }
+
         // Closures / arrow functions — body analysis first, return-type annotation as the fallback.
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
@@ -58,6 +66,8 @@ final class ClosureHandler implements ExpressionHandler
             try {
                 // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
                 $scope->releaseUnclaimedParameters($expr);
+                // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
+                $this->bindDeclaredParameters($expr, $scope);
 
                 if ($expr instanceof ClosureExpr) {
                     $this->seedBody($expr->stmts, $scope);
@@ -85,6 +95,43 @@ final class ClosureHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * Bind each parameter whose native type names one class to that class, where no writer bound the name to a class:
+     * a non-null concrete model in varModelBindings, any other class, or a nullable one, in varDeclaredBindings, as
+     * ParameterBinder binds a method's. PHP throws for any other argument, so the type holds for every call.
+     */
+    private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        foreach ($closure->params as $param) {
+            $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
+            $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+            $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
+
+            if ($name === null
+                || $class === null
+                || $param->variadic
+                || (! class_exists($class) && ! interface_exists($class))
+                || isset($scope->varModelBindings[$name])
+                || isset($scope->varDeclaredBindings[$name])
+                || isset($scope->varCollectionBindings[$name])
+                || isset($scope->varClassBindings[$name])
+                || isset($scope->closureParamExprBindings[$name])
+                || isset($scope->requestVarNames[$name])
+            ) {
+                continue;
+            }
+
+            $nullable = $param->type instanceof NullableType
+                || ($param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null');
+
+            if (! $nullable && is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract()) {
+                $scope->varModelBindings[$name] = $class;
+            } else {
+                $scope->varDeclaredBindings[$name] = [$class];
+            }
+        }
     }
 
     /**
