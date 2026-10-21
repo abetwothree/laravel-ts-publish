@@ -71,13 +71,17 @@ it('adds a wrap\'s null arm only where filter() reaches the mapped items', funct
         'wrapped_all?' => '({ profile: ProfileResource | null })[]',
         'chain_wrapped' => '{ profile: ProfileResource }[]',
         'chain_wrapped_all' => '({ profile: ProfileResource | null })[]',
+        'pipe_owner_wrapped' => '{ profile: ProfileResource }[]',
+        'pipe_owner_wrapped_all' => '({ profile: ProfileResource | null })[]',
         'owner_wrapped?' => '{ profile: ProfileResource | null }',
     ])
         ->and(mappedProfileWrapSends('wrapped'))->toBe('throws')
         ->and(mappedProfileWrapSends('wrapped_values'))->toBe('throws')
         ->and(mappedProfileWrapSends('chain_wrapped'))->toBe('throws')
+        ->and(mappedProfileWrapSends('pipe_owner_wrapped'))->toBe('throws')
         ->and(mappedProfileWrapSends('wrapped_all'))->toContain('{"profile":null}')
         ->and(mappedProfileWrapSends('chain_wrapped_all'))->toContain('{"profile":null}')
+        ->and(mappedProfileWrapSends('pipe_owner_wrapped_all'))->toBe('{"data":{"k":[{"profile":null},{"profile":null}]}}')
         ->and(mappedProfileWrapSends('owner_wrapped'))->toBe('{"data":{"k":{"profile":null}}}');
 });
 
