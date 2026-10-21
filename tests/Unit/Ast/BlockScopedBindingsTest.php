@@ -115,7 +115,7 @@ test('a block-scoped binding types the reads it holds for, and no read outside i
         'shadowed?' => 'number',
         'loop_writer?' => 'string',
         'loop_transformed?' => 'string',
-        'coalesced?' => 'string[] | never[]',
+        'coalesced?' => 'string[]',
         'draft_title?' => 'string',
         'after_block' => 'number',
     ])

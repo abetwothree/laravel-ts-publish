@@ -271,7 +271,8 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
-     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent.
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
+     * `[]` beside a list is no member of its own, since the list already admits it.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -305,7 +306,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        return [...$result, 'optional' => $optional];
+        return [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
     }
 
     /**
@@ -390,6 +391,26 @@ final class ValueResult
     public static function enumTypeName(string $fqcn): string
     {
         return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+    }
+
+    /**
+     * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
+     */
+    private static function withoutEmptyListBesideList(string $type): string
+    {
+        if (! str_contains($type, 'never[]')) {
+            return $type;
+        }
+
+        $members = TsTypeString::splitTopLevelUnion($type);
+        $lists = array_filter(
+            $members,
+            fn (string $member): bool => $member !== 'never[]' && TsTypeShape::elementType($member) !== null,
+        );
+
+        return $lists === [] || ! in_array('never[]', $members, true)
+            ? $type
+            : implode(' | ', array_diff($members, ['never[]']));
     }
 
     /**

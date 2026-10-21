@@ -228,12 +228,12 @@ test('an offset read takes the member each arm of its holder names, and declines
 // call that may not run leaves what the name held, so it writes only over a name nothing else writes, or a string list.
 test('preg_match() with no flag and no named group writes a list of strings, but not over a value a skipped call leaves', function () {
     expect(publishedResourceKeyTypes(PregMatchResource::class, Post::class))->toBe([
-        'm' => 'string[] | never[]',
+        'm' => 'string[]',
         'bare' => 'string[]',
         'named' => 'never[]',
         'offsets' => 'never[]',
         'kept' => 'unknown',
-        'maybe' => 'string[] | never[]',
+        'maybe' => 'string[]',
         'decoded' => 'unknown',
         'flagged' => 'unknown',
         'else_null' => 'unknown',
