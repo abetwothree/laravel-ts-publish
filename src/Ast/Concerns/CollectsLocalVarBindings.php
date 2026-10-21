@@ -32,6 +32,7 @@ use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
@@ -49,6 +50,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\StaticVar;
 use PhpParser\Node\Stmt\Case_;
@@ -1159,7 +1161,12 @@ trait CollectsLocalVarBindings
                 $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope)
                     && ! $this->replacesModelValue($name, $assigned, $scope))
                     ? null
-                    : [[$assigned], false, $state[2] && $own[0][1] !== $ender, $this->nothingNested($state)],
+                    : [
+                        [$assigned],
+                        false,
+                        $state[2] && $own[0][1] !== $ender && ($this->bindsValue($name, $scope) || ! $this->typedAtSeed($assigned, $scope)),
+                        $this->nothingNested($state),
+                    ],
                 default => $this->joinNested($own, $state),
             };
 
@@ -1390,6 +1397,24 @@ trait CollectsLocalVarBindings
     {
         return isset($scope->varModelBindings[$name])
             && resolve(ReceiverClassResolver::class)->resolve($written, $scope) === null;
+    }
+
+    /**
+     * Whether the scan types a value without the engine, so a model's receiver need not outlast a write of it: a
+     * constant, a scalar cast, a string built by `.` or interpolation, or a column a model holds.
+     */
+    private function typedAtSeed(Expr $value, AnalysisScope $scope): bool
+    {
+        $member = ($value instanceof PropertyFetch || $value instanceof NullsafePropertyFetch) && $value->name instanceof Identifier
+            ? $value->name->toString()
+            : null;
+        $models = $member === null ? [] : resolve(ReceiverClassResolver::class)->resolve($value->var, $scope)?->models() ?? [];
+
+        return $this->constantType($value, $scope) !== null
+            || ($value instanceof Cast && ! $value instanceof Cast\Object_ && ! $value instanceof Cast\Unset_)
+            || $value instanceof BinaryOp\Concat || $value instanceof InterpolatedString
+            || ($models !== [] && array_all($models, fn (string $model): bool => resolve(ModelAttributeResolver::class)
+                ->resolveAttribute($model, (string) $member)['type'] !== 'unknown'));
     }
 
     /**

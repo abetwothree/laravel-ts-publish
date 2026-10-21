@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaHelperPa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenDeclaredParametersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrittenModelMemberResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -416,4 +417,15 @@ test('reads a list shape @param as the tuple it declares', function () {
 test('captures a callable tag whole, up to the by-reference name after its return type', function () {
     expect(resolve(PropertyDocblockTypeReader::class)->extractVarType('/** @var callable(int): string &$cb */'))
         ->toBe('callable(int): string');
+});
+
+// Past the write a receiver no longer holds the model: the value is a typed column, whose member PHP cannot read.
+test('a member read past a model parameter\'s own typed write reads no member of the model', function () {
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+
+    expect(parameterBinderKeyTypes(resolve(AstEngine::class)->analyze(WrittenModelMemberResource::class, 'toArray', Post::class)->properties))
+        ->toBe(['member_past' => 'unknown'])
+        ->and(fn () => new WrittenModelMemberResource($post)->resolve(Request::create('/')))
+        ->toThrow(ErrorException::class, 'Attempt to read property "title" on string');
 });
