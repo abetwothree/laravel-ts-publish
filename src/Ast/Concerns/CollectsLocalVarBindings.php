@@ -1141,7 +1141,8 @@ trait CollectsLocalVarBindings
             $node instanceof Catch_ => VariableWrite::Catches,
             $node instanceof Unset_ => VariableWrite::Unsets,
             $target instanceof List_, $target instanceof Array_ => VariableWrite::Destructures,
-            ! $target instanceof Variable => VariableWrite::MemberOrOffset,
+            // `$$k = …` writes the variable `$k` names, never `$k`.
+            ! $target instanceof Variable || ! is_string($target->name) => VariableWrite::MemberOrOffset,
             $node instanceof CoalesceAssign => VariableWrite::Coalesces,
             $node instanceof Assign => VariableWrite::Replaces,
             default => VariableWrite::Compounds,

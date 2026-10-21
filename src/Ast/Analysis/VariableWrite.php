@@ -21,7 +21,7 @@ enum VariableWrite
     /** `.=`, `+=` and the other operators, `++` and `--` work on the value the variable holds. */
     case Compounds;
 
-    /** `$x->prop = …` or `$x['key'] = …` writes through the variable. */
+    /** `$x->prop = …`, `$x['key'] = …` or `$$x = …` writes through the variable. */
     case MemberOrOffset;
 
     /** `[$x] = …` writes an item of the value a list destructures. */

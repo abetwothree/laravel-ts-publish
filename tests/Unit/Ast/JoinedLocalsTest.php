@@ -92,6 +92,11 @@ test('a local another name or a closure can write through a reference is never j
         ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['aliased' => 1, 'closed' => 1]);
 });
 
+test('a variable variable\'s write is no write of the variable that names it', function () {
+    expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray(['key' => 'unknown'])
+        ->and(joinedSends(JoinedLocalsResource::class, false))->toMatchArray(['key' => 'a']);
+});
+
 test('a local that reads itself in its own reassignment keeps both values', function () {
     expect(publishedResourceKeyTypes(JoinedLocalsResource::class, Post::class))->toMatchArray([
         'self' => 'string',
