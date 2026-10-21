@@ -68,6 +68,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRequiredR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedShapedLoneVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSignatureUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSkippingParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSkippingParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedThrowingBranchResource;
@@ -694,3 +695,16 @@ test('an unset() of a key a literal local holds removes that key', function (str
         [['hide' => 'color'], ['id' => 9, 'name' => 'php', 'label' => 'php']],
     ]],
 ]);
+
+// Every signature entry admits `undefined`, so the entry that can still name the unset key stays sound.
+test('an unset() of a literal key keeps a signature entry that can name it, which admits undefined', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php']);
+    $sent = fn (string $suffix): array => new ReturnedSignatureUnsetResource($tag)
+        ->resolve(Request::create('/', 'GET', ['suffix' => $suffix]));
+
+    expect(returnedVariableMembers(ReturnedSignatureUnsetResource::class))
+        ->toBe('id: number; [key: `slug${string}`]: string | undefined')
+        ->and($sent(''))->toBe(['id' => 9])
+        ->and($sent('_x'))->toBe(['id' => 9, 'slug_x' => 'php']);
+});
