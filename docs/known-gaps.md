@@ -376,6 +376,13 @@ through the model's own helper rather than `$this->hasMany(...)` or another of L
 relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it publishes
 `unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
 
+### A relation method whose `@return` is vaguer than its `@phpstan-return` is left out
+
+The docblock reader takes `@return` before `@phpstan-return`, so a method declared `@return mixed` with
+`@phpstan-return HasMany<Comment, $this>`, whose body builds the relation through a helper, is read as declaring no
+relation class and is left out like the entry above. Name the relation class in `@return` too. Reading the tags as one
+grammar would fix it.
+
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 
 `$this->assignable->label()` publishes `unknown` in every spelling when the relation names no target, even if the

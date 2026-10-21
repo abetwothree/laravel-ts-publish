@@ -251,9 +251,12 @@ a builder such as `$this->hasMany(` in its body, and also one whose declared ret
 `readNotifications()`. A method that declares neither is missed; see
 [known gaps](../known-gaps.md#a-relation-method-that-declares-no-relation-class-and-builds-it-through-a-helper-is-left-out).
 
-Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads list-ness from
-the class, so a subclass of `HasMany` loads a list whatever its name, and `strategyFor()` gives a subclass the map does
-not name the strategy of its nearest parent the map does. The `morphTo` and `morphToMany` tests still read `type`.
+Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads a relation as
+a list when its `type` names "many", or when its class extends one of Laravel's to-many relations and keeps that
+relation's `getResults()` and `match()`. So a package's `Ancestors` on `HasMany` loads a list, and a has-one-deep built
+on has-many-through, which overrides both, loads one model. `strategyFor()` gives a subclass the map does not name the
+strategy of its nearest parent the map names, but never a to-many parent's to a subclass that loads one model, which
+stays `nullable`. The `morphTo` and `morphToMany` tests still read `type`.
 
 ## MorphTo targets
 
