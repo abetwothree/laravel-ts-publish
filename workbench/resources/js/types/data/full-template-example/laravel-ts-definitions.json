@@ -11568,6 +11568,46 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\CategoryBranchesResource": {
+            "name": "CategoryBranchesResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "label",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "mode",
+                    "type": "number | string",
+                    "optional": false
+                },
+                {
+                    "name": "top",
+                    "type": "CategoryResource | null",
+                    "optional": false
+                },
+                {
+                    "name": "tier",
+                    "type": "string | number | boolean",
+                    "optional": false
+                },
+                {
+                    "name": "first_only",
+                    "type": "boolean",
+                    "optional": true
+                },
+                {
+                    "name": "described",
+                    "type": "boolean",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\CategoryLineageResource": {
             "name": "CategoryLineageResource",
             "properties": [

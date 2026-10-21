@@ -575,6 +575,17 @@ class ResourceAstAnalyzer implements ExpressionEngine
     }
 
     /**
+     * A returned variable's exclusive branches join as a ternary's arms do: an untypable value drops out beside a typed
+     * one, and a lone `null` stays.
+     *
+     * @param  non-empty-list<ResourceAnalysis>  $branches
+     */
+    protected function joinedBranches(array $branches): ResourceAnalysis
+    {
+        return $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true);
+    }
+
+    /**
      * Seed the scope from a method body: its parameters, by what each declares and what its call passes, the body's
      * own bindings, then the relation-typed foreach loop variables that only a model-backed scope can resolve.
      *

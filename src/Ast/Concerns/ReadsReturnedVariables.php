@@ -92,6 +92,15 @@ trait ReadsReturnedVariables
     abstract protected function appendedKey(Expr $value): ?array;
 
     /**
+     * Join the exclusive branches of an `if` chain or a loop, each the keys the variable holds at its end: a key every
+     * branch holds keeps each branch's type, and one some branch lacks is optional.
+     *
+     * @param  non-empty-list<TAnalysis>  $branches
+     * @return TAnalysis
+     */
+    abstract protected function joinedBranches(array $branches): MethodAnalysis;
+
+    /**
      * The analysis of one array literal a closure returns, each key it sets required within that branch.
      *
      * @return TAnalysis
@@ -160,11 +169,12 @@ trait ReadsReturnedVariables
     /**
      * Recursively collect array assignments to a variable from method statements.
      *
-     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional, except those a
-     * `do` body makes before its first `break` or `continue`, which always run. A whole-array write that analyzes as
-     * nothing leaves the variable not read completely, since its keys are then unknown.
+     * The bodies of an `if` chain and of a `foreach`, `for` or `while` join as branches. Assignments inside a `try`
+     * body, a `catch`, a `case`, or a `do` body after its first `break` or `continue`, are marked as optional. A
+     * whole-array write that analyzes as nothing leaves the variable not read completely, since its keys are unknown.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  TAnalysis  $into
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -220,6 +230,11 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
+                // A write that always runs replaces every key held before it, as fromLastReplacement() does at the top.
+                if (! $isConditional && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+                    $into->replaceWith($this->newVariableAnalysis());
+                }
+
                 $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
@@ -268,20 +283,12 @@ trait ReadsReturnedVariables
             }
 
             if ($stmt instanceof If_) {
-                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
-
-                foreach ($stmt->elseifs as $elseif) {
-                    $this->collectVariableArrayAssignments($elseif->stmts, $varName, true, $into, $topLevel);
-                }
-
-                if ($stmt->else !== null) {
-                    $this->collectVariableArrayAssignments($stmt->else->stmts, $varName, true, $into, $topLevel);
-                }
+                $this->collectIfChainAssignments($stmt, $varName, $isConditional, $into, $topLevel);
             }
 
-            // Loop bodies are conditional: a loop may execute zero times.
+            // A loop may run zero times, so the keys held before it are a branch beside its body's.
             if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_) {
-                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+                $this->collectExclusiveAssignments([$stmt->stmts], true, $varName, $isConditional, $into, $topLevel);
             }
         }
     }
@@ -476,9 +483,71 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Collect a variable's writes across an `if` chain, whose bodies exclude each other; with no `else`, none may run.
+     *
+     * @param  TAnalysis  $into
+     */
+    private function collectIfChainAssignments(
+        If_ $if,
+        string $varName,
+        bool $isConditional,
+        MethodAnalysis $into,
+        bool $topLevel,
+    ): void {
+        $bodies = [$if->stmts, ...array_column($if->elseifs, 'stmts')];
+
+        if ($if->else !== null) {
+            $bodies[] = $if->else->stmts;
+        }
+
+        $this->collectExclusiveAssignments($bodies, $if->else === null, $varName, $isConditional, $into, $topLevel);
+    }
+
+    /**
+     * Collect a variable's writes across bodies of which one runs, or none where $mayRunNone. Each body writes into its
+     * own copy of the keys held before, which is one more branch where none may run, and the copies join; the copy
+     * leads, so earlier types lead each union. A key a body writes takes that body's value there, never another's.
+     *
+     * @param  non-empty-list<array<Node\Stmt>>  $bodies
+     * @param  TAnalysis  $into
+     */
+    private function collectExclusiveAssignments(
+        array $bodies,
+        bool $mayRunNone,
+        string $varName,
+        bool $isConditional,
+        MethodAnalysis $into,
+        bool $topLevel,
+    ): void {
+        // Bodies that never name the variable leave its keys as they are.
+        $names = fn (Node $node): bool => $node instanceof Variable && $node->name === $varName;
+
+        if (new NodeFinder()->findFirst(array_merge(...$bodies), $names) === null) {
+            return;
+        }
+
+        $walked = array_map(function (array $body) use ($varName, $isConditional, $into, $topLevel): MethodAnalysis {
+            $branch = clone $into;
+            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
+
+            return $branch;
+        }, $bodies);
+
+        $branches = [...($mayRunNone ? [clone $into] : []), ...$walked];
+
+        foreach (array_slice($branches, 1) as $branch) {
+            $branch->dropRepeatsOf($branches[0]);
+        }
+
+        $into->replaceWith($this->joinedBranches($branches));
+    }
+
+    /**
      * Collect a variable's writes inside a `try`, `switch`, `do` or bare block: a catch or a case may not run, nor a
      * `try` body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's
      * condition. A `do` body, which runs once, keeps it too, until a statement that can `break` or `continue`.
+     *
+     * @param  TAnalysis  $into
      */
     private function collectNestedArrayAssignments(
         TryCatch|Switch_|Block|Do_ $stmt,

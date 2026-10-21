@@ -131,6 +131,7 @@
     "app\/Http\/Resources\/CartTotalsResource.php",
     "app\/Http\/Resources\/CaseSpreadResource.php",
     "app\/Http\/Resources\/CastRestoredFillResource.php",
+    "app\/Http\/Resources\/CategoryBranchesResource.php",
     "app\/Http\/Resources\/CategoryLineageResource.php",
     "app\/Http\/Resources\/CategoryResource.php",
     "app\/Http\/Resources\/ChildInlineFqcnResource.php",

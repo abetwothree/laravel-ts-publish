@@ -251,6 +251,68 @@ it('rewrites each property\'s type, body type and fill, except a key a cast hold
     ]);
 });
 
+it('takes over every field of another analysis, the read-completely flag included', function () {
+    $source = new MethodAnalysis(
+        properties: [['name' => 'a', 'type' => 'A', 'optional' => true, 'description' => 'd']],
+        enumResources: ['a' => 'App\\E'],
+        nestedResources: ['a' => 'App\\R'],
+        customImports: ['@/x' => ['X']],
+        directEnumFqcns: ['a' => 'App\\E'],
+        modelFqcns: ['a' => 'App\\M'],
+        inlineEnumFqcns: ['a' => ['App\\E']],
+        inlineModelFqcns: ['a' => ['App\\M']],
+        inlineResourceFqcns: ['a' => ['App\\R']],
+        multiEnumResourceFqcns: ['a' => ['App\\E']],
+        inlineEnumResourceFqcns: ['a' => ['App\\E']],
+        enumResourceArmShapes: ['a' => ['wrapIsCollection' => true, 'directIsArray' => false]],
+        casts: ['a' => ['type' => 'A', 'import' => null]],
+        carried: ['models' => ['App\\M']],
+        flatTypeAlias: 'A[]',
+        flatTypeAliasFqcn: 'App\\M',
+    );
+    $source->readsCompletely = false;
+    $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
+
+    $target->replaceWith($source);
+
+    // A field added later fails the first assertion until this source sets it, then the second until it is copied.
+    expect(array_filter(
+        get_object_vars(new MethodAnalysis),
+        fn (mixed $default, string $field): bool => $source->{$field} === $default,
+        ARRAY_FILTER_USE_BOTH,
+    ))->toBe([])
+        ->and(get_object_vars($target))->toBe(get_object_vars($source));
+});
+
+it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {
+    $entry = fn (string $name, string $type): array => ['name' => $name, 'type' => $type, 'optional' => false, 'description' => ''];
+    $first = new MethodAnalysis(
+        properties: [$entry('kept', '{ s: S }'), $entry('aliased', 'User'), $entry('rewritten', '{ s: S }')],
+        customImports: ['@/x' => ['X']],
+        inlineEnumFqcns: ['kept' => ['App\\S'], 'rewritten' => ['App\\S']],
+        inlineModelFqcns: ['aliased' => ['App\\User']],
+        inlineResourceFqcns: ['kept' => ['App\\R']],
+        inlineEnumResourceFqcns: ['kept' => ['App\\S']],
+    );
+    $branch = new MethodAnalysis(
+        properties: [$entry('kept', '{ s: S }'), $entry('aliased', 'User'), $entry('rewritten', '{ s: S } | null')],
+        customImports: ['@/x' => ['X', 'Y']],
+        inlineEnumFqcns: ['kept' => ['App\\S'], 'rewritten' => ['App\\S']],
+        inlineModelFqcns: ['aliased' => ['Crm\\User']],
+        inlineResourceFqcns: ['kept' => ['App\\R']],
+        inlineEnumResourceFqcns: ['kept' => ['App\\S']],
+    );
+
+    $branch->dropRepeatsOf($first);
+
+    // A same-named class with another FQCN is a different occurrence, and a rewritten key spells its type once more.
+    expect($branch->inlineEnumFqcns)->toBe(['rewritten' => ['App\\S']])
+        ->and($branch->inlineModelFqcns)->toBe(['aliased' => ['Crm\\User']])
+        ->and($branch->inlineResourceFqcns)->toBe([])
+        ->and($branch->inlineEnumResourceFqcns)->toBe([])
+        ->and($branch->customImports)->toBe(['@/x' => ['Y']]);
+});
+
 describe('MethodAnalysis::addProperty()', function () {
     test('routes every channel a resolved value can carry', function () {
         $analysis = new MethodAnalysis;

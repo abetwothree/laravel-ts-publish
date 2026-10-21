@@ -25,6 +25,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
  * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
@@ -223,6 +224,69 @@ class MethodAnalysis
     }
 
     /**
+     * Take over every key, channel, cast and flag of another analysis, as a returned variable's walk does where
+     * exclusive branches join.
+     */
+    public function replaceWith(self $source): void
+    {
+        $this->properties = $source->properties;
+        $this->readsCompletely = $source->readsCompletely;
+        $this->enumResources = $source->enumResources;
+        $this->nestedResources = $source->nestedResources;
+        $this->customImports = $source->customImports;
+        $this->directEnumFqcns = $source->directEnumFqcns;
+        $this->modelFqcns = $source->modelFqcns;
+        $this->inlineEnumFqcns = $source->inlineEnumFqcns;
+        $this->inlineModelFqcns = $source->inlineModelFqcns;
+        $this->inlineResourceFqcns = $source->inlineResourceFqcns;
+        $this->multiEnumResourceFqcns = $source->multiEnumResourceFqcns;
+        $this->inlineEnumResourceFqcns = $source->inlineEnumResourceFqcns;
+        $this->enumResourceArmShapes = $source->enumResourceArmShapes;
+        $this->casts = $source->casts;
+        $this->carried = $source->carried;
+        $this->flatTypeAlias = $source->flatTypeAlias;
+        $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
+    }
+
+    /**
+     * Drop what this branch of a join only repeats from another, which would pile up per join: the queue of a key
+     * both hold with the same entries and queue, whose type the join spells once, and each custom import both bring.
+     */
+    public function dropRepeatsOf(self $other): void
+    {
+        $theirs = [];
+
+        foreach ($other->properties as $property) {
+            $theirs[$property['name']][] = $property;
+        }
+
+        $mine = [];
+
+        foreach ($this->properties as $property) {
+            $mine[$property['name']][] = $property;
+        }
+
+        foreach ($mine as $name => $entries) {
+            if ($entries !== ($theirs[$name] ?? null)) {
+                continue;
+            }
+
+            $this->inlineEnumFqcns = self::withoutRepeat($this->inlineEnumFqcns, $other->inlineEnumFqcns, $name);
+            $this->inlineModelFqcns = self::withoutRepeat($this->inlineModelFqcns, $other->inlineModelFqcns, $name);
+            $this->inlineResourceFqcns = self::withoutRepeat(
+                $this->inlineResourceFqcns, $other->inlineResourceFqcns, $name,
+            );
+            $this->inlineEnumResourceFqcns = self::withoutRepeat(
+                $this->inlineEnumResourceFqcns, $other->inlineEnumResourceFqcns, $name,
+            );
+        }
+
+        foreach ($this->customImports as $path => $types) {
+            $this->customImports[$path] = array_values(array_diff($types, $other->customImports[$path] ?? []));
+        }
+    }
+
+    /**
      * Add classes a cast carried, once each per kind.
      *
      * @param  CarriedMap  $carried
@@ -307,5 +371,21 @@ class MethodAnalysis
         }
 
         unset($property);
+    }
+
+    /**
+     * A queue map without one key's queue, where the other map queues the same classes for that key.
+     *
+     * @param  FqcnQueueMap  $queues
+     * @param  FqcnQueueMap  $other
+     * @return FqcnQueueMap
+     */
+    private static function withoutRepeat(array $queues, array $other, int|string $name): array
+    {
+        if (isset($queues[$name]) && $queues[$name] === ($other[$name] ?? null)) {
+            unset($queues[$name]);
+        }
+
+        return $queues;
     }
 }
