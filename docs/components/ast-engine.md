@@ -304,10 +304,10 @@ neither sees one on a receiver it cannot name.
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
 `if` chain's for each block it runs, and the failed conditions of the chain's leading branches that always exit for the
-rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads. A closure or a
-spread method that writes a name drops the proofs of that name it came in with. A call between a guard and its read,
-such as a method that assigns the read or `setRelation()`, is not seen as a write, so the proof survives it
-(#115).
+rest of the block holding it. `ReadsNonNullGuards::nonNullReads()` lists the condition forms it reads. A bare read
+the scope proves non-null drops its `null` arm, unless that would leave only `null`. A closure or a spread method that
+writes a name drops the proofs of that name it came in with. A call between a guard and its read, such as a method
+that assigns the read or `setRelation()`, is not seen as a write, so the proof survives it (#115).
 
 A positive `if ($x instanceof C) { … }` narrows nothing, because the walk is flat and the binding would still hold after
 the body, where `$x` is what the test excluded.

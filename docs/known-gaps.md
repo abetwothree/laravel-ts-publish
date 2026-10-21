@@ -115,7 +115,9 @@ parameter, therefore loses its own keys to that signature, and a `+=` on the par
 adds. Declare `@return array{…}` on the method to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
-`$validator->normalize($data)`, or through `extract()`, keeps its earlier type.
+`$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
+proof made before it standing, so after `if ($y === null) { return []; } $cleaner->clear($y);` a read of `$y` drops
+the `null` the call can write.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
