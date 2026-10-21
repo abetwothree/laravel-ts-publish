@@ -1166,15 +1166,17 @@ describe('extractReturnTypeFromDocblock', function () {
         'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
     ]);
 
-    test('keeps the first-token reading of a conditional return type a branch of which is no string', function (string $doc, string $reading) {
+    test('keeps the first-token reading of a conditional return type it cannot read as all strings', function (string $doc, string $reading) {
         expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
     })->with([
         'a list branch' => ['/** @return ($value is string ? string : string[]) */', '($value'],
         'a false branch' => ["/** @return (\$haystack is '' ? false : string) */", '($haystack'],
         'a union branch' => ["/** @return (\$string is '' ? '' : string|false) */", '($string'],
+        'a nullable string branch' => ["/** @return (\$value is '' ? ?string : string) */", '($value'],
+        'an else conditional without parentheses' => ["/** @return (\$value is '' ? '' : \$value is null ? '' : string) */", '($value'],
     ]);
 
-    test('keeps the first-token reading of a conditional return type Laravel declares', function (
+    test('reads each conditional return type Laravel declares as string, else by its first token', function (
         string $class,
         string $method,
         string $reading,

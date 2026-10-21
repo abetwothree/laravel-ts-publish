@@ -2723,7 +2723,9 @@ class LaravelTsPublish
      */
     protected function isStringConditional(string $type): bool
     {
-        if (! TsTypeShape::isWrapped($type, '(', ')')) {
+        // A `?` with no space after it makes a type nullable, as `?string`, which the split below would take for a `?`
+        // ending the test.
+        if (! TsTypeShape::isWrapped($type, '(', ')') || preg_match('/\?(?!\s)/', $type) === 1) {
             return false;
         }
 
