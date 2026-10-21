@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -467,9 +468,9 @@ trait CollectsInstanceofGuards
     private function writtenWithin(string $name, int $from, ?int $to, array $exits, array $writes): bool
     {
         // `$this->resource` is written through the `this` variable.
-        foreach ($this->writesFrom($name === AnalysisScope::PROXY_GUARDS ? 'this' : $name, $from, $writes) as $node) {
+        foreach ($this->writesFrom($name === AnalysisScope::PROXY_GUARDS ? 'this' : $name, $from, $writes) as [, $node, , $kind]) {
             // A `foreach` around the test assigns its value before each pass, so never between the test and a read.
-            if ($node instanceof Foreach_ && ! $node->byRef && $node->getStartFilePos() < $from) {
+            if ($kind === VariableWrite::Foreach && $node->getStartFilePos() < $from) {
                 continue;
             }
 

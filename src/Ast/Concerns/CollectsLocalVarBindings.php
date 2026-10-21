@@ -61,7 +61,7 @@ use ReflectionClass;
  * The one sequence that seeds a method's or a closure's body, seedBody(), and the write scan its passes share. Every
  * reader of a body seeds it here, so each reads the body's variables the same way.
  *
- * @phpstan-type NamedWrite = array{string, Node, Expr}
+ * @phpstan-type NamedWrite = array{string, Node, Expr, VariableWrite}
  * @phpstan-type VariableWrites = list<NamedWrite>
  * @phpstan-type KeptWrites = list<array{string, ByReferenceForm}>
  * @phpstan-type PartitionedWrites = array{VariableWrites, KeptWrites}
@@ -204,7 +204,7 @@ trait CollectsLocalVarBindings
         foreach ($byName as $name => $own) {
             $bound = $scope->bindsName((string) $name);
 
-            if (array_any($own, fn (array $write): bool => $this->writeKind($write[1], $write[2])->makesReference())) {
+            if (array_any($own, fn (array $write): bool => $write[3]->makesReference())) {
                 continue;
             }
 
@@ -237,7 +237,7 @@ trait CollectsLocalVarBindings
         $ended = [];
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
-        foreach ($writes as [$name, $node, $target]) {
+        foreach ($writes as [$name, $node, $target, $kind]) {
             // A write past an end already recorded cannot move it earlier.
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
@@ -246,7 +246,6 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            $kind = $this->writeKind($node, $target);
             $form = $this->byReferenceForm($node, $target, $writes, $stmts, $scope);
 
             if ($this->keepsBinding($name, $node, $kind, $form, $scope, $this->isStatementOf($stmts, $node))) {
@@ -338,19 +337,14 @@ trait CollectsLocalVarBindings
      * The one position-ordered rule both the early-exit guard pass and an inline `@var` read a variable's writes by.
      *
      * @param  VariableWrites  $writes
-     * @return list<Node>
+     * @return VariableWrites
      */
     protected function writesFrom(string $name, int $offset, array $writes): array
     {
-        $from = [];
-
-        foreach ($writes as [$written, $node]) {
-            if ($written === $name && $node->getEndFilePos() >= $offset) {
-                $from[] = $node;
-            }
-        }
-
-        return $from;
+        return array_values(array_filter(
+            $writes,
+            fn (array $write): bool => $write[0] === $name && $write[1]->getEndFilePos() >= $offset,
+        ));
     }
 
     /**
@@ -375,7 +369,7 @@ trait CollectsLocalVarBindings
 
         $before = null;
 
-        foreach ($this->writesFrom($name, $assignment->getStartFilePos(), $writes) as $write) {
+        foreach ($this->writesFrom($name, $assignment->getStartFilePos(), $writes) as [, $write]) {
             if ($write === $assign) {
                 continue;
             }
@@ -494,12 +488,12 @@ trait CollectsLocalVarBindings
     {
         $end = $block[array_key_last($block)]->getEndFilePos();
 
-        foreach ($writes as [$written, $node, $target]) {
+        foreach ($writes as [$written, $node, , $kind]) {
             if ($written !== $name) {
                 continue;
             }
 
-            if ($this->writeKind($node, $target)->makesReference()) {
+            if ($kind->makesReference()) {
                 return null;
             }
 
@@ -975,10 +969,10 @@ trait CollectsLocalVarBindings
      */
     private function wholeAssignment(Node\Stmt $stmt, array $writes): ?Expr
     {
-        [, $node, $target] = $writes[0];
+        [, $node, , $kind] = $writes[0];
 
         return count($writes) === 1 && $this->isStatementOf([$stmt], $node) && $node instanceof Assign
-            && $this->writeKind($node, $target) === VariableWrite::Replaces
+            && $kind === VariableWrite::Replaces
                 ? $node->expr
                 : null;
     }
@@ -1052,8 +1046,8 @@ trait CollectsLocalVarBindings
     {
         $values = [];
 
-        foreach ($writes as [, $node, $target]) {
-            if ($this->writeKind($node, $target) !== VariableWrite::Replaces || ! $node instanceof Assign) {
+        foreach ($writes as [, $node, , $kind]) {
+            if ($kind !== VariableWrite::Replaces || ! $node instanceof Assign) {
                 return $state[2] ? null : [null, false, false, $this->nothingNested($state)];
             }
 
@@ -1200,8 +1194,8 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * What a write node does to the variable a target of it names; the one place a pass that ends, gaps or joins a
-     * binding tells writes apart.
+     * What a write node does to the variable a target of it names, read once as the scan records the write; the one
+     * place writes are told apart.
      */
     private function writeKind(Node $node, Expr $target): VariableWrite
     {
@@ -1252,7 +1246,7 @@ trait CollectsLocalVarBindings
             foreach ($this->writeTargets($node) as $target) {
                 foreach ($this->writtenVariables($target) as $name) {
                     if ($this->reachesBody($name, $enclosing)) {
-                        $writes[] = [$name, $node, $target];
+                        $writes[] = [$name, $node, $target, $this->writeKind($node, $target)];
                     }
                 }
             }
@@ -1261,7 +1255,7 @@ trait CollectsLocalVarBindings
                 $name = $this->rootVariable($target);
 
                 if ($name !== null && $this->reachesBody($name, $enclosing)) {
-                    $writes[] = [$name, $node, $target];
+                    $writes[] = [$name, $node, $target, $this->writeKind($node, $target)];
                 }
             }
 
