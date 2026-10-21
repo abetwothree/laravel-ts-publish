@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperParameterKi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TypedParameterMetadataProvider;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
@@ -27,6 +28,7 @@ use Workbench\App\Events\PostHelperPayloadEvent;
 use Workbench\App\Http\Resources\CallableValueResource;
 use Workbench\App\Http\Resources\PostHelperParamsResource;
 use Workbench\App\Http\Resources\SpreadHelperScopeResource;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\PostStats;
@@ -266,7 +268,7 @@ test('binds a Request parameter as a request, unless the subject is an API resou
 // The parameter holds the value, so whether the caller's key may be absent, and whether `??` fills it, stays there.
 test('passes a value without the caller\'s optional or its absent-field marker', function () {
     expect(resolve(ParameterBinder::class)->passedBinding(['type' => 'string', 'optional' => true, 'absentReadsNull' => true], null))
-        ->toBe(['model' => null, 'classes' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false]);
+        ->toBe(['model' => null, 'classes' => null, 'elementModel' => null, 'value' => ['type' => 'string', 'optional' => false], 'unsaved' => false, 'refines' => false]);
 });
 
 test('binds a non-null concrete model parameter in varModelBindings, as a route-bound one is', function () {
@@ -339,6 +341,23 @@ test('binds a passed model that may short-circuit by its value alone, and one no
         ->and($unsaved instanceof New_ && $unsaved->class instanceof Name ? $unsaved->class->toString() : null)->toBe(Post::class)
         ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('unsaved'), $scope)?->unsaved)->toBeTrue()
         ->and($scope->varValueBindings)->toBe(['shortCircuits' => $post, 'unsaved' => $post, 'copy' => $either]);
+});
+
+// varCollectionBindings reads as a list, so a collection whose keys a step such as keyBy() moved binds no element
+// there: json_encode() writes it as an object.
+test('binds a passed Eloquent collection of one model by its element, unless a step moved its keys', function () {
+    $scope = new AnalysisScope(new ReflectionClass(HelperParameterKindsResource::class), Post::class);
+    $comments = ['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class];
+
+    resolve(ParameterBinder::class)->bindPassed([], parameterBinderPassed([
+        'listed' => ['value' => $comments, 'receiver' => new ReceiverType([EloquentCollection::class], elementModel: Comment::class)],
+        'keyed' => ['value' => $comments, 'receiver' => new ReceiverType([EloquentCollection::class], elementModel: Comment::class, keyed: true)],
+    ]), $scope);
+
+    expect($scope->varCollectionBindings)->toBe(['listed' => ['type' => 'Comment[]', 'modelFqcn' => Comment::class]])
+        ->and($scope->varDeclaredBindings)->toBe(['keyed' => [EloquentCollection::class]])
+        ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('listed'), $scope)?->elementModel)->toBe(Comment::class)
+        ->and(resolve(ReceiverClassResolver::class)->resolve(new Variable('keyed'), $scope)?->elementModel)->toBeNull();
 });
 
 test('binds the classes a spread call passes a parameter the body writes, but not its value', function () {

@@ -33,6 +33,7 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\MagicConst\Line;
@@ -691,6 +692,11 @@ final class AnalysisScope
 
             if ($held !== null && $held['type'] !== 'unknown') {
                 $this->varValueBindings[$param->var->name] = $held;
+            }
+
+            // A readable `new` default holds that object, which the receiver resolver reads as one no row backs yet.
+            if ($held !== null && $param->default instanceof New_ && $param->default->class instanceof Name) {
+                $this->closureParamExprBindings[$param->var->name] = $param->default;
             }
         }
     }

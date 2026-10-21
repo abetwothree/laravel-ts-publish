@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -41,6 +42,7 @@ use ReflectionUnionType;
  * @phpstan-type PassedBinding = array{
  *     model: class-string<Model>|null,
  *     classes: non-empty-list<class-string>|null,
+ *     elementModel: class-string<Model>|null,
  *     value: ValueExpressionResult|null,
  *     unsaved: bool,
  *     refines: bool,
@@ -68,8 +70,9 @@ final class ParameterBinder
     }
 
     /**
-     * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, other classes
-     * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
+     * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, an Eloquent
+     * collection of one model in varCollectionBindings, other classes in varDeclaredBindings, and its value, which a
+     * parameter the body writes leaves to its local.
      *
      * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark, in
      * place of a declared concrete model's binding, as a narrower argument replaces a declared abstract class's,
@@ -100,10 +103,12 @@ final class ParameterBinder
         $classes = $held === null || ($unsaved && count($held->classes) !== 1) ? null : $held->classes;
         $unsaved = $unsaved && $classes !== null;
         $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+        // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
+        $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -112,7 +117,7 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
     }
 
     /**
@@ -261,7 +266,7 @@ final class ParameterBinder
      */
     private function bindPassedNames(array $passed, AnalysisScope $scope, Closure $written): void
     {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
             $declaredModel = $scope->varModelBindings[$name] ?? null;
 
             if ($refines && isset($scope->varDeclaredBindings[$name])) {
@@ -281,6 +286,11 @@ final class ParameterBinder
 
             if ($classes !== null && $unsaved) {
                 $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
+            } elseif ($elementModel !== null) {
+                $scope->varCollectionBindings[$name] = [
+                    'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),
+                    'modelFqcn' => $elementModel,
+                ];
             } elseif ($classes !== null) {
                 $scope->varDeclaredBindings[$name] = $classes;
             }

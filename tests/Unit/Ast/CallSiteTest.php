@@ -150,7 +150,7 @@ test('the signature is empty for a call that binds nothing, and one for two argu
 
     expect(CallSite::signature([]))->toBe('')
         ->and($binder->passedBinding(['type' => 'unknown', 'optional' => false], null))->toBeNull()
-        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => false])
+        ->and($held)->toBe(['model' => Post::class, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => false])
         ->and(CallSite::signature(['post' => $held]))->toBe(CallSite::signature(['post' => $typed]))
         ->and(CallSite::signature(['post' => $held]))->not->toBe(CallSite::signature(['post' => $nullable]));
 });

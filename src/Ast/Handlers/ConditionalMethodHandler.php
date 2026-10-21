@@ -32,6 +32,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -396,6 +397,12 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($valueArg === null) {
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
+        }
+
+        $called = $stripNull ? $this->calledWithNothing($valueArg->value, $scope, $engine) : null;
+
+        if ($called !== null) {
+            return $called;
         }
 
         $value = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
@@ -850,7 +857,46 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Warn that a when() or unless() closure requires an argument Laravel never passes, so it throws whenever it runs.
+     * What whenNotNull() sends for a closure or first-class callable, which is never null: value() calls it with
+     * nothing, so its parameters hold their defaults and its own null stays; null for any other value.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function calledWithNothing(Expr $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (! $this->isCallableValue($value)) {
+            return null;
+        }
+
+        if ($this->closureRequiresArguments($value)) {
+            $this->warnOfUnpassedArgument('whenNotNull', $value, $scope);
+        }
+
+        $previousNameBindings = $scope->nameBindings();
+
+        try {
+            $scope->claimParameters($value);
+            $scope->bindUnpassedParameters($value, 0, $engine);
+
+            return $engine->resolve(FirstClassCallableHandler::invokedCall($value));
+        } finally {
+            $scope->restoreNameBindings($previousNameBindings);
+        }
+    }
+
+    /**
+     * Whether a value is a closure, an arrow function or a first-class callable: a Closure, which value() calls.
+     */
+    private function isCallableValue(Expr $value): bool
+    {
+        return $value instanceof ClosureExpr
+            || $value instanceof ArrowFunction
+            || ($value instanceof CallLike && $value->isFirstClassCallable());
+    }
+
+    /**
+     * Warn that a when(), unless() or whenNotNull() closure requires an argument Laravel never passes, so it throws
+     * whenever it runs.
      */
     private function warnOfUnpassedArgument(string $method, Expr $closure, AnalysisScope $scope): void
     {
