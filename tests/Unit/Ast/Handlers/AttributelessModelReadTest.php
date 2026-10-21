@@ -78,6 +78,8 @@ it('an attribute read on a model with no attributes carries null; a copy that ha
         'new_reading_time' => 'string',
         'new_comments' => 'Comment[]',
         'default_attribute_title' => 'string',
+        'merged_title?' => 'string',
+        'merged_content?' => 'string | null',
     ])
         ->and($sent['factory_name'])->toBeString()->not->toBe('')
         ->and(array_diff_key($sent, ['factory_name' => true]))->toBe([
@@ -106,5 +108,7 @@ it('an attribute read on a model with no attributes carries null; a copy that ha
             'new_reading_time' => 'Quick read',
             'new_comments' => [],
             'default_attribute_title' => 'Untitled',
+            'merged_title' => 'z',
+            'merged_content' => null,
         ]);
 });

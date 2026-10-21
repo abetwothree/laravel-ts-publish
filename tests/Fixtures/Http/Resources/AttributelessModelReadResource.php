@@ -110,6 +110,11 @@ class AttributelessModelReadResource extends JsonResource
             'new_reading_time' => (new Post)->reading_time,
             'new_comments' => (new Post)->comments,
             'default_attribute_title' => (new DefaultTitlePost)->title,
+            $this->mergeWhen(true, function ($post = new Post) {
+                $post->title = 'z';
+
+                return ['merged_title' => $post->title, 'merged_content' => $post->content];
+            }),
         ];
     }
 }
