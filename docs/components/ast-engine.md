@@ -221,7 +221,7 @@ Each writer binds the first parameter to what Laravel passes the closure:
 | `whenHas()`, `whenExistsLoaded()` | The attribute, the `{relation}_exists` flag | That property read |
 | `whenCounted()`, `whenAggregated(…, 'count')` | The count | `number` |
 | `whenAggregated()`, other aggregates | The aggregate | The aggregate without its `null`, as the model's declaration or [`AggregateValueType`] types it; nothing when neither does |
-| `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model |
+| `transform()`'s callback | The filled value | A `$this->prop` read, a passed variable's bindings, or the value's type, a nullable model read as the model. The call proves the parameter non-null, so a bare read of it drops the `null` arm, like any read a guard proves non-null ([Narrowing](#narrowing)) |
 | `transform()`'s default | The blank value | The value's full type, `null` included |
 | `whenNotNull()`'s closure or first-class callable | Nothing, and always, since a closure is never `null` | Nothing beyond the unpassed-parameter rule below |
 | `when()`, `unless()`, `merge()`, `mergeWhen()`, `mergeUnless()`, `whenAppended()`, other defaults | Nothing | Nothing beyond the unpassed-parameter rule below |

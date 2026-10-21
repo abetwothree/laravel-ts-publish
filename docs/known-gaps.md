@@ -361,7 +361,9 @@ relation a name no attribute takes.
 With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes `CategoryResource` where `parent` types
 `unknown` (an undeclared relation, a related model the run does not publish, or a `morphTo` with no resolvable target),
 though Laravel sends `null` for a relation loaded as `null`.
-`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`.
+`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. A `whenLoaded()` value that
+collects the relation, such as `whenLoaded('ancestors', CategoryResource::collection(...))`, adds none, since only a
+to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
 

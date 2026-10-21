@@ -378,7 +378,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
-  relation the model does not declare can, under `nullable_relations`.
+  relation the model does not declare can, under `nullable_relations`, unless the value hands it to a resource's
+  `collection()`, as `X::collection(...)` or `fn ($r) => X::collection($r)` does, since only a to-many relation fits
+  that call.
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute answers `whenHas()` and `whenAppended()` only for a value-less call or
