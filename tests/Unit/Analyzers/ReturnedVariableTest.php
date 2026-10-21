@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardedVa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedGuardOnlyVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedHelperVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedInterpolatedUnsetKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedJoinedKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLocalOperandsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedLoopResetResource;
@@ -55,6 +56,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueHel
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOpaqueVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedOptionalResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedParameterKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedParentWithResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartialValueResource;
@@ -62,6 +64,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPartlyRea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedPushedKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReadableHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReadableHelperVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReferenceKeyUnsetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRejectedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReplacedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRequiredResetResource;
@@ -693,6 +696,20 @@ test('an unset() of a key a literal local holds removes that key', function (str
     'in a merge closure that imports it, beside one whose own local shadows it' => [MergeClosureLocalKeyUnsetResource::class, 'id: number; name: string', [
         [['hide' => ''], ['id' => 9, 'name' => 'php', 'color' => null, 'label' => 'php']],
         [['hide' => 'color'], ['id' => 9, 'name' => 'php', 'label' => 'php']],
+    ]],
+    // A local that may hold another value at the unset() names no key, so the variable stays skipped.
+    'a local an if may rewrite names no key' => [ReturnedJoinedKeyUnsetResource::class, 'id: number; name: string; slug?: string', [
+        [['compact' => '1'], ['id' => 9, 'name' => 'php']],
+        [['n' => '0'], ['id' => 9]],
+        [['n' => '1'], ['id' => 9, 'slug' => 'php']],
+    ]],
+    'a local a reference rewrites names no key' => [ReturnedReferenceKeyUnsetResource::class, 'id: number; name: string; slug?: string', [
+        [['compact' => '1'], ['id' => 9, 'name' => 'php']],
+        [['compact' => '0'], ['id' => 9, 'slug' => 'php']],
+    ]],
+    'a parameter names no key' => [ReturnedParameterKeyUnsetResource::class, 'id: number; name: string; slug?: string', [
+        [['compact' => '1'], ['id' => 9, 'name' => 'php']],
+        [['compact' => '0'], ['id' => 9]],
     ]],
 ]);
 
