@@ -86,6 +86,9 @@ final class ReceiverClassResolver
         'collect' => Collection::class,
     ];
 
+    /** Marks a `new` built for a passed model no row backs yet, which may hold the attributes it was given. */
+    public const string UNSAVED_COPY = 'unsavedCopy';
+
     /** The Model methods whose result is a copy no row backs yet. */
     private const array UNSAVED_COPIES = ['replicate', 'replicateQuietly', 'newInstance'];
 
@@ -149,7 +152,7 @@ final class ReceiverClassResolver
             $expr instanceof PropertyFetch, $expr instanceof NullsafePropertyFetch => $this->fromPropertyFetch($expr, $scope),
             $expr instanceof MethodCall, $expr instanceof NullsafeMethodCall => $this->fromMethodCall($expr, $scope),
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
-            $expr instanceof New_ => $expr->class instanceof Name ? $this->namedClass($expr->class, $scope)?->asUnsaved() : null,
+            $expr instanceof New_ => $this->fromNew($expr, $scope),
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
             $expr instanceof Ternary => $this->fromArms(
                 [$expr->if ?? $expr->cond, $expr->else],
@@ -844,6 +847,21 @@ final class ReceiverClassResolver
 
         // A fluent call such as fill() hands the same model back, so no row backs it yet either.
         return $result !== null && $receiver->unsaved && $this->returnsItself($receiver, $method) ? $result->asUnsaved() : $result;
+    }
+
+    /**
+     * Resolve `new X`, `new static` or `new self`: a model no row backs yet, which with no constructor argument
+     * holds no attributes either, but for a `new` built for a passed copy.
+     */
+    private function fromNew(New_ $new, AnalysisScope $scope): ?ReceiverType
+    {
+        $held = $new->class instanceof Name ? $this->namedClass($new->class, $scope) : null;
+
+        if ($held === null || $new->args !== [] || $new->getAttribute(self::UNSAVED_COPY) === true || $held->models() === []) {
+            return $held?->asUnsaved();
+        }
+
+        return $held->asAttributeless();
     }
 
     /**
@@ -1640,7 +1658,7 @@ final class ReceiverClassResolver
      * Union resolved receivers under one short-circuit flag; any null part declines the whole union.
      *
      * An element or related model, and a resource collection's items, survive only when every part agrees on them; a
-     * collection is keyed when any part is.
+     * collection is keyed, and a model unsaved or attributeless, when any part is.
      *
      * @param  list<ReceiverType|null>  $types
      */
@@ -1653,6 +1671,7 @@ final class ReceiverClassResolver
         $collectedItems = true;
         $unsaved = false;
         $keyed = false;
+        $attributeless = false;
 
         foreach ($types as $type) {
             if ($type === null) {
@@ -1666,6 +1685,7 @@ final class ReceiverClassResolver
             $collectedItems = $collectedItems && $type->collectedItems;
             $unsaved = $unsaved || $type->unsaved;
             $keyed = $keyed || $type->keyed;
+            $attributeless = $attributeless || $type->attributeless;
         }
 
         if ($classes === []) {
@@ -1681,6 +1701,7 @@ final class ReceiverClassResolver
             collectedItems: $collectedItems,
             collectedElement: count($collectedElements) === 1 ? reset($collectedElements) : null,
             keyed: $keyed,
+            attributeless: $attributeless,
         );
     }
 

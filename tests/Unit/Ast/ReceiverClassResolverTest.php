@@ -27,6 +27,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Name\FullyQualified;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -240,6 +242,27 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
             ->toEqual(ReceiverType::of(Comment::class))
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+    });
+
+    // A `new` with no constructor argument holds no attributes; a copy, a filled model and any model a step reaches
+    // may hold some. The binder's `new` for a passed copy is one of those.
+    test('marks only a new model built with no constructor argument as holding no attributes', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $model = new AnalysisScope(new ReflectionClass(Post::class));
+        $copy = new New_(new FullyQualified(Post::class), [], [ReceiverClassResolver::UNSAVED_COPY => true]);
+        $attributeless = fn (string $php, ?AnalysisScope $scope = null): ?bool => $resolver->resolve(receiverExpr($php), $scope ?? postScope())?->attributeless;
+
+        expect($attributeless('new \Workbench\App\Models\Post'))->toBeTrue()
+            ->and($attributeless('new static', $model))->toBeTrue()
+            ->and($attributeless('new self()', $model))->toBeTrue()
+            ->and($attributeless('$flag ? new \Workbench\App\Models\Post : $this->resource'))->toBeTrue()
+            ->and($attributeless('new \Workbench\App\Models\Post(["title" => "x"])'))->toBeFalse()
+            ->and($attributeless('new \Workbench\App\Services\UrlService'))->toBeFalse()
+            ->and($attributeless('$this->resource->replicate()'))->toBeFalse()
+            ->and($attributeless('(new \Workbench\App\Models\Post)->fill([])'))->toBeFalse()
+            ->and($attributeless('(new \Workbench\App\Models\Post)->author'))->toBeFalse()
+            ->and($attributeless('\Workbench\App\Models\Post::query()->firstOrNew([])'))->toBeFalse()
+            ->and($resolver->resolve($copy, postScope()))->toEqual(new ReceiverType([Post::class], unsaved: true));
     });
 
     test('a static-syntax call the subject lacks reads as $this->m(), as __call() runs it', function () {
@@ -552,6 +575,8 @@ describe('ReceiverType', function () {
 
         expect($type->models())->toBe([User::class, Post::class])
             ->and(ReceiverType::of(User::class)->withShortCircuit(true)->shortCircuits)->toBeTrue()
-            ->and(ReceiverType::of(User::class, true)->withShortCircuit(false)->classes)->toBe([User::class]);
+            ->and(ReceiverType::of(User::class, true)->withShortCircuit(false)->classes)->toBe([User::class])
+            ->and(ReceiverType::of(Post::class)->asAttributeless())->toEqual(new ReceiverType([Post::class], unsaved: true, attributeless: true))
+            ->and(ReceiverType::of(Post::class)->asAttributeless()->withShortCircuit(true)->attributeless)->toBeTrue();
     });
 });

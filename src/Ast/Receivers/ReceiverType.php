@@ -26,6 +26,7 @@ final readonly class ReceiverType
      *                                or the paginator it was given, so a method an arm cannot run throws, not answers
      * @param  CollectedElement|null  $collectedElement  set with $collectedItems: what each item publishes as
      * @param  bool  $keyed  a collection whose keys a step such as `keyBy()`, `sortBy()` or `filter()` moved off 0..n-1
+     * @param  bool  $attributeless  a `new` model with no attributes yet, whose columns read null but for a default
      */
     public function __construct(
         public array $classes,
@@ -36,6 +37,7 @@ final readonly class ReceiverType
         public bool $collectedItems = false,
         public ?array $collectedElement = null,
         public bool $keyed = false,
+        public bool $attributeless = false,
     ) {}
 
     /**
@@ -62,6 +64,14 @@ final readonly class ReceiverType
     public function asUnsaved(): self
     {
         return $this->copy(unsaved: true);
+    }
+
+    /**
+     * The same receiver marked as a new model that holds no attributes yet, which no row backs either.
+     */
+    public function asAttributeless(): self
+    {
+        return $this->copy(unsaved: true, attributeless: true);
     }
 
     /**
@@ -105,7 +115,7 @@ final readonly class ReceiverType
      *
      * @param  non-empty-list<class-string>|null  $classes
      */
-    private function copy(?array $classes = null, ?bool $shortCircuits = null, ?bool $unsaved = null): self
+    private function copy(?array $classes = null, ?bool $shortCircuits = null, ?bool $unsaved = null, ?bool $attributeless = null): self
     {
         return new self(
             classes: $classes ?? $this->classes,
@@ -116,6 +126,7 @@ final readonly class ReceiverType
             collectedItems: $this->collectedItems,
             collectedElement: $this->collectedElement,
             keyed: $this->keyed,
+            attributeless: $attributeless ?? $this->attributeless,
         );
     }
 }

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
@@ -285,7 +286,7 @@ final class ParameterBinder
             }
 
             if ($classes !== null && $unsaved) {
-                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
+                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]), [], [ReceiverClassResolver::UNSAVED_COPY => true]);
             } elseif ($elementModel !== null) {
                 $scope->varCollectionBindings[$name] = [
                     'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),

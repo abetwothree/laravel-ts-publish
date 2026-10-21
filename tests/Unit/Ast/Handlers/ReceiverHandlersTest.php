@@ -808,14 +808,15 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
-    // An unsaved Product's key is null at runtime, the getKey() limit, so this pins the merge rather than the nullness.
+    // A new Product holds no attributes, so its `id` reads null, as Laravel sends it, beside the author's key; a `?->`
+    // adds no second `null`.
     test('a union receiver merges what each model arm types', function (string $php, string $type) {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 
         expect(new ReceiverPropertyFetchHandler()->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine())['type'] ?? null)
             ->toBe($type);
     })->with([
-        ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number'],
+        ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number | null'],
         ['($this->status ? new '.Product::class.' : $this->author)?->id', 'string | number | null'],
     ]);
 
@@ -1349,7 +1350,7 @@ describe('getKey()', function () {
         $scope->bindingEnds['draft'] = 0;
 
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope))
-            ->toEqual(new ReceiverType([Post::class], unsaved: true));
+            ->toEqual(new ReceiverType([Post::class], unsaved: true, attributeless: true));
     });
 
     // VariableHandler leaves getKey() to the receiver rules, so a closure parameter keys as the model it holds.
