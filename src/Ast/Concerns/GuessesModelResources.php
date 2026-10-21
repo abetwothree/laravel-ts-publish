@@ -145,14 +145,10 @@ trait GuessesModelResources
      */
     protected function resolveToResourceReceiverModel(Expr $receiver, AnalysisScope $scope): ?string
     {
-        if ($receiver instanceof Variable && is_string($receiver->name)) {
-            if (! $scope->holdsBinding($receiver)) {
-                return null;
-            }
+        if ($receiver instanceof Variable) {
+            $receivers = resolve(ReceiverClassResolver::class);
 
-            return $scope->varModelBindings[$receiver->name]
-                ?? $scope->varCollectionBindings[$receiver->name]['modelFqcn']
-                ?? null;
+            return $receivers->boundModel($receiver, $scope) ?? $receivers->boundElementModel($receiver, $scope);
         }
 
         if ($receiver instanceof PropertyFetch && $this->isThisPropertyFetch($receiver) && $receiver->name instanceof Identifier) {

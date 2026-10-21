@@ -228,24 +228,6 @@ it('resolves $variable->pluck() against the element model of its own to-many bin
     expect($result)->toBe(['type' => 'string[]', 'optional' => false]);
 });
 
-// Guard-order pin: the pluck guard must precede the generic `$variable->method()` guard. Both claim
-// this node — the generic guard's bound model is non-null here — but it resolves `pluck` as a method
-// on User, which has none, so swapping the two turns this into 'unknown'.
-it('tries the pluck guard before the generic bound-method guard', function () {
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
-    $scope->varModelBindings['users'] = User::class;
-
-    $result = (new VariableHandler)->resolve(
-        new MethodCall(new Variable('users'), 'pluck', [new Arg(new String_('name'))]),
-        $scope,
-        variableHandlersThrowingEngine(),
-    );
-
-    expect(method_exists(User::class, 'pluck'))->toBeFalse()
-        ->and($result)->toBe(['type' => 'string[]', 'optional' => false]);
-});
-
 // Guard-order pin: the model-binding guard must precede the expression-binding guard. Both claim
 // this node — `$author` is in both maps — and the expression binding resolves to a string literal,
 // so swapping the two returns 'string' instead of the model type.

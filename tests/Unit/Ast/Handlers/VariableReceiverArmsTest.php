@@ -5,7 +5,9 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnboundClosureVariableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -109,4 +111,19 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
     ])
         ->and(new BoundEnumColumnResource($team)->response(request())->getContent())
         ->toBe('{"data":{"owner_role":null,"member_role":null}}');
+});
+
+// The narrowing outranks the parameter's own model, so the subclass types the read.
+it('reads a model-bound parameter under an instanceof test as the subclass it narrows to', function () {
+    $draft = (new DraftPost)->forceFill(['title' => 'abc', 'word_count' => 12]);
+    $post = (new Post)->forceFill(['title' => 'abc', 'word_count' => 12]);
+
+    expect(publishedResourceKeyTypes(NarrowedBoundPostResource::class, Post::class))->toBe([
+        'word_count' => 'string | null',
+        'shouted_title' => 'string | null',
+    ])
+        ->and(new NarrowedBoundPostResource($draft)->response(request())->getContent())
+        ->toBe('{"data":{"word_count":"12","shouted_title":"ABC"}}')
+        ->and(new NarrowedBoundPostResource($post)->response(request())->getContent())
+        ->toBe('{"data":{"word_count":null,"shouted_title":null}}');
 });

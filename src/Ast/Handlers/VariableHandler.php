@@ -92,7 +92,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            $boundModel = $this->boundModel($expr->var, $scope);
+            $boundModel = resolve(ReceiverClassResolver::class)->boundModel($expr->var, $scope);
             $attribute = $boundModel === null ? null : $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
 
             if ($attribute !== null && $attribute['type'] !== 'unknown') {
@@ -118,10 +118,12 @@ final class VariableHandler implements ExpressionHandler
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'pluck'
-            && $scope->holdsBinding($expr->var)
-            && isset($scope->varCollectionBindings[$expr->var->name])
         ) {
-            return $this->analyzeVariablePluckCall($expr, $scope, $scope->varCollectionBindings[$expr->var->name]['modelFqcn']);
+            $elementModel = resolve(ReceiverClassResolver::class)->boundElementModel($expr->var, $scope);
+
+            if ($elementModel !== null) {
+                return $this->analyzeVariablePluckCall($expr, $scope, $elementModel);
+            }
         }
 
         // $variable->method() — resolve against the variable's own bound model. An only()/except() filter is skipped:
@@ -134,7 +136,7 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $this->callsAttributeFilter($expr)
         ) {
-            $boundModel = $this->boundModel($expr->var, $scope);
+            $boundModel = resolve(ReceiverClassResolver::class)->boundModel($expr->var, $scope);
             $method = $expr->name->toString();
 
             // A rule types what reflection reads loosely, and the receiver order reads what it cannot, such as an
@@ -230,18 +232,6 @@ final class VariableHandler implements ExpressionHandler
         return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && ValueResult::hasNullArm($value['type'])
             ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
             : $value;
-    }
-
-    /**
-     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it.
-     *
-     * @return class-string<Model>|null
-     */
-    private function boundModel(Variable $variable, AnalysisScope $scope): ?string
-    {
-        return is_string($variable->name) && $scope->holdsBinding($variable)
-            ? $scope->varModelBindings[$variable->name] ?? null
-            : null;
     }
 
     /**

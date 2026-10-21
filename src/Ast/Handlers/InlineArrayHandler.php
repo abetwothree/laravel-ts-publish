@@ -332,12 +332,15 @@ final class InlineArrayHandler implements ExpressionHandler
     {
         $varName = self::spreadToArrayVarName($expr, $scope);
 
-        if ($varName === null || ! $expr instanceof MethodCall) {
+        if ($varName === null || ! $expr instanceof MethodCall || ! $expr->var instanceof Variable) {
             return null;
         }
 
-        if (isset($scope->varModelBindings[$varName])) {
-            return $scope->varModelBindings[$varName];
+        $receivers = resolve(ReceiverClassResolver::class);
+        $bound = $receivers->boundModel($expr->var, $scope);
+
+        if ($bound !== null) {
+            return $bound;
         }
 
         // A to-many whenLoaded param holds the whole collection, whose toArray() spreadCollectionToArrayFqcn() reads,
@@ -346,7 +349,7 @@ final class InlineArrayHandler implements ExpressionHandler
             return null;
         }
 
-        $held = resolve(ReceiverClassResolver::class)->resolve($expr->var, $scope);
+        $held = $receivers->resolve($expr->var, $scope);
 
         if ($held === null || $held->attributeless || count($held->classes) !== 1 || $held->models() !== $held->classes) {
             return null;
@@ -365,9 +368,9 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     private static function spreadCollectionToArrayFqcn(Expr $expr, AnalysisScope $scope): ?string
     {
-        $varName = self::spreadToArrayVarName($expr, $scope);
-
-        return $varName === null ? null : ($scope->varCollectionBindings[$varName]['modelFqcn'] ?? null);
+        return self::spreadToArrayVarName($expr, $scope) !== null && $expr instanceof MethodCall && $expr->var instanceof Variable
+            ? resolve(ReceiverClassResolver::class)->boundElementModel($expr->var, $scope)
+            : null;
     }
 
     /**

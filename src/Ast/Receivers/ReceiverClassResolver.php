@@ -205,6 +205,35 @@ final class ReceiverClassResolver
     }
 
     /**
+     * The model a variable's own model binding names, while the variable reads as exactly that model; null where a
+     * narrowing or a guard names another class, which the receiver handlers then type from.
+     *
+     * @return class-string<Model>|null
+     */
+    public function boundModel(Variable $variable, AnalysisScope $scope): ?string
+    {
+        $model = is_string($variable->name) && $scope->holdsBinding($variable)
+            ? $scope->varModelBindings[$variable->name] ?? null
+            : null;
+
+        return $model !== null && $this->resolve($variable, $scope)?->classes === [$model] ? $model : null;
+    }
+
+    /**
+     * The element model a variable's own collection binding names, while the variable reads as a collection of it.
+     *
+     * @return class-string<Model>|null
+     */
+    public function boundElementModel(Variable $variable, AnalysisScope $scope): ?string
+    {
+        $element = is_string($variable->name) && $scope->holdsBinding($variable)
+            ? $scope->varCollectionBindings[$variable->name]['modelFqcn'] ?? null
+            : null;
+
+        return $element !== null && $this->resolve($variable, $scope)?->elementModel === $element ? $element : null;
+    }
+
+    /**
      * Resolve the classes a static call returns: `X::m()`, `self::`/`static::`/`parent::`, or `$expr::m()`; one the
      * subject's `__call()` answers reads as `$this->m()`, and one a model lacks runs on a new query of the model.
      */

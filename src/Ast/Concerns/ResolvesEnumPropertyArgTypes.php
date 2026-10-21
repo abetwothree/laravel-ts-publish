@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -81,30 +82,22 @@ trait ResolvesEnumPropertyArgTypes
                 $scope->closureRelationModelClass !== null
                 && $argExpr instanceof PropertyFetch
                 && $argExpr->var instanceof Variable
-                && is_string($argExpr->var->name)
                 && $argExpr->name instanceof Identifier
-                && $scope->holdsBinding($argExpr->var)
-                && isset($scope->varModelBindings[$argExpr->var->name])
             ) {
-                $propName = $argExpr->name->toString();
-                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->varModelBindings[$argExpr->var->name], $propName);
+                $boundModel = resolve(ReceiverClassResolver::class)->boundModel($argExpr->var, $scope);
 
-                /** @var class-string|null $enumFqcn */
-                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+                if ($boundModel !== null) {
+                    $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($boundModel, $argExpr->name->toString());
 
-                if ($enumFqcn === null) {
-                    return null;
+                    /** @var class-string|null $enumFqcn */
+                    $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
+
+                    // toTsType() on the FQCN directly yields the pure enum type, without the nullable
+                    // suffix appendNullable() adds from the DB column definition.
+                    return $enumFqcn === null
+                        ? null
+                        : [...$result, 'type' => LaravelTsPublish::toTsType($enumFqcn)['type'], 'enumFqcn' => $enumFqcn];
                 }
-
-                // toTsType() on the FQCN directly yields the pure enum type, without the nullable
-                // suffix appendNullable() adds from the DB column definition.
-                $enumTsInfo = LaravelTsPublish::toTsType($enumFqcn);
-
-                return [
-                    ...$result,
-                    'type' => $enumTsInfo['type'],
-                    'enumFqcn' => $enumFqcn,
-                ];
             }
 
             // `$this->resource->property` is equivalent to `$this->property`, since $this->resource
