@@ -40,6 +40,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use ReflectionMethod;
 
@@ -507,7 +508,9 @@ final class ConditionalMethodHandler implements ExpressionHandler
                 $scope->restoreNameBindings($previousNameBindings);
             }
 
-            return $this->applyConditionalDefault($this->withLoadedNullArm($inner, $relationship, $scope), $args, $scope, $engine);
+            $loaded = $this->withLoadedNullArm($inner, $relationship, $valueExpr, $scope);
+
+            return $this->applyConditionalDefault($loaded, $args, $scope, $engine);
         }
 
         // Also `whenLoaded('rel', null, …)` and `whenLoaded('rel', default: …)`: Laravel swaps the null $value for the
@@ -621,18 +624,60 @@ final class ConditionalMethodHandler implements ExpressionHandler
     /**
      * The value arm with the `null` whenLoaded() returns, without reading the value, for a relation loaded as null. A
      * relation the model does not declare holds whatever setRelation() stored, so only relationLoadsNull()'s `false`
-     * rules the arm out.
+     * rules the arm out, or a value that collects the relation, which then is a to-many one.
      *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult
      */
-    private function withLoadedNullArm(array $value, ?Expr $relationship, AnalysisScope $scope): array
+    private function withLoadedNullArm(array $value, ?Expr $relationship, Expr $valueExpr, AnalysisScope $scope): array
     {
-        if (! $relationship instanceof String_ || $this->relationLoadsNull($relationship->value, $scope) === false) {
+        if (! $relationship instanceof String_) {
+            return $value;
+        }
+
+        $loadsNull = $this->relationLoadsNull($relationship->value, $scope);
+
+        if ($loadsNull === false || ($loadsNull === null && $this->collectsLoadedValue($valueExpr, $scope))) {
             return $value;
         }
 
         return [...$value, 'type' => ValueResult::withNullArm($value['type'])];
+    }
+
+    /**
+     * Whether a whenLoaded() value hands the loaded relation to a resource's `collection()`: a closure whose one return
+     * is `X::collection($param)` on its first parameter, which passingOneValue() makes of `X::collection(...)` too.
+     */
+    private function collectsLoadedValue(Expr $value, AnalysisScope $scope): bool
+    {
+        $param = $value instanceof ArrowFunction || $value instanceof ClosureExpr ? ($value->params[0] ?? null) : null;
+
+        if ($param === null || $param->variadic || ! $param->var instanceof Variable) {
+            return false;
+        }
+
+        $returns = $this->resolveClosureReturnExpressions($value);
+        $call = count($returns) === 1 ? $returns[0] : null;
+
+        if (! $call instanceof StaticCall || $call->isFirstClassCallable() || ! $this->isResourceCollectionCall($call, $scope)) {
+            return false;
+        }
+
+        $passed = $call->getArgs()[0] ?? null;
+
+        return $passed !== null && ! $passed->unpack && $passed->value instanceof Variable && $passed->value->name === $param->var->name;
+    }
+
+    /**
+     * Whether a static call is `collection()` on an API resource class, `self` and `static` naming the subject.
+     */
+    private function isResourceCollectionCall(StaticCall $call, AnalysisScope $scope): bool
+    {
+        $className = $call->name instanceof Identifier && $call->name->toLowerString() === 'collection' && $call->class instanceof Name
+            ? $this->subjectClassName($call->class, $scope->subjectReflection)
+            : null;
+
+        return $className !== null && is_a($className, JsonResource::class, true);
     }
 
     /**
