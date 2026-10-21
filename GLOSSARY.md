@@ -121,7 +121,7 @@ Working out a property's type from PHP code when no override or docblock states 
 A declared PHP type too broad to publish usefully, such as `mixed` or `array`, which sends inference to look further.
 
 **Narrowing**:
-A test that proves a value's class for the reads it covers, such as an `instanceof` check in an `if` or a ternary.
+Proving a value's class for the reads a test covers, such as an `instanceof` check in an `if` or a ternary.
 _Avoid_: type guard, refinement
 
 **Re-index**:

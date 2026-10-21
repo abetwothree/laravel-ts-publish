@@ -313,7 +313,8 @@ model-bound variable read bare publishes the subclass a proof names. A parameter
 in force at the call, for every read of the parameter.
 
 A test binds `$x` only when no write to it can land between the test and the end of what it narrows; a write before
-the test, or past the block a nested proof ends with, is fine. `GuardWritePostResource` pins both cases. Both see an
+the test, such as the `foreach` assigning the value it tests before each pass, or past the block a nested proof ends
+with, is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` pins both cases. Both see an
 argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
 in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name.
 

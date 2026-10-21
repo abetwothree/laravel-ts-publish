@@ -118,9 +118,10 @@ When the proven arm is the tested read itself, `narrowed()` narrows each class `
 classes `T`. The first case that matches decides, whatever order the tests are written in:
 
 1. `R` is a `T`, or a subtype of one: `R` stays.
-2. Some `T` is unrelated to `R` by inheritance, and `R` or that `T` is an interface: `R` stays. A subtype of `R` may
-   pass that test without being any other `T`.
-3. Some `T` is a subtype of `R`, as when `R` is a morph bound such as `Model`: those `T` replace `R`.
+2. Some `T` is an interface unrelated to `R` by inheritance: `R` stays. A subtype of `R` may pass that test without
+   being any other `T`.
+3. Some `T` is a subtype of `R`, as when `R` is a morph bound such as `Model`, or `R` is an interface and `T` a class
+   unrelated to it, which names a value that is both: those `T` replace `R`.
 4. Otherwise no object is both, and `R` is dropped.
 
 A test never widens a class the arm already names. When no class survives, the arm can never run and keeps what it
@@ -149,7 +150,7 @@ These stay un-narrowed:
 - `?:` and `??`, which prove nothing.
 
 The rule narrows receivers only. `TernaryHandler` narrows reads made inside the proven arm, so `$x->prop` there narrows,
-while the ternary's own value and a bare `$x` do not, but for a model-bound `$x`, which publishes the subclass a proof
+while the ternary's own value and a bare `$x` do not, except a model-bound `$x`, which publishes the subclass a proof
 names (`VariableHandler::narrowedModel()`). In `NarrowedImageableResource`, `Image::imageable` is a `morphTo`
 over int-keyed and string-keyed models. `$either` is bound to
 `$this->imageable instanceof Post || $this->imageable instanceof User ? $this->imageable : null`, so
