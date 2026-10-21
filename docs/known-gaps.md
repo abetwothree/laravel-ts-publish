@@ -100,6 +100,9 @@ A method that builds an array in a variable and returns it publishes the keys it
 (`ReadsReturnedVariables::resolveVariableReturnAnalysis()`), in one pass over the whole body:
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
+- The branches of an `if` chain and a loop's body join, so a key holds each branch's value, optional where a branch, or
+  a loop that never runs, leaves it unset. A `switch` case, a `try` body and a `catch` are read in sequence instead: a
+  key first set there is optional, and a key re-set there publishes only its last write's type.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
   `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
   literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk

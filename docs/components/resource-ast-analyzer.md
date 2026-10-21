@@ -63,6 +63,10 @@ every profile, the order handlers run in decides which one answers; see
 - **Every array-literal `return` is a branch, and so is a returned variable the walk reads completely**
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
+  The walk joins the bodies of an `if` chain or a loop the same way (`joinedBranches()`), the keys held before them one
+  more branch where none need run, dropping an untypable value beside a typed one and keeping a lone `null`, as a
+  ternary's arms do; `MethodAnalysis::dropRepeatsOf()` first drops each queue a branch only copies, which would
+  otherwise double per join. A whole write that always runs in a branch replaces its keys, as at the top level.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
