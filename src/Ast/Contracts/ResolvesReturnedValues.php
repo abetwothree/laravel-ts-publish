@@ -27,8 +27,9 @@ interface ResolvesReturnedValues
     public function resolveReturned(Expr $returned, array $stmts): array;
 
     /**
-     * The array a local holds where it is read, from its writes in the body's statements that end before the read; null
-     * where the walk does not read them completely.
+     * The array a local holds where it is read, from its writes in the body's statements that end before the read. Null
+     * for a variable variable, where no statement ends before the read, where the one holding it writes the local too,
+     * or where the walk reads the writes only partly or finds no key.
      *
      * @param  array<Stmt>  $stmts  the body holding the read
      * @return ValueExpressionResult|null

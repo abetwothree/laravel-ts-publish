@@ -349,9 +349,9 @@ final class AnalysisScope
     public array $keyBuiltLocals = [];
 
     /**
-     * Re-entrancy guard: the bindings mid-resolution, each keyed by its name and the bound expression, so a self- or
-     * mutually-referential binding (e.g. `$a = $b; $b = $a;`) resolves as unknown instead of recursing forever, while
-     * `$s = $s . 'x'` still reads the value `$s` held before. A by-reference call's forms are keyed by name alone.
+     * Re-entrancy guard: the bindings mid-resolution, each keyed by its name and the bound expression, so a cyclic
+     * binding such as `$a = $b; $b = $a;` reads unknown instead of recursing, while `$s = $s . 'x'` reads the old `$s`.
+     * A by-reference call's forms and a key-built local's walk, both VariableHandler's, share one key: the name alone.
      *
      * @var array<string, true>
      */

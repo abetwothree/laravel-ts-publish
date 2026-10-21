@@ -144,8 +144,9 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The array a local holds where it is read, walked over the body's statements that end before the read; null where
-     * the statement holding the read writes the local too, as a loop can before the read runs again.
+     * The array a local holds where it is read, walked over the body's statements that end before the read. Null for a
+     * variable variable, where none does, where the one holding the read writes the local too, as a loop can before the
+     * read runs again, or where the walk reads the writes only partly or finds no key.
      *
      * ResolvesReturnedValues entry point for a value read of a local built by key writes.
      *
