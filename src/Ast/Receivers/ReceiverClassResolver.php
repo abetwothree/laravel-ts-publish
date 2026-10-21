@@ -480,6 +480,29 @@ final class ReceiverClassResolver
     }
 
     /**
+     * Whether an Eloquent\Collection's own `only()`, `except()`, `unique()`, `diff()` or `intersect()` leaves the keys
+     * out of 0..n-1: each re-indexes the models it keeps, but for `only(null)` and `except(null)`, which keep every
+     * key, and a `unique()` by a key, which Support\Collection's own runs.
+     */
+    public function eloquentKeyedAfter(MethodCall|NullsafeMethodCall $call, string $method, bool $keyed): bool
+    {
+        if ($method === 'diff' || $method === 'intersect') {
+            return false;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
+        $filters = $method === 'only' || $method === 'except';
+        $passed = $arguments->named($filters ? 'keys' : 'key')?->value;
+        $nothing = $passed === null || ($passed instanceof ConstFetch && $passed->name->toLowerString() === 'null');
+
+        return match (true) {
+            $arguments->hasUnpack() => true,
+            $filters => $nothing && $keyed,
+            default => ! $nothing,
+        };
+    }
+
+    /**
      * Resolve a variable through the scope's bindings, or, past the write that ended its parameter binding, through
      * what the body assigned; an unbound variable declines.
      */
@@ -1724,29 +1747,6 @@ final class ReceiverClassResolver
             $method === 'sortKeys' => $receiver->keyed || $call->getArgs() !== [],
             in_array($method, self::ELOQUENT_RELISTS, true) && $receiver->within([EloquentCollection::class]) => $this->eloquentKeyedAfter($call, $method, $receiver->keyed),
             default => true,
-        };
-    }
-
-    /**
-     * Whether an Eloquent\Collection's own `only()`, `except()`, `unique()`, `diff()` or `intersect()` leaves the keys
-     * out of 0..n-1: each re-indexes the models it keeps, but for `only(null)` and `except(null)`, which keep every
-     * key, and a `unique()` by a key, which Support\Collection's own runs.
-     */
-    private function eloquentKeyedAfter(MethodCall|NullsafeMethodCall $call, string $method, bool $keyed): bool
-    {
-        if ($method === 'diff' || $method === 'intersect') {
-            return false;
-        }
-
-        $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
-        $filters = $method === 'only' || $method === 'except';
-        $passed = $arguments->named($filters ? 'keys' : 'key')?->value;
-        $nothing = $passed === null || ($passed instanceof ConstFetch && $passed->name->toLowerString() === 'null');
-
-        return match (true) {
-            $arguments->hasUnpack() => true,
-            $filters => $nothing && $keyed,
-            default => ! $nothing,
         };
     }
 

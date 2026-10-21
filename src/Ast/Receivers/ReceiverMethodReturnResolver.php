@@ -260,13 +260,7 @@ final class ReceiverMethodReturnResolver
 
         // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them.
         if ($methodName === 'all' && $receiver->elementModel !== null) {
-            $models = [
-                ...ValueResult::unknown(),
-                'type' => $this->listOrKeyed(ValueResult::arrayWrapType(class_basename($receiver->elementModel)), $receiver),
-                'modelFqcn' => $receiver->elementModel,
-            ];
-
-            return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
+            return $this->listedModels($receiver->elementModel, $receiver->keyed);
         }
 
         // It writes what each model's own toArray() does, under the same keys.
@@ -278,6 +272,16 @@ final class ReceiverMethodReturnResolver
 
         if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
             return null;
+        }
+
+        // Eloquent\Collection's own filter keeps whole models by primary key, as a relation's read does.
+        if ($receiver->elementModel !== null
+            && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
+            && $this->runsEloquentCollectionFilter($class, $methodName)
+        ) {
+            $keyed = resolve(ReceiverClassResolver::class)->eloquentKeyedAfter($call, $methodName, $receiver->keyed);
+
+            return $this->listedModels($receiver->elementModel, $keyed);
         }
 
         if ($this->runsCollectionFilter($class, $methodName)) {
@@ -639,6 +643,21 @@ final class ReceiverMethodReturnResolver
         }
 
         return false;
+    }
+
+    /**
+     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1; null where
+     * the model has no published file.
+     *
+     * @param  class-string<Model>  $model
+     * @return ValueExpressionResult|null
+     */
+    private function listedModels(string $model, bool $keyed): ?array
+    {
+        $list = ValueResult::arrayWrapType(class_basename($model));
+        $models = [...ValueResult::unknown(), 'type' => $keyed ? $this->keyedObjectArm($list) : $list, 'modelFqcn' => $model];
+
+        return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
     }
 
     /**
