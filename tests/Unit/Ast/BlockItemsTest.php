@@ -13,9 +13,11 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldCallableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberNarrowedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedRelationPathResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OffsetReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProvenHelperResource;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -25,6 +27,7 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeFinder;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Image;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
@@ -261,6 +264,34 @@ test('an instanceof ternary on a $this->prop narrows the reads through it', func
         ->toBe('{"title":"Banana","key":7,"either_key":7,"open_key":7}')
         ->and(json_encode(new MemberNarrowedResource($productImage)->resolve(Request::create('/'))))
         ->toBe('{"title":null,"key":null,"either_key":null,"open_key":"p-1"}');
+});
+
+// The proof replaces only the classes, so a relation collection keeps its element model, and its first() the model.
+test('an instanceof ternary on a $this->prop keeps what the narrowed collection holds', function () {
+    $image = new Image;
+    $image->forceFill(['id' => 3]);
+    $comment = new Comment;
+    $comment->forceFill(['id' => 4]);
+    $author = new User;
+    $author->setRelation('posts', new EloquentCollection([blockItemsPost()]));
+    $post = blockItemsPost();
+    $post->setRelation('images', new EloquentCollection([$image]));
+    $post->setRelation('comments', new EloquentCollection([$comment]));
+    $post->setRelation('author', $author);
+    $empty = blockItemsPost();
+    $empty->setRelation('images', new EloquentCollection);
+    $empty->setRelation('comments', new EloquentCollection);
+    $empty->setRelation('author', null);
+
+    expect(publishedResourceKeyTypes(NarrowedRelationPathResource::class, Post::class))->toBe([
+        'image_id' => 'number | null',
+        'comment_id' => 'number | null',
+        'author_post_title' => 'string | null',
+    ])
+        ->and(json_encode(new NarrowedRelationPathResource($post)->resolve(Request::create('/'))))
+        ->toBe('{"image_id":3,"comment_id":4,"author_post_title":"Banana"}')
+        ->and(json_encode(new NarrowedRelationPathResource($empty)->resolve(Request::create('/'))))
+        ->toBe('{"image_id":null,"comment_id":null,"author_post_title":null}');
 });
 
 // The helper's body reads `$this->resource` as the class the caller's test proves, a relation only that subclass has.

@@ -500,15 +500,15 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The classes a subject holds once its `instanceof` test passes: its own classes narrowed class by class, so a
-     * supertype, interface or sibling test never widens it; the tested classes when it names none.
+     * What a subject holds once its `instanceof` test passes, never null: its own classes narrowed class by class, so a
+     * supertype, interface or sibling test never widens it, and its element and keys kept; the tested classes when it
+     * names none.
      *
      * @param  non-empty-list<class-string>  $tested
-     * @return non-empty-list<class-string>
      */
-    public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): array
+    public function narrowedSubject(Expr $subject, array $tested, AnalysisScope $scope): ReceiverType
     {
-        return $this->narrowed($this->narrowable($subject, $tested, $scope), $tested)->classes;
+        return $this->narrowed($this->narrowable($subject, $tested, $scope), $tested)->withShortCircuit(false);
     }
 
     /**
@@ -928,10 +928,10 @@ final class ReceiverClassResolver
         $name = $fetch->name->toString();
         $path = $scope->narrowedReads === [] ? null : $this->thisReadPath($fetch);
 
-        // An `instanceof` ternary's proven arm reads the path it tested as the classes the test left, innermost first.
-        foreach ($path === null ? [] : array_reverse($scope->narrowedReads) as [$narrowed, $classes]) {
+        // An `instanceof` ternary's proven arm reads the path it tested as what the test left of it, innermost first.
+        foreach ($path === null ? [] : array_reverse($scope->narrowedReads) as [$narrowed, $receiver]) {
             if ($narrowed === $path) {
-                return new ReceiverType($classes);
+                return $receiver;
             }
         }
 

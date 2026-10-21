@@ -54,7 +54,7 @@ use ReflectionClass;
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
  * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
- * @phpstan-type NarrowedRead array{list<string>, non-empty-list<class-string>}
+ * @phpstan-type NarrowedRead array{list<string>, ReceiverType}
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -149,16 +149,17 @@ final class AnalysisScope
     public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
-     * The classes an `instanceof` proof holds `$this->resource` to inside the arm it proves, or null. Set and restored
-     * by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before the redeclaration and the backing class.
+     * The classes an `instanceof` proof holds `$this->resource` to inside the ternary arm, or the value in an `if`
+     * block, it proves, or null. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before
+     * the redeclaration and the backing class.
      *
      * @var non-empty-list<class-string>|null
      */
     public ?array $provenProxy = null;
 
     /**
-     * The `$this` read paths, as property names outermost first, an `instanceof` ternary's proven arm holds to
-     * classes while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
+     * The `$this` read paths, as property names outermost first, with what an `instanceof` ternary's proven arm holds
+     * each to while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
      * reads them.
      *
      * @var list<NarrowedRead>

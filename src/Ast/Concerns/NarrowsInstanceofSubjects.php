@@ -16,7 +16,8 @@ use PhpParser\Node\Identifier;
 
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
- * ReceiverClassResolver's receiver alike. Hosts must also use InspectsAstNodes and CollectsLocalVarBindings.
+ * ReceiverClassResolver's receiver alike, and ResourceAstAnalyzer's value inside an `if` block that proves
+ * `$this->resource`. Hosts must also use InspectsAstNodes and CollectsLocalVarBindings.
  *
  * @internal
  */
@@ -47,7 +48,8 @@ trait NarrowsInstanceofSubjects
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $classes = $receivers->narrowedSubject($subject, $tested, $scope);
+        $narrowed = $receivers->narrowedSubject($subject, $tested, $scope);
+        $classes = $narrowed->classes;
 
         if ($subject instanceof Variable && $variable !== null) {
             $previousVarGuardBindings = $scope->varGuardBindings;
@@ -67,7 +69,7 @@ trait NarrowsInstanceofSubjects
             $previousNarrowedReads = $scope->narrowedReads;
 
             try {
-                $scope->narrowedReads[] = [$path, $classes];
+                $scope->narrowedReads[] = [$path, $narrowed];
 
                 return $resolve();
             } finally {
