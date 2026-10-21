@@ -10,8 +10,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * Maps over receivers that are no collection: each throws or runs its own map(), so none publishes a list of the
- * closure's shape. A paginator is the exception, since it forwards map() to the posts on its page.
+ * Maps over receivers that are no collection, or no longer hold the relation's model: each throws or runs its own
+ * map(), so none publishes a list of the closure's shape. A paginator is the exception, since it forwards map() to the
+ * posts on its page.
  *
  * @mixin Post
  */
@@ -27,6 +28,11 @@ class MapReceiverEdgesResource extends JsonResource
         return [
             'box' => $box->map(fn (Post $post) => ['id' => $post->id]),
             'literal' => $literal->map(fn (Post $post) => ['id' => $post->id]),
+            'plucked' => $this->whenLoaded('comments', function ($comments) {
+                $comments = $comments->pluck('id');
+
+                return $comments->map(fn ($comment) => $comment->content);
+            }),
             'paged' => $page->map(fn (Post $post) => ['id' => $post->id]),
         ];
     }

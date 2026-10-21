@@ -1999,7 +1999,9 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
         'firstWhere()' => ['$this->comments->firstWhere(\'id\', 1)?->content', 'string | null'],
         'a nullsafe read of the collection' => ['$this->comments?->first()?->content', 'string | null'],
         'through $this->resource' => ['$this->resource->comments->first()?->content', 'string | null'],
-        'find(), whose return depends on its argument' => ['$this->comments->find(1)?->content', 'unknown'],
+        'find() of one literal key' => ['$this->comments->find(1)?->content', 'string | null'],
+        'find() of one literal string key' => ['$this->comments->find(\'1\')?->content', 'string | null'],
+        'find() of a key named' => ['$this->comments->find(key: 1)?->content', 'string | null'],
     ]);
 
     test('reads the element through a plain arrow, which fails where no item is there', function () use ($runAsResource) {
@@ -2011,13 +2013,25 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
             ->and(fn () => $runAsResource($php, new EloquentCollection))->toThrow(ErrorException::class);
     });
 
-    test('declines first() or last() given a default, which Laravel returns where no item matches', function (string $php) {
+    test('declines first(), last() or find() given a default, which Laravel returns where no item matches', function (string $php) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
     })->with([
         '$this->comments->first(null, \'none\')?->content',
         '$this->comments->last(default: \'none\')?->content',
+        '$this->comments->find(1, \'none\')?->content',
+    ]);
+
+    test('declines find() of a key it cannot tell from a list, which returns a collection', function (string $php) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $comments = new EloquentCollection([(new Comment)->forceFill(['id' => 1, 'content' => 'Hi'])]);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown')
+            ->and($runAsResource(str_replace('?->content', '', $php), $comments))->toBeInstanceOf(EloquentCollection::class);
+    })->with([
+        'a list' => ['$this->comments->find([1])?->content'],
+        'a collection of keys' => ['$this->comments->find(collect([1]))?->content'],
     ]);
 });
 

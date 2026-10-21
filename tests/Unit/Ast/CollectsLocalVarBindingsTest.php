@@ -7,7 +7,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use PhpParser\Node;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
@@ -122,7 +126,10 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
 })->with([
     'a top-level write to another model, past its own statement' => ['$p = $p->profile; return $p;', [true, true, false]],
     'a write naming the same model' => ['$p = $p->fresh() ?? $p; return $p;', [true, true, true, true]],
-    'a write whose value names no class' => ['$p = $p->comments->find(1); return $p;', [true, true, true]],
+    'a write naming the element model find() of one key returns' => ['$p = $p->comments->find(1); return $p;', [true, true, false]],
+    'a find() of a key a variable holds, which may be a list' => ['$p = $p->comments->find($k); return $p;', [true, true, true]],
+    'a top-level write whose value names no class' => ['$p = json_decode($p->name); return $p;', [true, true, true]],
+    'a nested write whose value names no class' => ['if ($p->id) { $p = json_decode("x"); } return $p;', [true, true, true]],
     'a write naming the element model first() returns' => ['$p = $p->comments->first(); return $p;', [true, true, false]],
     'a write an inline @var names another class for' => ['/** @var \\Workbench\\App\\Models\\Comment $p */ $p = $p->comments->first(); return $p;', [true, true, false]],
     'a nested write, from where its statement starts' => ['if ($p->id) { $p = $p->profile; } return $p;', [false, false, false, false]],
@@ -166,15 +173,24 @@ it('ends a parameter\'s model binding at the first write that replaces it with a
     'an operator such as .= or ++' => ['$p .= "x"; $p++; return $p;', [true, true, true]],
 ]);
 
-it('keeps a loaded collection\'s binding across a write naming no other element class', function (string $body, array $holding) {
+// A pluck() or map() hands back a base collection of other values, which ends the binding; an Eloquent collection
+// still holds models, though a merge() names none of them.
+it('keeps a loaded collection\'s binding across a write that keeps its models', function (string $body, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
         $scope->varCollectionBindings['p'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
     }))->toBe($holding);
 })->with([
     'a re-sort' => ['$p = $p->sortBy("id"); return $p;', [true, true, true]],
     'a filter' => ['$p = $p->where("content", "!=", ""); return $p;', [true, true, true]],
+    'a re-key' => ['$p = $p->keyBy("content"); return $p;', [true, true, true]],
     'a re-index' => ['$p = $p->values(); return $p;', [true, true, true]],
-    'a value naming no class' => ['$p = $p->find(1); return $p;', [true, true, true]],
+    'an eager load' => ['$p = $p->load("user"); return $p;', [true, true, true]],
+    'a merge(), still an Eloquent collection' => ['$p = $p->merge([]); return $p;', [true, true, true]],
+    'a top-level value naming no class' => ['$p = $p->toJson(); return $p;', [true, true, true]],
+    'a nested value naming no class' => ['if ($p->isEmpty()) { $p = $p->toJson(); } return $p;', [true, true, true, true]],
+    'a pluck() of plain values' => ['$p = $p->pluck("id"); return $p;', [true, true, false]],
+    'a map() to plain values' => ['$p = $p->map(fn ($c) => $c->content); return $p;', [true, true, false]],
+    'the model find() of one key returns' => ['$p = $p->find(1); return $p;', [true, true, false]],
     'a collection of another model' => ['$p = $this->resource->tags; return $p;', [true, false]],
     'a single model' => ['$p = new \\Workbench\\App\\Models\\Comment; return $p;', [true, false]],
 ]);
@@ -189,19 +205,34 @@ it('ends a declared binding at a write holding other classes, or fewer than it d
     'a write holding every declared class' => ['$p = $p; return $p;', [true, true, true]],
     'a write holding one of them' => ['$p = new \\Workbench\\App\\Models\\User; return $p;', [true, false]],
     'a write holding another class' => ['$p = new \\Workbench\\App\\Models\\Profile; return $p;', [true, false]],
-    'a write whose value names no class' => ['$p = $p->comments->find(1); return $p;', [true, true, true]],
+    'a write naming the element model find() of one key returns' => ['$p = $p->comments->find(1); return $p;', [true, true, false]],
+    'a top-level write whose value names no class' => ['$p = $p->comments->toJson(); return $p;', [true, true, true]],
+    'a nested write whose value names no class' => ['if ($p->id) { $p = $p->comments->toJson(); } return $p;', [true, true, true, true]],
 ]);
 
-// A value binding names no class, so only a value that names one ends it; the local then reads what was assigned.
-it('ends a value binding only at a write whose value names a class', function (string $body, array $holding) {
+// A value binding ends at a top-level write, whose local answers the reads past it, or at a nested one naming a class.
+it('ends a value binding at a top-level write or at one whose value names a class', function (string $body, array $holding) {
     expect(parameterReadsHolding($body, function (AnalysisScope $scope): void {
         $scope->varValueBindings['p'] = ['type' => 'string', 'optional' => false];
     }))->toBe($holding);
 })->with([
     'a concatenation' => ['$p .= "!"; return $p;', [true, true]],
     'a literal in a branch' => ['if ($p === "") { $p = "x"; } return $p;', [true, true, true]],
-    'a value naming no class' => ['$p = trim($p); return $p;', [true, true, true]],
+    'a top-level value naming no class, which its local answers' => ['$p = trim($p); return $p;', [true, true, false]],
+    'a nested value naming no class' => ['if ($p === "") { $p = trim($p); } return $p;', [true, true, true, true]],
+    'a ??= naming no class, which keeps a value it finds set' => ['$p ??= trim("x"); return $p;', [true, true]],
     'a value naming a class' => ['$p = \\Workbench\\App\\Enums\\Status::from($p); return $p;', [true, true, false]],
+]);
+
+// An expression binding is a class binding where the receiver resolver names a class for its expression.
+it('ends an expression binding at a top-level write naming no class only where its expression names none', function (string $body, Expr $bound, array $holding) {
+    expect(parameterReadsHolding($body, function (AnalysisScope $scope) use ($bound): void {
+        $scope->closureParamExprBindings['p'] = $bound;
+    }))->toBe($holding);
+})->with([
+    'a column read' => ['$p = trim($p); return $p;', new PropertyFetch(new Variable('this'), 'title'), [true, true, false]],
+    'a relation read' => ['$p = json_decode($p); return $p;', new PropertyFetch(new Variable('this'), 'author'), [true, true, true]],
+    'a passed model no row backs yet' => ['$p = json_decode($p); return $p;', new New_(new FullyQualified(User::class)), [true, true, true]],
 ]);
 
 /**

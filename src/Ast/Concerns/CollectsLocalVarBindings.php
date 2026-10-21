@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -146,7 +147,7 @@ trait CollectsLocalVarBindings
     /**
      * End each binding a name came into the body with, a parameter's or a seeded one, at the body's first write that
      * replaces the variable with a value naming a class the binding does not hold; a later read takes what the body
-     * wrote. A value naming no class leaves the binding standing, since it is all that is known.
+     * wrote. A value naming no class leaves a class binding standing, since it is all that is known of the object.
      *
      * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
      * nested in a statement ends it where that statement starts, since a loop can run the write before a read. A write
@@ -168,7 +169,13 @@ trait CollectsLocalVarBindings
             if (! $scope->bindsName($name)
                 || (isset($scope->bindingEnds[$name]) && $node->getStartFilePos() > $scope->bindingEnds[$name])
                 || ! $this->replacesVariable($target, $name)
-                || $this->keepsBinding($name, $node, $this->byReferenceForm($node, $target, $writes, $stmts, $scope), $scope)
+                || $this->keepsBinding(
+                    $name,
+                    $node,
+                    $this->byReferenceForm($node, $target, $writes, $stmts, $scope),
+                    $scope,
+                    $this->isStatementOf($stmts, $node),
+                )
             ) {
                 continue;
             }
@@ -187,7 +194,7 @@ trait CollectsLocalVarBindings
             }
 
             // A write nested in a block that falls through, or a `??=`, may leave the old binding standing past it.
-            $nested = ! array_any($block, fn (Node\Stmt $stmt): bool => $stmt instanceof ExpressionStmt && $stmt->expr === $node);
+            $nested = ! $this->isStatementOf($block, $node);
             $assigned = ($node instanceof Assign || $node instanceof CoalesceAssign) && $node->var instanceof Variable;
             $this->addGap($scope, $name, [
                 $end,
@@ -321,11 +328,13 @@ trait CollectsLocalVarBindings
     /**
      * Whether a write leaves a binding standing. `.=` or `++` keeps the kind of value held; an assignment or `??=`
      * keeps it unless its value names a class the binding does not hold, other or fewer classes than a declared one,
-     * or a collection of another element. An inline `@var` on an assignment answers where its value names none.
+     * or values other than a collection binding's models. An inline `@var` answers where its value names none.
+     *
+     * A value naming no class ends only a value binding, at a top-level `$x = …;`, whose local then answers.
      *
      * @param  ByReferenceForm|null  $form  what a by-reference call or `foreach` leaves, when one makes the write
      */
-    private function keepsBinding(string $name, Node $node, ?array $form, AnalysisScope $scope): bool
+    private function keepsBinding(string $name, Node $node, ?array $form, AnalysisScope $scope, bool $topLevel = false): bool
     {
         if (($node instanceof AssignOp && ! $node instanceof CoalesceAssign)
             || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
@@ -360,18 +369,32 @@ trait CollectsLocalVarBindings
         $held = $span === null ? $resolver->resolve($node->expr, $scope) : $resolver->resolveDeclared($name, $span, $scope);
 
         return match (true) {
-            $held === null => true,
+            // Read at the target, a binding the resolver names a class for is all that is known of the object; a plain
+            // value ends at a top-level `$x = …;` alone, since a nested write or a `??=` may leave it standing.
+            $held === null => ! $topLevel || ! $node instanceof Assign || $resolver->resolve($node->var, $scope) !== null,
             $classes !== null => $held->within($classes),
             // A write holding fewer of a declared union's classes ends it, so a later read takes the narrower value.
             $declared !== null => $held->within($declared) && array_all(
                 $declared,
                 fn (string $class): bool => array_any($held->classes, fn (string $heldClass): bool => is_a($class, $heldClass, true)),
             ),
-            // A re-sorted or re-filtered collection names no element class, so the element binding stands.
-            $element !== null => $held->within([Enumerable::class])
-                && ($held->elementModel === null || is_a($held->elementModel, $element, true)),
+            // A pluck() or map() hands back a base collection of other values; an Eloquent one still holds models,
+            // though a merge() or concat() names none of them.
+            $element !== null => $held->elementModel === null
+                ? $held->within([EloquentCollection::class])
+                : $held->within([Enumerable::class]) && is_a($held->elementModel, $element, true),
             default => false,
         };
+    }
+
+    /**
+     * Whether a node is the expression of one of the statements, `$x = …;` itself rather than a write nested in one.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function isStatementOf(array $stmts, Node $node): bool
+    {
+        return array_any($stmts, fn (Node\Stmt $stmt): bool => $stmt instanceof ExpressionStmt && $stmt->expr === $node);
     }
 
     /**

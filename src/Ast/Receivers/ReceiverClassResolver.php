@@ -632,7 +632,7 @@ final class ReceiverClassResolver
 
         if ($span === null) {
             if ($scope->holdsBinding($variable)) {
-                return $this->fromBindings($name, $scope);
+                return $this->fromBindings($name, $scope, $variable);
             }
 
             $gap = $scope->gapAt($variable);
@@ -705,9 +705,9 @@ final class ReceiverClassResolver
 
     /**
      * Resolve a variable through its model, declared-parameter, collection, request, closure-parameter or
-     * local-assignment binding.
+     * local-assignment binding; $read, where given, is the read whose position tells a collection's keys.
      */
-    private function fromBindings(string $name, AnalysisScope $scope): ?ReceiverType
+    private function fromBindings(string $name, AnalysisScope $scope, ?Variable $read = null): ?ReceiverType
     {
         if (isset($scope->varModelBindings[$name])) {
             return ReceiverType::of($scope->varModelBindings[$name]);
@@ -718,7 +718,11 @@ final class ReceiverClassResolver
         }
 
         if (isset($scope->varCollectionBindings[$name])) {
-            return new ReceiverType([EloquentCollection::class], elementModel: $scope->varCollectionBindings[$name]['modelFqcn']);
+            return new ReceiverType(
+                [EloquentCollection::class],
+                elementModel: $scope->varCollectionBindings[$name]['modelFqcn'],
+                keyed: $read !== null && $this->rekeyedBefore($name, $read, $scope),
+            );
         }
 
         if (isset($scope->requestVarNames[$name])) {
@@ -735,6 +739,19 @@ final class ReceiverClassResolver
         $bound = $scope->closureParamExprBindings[$name] ?? null;
 
         return $bound === null ? $this->fromLocal($name, $scope) : $this->fromBoundExpression($name, $bound, $scope);
+    }
+
+    /**
+     * Whether the body's one write of a collection binding's name, which kept its models, has moved their keys off
+     * 0..n-1 before a read, as `$c = $c->keyBy('id')` does.
+     */
+    private function rekeyedBefore(string $name, Variable $read, AnalysisScope $scope): bool
+    {
+        $written = $scope->literalLocalBindings()[$name] ?? null;
+
+        return $written !== null
+            && $read->getStartFilePos() > $written->getEndFilePos()
+            && $this->fromBoundExpression($name, $written, $scope)?->keyed === true;
     }
 
     /**
@@ -1920,23 +1937,42 @@ final class ReceiverClassResolver
     }
 
     /**
-     * The element model a collection's first(), last() or firstWhere() hands back; none where the call passes a
-     * default, which Laravel returns where no item matches.
+     * The element model a collection's first(), last() or firstWhere() hands back, or an Eloquent collection's find()
+     * of one key; none where the call passes a default, which Laravel returns where no item matches.
      *
      * @return class-string<Model>|null
      */
     private function collectedElement(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): ?string
     {
-        if ($receiver->elementModel === null
-            || ! in_array($method, self::COLLECTION_ELEMENTS, true)
-            || ! $receiver->within([Collection::class])
-        ) {
+        if ($receiver->elementModel === null) {
+            return null;
+        }
+
+        if ($method === 'find') {
+            return $receiver->within([EloquentCollection::class]) && $this->findsOne($call) ? $receiver->elementModel : null;
+        }
+
+        if (! in_array($method, self::COLLECTION_ELEMENTS, true) || ! $receiver->within([Collection::class])) {
             return null;
         }
 
         $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, $method));
 
         return $arguments->hasUnpack() || $arguments->named('default') !== null ? null : $receiver->elementModel;
+    }
+
+    /**
+     * Whether an Eloquent collection's `find()` looks up one literal key with no default, so it returns a model or
+     * null; a list or an Arrayable of keys returns a collection, and a variable may hold either.
+     */
+    private function findsOne(MethodCall|NullsafeMethodCall $call): bool
+    {
+        $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, 'find'));
+        $key = $arguments->named('key')?->value;
+
+        return ! $arguments->hasUnpack()
+            && $arguments->named('default') === null
+            && ($key instanceof Int_ || $key instanceof String_);
     }
 
     /**

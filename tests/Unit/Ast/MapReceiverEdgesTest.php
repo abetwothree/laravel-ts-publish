@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MapElementHintsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MapReceiverEdgesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReplacedParametersResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -13,7 +14,45 @@ test('a map over no collection, or over values a write replaced, publishes no li
 
     expect($types['box'])->toBe('{ items: unknown[] }')
         ->and($types['literal'])->toBe('unknown')
+        ->and($types['plucked?'])->toBe('unknown')
         ->and($types['paged'])->toBe('{ id: number }[]');
+});
+
+test('a map passes the values a replaced collection holds, and a replaced parameter reads what the body wrote', function () {
+    $types = publishedResourceKeyTypes(ReplacedParametersResource::class, Post::class);
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+    foreach ([1 => 'alpha', 2 => 'beta'] as $id => $content) {
+        new Comment()->forceFill(['id' => $id, 'content' => $content, 'post_id' => $post->id, 'user_id' => $user->id])->save();
+    }
+
+    /** @var array{data: array<string, mixed>} $sent */
+    $sent = json_decode((string) new ReplacedParametersResource(Post::with(['author.comments', 'comments'])->findOrFail($post->id))
+        ->response(request())->getContent(), true);
+
+    expect($types)->toBe([
+        'plucked_ids?' => 'number[]',
+        'mapped_contents?' => 'string[]',
+        'keyed_all?' => 'Comment[] | Record<string, Comment>',
+        'resorted_ids?' => 'number[] | Record<string, number>',
+        'merged_contents?' => 'string[]',
+        'found_content?' => 'string | null',
+        'found_name?' => 'unknown',
+        'found_bare?' => 'unknown',
+        'decoded?' => 'unknown',
+        'trimmed?' => 'string',
+    ])->and($sent['data'])->toMatchArray([
+        'plucked_ids' => [1, 2],
+        'mapped_contents' => ['alpha', 'beta'],
+        'resorted_ids' => [1 => 2, 0 => 1],
+        'merged_contents' => ['alpha', 'beta'],
+        'found_content' => 'alpha',
+        'found_name' => null,
+        'decoded' => null,
+        'trimmed' => 'First',
+    ])->and(array_keys($sent['data']['keyed_all']))->toBe(['alpha', 'beta'])
+        ->and($sent['data']['found_bare'])->toMatchArray(['id' => 1, 'content' => 'alpha']);
 });
 
 /**
