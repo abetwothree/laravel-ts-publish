@@ -1,0 +1,36 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
+
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Models\Team;
+use Workbench\App\Models\User;
+
+/**
+ * Wraps each user's nullable `role` column in maps over a query, a local holding one, with and without a model hint, a
+ * `collect()` of a relation and the relation itself. EnumResource sends null for a null role.
+ *
+ * @mixin Team
+ */
+class MappedEnumColumnResource extends JsonResource
+{
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        $users = User::query()->get();
+
+        return [
+            'query_roles' => User::query()->get()->map(fn ($user) => EnumResource::make($user->role))->all(),
+            'local_roles' => $users->map(fn ($user) => EnumResource::make($user->role))->all(),
+            'hinted_local_roles' => $users->map(fn (User $user) => EnumResource::make($user->role))->all(),
+            'collected_roles' => collect($this->members)->map(fn ($member) => EnumResource::make($member->role))->all(),
+            'chain_roles' => $this->members->map(fn ($member) => EnumResource::make($member->role))->all(),
+        ];
+    }
+}

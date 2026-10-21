@@ -116,6 +116,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             $this->elementModel($node, $rootResult, $element, $scope),
             ['type' => $element, 'optional' => false],
             $ops[0]['name'] === 'all',
+            false,
             $scope,
             $engine,
         );

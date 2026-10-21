@@ -186,8 +186,8 @@ final class AnalysisScope
     public bool $mapResultArrayed = false;
 
     /**
-     * Related model set while a whenLoaded() or map() closure resolves. InlineArrayHandler takes a model from it for a
-     * spread `...$variable->toArray()` no binding names; ResolvesEnumPropertyArgTypes reads only whether it is set.
+     * Related model set while a relation closure resolves: a whenLoaded() closure, or a map() BindsMapCallbacks counts
+     * as one. ResolvesEnumPropertyArgTypes's enum gate reads only whether it is set.
      *
      * @var class-string<Model>|null
      */
@@ -630,8 +630,7 @@ final class AnalysisScope
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        // A relation closure's model answers an unbound `...$variable->toArray()`, but the method's body reads the
-        // subject.
+        // The method's body is no relation closure, even where the call is made from one.
         $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
 

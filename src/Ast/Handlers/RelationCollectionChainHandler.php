@@ -268,6 +268,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
             $elementModel,
             null,
             $terminalOp === 'all',
+            true,
             $scope,
             $engine,
         );

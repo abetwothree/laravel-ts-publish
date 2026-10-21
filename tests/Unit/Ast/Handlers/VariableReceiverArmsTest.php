@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnboundClosureVariableResource;
@@ -111,6 +112,24 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
     ])
         ->and(new BoundEnumColumnResource($team)->response(request())->getContent())
         ->toBe('{"data":{"owner_role":null,"member_role":null}}');
+});
+
+// Only a relation closure, a hinted map among them, drops the column's null (F24, for the owner); a map over a query,
+// a local or a collect() of a relation keeps it, as Laravel sends it.
+it('keeps a nullable enum column\'s null arm in a map over a query, a local or a collect() of a relation', function () {
+    $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $team = (new Team)->forceFill(['id' => 9]);
+    $team->setRelation('members', new EloquentCollection([$member]));
+
+    expect(publishedResourceKeyTypes(MappedEnumColumnResource::class, Team::class))->toBe([
+        'query_roles' => '(AsEnum<typeof Role> | null)[]',
+        'local_roles' => '(AsEnum<typeof Role> | null)[]',
+        'hinted_local_roles' => 'AsEnum<typeof Role>[]',
+        'collected_roles' => '(AsEnum<typeof Role> | null)[]',
+        'chain_roles' => 'AsEnum<typeof Role>[]',
+    ])
+        ->and(new MappedEnumColumnResource($team)->response(request())->getContent())
+        ->toBe('{"data":{"query_roles":[null],"local_roles":[null],"hinted_local_roles":[null],"collected_roles":[null],"chain_roles":[null]}}');
 });
 
 // The narrowing outranks the parameter's own model, so the subclass types the read.
