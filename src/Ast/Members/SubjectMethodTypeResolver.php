@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -39,12 +40,10 @@ final class SubjectMethodTypeResolver
     {
         // PHP runs the subject's own declaration, so a namesake it shadows never answers for it.
         if ($scope->subjectReflection->hasMethod($methodName)) {
-            /** @var class-string $class */
-            $class = $scope->subjectReflection->getName();
             // The body reads `$this->resource` as the one model an `instanceof` proof around the call holds it to.
             $backing = $scope->provenProxy !== null && $scope->provenProxy === [$scope->modelClass] ? $scope->modelClass : null;
 
-            return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing);
+            return $this->resolveOn($scope->subjectReflection, $methodName, $site, $backing);
         }
 
         // `__call()` runs a macro before it forwards, so the forwarded namesake never answers for one.
@@ -100,9 +99,10 @@ final class SubjectMethodTypeResolver
      *
      * @param  ReflectionClass<object>  $reflection
      * @param  CallSite|null  $site  the call, read where it is written, for a body read with what it passes
+     * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @return ValueExpressionResult|null
      */
-    public function resolveOn(ReflectionClass $reflection, string $methodName, ?CallSite $site = null): ?array
+    public function resolveOn(ReflectionClass $reflection, string $methodName, ?CallSite $site = null, ?string $backing = null): ?array
     {
         if (! $reflection->hasMethod($methodName)) {
             return null;
@@ -111,6 +111,6 @@ final class SubjectMethodTypeResolver
         /** @var class-string $class */
         $class = $reflection->getName();
 
-        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
+        return resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site, $backing);
     }
 }
