@@ -762,6 +762,7 @@ class ResourceAstAnalyzer implements ExpressionEngine
         try {
             $this->scope->claimParameters($expr);
             $this->scope->bindUnpassedParameters($expr, 0, $this);
+            $this->markFilledDefaults($expr, $this->scope);
             $this->proveClosureGuards($expr, $this->scope);
 
             return $this->closureReturnBranches($expr);

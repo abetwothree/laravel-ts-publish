@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -782,9 +781,9 @@ final class AnalysisScope
                 $this->varValueBindings[$param->var->name] = $held;
             }
 
-            // A readable `new` default holds that object, which the receiver resolver reads as one no row backs yet.
+            // A readable `new` default holds that object, which the receiver resolver reads as one no row backs yet;
+            // the closure's reader marks it filled where its body fills it.
             if ($held !== null && $param->default instanceof New_ && $param->default->class instanceof Name) {
-                ReceiverClassResolver::markFilled($param->default, $param->var->name, $closure->getStmts());
                 $this->closureParamExprBindings[$param->var->name] = $param->default;
             }
         }

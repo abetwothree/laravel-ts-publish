@@ -558,3 +558,50 @@ it('keeps a local holding a model across a write through it, and no array an off
             'key' => 'a',
         ]);
 });
+
+/**
+ * Whether the `new` a parsed body's first statement assigns to `$p` holds attributes once markFilled() reads the body.
+ */
+function marksFilled(string $body): bool
+{
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Mark the `new` from the body.
+         *
+         * @param  array<Node\Stmt>  $stmts
+         */
+        public function mark(New_ $new, array $stmts): void
+        {
+            $this->markFilled($new, 'p', $stmts);
+        }
+    };
+
+    /** @var array<Node\Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php $p = new \\Workbench\\App\\Models\\Post; '.$body);
+    $new = new NodeFinder()->findFirstInstanceOf($stmts, New_::class);
+    assert($new instanceof New_);
+    $host->mark($new, $stmts);
+
+    return $new->getAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES) === true;
+}
+
+// Laravel sends what a body wrote through the variable, before the read or after it, so its `new` holds attributes.
+it('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, bool $fills) {
+    expect(marksFilled($body))->toBe($fills);
+})->with([
+    'a member write' => ['$p->title = "x";', true],
+    'a coalescing member write' => ['$p->title ??= "x";', true],
+    'an offset write' => ['$p["title"] = "x";', true],
+    'an increment' => ['$p->views++;', true],
+    'fill() as a statement' => ['$p->fill([]);', true],
+    'forceFill() inside an expression' => ['$q = $p->forceFill([]);', true],
+    'any method called as a statement' => ['$p->save();', true],
+    'a nested closure writing it' => ['$f = function () use ($p) { $p->title = "x"; };', true],
+    'a member read' => ['$t = $p->title;', false],
+    'a method read as a value' => ['$k = $p->getKey();', false],
+    'another variable written' => ['$q = new \\Workbench\\App\\Models\\Post; $q->title = "x";', false],
+    'a reassignment' => ['$p = null;', false],
+]);

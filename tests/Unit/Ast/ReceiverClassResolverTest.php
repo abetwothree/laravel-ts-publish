@@ -290,29 +290,6 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve($copy, postScope()))->toEqual(new ReceiverType([Post::class], unsaved: true));
     });
 
-    // Laravel sends what a body wrote through the variable, before the read or after it, so its `new` holds attributes.
-    test('marks a variable\'s new as holding attributes where its body fills the model', function (string $body, bool $fills) {
-        $stmts = new AstParser()->parseSource('<?php $p = new \Workbench\App\Models\Post; '.$body);
-        $new = $stmts[0]->expr->expr;
-
-        ReceiverClassResolver::markFilled($new, 'p', $stmts);
-
-        expect($new->getAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES) === true)->toBe($fills);
-    })->with([
-        'a member write' => ['$p->title = "x";', true],
-        'a coalescing member write' => ['$p->title ??= "x";', true],
-        'an offset write' => ['$p["title"] = "x";', true],
-        'an increment' => ['$p->views++;', true],
-        'fill() as a statement' => ['$p->fill([]);', true],
-        'forceFill() inside an expression' => ['$q = $p->forceFill([]);', true],
-        'any method called as a statement' => ['$p->save();', true],
-        'a nested closure writing it' => ['$f = function () use ($p) { $p->title = "x"; };', true],
-        'a member read' => ['$t = $p->title;', false],
-        'a method read as a value' => ['$k = $p->getKey();', false],
-        'another variable written' => ['$q = new \Workbench\App\Models\Post; $q->title = "x";', false],
-        'a reassignment' => ['$p = null;', false],
-    ]);
-
     test('a static-syntax call the subject lacks reads as $this->m(), as __call() runs it', function () {
         $resolver = resolve(ReceiverClassResolver::class);
 

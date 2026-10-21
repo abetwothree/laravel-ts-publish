@@ -68,6 +68,7 @@ final class ClosureHandler implements ExpressionHandler
                 $scope->releaseUnclaimedParameters($expr);
                 // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
                 $this->bindDeclaredParameters($expr, $scope);
+                $this->markFilledDefaults($expr, $scope);
 
                 if ($expr instanceof ClosureExpr) {
                     $this->seedBody($expr->stmts, $scope);

@@ -31,6 +31,7 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PostDec;
@@ -39,6 +40,7 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
@@ -80,6 +82,9 @@ use ReflectionClass;
 trait CollectsLocalVarBindings
 {
     use CollectsInstanceofGuards;
+
+    /** The Model methods that write attributes, wherever a body calls them. */
+    private const array ATTRIBUTE_WRITERS = ['fill', 'forceFill', 'setAttribute', 'setRawAttributes', 'offsetSet'];
 
     /**
      * Seed a body once its parameters are bound: its own locals, top-level and block-scoped, the end of each binding it
@@ -157,7 +162,7 @@ trait CollectsLocalVarBindings
             }
 
             $name = $stmt->expr->var->name;
-            ReceiverClassResolver::markFilled($stmt->expr->expr, $name, $stmts);
+            $this->markFilled($stmt->expr->expr, $name, $stmts);
 
             if (($writeCounts[$name] ?? 0) === 1) {
                 $scope->localVarBindings[$name] = $stmt->expr->expr;
@@ -355,6 +360,43 @@ trait CollectsLocalVarBindings
     }
 
     /**
+     * Mark the `new` a variable is bound to as holding attributes where its body fills the model, before the read or
+     * after it: Laravel then sends what was written. A write to a member or offset through the variable fills it, as
+     * does a call to an attribute writer on it, or any method called on it as a statement.
+     *
+     * @param  array<Node>  $body
+     */
+    protected function markFilled(Expr $bound, string $name, array $body): void
+    {
+        if (! $bound instanceof New_ || $bound->args !== []) {
+            return;
+        }
+
+        if (new NodeFinder()->findFirst($body, fn (Node $node): bool => $this->fills($node, $name)) !== null) {
+            $bound->setAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES, true);
+        }
+    }
+
+    /**
+     * Mark each parameter default `new` that AnalysisScope::bindUnpassedParameters() bound as holding attributes where
+     * the closure's body fills it.
+     */
+    protected function markFilledDefaults(Expr $closure, AnalysisScope $scope): void
+    {
+        if (! $closure instanceof ArrowFunction && ! $closure instanceof ClosureExpr) {
+            return;
+        }
+
+        foreach ($closure->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name) && $param->default !== null
+                && ($scope->closureParamExprBindings[$param->var->name] ?? null) === $param->default
+            ) {
+                $this->markFilled($param->default, $param->var->name, $closure->getStmts());
+            }
+        }
+    }
+
+    /**
      * Bind a variable to the type an inline `@var` on its assignment declares, for the reads after that statement and
      * before the top-level statement holding its next write. A top-level statement runs once, so an earlier one never
      * sees a later write; a loop holding both is one statement, so the span ends where it starts, not at the write.
@@ -445,7 +487,7 @@ trait CollectsLocalVarBindings
                 && $stmt->expr->var instanceof Variable
                 && is_string($stmt->expr->var->name)
             ) {
-                ReceiverClassResolver::markFilled($stmt->expr->expr, $stmt->expr->var->name, $body);
+                $this->markFilled($stmt->expr->expr, $stmt->expr->var->name, $body);
                 $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
             }
 
@@ -1435,6 +1477,46 @@ trait CollectsLocalVarBindings
         }
 
         return $target instanceof Variable && is_string($target->name) ? [$target->name] : [];
+    }
+
+    /**
+     * Whether one node fills the model a variable holds: a write to a member or offset through it, a call to an
+     * attribute writer on it, or a statement calling a method on it.
+     */
+    private function fills(Node $node, string $name): bool
+    {
+        if ($node instanceof Assign || $node instanceof AssignOp || $node instanceof AssignRef
+            || $node instanceof PreInc || $node instanceof PostInc || $node instanceof PreDec || $node instanceof PostDec
+        ) {
+            return ! $node->var instanceof Variable && $this->rootedAt($node->var, $name);
+        }
+
+        if ($node instanceof MethodCall || $node instanceof NullsafeMethodCall) {
+            return $node->name instanceof Identifier
+                && in_array($node->name->toString(), self::ATTRIBUTE_WRITERS, true)
+                && $this->rootedAt($node->var, $name);
+        }
+
+        return $node instanceof ExpressionStmt
+            && ($node->expr instanceof MethodCall || $node->expr instanceof NullsafeMethodCall)
+            && $this->rootedAt($node->expr, $name);
+    }
+
+    /**
+     * Whether a chain of member reads, offsets and calls starts at a variable, the bare variable included.
+     */
+    private function rootedAt(Expr $expr, string $name): bool
+    {
+        while ($expr instanceof PropertyFetch
+            || $expr instanceof NullsafePropertyFetch
+            || $expr instanceof ArrayDimFetch
+            || $expr instanceof MethodCall
+            || $expr instanceof NullsafeMethodCall
+        ) {
+            $expr = $expr->var;
+        }
+
+        return $expr instanceof Variable && $expr->name === $name;
     }
 
     /**
