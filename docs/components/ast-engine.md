@@ -286,8 +286,8 @@ it is. `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings
 in every body reader, a closure's included.
 
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
-says, and a write holding fewer of a declared union's classes ends it as well. It gets no value binding, which would
-outlive a write naming no class such as `$n = (string) $n`, so its local answers. The binding reads only the
+says, and a write holding fewer of a declared union's classes ends it as well. Its value binding holds for a read
+before its own `$x = …;` and gives way to the written value past it. The binding reads only the
 declaration, so the `analysis:` and `method-return:` keys stay valid. A call, spread or read as a value, also binds each
 parameter whose declaration binds nothing (no class, no type precise enough to publish, natively or by `@param`) to what
 its argument binds, through `CallSite::passedTo()` and `bindCall()`, read before `AnalysisScope::enterSubjectMethod()`
@@ -363,18 +363,21 @@ as does a name a reference can write through (`=&`, `use (&$x)`, `foreach (… a
 parameter or a seeded binding holds gets no gap, since the rules below end that binding. A body drops the outer gaps of
 each name it writes that holds no binding, so a closure's own `$x` never reads its enclosing block's, while a bound
 name keeps its exit-block gap for the value a closure captures. `AnalysisScope::copyBindings()` passes a closure
-parameter the value of the gap one write opened, a block local's or a parameter's.
+parameter the value of the gap one write opened, a block local's or a parameter's, and in a gap the old binding may
+still hold past, that binding joined with the gap's writes.
 
 A name with no binding that the body writes more than once is joined statement by statement (`bindJoinedLocals()`),
 each span a binding gap: past a top-level `$x = …;` a read takes that value, past a statement whose writes are all
 nested `$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A
 write in a block that always exits reaches no read past it. Any other write leaves the name unbound until its next
 top-level `$x = …;`, and a name a reference can write through is never joined. A parameter takes the same walk from its
-own binding, for values only, and stops at its own top-level `$x = …;` or any other write. Its gaps carry
-`receiversKeep`: past a write naming no class a member read keeps the old binding, and a value read the old value in
-place of a written one the engine cannot type, until a write ends it. `CollectsLocalVarBindings::writeKind()`
-classifies each write once for these passes. The cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by
-its name and the bound expression, so `$s = $s . 'x'` reads the value `$s` held before.
+own binding, for values only. Its own `$x = …;` replaces the value it binds, alone or beside a class, so
+`$t = json_decode($t)` reads `unknown` past it; a class binding alone, or any other write, stops the walk. Its gaps
+carry `receiversKeep`: past a write naming no class a member read keeps the old binding, and where the old value may
+still hold, a value read takes it in place of a written one the engine cannot type.
+`CollectsLocalVarBindings::writeKind()` classifies each write once for these passes. The cycle guard,
+`AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
+value `$s` held before.
 
 Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
@@ -428,9 +431,9 @@ These shapes stay unbound on purpose, so they resolve as `unknown` rather than a
 - **A first-class callable**, such as `->map(...)`: there is no closure body to bind a parameter into.
 - **A relation-chain `map()` whose argument is not a closure**, such as `'strtoupper'`: the same reason.
 - **A parameter past a write that names another class**: its binding ends there. A write whose value names no class,
-  or an operator such as `.=`, leaves the binding standing, since only the old binding is known, though a value read
-  past one nested in a block takes the old value or the one written; a `foreach`, `catch` or by-reference write ends
-  it, but a call that keeps the value's form.
+  or an operator such as `.=`, leaves a class binding standing, since only the old binding is known, though a value
+  read takes the value its own `$x = …;` writes, and past a write nested in a block the old value or the one written; a
+  `foreach`, `catch` or by-reference write ends it, but a call that keeps the value's form.
 
 ## Subject mode
 

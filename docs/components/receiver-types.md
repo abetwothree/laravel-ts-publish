@@ -331,7 +331,8 @@ step can decline:
    `User` is `User | null`.
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
    signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel), then
-   [the value its returns hold](#a-method-read-as-a-value-carries-import-channels).
+   [the value its returns hold](#a-method-read-as-a-value-carries-import-channels). A conditional `@return` whose every
+   branch is a string type, as `Str::upper()` declares, reads `string`.
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object. A concrete model keeps the `Record<string, unknown>` of a method it inherits from `Model`, such as
    `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.
