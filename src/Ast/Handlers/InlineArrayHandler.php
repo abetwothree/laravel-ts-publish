@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -322,7 +323,8 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve `$var->toArray()`, where `$var` is a closure-bound model, to that model's FQCN.
+     * Resolve `$var->toArray()`, where `$var` holds one model, to that model's FQCN: a closure-bound one, else the one
+     * the receiver resolver names, such as a local's, but a `new` model's, which has no attributes to spread.
      *
      * @return class-string<Model>|null
      */
@@ -330,7 +332,7 @@ final class InlineArrayHandler implements ExpressionHandler
     {
         $varName = self::spreadToArrayVarName($expr, $scope);
 
-        if ($varName === null) {
+        if ($varName === null || ! $expr instanceof MethodCall) {
             return null;
         }
 
@@ -344,7 +346,15 @@ final class InlineArrayHandler implements ExpressionHandler
             return null;
         }
 
-        return $scope->closureRelationModelClass;
+        $held = resolve(ReceiverClassResolver::class)->resolve($expr->var, $scope);
+
+        if ($held === null || $held->attributeless || count($held->classes) !== 1 || $held->models() !== $held->classes) {
+            return null;
+        }
+
+        $model = $held->models()[0];
+
+        return ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $model]) ? $model : null;
     }
 
     /**
