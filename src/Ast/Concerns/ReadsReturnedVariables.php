@@ -360,25 +360,19 @@ trait ReadsReturnedVariables
     {
         $read = $this->readVariable($stmts, $varName, $topLevel);
 
-        return $read !== null && $read[1] ? $read[0] : null;
+        return $read !== null && $read->readsCompletely ? $read : null;
     }
 
     /**
-     * A returned variable's walk and whether it read the variable completely, or null when the gate rejects a whole
-     * write: a walk not read completely still saw the keys it publishes.
+     * A returned variable's walk, or null when the gate rejects a whole write: a walk not read completely still saw the
+     * keys it publishes.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @return array{TAnalysis, bool}|null
+     * @return TAnalysis|null
      */
-    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?array
+    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
     {
-        if (! $this->readsVariableArray($stmts, $varName)) {
-            return null;
-        }
-
-        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
-
-        return [$analysis, $analysis->readsCompletely];
+        return $this->readsVariableArray($stmts, $varName) ? $this->walkVariable($stmts, $varName, $topLevel) : null;
     }
 
     /**

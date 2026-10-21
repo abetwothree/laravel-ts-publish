@@ -975,10 +975,10 @@ class ResourceAstAnalyzer implements ExpressionEngine
             if ($return->expr instanceof Variable && is_string($return->expr->name)
                 && ! array_key_exists($return->expr->name, $variables)) {
                 $read = $this->readVariable($stmts, $return->expr->name);
-                $variables[$return->expr->name] = $read !== null && $read[1] ? $read[0] : null;
+                $variables[$return->expr->name] = $read !== null && $read->readsCompletely ? $read : null;
 
-                if ($read !== null && ! $read[1]) {
-                    $partlyRead[$return->expr->name] = $read[0];
+                if ($read !== null && ! $read->readsCompletely) {
+                    $partlyRead[$return->expr->name] = $read;
                 }
             }
         }
