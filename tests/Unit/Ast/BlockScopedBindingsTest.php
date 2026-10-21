@@ -146,6 +146,14 @@ test('binds a block local past its statement, up to its block\'s end or the stat
         'try { $x = $this->author; $x->a; } catch (\Exception) { $x->b; }',
         [[User::class], null],
     ],
+    'an if block, and the else it skips' => [
+        'if (true) { $x = $this->author; $x->a; } else { $x->b; }',
+        [[User::class], null],
+    ],
+    'a case, and the one it falls through to' => [
+        'switch ($k) { case 1: $x = $this->author; $x->a; case 2: $x->b; }',
+        [[User::class], null],
+    ],
     'a name another reference writes through' => [
         '$y = &$x; if (true) { $x = $this->author; $y = null; $x->a; }',
         [null],
@@ -156,6 +164,10 @@ test('binds a block local past its statement, up to its block\'s end or the stat
     ],
     'a by-reference foreach variable, which the array writes through' => [
         '$arr = [1]; foreach ($arr as &$x) {} if (true) { $x = $this->author; $arr[0] = null; $x->a; }',
+        [null],
+    ],
+    'a global, which a call can write' => [
+        'global $x; if (true) { $x = $this->author; $this->refresh(); $x->a; }',
         [null],
     ],
 ]);
@@ -174,9 +186,9 @@ test('a closure in a parameter\'s exit-block gap reads the value the block wrote
         ->toBe('string | number');
 });
 
-test('a block local passed to a transform() closure binds the parameter', function () {
-    expect(publishedResourceKeyTypes(BlockScopedLocalsResource::class, Post::class)['loop_transformed?'] ?? null)
-        ->toBe('string');
+test('a parameter passed to a transform() closure inside its exit-block gap binds the callback\'s to the gap\'s value', function () {
+    expect(publishedResourceKeyTypes(BlockScopedParameterGapsResource::class, Post::class)['passed?'] ?? null)
+        ->toBe('string | number');
 });
 
 test('sends what the block-scoped bindings publish', function () {
