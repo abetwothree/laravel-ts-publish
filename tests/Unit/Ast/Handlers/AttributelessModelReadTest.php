@@ -47,7 +47,7 @@ function attributelessModelReadSends(): array
 
 // A new model holds no attributes, so each column reads null; a copy, a factory's make(), firstOrNew(), a filled
 // constructor and a new model the body writes or fills hold attributes, and a relation, an accessor and a default
-// attribute answer as ever. A local written through a member counts as written twice, so it binds nothing at all.
+// attribute answer as ever.
 it('an attribute read on a model with no attributes carries null; a copy that has attributes does not', function () {
     $sent = attributelessModelReadSends();
 
@@ -60,8 +60,8 @@ it('an attribute read on a model with no attributes carries null; a copy that ha
         'first_or_new_title' => 'string',
         'filled_title' => 'string',
         'local_title' => 'string | null',
-        'written_title' => 'unknown',
-        'offset_title' => 'unknown',
+        'written_title' => 'string',
+        'offset_title' => 'string',
         'filled_local_title' => 'string',
         'default_written_title?' => 'string',
         'default_offset_title?' => 'string',

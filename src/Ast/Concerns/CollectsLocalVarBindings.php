@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -93,8 +94,9 @@ trait CollectsLocalVarBindings
     {
         $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
+        $binding = $this->bindingWrites($replacing, $scope);
 
-        foreach ($replacing as [$name]) {
+        foreach ($binding as [$name]) {
             unset($scope->localVarBindings[$name], $scope->varDocBindings[$name], $scope->byReferenceForms[$name]);
 
             // An outer block local's span may cover this body, as a closure in that block. A bound name's gap holds the
@@ -105,7 +107,7 @@ trait CollectsLocalVarBindings
         }
 
         // A name no write but preg_match() reaches holds the matches past a call that surely replaced what it held.
-        $written = array_column([...$replacing, ...array_filter(
+        $written = array_column([...$binding, ...array_filter(
             $kept,
             fn (array $write): bool => $write[1]['effect'] !== ByReferenceEffect::WritesMatches,
         )], 0);
@@ -116,12 +118,13 @@ trait CollectsLocalVarBindings
             }
         }
 
-        $this->collectLocalVarBindings($stmts, $scope, $replacing);
-        $this->bindBlockLocals($stmts, $scope, $replacing);
+        $this->collectLocalVarBindings($stmts, $scope, $binding);
+        $this->bindBlockLocals($stmts, $scope, $binding);
         // After the locals: keepsBinding() reads the `@var` spans they record.
         $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
-        $this->bindJoinedLocals($stmts, $scope, $replacing, $ended);
-        // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof.
+        $this->bindJoinedLocals($stmts, $scope, $binding, $ended);
+        // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof; a
+        // member write may null a member a guard proves.
         $this->collectInstanceofGuards($stmts, $scope, $replacing);
     }
 
@@ -137,11 +140,11 @@ trait CollectsLocalVarBindings
      */
     protected function collectLocalVarBindings(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes ??= $this->partitionWrites(
+        $writes ??= $this->bindingWrites($this->partitionWrites(
             $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
             $stmts,
             $scope,
-        )[0];
+        )[0], $scope);
         $writeCounts = array_count_values(array_column($writes, 0));
 
         foreach ($stmts as $stmt) {
@@ -626,6 +629,68 @@ trait CollectsLocalVarBindings
         }
 
         return [$replacing, $kept];
+    }
+
+    /**
+     * The writes that replace what a variable holds, but each through a member or an offset of a variable holding only
+     * models: Laravel stores the write as an attribute of the same model, so the binding stands.
+     *
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @return VariableWrites
+     */
+    private function bindingWrites(array $writes, AnalysisScope $scope): array
+    {
+        $holdsModels = [];
+
+        foreach ($writes as [$name, , , $kind]) {
+            if ($kind === VariableWrite::MemberOrOffset && $name !== 'this') {
+                $holdsModels[$name] ??= $this->holdsOnlyModels($name, $writes, $scope);
+            }
+        }
+
+        return array_values(array_filter(
+            $writes,
+            fn (array $write): bool => $write[3] !== VariableWrite::MemberOrOffset || ! ($holdsModels[$write[0]] ?? false),
+        ));
+    }
+
+    /**
+     * Whether every value a name holds in the body is a model: the binding it came in with, if any, and each value the
+     * body assigns it, where no write of another kind gives it a value the scan cannot read.
+     *
+     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     */
+    private function holdsOnlyModels(string $name, array $writes, AnalysisScope $scope): bool
+    {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $namesModels = fn (Expr $value): bool => $resolver->resolve($value, $scope)?->within([Model::class]) ?? false;
+        $declared = $scope->varClassBindings[$name] ?? $scope->varDeclaredBindings[$name] ?? null;
+        $bound = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? null;
+        $assigned = [];
+
+        foreach ($writes as [$written, $node, , $kind]) {
+            if ($written !== $name || $kind === VariableWrite::MemberOrOffset) {
+                continue;
+            }
+
+            if (($kind !== VariableWrite::Replaces && $kind !== VariableWrite::Coalesces)
+                || (! $node instanceof Assign && ! $node instanceof CoalesceAssign)
+            ) {
+                return false;
+            }
+
+            $assigned[] = $node->expr;
+        }
+
+        $comesIn = match (true) {
+            isset($scope->varModelBindings[$name]) => true,
+            $declared !== null => array_all($declared, fn (string $class): bool => is_a($class, Model::class, true)),
+            $bound !== null => $namesModels($bound),
+            $scope->bindsName($name) => false,
+            default => null,
+        };
+
+        return ($comesIn ?? ($assigned !== [])) && array_all($assigned, $namesModels);
     }
 
     /**

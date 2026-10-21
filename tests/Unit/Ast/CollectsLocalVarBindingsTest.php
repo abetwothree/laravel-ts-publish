@@ -6,7 +6,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use Illuminate\Http\Request;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
@@ -339,6 +341,22 @@ it('keeps a parameter\'s receiver past a nested write naming no class', function
     ],
 ]);
 
+// Laravel stores a member or offset write on a model as an attribute of that same model.
+it('keeps a local\'s model across a write through its member or offset', function (string $body, array $classes) {
+    expect(seededReceiverClasses($body, function (AnalysisScope $scope): void {}))->toBe($classes);
+})->with([
+    'a member write' => ['$p = new \\Workbench\\App\\Models\\Post; $p->title = "x"; $p->x;', [[Post::class]]],
+    'an offset write' => ['$p = new \\Workbench\\App\\Models\\Post; $p["title"] = "x"; $p->x;', [[Post::class]]],
+    'a write through a relation' => ['$p = $this->resource; $p->author->name = "x"; $p->x;', [[Post::class]]],
+    'a member write in a block' => ['if ($c) { $p = $this->author; $p->name = "x"; $p->x; }', [[User::class]]],
+    'a member write between a block\'s write and its read' => [
+        'if ($c) { $p = $this->author; if ($d) { $p->name = "x"; } $p->x; }',
+        [[User::class]],
+    ],
+    'a local a list destructures, which the scan cannot read' => ['[$p] = [$this->author]; $p->name = "x"; $p->x;', [null]],
+    'an array, which an offset write extends' => ['$p = []; $p["k"] = $this->author; $p->x;', [null]],
+]);
+
 /**
  * Whether the old binding may hold, and whether a receiver keeps it, in the gap holding a parsed body's last read of
  * `$p`, once the body is seeded; null where no gap holds it.
@@ -511,3 +529,32 @@ it('ends a class binding at a by-reference built-in that keeps a value in anothe
     'preg_match()\'s matches' => ['preg_match("/x/", "s", $p); return $p;', [false, false]],
     'preg_match()\'s matches in a call that may not run' => ['$c && preg_match("/x/", "s", $p); return $p;', [true, true]],
 ]);
+
+// An offset write extends an array, so the literal assigned no longer describes it; a model takes the write itself.
+it('keeps a local holding a model across a write through it, and no array an offset write extends', function () {
+    $user = new User;
+    $user->forceFill(['id' => 3, 'name' => 'Ann', 'email' => 'ann@example.com']);
+    $post = new Post;
+    $post->forceFill(['id' => 7, 'title' => 'Banana']);
+    $post->setRelation('author', $user);
+
+    expect(publishedResourceKeyTypes(MemberWrittenLocalsResource::class, Post::class))->toBe([
+        'draft_title' => 'string',
+        'draft_content' => 'string',
+        'post_title' => 'string',
+        'author_name' => 'string',
+        'captured_title?' => 'string',
+        'options' => 'unknown',
+        'key' => 'string',
+    ])
+        ->and(json_decode((string) json_encode(new MemberWrittenLocalsResource($post)->resolve(Request::create('/'))), true))
+        ->toBe([
+            'draft_title' => 'Draft',
+            'draft_content' => 'Body',
+            'post_title' => 'Banana',
+            'author_name' => 'Bob',
+            'captured_title' => 'Again',
+            'options' => ['a' => 1, 'b' => 'x'],
+            'key' => 'a',
+        ]);
+});
