@@ -2116,6 +2116,19 @@ describe('a collection step that keeps its items', function () {
             $same,
             'beta',
         ],
+        'a @var collection of plain values keyed by string, over a value that names no class' => [
+            '/** @var \Illuminate\Support\Collection<string, int> $m */ '
+                .'$m = $this->resource->getAttribute(\'comments\')->pluck(\'id\', \'content\'); return $m->all();',
+            'number[] | Record<string, number>',
+            $keys,
+            ['beta', 'alpha'],
+        ],
+        'all() of a local holding plain values a filter() may leave keyed' => [
+            '$m = $this->comments->map(fn ($c) => $c->content)->filter(); return $m->all();',
+            'string[] | Record<string, string>',
+            $keys,
+            [0, 1],
+        ],
         'a @var collection that admits null' => [
             '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment>|null $maybe */ '
                 .'$maybe = $this->resource->getRelationValue(\'comments\'); return $maybe?->first()?->content;',

@@ -14,6 +14,7 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
+use ReflectionClass;
 
 /**
  * The one way a `map()` callback's first parameter is bound, shared by RelationCollectionChainHandler,
@@ -27,9 +28,9 @@ use PhpParser\Node\Param;
 trait BindsMapCallbacks
 {
     /**
-     * Resolve a `map()` callback's body with its first parameter bound to the element: the model it declares, else the
-     * element model, else the element's value; $arrayed says JsonResource::filter() reaches the result as an array.
-     * Null for a callable that is no closure, or a variadic first parameter, which collects the value and its key.
+     * Resolve a `map()` callback's body with its first parameter bound to the element: its model, or the concrete model
+     * the parameter declares where the element model is not one; else its value. $arrayed says JsonResource::filter()
+     * reaches the result as an array. Null for a callable that is no closure, or a variadic first parameter.
      *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
@@ -53,7 +54,8 @@ trait BindsMapCallbacks
             return null;
         }
 
-        $model = $this->declaredMapModel($first) ?? $elementModel;
+        $declared = $this->declaredMapModel($first);
+        $model = $elementModel !== null && ($declared === null || is_a($elementModel, $declared, true)) ? $elementModel : $declared;
         $name = $first !== null && $first->var instanceof Variable && is_string($first->var->name) ? $first->var->name : null;
         $previousNameBindings = $scope->nameBindings();
         $previousRelationModel = $scope->closureRelationModelClass;
@@ -83,20 +85,18 @@ trait BindsMapCallbacks
     }
 
     /**
-     * The model a map callback's first parameter declares, which PHP holds every element to.
+     * The concrete model a map callback's first parameter declares, which PHP holds every element to; null for an
+     * abstract one, such as `Model`, which names no shape of its own.
      *
      * @return class-string<Model>|null
      */
     protected function declaredMapModel(?Param $param): ?string
     {
         $type = $param?->type;
+        $class = $type instanceof Name ? $type->toString() : null;
 
-        if (! $type instanceof Name) {
-            return null;
-        }
-
-        $class = $type->toString();
-
-        return class_exists($class) && is_a($class, Model::class, true) ? $class : null;
+        return $class !== null && is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract()
+            ? $class
+            : null;
     }
 }

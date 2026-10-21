@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -77,31 +78,10 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // A trailing argument-less values()/all() on a collection takes its element type from the receiver chain, which
-        // is the only thing that knows it: all() hands the array back, keys and all, and values() re-indexes it into a
-        // list. On any other class the method is its own, so the receiver's type says nothing about what it returns.
-        if ($expr instanceof MethodCall
-            && ($expr->var instanceof MethodCall || $this->isPlainVariable($expr->var))
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), ['values', 'all'], true)
-            && ! $expr->isFirstClassCallable()
-            && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
-            && $this->holdsOnlyCollections($expr->var, $scope)
-        ) {
-            $arrayed = $scope->mapResultArrayed;
+        $peeled = $expr instanceof MethodCall ? $this->peeledValuesOrAll($expr, $scope, $engine) : null;
 
-            try {
-                $scope->mapResultArrayed = $arrayed || $expr->name->toString() === 'all';
-                $receiverResult = $engine->resolve($expr->var);
-            } finally {
-                $scope->mapResultArrayed = $arrayed;
-            }
-
-            $type = $expr->name->toString() === 'values' ? $this->valuesList($receiverResult['type']) : $receiverResult['type'];
-
-            if ($type !== null && $type !== 'unknown') {
-                return [...$receiverResult, 'type' => $type];
-            }
+        if ($peeled !== null) {
+            return $peeled;
         }
 
         // $variable->property — an attribute of the variable's own bound model (whenLoaded param, map param, foreach
@@ -180,6 +160,62 @@ final class VariableHandler implements ExpressionHandler
         $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
 
         return $kept === null ? null : $this->provenNonNull($expr, $kept, $scope);
+    }
+
+    /**
+     * A trailing argument-less values()/all() on a collection, typed from the receiver chain, which is the only thing
+     * that knows its element: all() hands the array back, keys and all, and values() re-indexes it into a list. On any
+     * other class the method is its own, so the receiver's type says nothing about what it returns.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function peeledValuesOrAll(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if ((! $call->var instanceof MethodCall && ! $this->isPlainVariable($call->var))
+            || ! $call->name instanceof Identifier
+            || ! in_array($call->name->toString(), ['values', 'all'], true)
+            || $call->isFirstClassCallable()
+            || ! CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $call->name->toString()))->isEmpty()
+        ) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
+
+        if (! $this->holdsOnlyCollections($call->var, $receiver, $scope)) {
+            return null;
+        }
+
+        $method = $call->name->toString();
+        $arrayed = $scope->mapResultArrayed;
+
+        try {
+            $scope->mapResultArrayed = $arrayed || $method === 'all';
+            $receiverResult = $engine->resolve($call->var);
+        } finally {
+            $scope->mapResultArrayed = $arrayed;
+        }
+
+        $type = match (true) {
+            $method === 'values' => $this->valuesList($receiverResult['type']),
+            $receiver?->keyed === true => $this->keyedAll($receiverResult['type']),
+            default => $receiverResult['type'],
+        };
+
+        return $type === null || $type === 'unknown' ? null : [...$receiverResult, 'type' => $type];
+    }
+
+    /**
+     * What all() on a collection whose keys a step broke sends, where its read names only the object: that object, or
+     * the `[]` json_encode() writes while it holds nothing, as a `@var Collection<string, X>` local reads.
+     */
+    private function keyedAll(string $type): string
+    {
+        $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
+            ? $this->valuesList($type)
+            : null;
+
+        return $list === null ? $type : $this->keyedObjectArm($list);
     }
 
     /**
@@ -503,8 +539,10 @@ final class VariableHandler implements ExpressionHandler
         // ValueResult::arrayWrapType(), not a raw '[]' suffix: a union body (e.g. a mixed AsEnum/direct-enum
         // ternary) must be parenthesized before the array suffix binds.
         $list = ValueResult::arrayWrapType($bodyResult['type']);
+        $type = $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list;
 
-        return [...$bodyResult, 'type' => $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list, 'optional' => false];
+        // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
+        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? ValueResult::withNullArm($type) : $type, 'optional' => false];
     }
 
     /**
@@ -546,12 +584,11 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether an expression holds only Illuminate collections, whose values() and all() the engine knows.
+     * Whether an expression, which the receiver resolver reads as $receiver, holds only Illuminate collections, whose
+     * values() and all() the engine knows.
      */
-    private function holdsOnlyCollections(Expr $expr, AnalysisScope $scope): bool
+    private function holdsOnlyCollections(Expr $expr, ?ReceiverType $receiver, AnalysisScope $scope): bool
     {
-        $receiver = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
-
         // An unnamed receiver passes only as the map arm's `$variable->map(callback)` over an unnamed variable,
         // which that arm already types as a Collection map; values() leaves it one.
         if ($receiver === null) {
