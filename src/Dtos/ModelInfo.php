@@ -9,6 +9,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
@@ -20,7 +21,7 @@ use LogicException;
  * @phpstan-type ModelClassType = class-string<TModel>
  * @phpstan-type PolicyClassType = class-string|null
  * @phpstan-type AttributeInfo = array{name: string, type: string|null, cast: string|null, nullable: bool, hidden: bool}
- * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>}
+ * @phpstan-type RelationInfo = array{name: string, type: string, related: class-string<Model>, class: class-string<Relation<Model, Model, mixed>>}
  * @phpstan-type AttributesType = Collection<int, AttributeInfo>
  * @phpstan-type RelationsType = Collection<int, RelationInfo>
  * @phpstan-type EventsType = Collection<int, array{event: string, class: string}>

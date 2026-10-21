@@ -373,6 +373,7 @@ describe('delegatedRelationKeys()', function () {
         'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
         'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams',
         'ownedTeams' => 'owned_teams', 'images' => 'images', 'notifications' => 'notifications',
+        'readNotifications' => 'read_notifications', 'unreadNotifications' => 'unread_notifications',
     ];
 
     it('keys each relation as toArray() writes it', function (string $model, bool $excludeHidden, array $keys) {
@@ -386,6 +387,7 @@ describe('delegatedRelationKeys()', function () {
             'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
             'addresses' => 'addresses', 'primaryAddress' => 'primaryAddress', 'teams' => 'teams',
             'ownedTeams' => 'ownedTeams', 'images' => 'images', 'notifications' => 'notifications',
+            'readNotifications' => 'readNotifications', 'unreadNotifications' => 'unreadNotifications',
         ]],
         '$visible, exclude_hidden off' => [RelationVisibilityUser::class, false, $userKeys],
         '$visible names the method, exclude_hidden on' => [RelationVisibilityUser::class, true, ['ownedTeams' => 'owned_teams']],
@@ -393,7 +395,8 @@ describe('delegatedRelationKeys()', function () {
         '$hidden names the method, exclude_hidden on' => [RelationHiddenUser::class, true, [
             'profile' => 'profile', 'posts' => 'posts', 'comments' => 'comments', 'orders' => 'orders',
             'addresses' => 'addresses', 'primaryAddress' => 'primary_address', 'teams' => 'teams', 'images' => 'images',
-            'notifications' => 'notifications',
+            'notifications' => 'notifications', 'readNotifications' => 'read_notifications',
+            'unreadNotifications' => 'unread_notifications',
         ]],
     ]);
 });

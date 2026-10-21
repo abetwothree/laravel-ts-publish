@@ -198,11 +198,11 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve the nullability strategy for a relation type, given a short class name or a FQCN.
+     * Resolve the nullability strategy for a relation type, given a short class name or a FQCN, and its relation class.
      */
-    public function relationStrategy(string $type): string
+    public function relationStrategy(string $type, ?string $relationClass = null): string
     {
-        return (new RelationMap)->strategyFor($type);
+        return (new RelationMap)->strategyFor($type, $relationClass);
     }
 
     /**

@@ -9273,6 +9273,14 @@
                     "type": "DatabaseNotification[]"
                 },
                 {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]"
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]"
+                },
+                {
                     "name": "profile_count",
                     "type": "number"
                 },
@@ -9313,6 +9321,14 @@
                     "type": "number"
                 },
                 {
+                    "name": "read_notifications_count",
+                    "type": "number"
+                },
+                {
+                    "name": "unread_notifications_count",
+                    "type": "number"
+                },
+                {
                     "name": "profile_exists",
                     "type": "boolean"
                 },
@@ -9350,6 +9366,14 @@
                 },
                 {
                     "name": "notifications_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "read_notifications_exists",
+                    "type": "boolean"
+                },
+                {
+                    "name": "unread_notifications_exists",
                     "type": "boolean"
                 }
             ]
@@ -13319,6 +13343,16 @@
                     "name": "notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
                 }
             ]
         },
@@ -13616,6 +13650,16 @@
                 },
                 {
                     "name": "notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
                 }
@@ -19315,6 +19359,16 @@
                     "optional": true
                 },
                 {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
                     "name": "full_name",
                     "type": "string",
                     "optional": false
@@ -19456,6 +19510,16 @@
                 },
                 {
                     "name": "notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "read_notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": true
+                },
+                {
+                    "name": "unread_notifications",
                     "type": "DatabaseNotification[]",
                     "optional": true
                 },
@@ -20801,6 +20865,16 @@
                 },
                 {
                     "name": "notifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": false
+                },
+                {
+                    "name": "readNotifications",
+                    "type": "DatabaseNotification[]",
+                    "optional": false
+                },
+                {
+                    "name": "unreadNotifications",
                     "type": "DatabaseNotification[]",
                     "optional": false
                 }

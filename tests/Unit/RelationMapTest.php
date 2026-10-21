@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\RelationMap;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Relations\Ancestors;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Workbench\App\Relations\CompositeMorphTo;
 
 beforeEach(function () {
     $reflection = new ReflectionClass(RelationMap::class);
@@ -117,4 +119,35 @@ test('strategyFor defaults to nullable for unknown relation types', function () 
     $relationMap = new RelationMap;
 
     expect($relationMap->strategyFor('UnknownRelation'))->toBe('nullable');
+});
+
+test('isToMany reads a relation class, counting a subclass of a to-many relation', function () {
+    expect(RelationMap::isToMany(HasMany::class))->toBeTrue()
+        ->and(RelationMap::isToMany(HasManyThrough::class))->toBeTrue()
+        ->and(RelationMap::isToMany(BelongsToMany::class))->toBeTrue()
+        ->and(RelationMap::isToMany(MorphMany::class))->toBeTrue()
+        ->and(RelationMap::isToMany(MorphToMany::class))->toBeTrue()
+        ->and(RelationMap::isToMany(Ancestors::class))->toBeTrue()
+        ->and(RelationMap::isToMany(HasOne::class))->toBeFalse()
+        ->and(RelationMap::isToMany(HasOneThrough::class))->toBeFalse()
+        ->and(RelationMap::isToMany(MorphOne::class))->toBeFalse()
+        ->and(RelationMap::isToMany(BelongsTo::class))->toBeFalse()
+        ->and(RelationMap::isToMany(MorphTo::class))->toBeFalse()
+        ->and(RelationMap::isToMany(CompositeMorphTo::class))->toBeFalse();
+});
+
+test('strategyFor gives a relation subclass the map does not name the strategy of its nearest parent the map names', function () {
+    $relationMap = new RelationMap;
+
+    expect($relationMap->strategyFor('Ancestors', Ancestors::class))->toBe('never')
+        ->and($relationMap->strategyFor('CompositeMorphTo', CompositeMorphTo::class))->toBe('morph')
+        ->and($relationMap->strategyFor('Ancestors'))->toBe('nullable');
+});
+
+test('strategyFor keeps a mapping that names the subclass over its parent\'s', function () {
+    config()->set('ts-publish.models.relation_nullability_map', [
+        Ancestors::class => 'nullable',
+    ]);
+
+    expect((new RelationMap)->strategyFor('Ancestors', Ancestors::class))->toBe('nullable');
 });

@@ -62,6 +62,10 @@ export interface UserRelations
     images: Image[];
     /** Get the entity's notifications. */
     notifications: DatabaseNotification[];
+    /** Get the entity's read notifications. */
+    read_notifications: DatabaseNotification[];
+    /** Get the entity's unread notifications. */
+    unread_notifications: DatabaseNotification[];
     // Counts
     profile_count: number;
     posts_count: number;
@@ -73,6 +77,8 @@ export interface UserRelations
     owned_teams_count: number;
     images_count: number;
     notifications_count: number;
+    read_notifications_count: number;
+    unread_notifications_count: number;
     // Exists
     profile_exists: boolean;
     posts_exists: boolean;
@@ -84,6 +90,8 @@ export interface UserRelations
     owned_teams_exists: boolean;
     images_exists: boolean;
     notifications_exists: boolean;
+    read_notifications_exists: boolean;
+    unread_notifications_exists: boolean;
 }
 
 export interface UserAll extends User, UserMutators, UserRelations {}

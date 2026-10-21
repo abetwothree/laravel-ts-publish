@@ -1819,6 +1819,14 @@ declare global {
             notifications: illuminate.notifications.DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
+            /** Get the entity's read notifications. */
+            read_notifications: illuminate.notifications.DatabaseNotification[];
+            read_notifications_count: number;
+            read_notifications_exists: boolean;
+            /** Get the entity's unread notifications. */
+            unread_notifications: illuminate.notifications.DatabaseNotification[];
+            unread_notifications_count: number;
+            unread_notifications_exists: boolean;
         }
         export interface UuidPost {
             // Columns
@@ -3372,6 +3380,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
@@ -3453,6 +3463,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -5184,6 +5196,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -5224,6 +5238,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
@@ -5625,6 +5641,8 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
+            readNotifications: illuminate.notifications.DatabaseNotification[];
+            unreadNotifications: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * A map over a relation loaded under a name the model does not declare, so nothing names what the local holds. The

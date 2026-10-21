@@ -19,8 +19,19 @@ use Illuminate\Support\Str;
 
 class RelationMap
 {
+    /** The relations that load a collection, never one model or null. */
+    private const array TO_MANY = [HasMany::class, HasManyThrough::class, BelongsToMany::class, MorphMany::class];
+
     /** @var array<class-string, string>|null */
     protected static ?array $map = null;
+
+    /**
+     * Whether a relation class loads a collection: it is one of Laravel's to-many relations or extends one.
+     */
+    public static function isToMany(string $relationClass): bool
+    {
+        return array_any(self::TO_MANY, fn (string $toMany): bool => is_a($relationClass, $toMany, true));
+    }
 
     /**
      * Forget the cached map, so the next gather() reads `relation_nullability_map` again.
@@ -71,9 +82,10 @@ class RelationMap
     /**
      * Resolve the nullability strategy for a relation type.
      *
-     * Accepts a short class name (e.g. 'HasOne' from ModelInspector) or a FQCN.
+     * Accepts a short class name (e.g. 'HasOne' from ModelInspector) or a FQCN. A relation class the map does not
+     * name, such as a package's subclass of HasMany, takes the strategy of its nearest parent the map does name.
      */
-    public function strategyFor(string $type): string
+    public function strategyFor(string $type, ?string $relationClass = null): string
     {
         $map = $this->gather();
 
@@ -93,6 +105,14 @@ class RelationMap
         foreach ($map as $key => $strategy) {
             if (Str::afterLast($key, '\\') === $shortName) {
                 return $strategy;
+            }
+        }
+
+        $parents = $relationClass === null ? false : class_parents($relationClass);
+
+        foreach ($parents ?: [] as $parent) {
+            if (isset($map[$parent])) {
+                return $map[$parent];
             }
         }
 

@@ -6714,7 +6714,7 @@ describe('whole-model delegation publishes what Model::toArray() writes', functi
     ];
     $userRelationKeys = [
         'profile', 'posts', 'comments', 'orders', 'addresses', 'primary_address', 'teams', 'owned_teams', 'images',
-        'notifications',
+        'notifications', 'read_notifications', 'unread_notifications',
     ];
 
     it('keeps $hidden columns while exclude_hidden is off, and leaves out accessors the model does not append', function () {

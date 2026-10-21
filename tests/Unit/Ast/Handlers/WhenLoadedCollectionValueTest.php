@@ -13,7 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TreeCategory;
 function whenLoadedCollectionValueSends(): array
 {
     $root = TreeCategory::create(['name' => 'Root', 'slug' => 'root']);
-    $resource = new TreeCategoryResource(TreeCategory::with(['ancestors', 'children', 'parent'])->findOrFail($root->id));
+    $resource = new TreeCategoryResource(TreeCategory::with(['ancestors', 'branches', 'children', 'parent'])->findOrFail($root->id));
 
     /** @var array{data: array<string, mixed>} $sent */
     $sent = json_decode((string) $resource->response(request())->getContent(), true);
@@ -22,13 +22,17 @@ function whenLoadedCollectionValueSends(): array
 }
 
 // A loaded to-many relation is a collection, so a value that collects it is a list, even where the engine cannot read
-// the relation. A nullable to-one relation loads as null, which whenLoaded() returns before it calls the value.
+// the relation, as branches(), which declares no return. A nullable to-one relation loads as null, which whenLoaded()
+// returns before it calls the value. ancestors() declares its relation class only in its docblock, and it is read.
 it('adds no null arm to a whenLoaded() value that collects the loaded relation', function () {
     expect(publishedResourceKeyTypes(TreeCategoryResource::class, TreeCategory::class))->toBe([
         'ancestors?' => 'CategoryResource[]',
         'ancestors_closure?' => 'CategoryResource[]',
         'ancestors_self?' => 'TreeCategoryResource[]',
-        'ancestors_bare?' => 'unknown',
+        'ancestors_bare?' => 'TreeCategory[]',
+        'branches?' => 'CategoryResource[]',
+        'branches_closure?' => 'CategoryResource[]',
+        'branches_bare?' => 'unknown',
         'children?' => 'CategoryResource[]',
         'parent_wrap?' => 'CategoryResource | null',
         'parent_collected?' => 'CategoryResource[] | null',
@@ -38,6 +42,9 @@ it('adds no null arm to a whenLoaded() value that collects the loaded relation',
             'ancestors_closure' => [],
             'ancestors_self' => [],
             'ancestors_bare' => [],
+            'branches' => [],
+            'branches_closure' => [],
+            'branches_bare' => [],
             'children' => [],
             'parent_wrap' => null,
             'parent_collected' => null,

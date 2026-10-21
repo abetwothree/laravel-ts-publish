@@ -15,9 +15,8 @@ use Illuminate\Support\Collection;
  * Determines whether a singular Eloquent relation should be typed as nullable,
  * using the configured RelationMap strategies and DB-level column inspection.
  *
- * @phpstan-type RelationEntry = array{name: string, type: string, related: class-string<Model>}
- *
  * @phpstan-import-type AttributeInfo from ModelInfo
+ * @phpstan-import-type RelationInfo from ModelInfo
  */
 class RelationNullable
 {
@@ -30,11 +29,11 @@ class RelationNullable
     ) {}
 
     /**
-     * @param  RelationEntry  $relation
+     * @param  RelationInfo  $relation
      */
     public function isNullable(array $relation): bool
     {
-        $strategy = LaravelTsPublish::relationStrategy($relation['type']);
+        $strategy = LaravelTsPublish::relationStrategy($relation['type'], $relation['class']);
 
         return match ($strategy) {
             'never' => false,
@@ -46,7 +45,7 @@ class RelationNullable
     }
 
     /**
-     * @param  RelationEntry  $relation
+     * @param  RelationInfo  $relation
      */
     protected function isForeignKeyNullable(array $relation): bool
     {
@@ -73,7 +72,7 @@ class RelationNullable
     }
 
     /**
-     * @param  RelationEntry  $relation
+     * @param  RelationInfo  $relation
      */
     protected function isMorphNullable(array $relation): bool
     {

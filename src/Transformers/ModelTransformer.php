@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -574,7 +575,7 @@ class ModelTransformer extends CoreTransformer
 
             $isMorphTo = $isMorphToRelation($relation);
             $relatedBasename = class_basename($relation['related']);
-            $containsMany = str_contains(strtolower($relation['type']), 'many');
+            $toMany = RelationMap::isToMany($relation['class']);
 
             // Default for a non-morph relation; the morph branch below overrides it either way.
             $relationTargetFqcns = [$relation['related']];
@@ -611,7 +612,7 @@ class ModelTransformer extends CoreTransformer
                     $relationType = 'unknown';
                     $relationTargetFqcns = [];
                 }
-            } elseif ($containsMany) {
+            } elseif ($toMany) {
                 $relationType = $relatedBasename.'[]';
             } else {
                 $relationType = $relatedBasename;

@@ -1838,13 +1838,13 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a relation loads a collection: its type names "many", and it is not a MorphTo, which loads one model.
+     * Whether a relation loads a collection, by its class, so a package's subclass of HasMany does too.
      *
      * @param  RelationInfo  $relation
      */
     private static function isToManyRelation(array $relation): bool
     {
-        return ! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many');
+        return RelationMap::isToMany($relation['class']);
     }
 
     /**

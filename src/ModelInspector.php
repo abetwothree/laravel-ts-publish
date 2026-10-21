@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -51,7 +52,7 @@ class ModelInspector extends EloquentModelInspector
          *  table: string,
          *  policy: class-string|null,
          *  attributes: Collection<int, array{name: string, type: string|null, cast: string|null, nullable: bool, hidden: bool}>,
-         *  relations: Collection<int, array{name: string, type: string, related: class-string<Model>}>,
+         *  relations: Collection<int, RelationInfo>,
          *  events: Collection<int, array{event: string, class: string}>,
          *  observers: Collection<int, array{event: string, observer: array<int, string>}>,
          *  collection: class-string<\Illuminate\Database\Eloquent\Collection<int, Model>>,
@@ -88,31 +89,30 @@ class ModelInspector extends EloquentModelInspector
     }
 
     /**
-     * Laravel's relation list, unless a relation method throws on a blank model: then that relation alone is left out.
+     * Whether a method getRelations() may call declares a relation: its native return type, else its docblock's, names
+     * only relation classes, as a relation built through the model's own helper declares itself.
+     */
+    public function declaresRelationReturn(ReflectionMethod $method): bool
+    {
+        $classes = $this->isRelationCandidate($method)
+            ? resolve(ReceiverClassResolver::class)->returnClasses($method->class, $method->name)
+            : null;
+
+        return $classes !== null && array_all(
+            $classes,
+            fn (string $class): bool => is_subclass_of($class, Relation::class),
+        );
+    }
+
+    /**
+     * Laravel's relations and those only a declared return names, each read by calling its method once, so a method
+     * that throws on a blank model is left out and named in a warning.
      *
      * @param  Model  $model
      * @return Collection<int, RelationInfo>
      */
     #[Override]
     protected function getRelations($model): Collection
-    {
-        try {
-            /** @var Collection<int, RelationInfo> $relations */
-            $relations = parent::getRelations($model);
-
-            return $relations;
-        } catch (Throwable) {
-            // A fresh instance, so nothing the failed pass left on the model reaches the second one.
-            return $this->relationsOneByOne($model->newInstance());
-        }
-    }
-
-    /**
-     * The relations read one method at a time, so a method that throws is left out and named in a warning.
-     *
-     * @return Collection<int, RelationInfo>
-     */
-    private function relationsOneByOne(Model $model): Collection
     {
         $relations = [];
 
@@ -127,11 +127,7 @@ class ModelInspector extends EloquentModelInspector
                 $relation = $method->invoke($model);
 
                 if ($relation instanceof Relation) {
-                    $relations[] = [
-                        'name' => $name,
-                        'type' => Str::afterLast($relation::class, '\\'),
-                        'related' => $relation->getRelated()::class,
-                    ];
+                    $relations[] = $this->relationInfo($name, $relation);
                 }
             } catch (Throwable $exception) {
                 // A relation the model excludes is never published, so its failure is nothing to report.
@@ -149,23 +145,51 @@ class ModelInspector extends EloquentModelInspector
     }
 
     /**
-     * Whether Laravel's getRelations() would call the method: one of the model's own with no parameter, typed as a
-     * relation or building one in its body.
+     * The relation's entry in the list: its method's name, Laravel's short type, the related model and its class.
+     *
+     * @param  Relation<Model, Model, mixed>  $relation
+     * @return RelationInfo
+     */
+    private function relationInfo(string $name, Relation $relation): array
+    {
+        return [
+            'name' => $name,
+            'type' => Str::afterLast($relation::class, '\\'),
+            'related' => $relation->getRelated()::class,
+            'class' => $relation::class,
+        ];
+    }
+
+    /**
+     * Whether the method is read as a relation: one Laravel reads, typed as a relation or building one in its body, or
+     * one whose docblock alone names its relation class.
      */
     private function readsAsRelation(ReflectionMethod $method): bool
     {
-        if ($method->isStatic() || $method->isAbstract() || $method->getNumberOfParameters() > 0
-            || $method->getDeclaringClass()->getName() === Model::class
-        ) {
-            return false;
-        }
+        $type = $method->getReturnType();
 
-        $returnType = $method->getReturnType();
+        // Laravel's native test goes first: most candidates are typed relations, which then skip the reflection below.
+        return $this->isRelationCandidate($method) && (
+            ($type instanceof ReflectionNamedType && is_subclass_of($type->getName(), Relation::class))
+            || $this->buildsRelationInBody($method)
+            || $this->declaresRelationReturn($method)
+        );
+    }
 
-        if ($returnType instanceof ReflectionNamedType && is_subclass_of($returnType->getName(), Relation::class)) {
-            return true;
-        }
+    /**
+     * Whether getRelations() may call the method: public, non-static, non-abstract, parameterless and not Model's own.
+     */
+    private function isRelationCandidate(ReflectionMethod $method): bool
+    {
+        return $method->isPublic() && ! $method->isStatic() && ! $method->isAbstract()
+            && $method->getNumberOfParameters() === 0 && $method->class !== Model::class;
+    }
 
+    /**
+     * Whether the method's body calls one of Laravel's relation builders on `$this`, as Laravel's own scan reads it.
+     */
+    private function buildsRelationInBody(ReflectionMethod $method): bool
+    {
         $file = new SplFileObject((string) $method->getFileName());
         $file->seek($method->getStartLine() - 1);
         $code = '';
