@@ -738,10 +738,12 @@ it a `@var` docblock.
 A parameter keeps its binding past a write whose value names no class: after
 `function (User $a) { $a = $this->untyped($a); return $a->name; }` the read still takes `User`'s `name`, whatever the
 helper returns. Annotate the assignment, `/** @var Comment $a */`, and the read follows it. A parameter passed a value
-takes what its own `$t = …;` writes, so `$t = json_decode($t)` publishes `unknown`. Past such a write nested in a block,
-a value read takes the earlier value or the one written, and only the earlier one where the package cannot type the
-written one: `$t = trim($t); if ($c) { $t = json_decode($t); }` publishes `string`. `$a->comments->find(1)?->content`
-reads the comment's `content`, but the call alone publishes `unknown`, as `first()` does on a parameter's relation.
+takes what its own `$t = …;` writes, so `$t = json_decode($t)` publishes `unknown`, and a value read of a model
+parameter does too where the write names no class: `$a = $a->name; return $a;` publishes `string`. Past such a write
+nested in a block, a value read takes the earlier value or the one written, and only the earlier one where the package
+cannot type the written one: `$t = trim($t); if ($c) { $t = json_decode($t); }` publishes `string`.
+`$a->comments->find(1)?->content` reads the comment's `content`, but the call alone publishes `unknown`, as `first()`
+does on a parameter's relation.
 
 ### An abstract model's key type misses a subclass the run does not publish
 

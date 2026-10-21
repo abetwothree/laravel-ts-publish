@@ -251,9 +251,10 @@ rule answers only on the receiver it names:
   [Property access on a receiver](#property-access-on-a-receiver) says. A `replicate()` copy, a `make()`,
   `firstOrNew()` and `new X([...])` hold the attributes they were given, so their columns keep the plain type, and any
   step that returns a model, `fill()` included, clears the flag. A `new` whose variable the body fills, before the read
-  or after it, holds attributes too (`ReceiverClassResolver::markFilled()`): a write through it such as
-  `$p->title = …` or `$p['title'] = …`, an attribute writer such as `fill()` on it, or any method called on it as a
-  statement.
+  or after it but before the variable's next write, holds attributes too (`CollectsLocalVarBindings::markFilled()`): a
+  member or key write on it such as `$p->title = …` or `$p['title'] = …`, an attribute writer such as `fill()`
+  called on it, or a chain of calls on it as a statement. A write through a relation, or in a closure nothing calls
+  or one with its own variable of that name, fills nothing.
   An override of `getKey()` gets no rule, because PHP holds every subclass to its declared return, which reflection
   types.
 - **`getAuthIdentifier()`**: on a model that runs `Authenticatable`'s own, the type from
