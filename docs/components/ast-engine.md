@@ -200,8 +200,8 @@ docblocks say what each binding table holds. These seven facts span other classe
 ### Writing a scope binding
 
 A writer that binds a name for one body, arm or value, such as a closure, a spread or a narrowing, has one primitive:
-`AnalysisScope::within()`. Its `$enter` makes every change, every seeding step that can throw included, and `within()`
-runs the read, then puts back every name table and ambient field in a `finally`.
+`AnalysisScope::within()`. Every change, every seeding step that can throw included, runs inside `within()`, in its
+`$enter` or its read, and `within()` then puts back every name table and ambient field in a `finally`.
 
 The scope outlives the expression, so a binding an exception leaves behind raises nothing. The binding answers a later
 property with a wrong but plausible type, far from the writer that leaked it. So no writer restores only the key it
@@ -210,7 +210,8 @@ believes it wrote, and a new ambient field joins `within()`'s list, which `Analy
 A closure a call passes values to, such as a conditional's value, a `map()` callback or a merge closure, is read through
 `readClaimedClosure()`, which claims its parameters inside `within()`. A subject method's body is read with
 `enterSubjectMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
-restores one name's entry, and so does the analyzer's walk, whose notes are no scope state.
+restores one name's entry. State outside the scope saves and restores itself the same way: the analyzer's walk notes and
+`readsKeylessAttributeNames`, `DroppedUnionArms::$held` and `AnalysisMemo`'s frames.
 `ResolvesModelRelationTypes::bindForeachLoopVariables()` takes no snapshot, because a `foreach` binding holds for the
 whole body by design, and `ClosureHandler` calls it inside its own `within()`. The closure writers' reads restore over
 it, so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
@@ -284,8 +285,8 @@ A method body read apart from its call, such as a spread helper, the body fallba
 `@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; any
 other parameter puts its classes, when it names only classes, in `varDeclaredBindings` and its value in
 `varValueBindings`. A `Request` goes in `requestVarNames`, except in an API resource, and a name already bound stays as
-it is. `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one write scan,
-in every body reader, a closure's included.
+it is. `CollectsLocalVarBindings::seedBody()` then seeds the body's own bindings, ends and guards from one
+`VariableWrites` scan, in every body reader, a closure's included.
 
 A parameter the body writes keeps its class binding, which ends at the write as [Declared locals](#declared-locals)
 says, and a write holding fewer of a declared union's classes ends it as well. Its value binding holds for a read
@@ -337,8 +338,9 @@ with, is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` 
 argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
 in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. An assignment
 through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a
-value the member's column holds, as `keepsModelThrough()` decides, or names a member no column or relation of the proven
-models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof ends at each.
+value the member's column holds, as `ModelFills::keepsModelThrough()` decides, or names a member no column or relation
+of the proven models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof
+ends at each.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -392,7 +394,7 @@ cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, s
 cannot type beside writes that all type. A closure parameter nothing binds, as `transform($this->opaque(), …)` leaves
 its callback's, walks from the value its call passed, which has no type, once a nested write needs the join;
 `AnalysisScope::$passedValues` keeps that argument, which no reader binds from, for the join to name.
-`CollectsLocalVarBindings::writeKind()` classifies each write once, as the scan records it. The cycle guard,
+`VariableWrites` classifies each write once, as its scan records it. The cycle guard,
 `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
 value `$s` held before.
 
@@ -400,7 +402,7 @@ Inside the span the assigned value's reading wins, and `T` fills in only where t
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
 it with a value naming another class. A collection binding also ends at a step that replaces its models with other
-values, such as `pluck()`, `map()` or `groupBy()` (`ReceiverClassResolver::replacesItems()`), and holds through any
+values, such as `pluck()`, `map()` or `groupBy()` (`CollectionSteps::replacesItems()`), and holds through any
 other collection, such as `collect()`'s or `merge()`'s. `AnalysisScope::$bindingEnds` records where, and past it every
 read takes the body's own binding, a ternary narrowing it only past its test, as `ReassignedClosureParamResource` pins.
 Past a top-level write that keeps a collection binding, such as `$c = $c->keyBy('id');`, a receiver reads the keys it
@@ -499,8 +501,9 @@ A read that bypasses it leaves the generation cache serving stale output when th
 A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
 interfaces included, so an override or a trait edit counts. Each reader records before it looks the member up, so a
 member that does not exist yet still records its class. The readers are `ReceiverMethodReturnResolver::resolve()` and
-`ReceiverPropertyFetchHandler` per receiver class, `ReceiverClassResolver::returnClasses()` and `memberProperty()`,
-`LaravelTsPublish::toTsType()` and its three member readers, `StringSerialization::jsonStringType()`,
+`ReceiverPropertyFetchHandler` per receiver class, `DeclaredClasses::returnClasses()`,
+`ReceiverClassResolver::memberProperty()`, `LaravelTsPublish::toTsType()` and its three member readers,
+`StringSerialization::jsonStringType()`,
 `ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
 published model, `ByReferenceArguments` for the class whose method it reads by-reference parameters from, and
 `MacroCallResolver::reflect()`, which records the file that declares a closure or function macro. A cache in front of

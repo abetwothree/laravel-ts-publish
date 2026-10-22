@@ -37,7 +37,7 @@ reflection answers, a decline included.
 | `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
 | `$this->m()` | The subject's own method, at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
-| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `forwardedQueryClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
 | `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
 | `<Eloquent collection>->find(1)` | The `elementModel` for one `int` or `string` literal key and no `$default`, where the class runs `Eloquent\Collection`'s own `find()`; a list, an `Arrayable` or a variable may return a collection |
 | `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
@@ -251,7 +251,7 @@ rule answers only on the receiver it names:
   [Property access on a receiver](#property-access-on-a-receiver) says. A `replicate()` copy, a `make()`,
   `firstOrNew()` and `new X([...])` hold the attributes they were given, so their columns keep the plain type, and any
   step that returns a model, `fill()` included, clears the flag. A `new` whose variable the body fills, before the read
-  or after it, holds attributes too (`CollectsLocalVarBindings::markFilled()`): every one for an attribute writer such
+  or after it, holds attributes too (`ModelFills::mark()`): every one for an attribute writer such
   as `fill()` called on it or a chain of calls on it as a statement, and only that column for a member or key write
   such as `$p->title = 'x'` of a value the column holds (`ReceiverType::$filled`). A later write of the variable stops
   the fills only inside the list holding that write. A write through a relation, or in a closure nothing calls or one
@@ -284,7 +284,7 @@ rule answers only on the receiver it names:
   literal key is a published column, else the inline shape. A runtime key list, or a literal list that types no member,
   gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
   keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
-  `except(null)` keeps a `keyed` collection's keys (`ReceiverClassResolver::eloquentKeyedAfter()`).
+  `except(null)` keeps a `keyed` collection's keys (`CollectionSteps::eloquentKeyedAfter()`).
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
@@ -313,7 +313,7 @@ One more rule reads no model, and runs before the nine on a resource collection'
   list rules decline.
 
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
-`ReceiverMethodReturnResolver::forwardedQueryClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
+`QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
 whose `__call()` sends a name its `$passthru` lists to `Query\Builder`. A macro under the name runs first, so it
 forwards nowhere, and a builder method that is not public is out of the relation's reach, so it declines.
 `$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`, so it stays

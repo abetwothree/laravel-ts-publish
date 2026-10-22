@@ -106,7 +106,7 @@ object literal with numeric keys or as a tuple.
 
 `isObjectLike()` requires every non-null arm to be an object literal or a `Record`, so a mixed union, an imported alias
 or a `#[TsCasts]` tuple keeps `[]`. Coercion reads the type string because the engine's DTOs export nothing else. The
-list-or-object decision is stringified in `InlineArrayHandler`, in `LaravelTsPublish::resolveGenericContainerType()`
+list-or-object decision is stringified in `InlineObjectResult`, in `LaravelTsPublish::resolveGenericContainerType()`
 and in `mergeTypeScriptInfos()`, so a structured shape channel would have to start at those three points.
 
 ## Filenames and barrels

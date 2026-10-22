@@ -567,7 +567,7 @@ The union is all or nothing. If one target has no resource, the key stays `unkno
 wrong for that arm, not vaguer. Its order is the morph-target order, which sorts by model FQCN or follows a
 `@return MorphTo<X|Y>` docblock, never by resource name.
 `MethodAnalysis::addProperty()` also queues the union's classes under the property in `inlineResourceFqcns`, one per
-token, and `InlineArrayHandler` builds the same queue for an inline array. `ImageReviewResource` pins both.
+token, and `InlineObjectResult` builds the same queue for an inline array. `ImageReviewResource` pins both.
 
 ### `#[Collects]` and `#[PreserveKeys]`
 
@@ -650,7 +650,7 @@ A numeric key goes through two layers:
   array, so a delegated or spread model drops it there (`ModelAttributeResolver::serializesAsArray()`). A union carries
   it when each arm that holds an object literal or a `Record<number, …>` (`TsTypeShape::holdsKeyedObject()`) does,
   since the re-index rewrites no other arm. So does an inline literal with a key that is not a number and no spread,
-  when each member holding one does (`InlineArrayHandler::keepsMemberKeys()`): the filter keeps a named key's keys.
+  when each member holding one does (`InlineObjectResult::keepsMemberKeys()`): the filter keeps a named key's keys.
 
 `DepotTierResource` and its preserve-keys subclass `DepotTierKeyedResource` pin both layers.
 
@@ -845,7 +845,7 @@ the `when()` and `whenNull()` ones.
 Three more rules keep each FQCN beside its own token:
 
 - **Inline members keep their own arms**: `ThisPropertyHandler` carries a multi-class accessor's FQCNs through
-  `ValueResult::withAttributeChannels()`. `InlineArrayHandler` walks members in order, taking each member's
+  `ValueResult::withAttributeChannels()`. `InlineObjectResult` walks members in order, taking each member's
   `inlineModelFqcns` over the self-keyed `modelFqcns` map. `WarehouseResource::$probe_nested` pins it.
 - **An overriding key clears its parent's channels**: when a key overrides a spread parent's key,
   `analyzeReturnArray()` clears every channel for it through `MethodAnalysis::forgetChannels()`, the inline ones
@@ -864,7 +864,7 @@ rule.
 With `enums.use_tolki_package` on, an `EnumResource::make()` or `::collection()` wrap publishes `AsEnum<typeof Role>`
 where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that token in place with
 `TsTypeString::substituteEnumType()`: `ResourceTransformer::rewriteEnumResourceTypes()` for a top-level key, and
-`InlineArrayHandler` for a key inside an inline array. Substitution keeps a richer shape, such as
+`InlineObjectResult` for a key inside an inline array. Substitution keeps a richer shape, such as
 `RoleType[] | Record<string, RoleType>` or a default's extra `string` arm. Rebuilding from the FQCN could express only
 `X`, `X[]` and their nullable forms. The token pattern skips a namespace-qualified `foo.RoleType` and a longer
 `RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
@@ -872,11 +872,11 @@ the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEn
 
 ### The inline wrap's own const token is aliased by the transformer, not here
 
-`InlineArrayHandler` writes the enum's bare const name into `AsEnum<typeof Role>` during analysis, before
+`InlineObjectResult` writes the enum's bare const name into `AsEnum<typeof Role>` during analysis, before
 `resolveImportConflicts()` has assigned any alias. A top-level key never shows that bare name, because
 `rewriteEnumResourceTypes()` builds its string from `constImportAliases` itself. For a nested wrap,
 `ResourceTransformer` and `AnalysisComposer` alias the bare name after `resolveImportConflicts()`. They call
-`TsTypeString::aliasTypeofConst()` over `inlineEnumResourceFqcns`, in the order `InlineArrayHandler` built it.
+`TsTypeString::aliasTypeofConst()` over `inlineEnumResourceFqcns`, in the order `InlineObjectResult` built it.
 `aliasTypeofConst()` changes only the name after `typeof`. The same name bare is another enum's type.
 
 The order matters because two members can wrap different enums that share one const name. `DealResource::$status_pair`
@@ -896,14 +896,14 @@ A mixed ternary wraps the enum in one arm and reads it directly in the other, as
 mixed, or when the wrap arms, or the direct arms, disagree on their shape.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
-`rewriteEnumResourceTypes()` does it for a top-level key, and `InlineArrayHandler::expandMixedEnumType()` for a nested
+`rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested
 one. The nested key cannot defer to the transformer, because only flat property lists leave the handler's
 method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case with two array-shaped arms.
 
 Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
 members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which
 `EnumResource::collection()` forced, becomes `AsEnum<typeof Status>[]`. That fallback can substitute the bare token
-away, so `InlineArrayHandler` drops any enum import whose name no longer occurs in the type. This repo's
+away, so `InlineObjectResult` drops any enum import whose name no longer occurs in the type. This repo's
 `tsconfig.json` sets `noUnusedLocals`, and `tsc` rejects an unused import under it.
 
 In `laravel-ts-global.ts`, `TsTypeString::rewriteAsEnumToType()` folds an exact `AsEnum<typeof Status> | StatusType`
