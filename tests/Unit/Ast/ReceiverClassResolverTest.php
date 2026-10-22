@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
@@ -248,18 +249,20 @@ describe('ReceiverClassResolver::resolve()', function () {
     });
 
     // forwardDecoratedCallTo() hands the relation back only for the very builder it holds, which `$this` promises and
-    // `static` does not: clone() returns a copy. first()'s `TValue|null` is the model BuildsQueries<TModel> binds.
+    // `static` does not: clone() returns a copy, the builder's until Laravel 13.38 gave Relation its own clone().
+    // first()'s `TValue|null` is the model BuildsQueries<TModel> binds.
     test('a call a relation forwards to its builder holds what the builder returns, the relation itself for $this', function () {
         $resolver = resolve(ReceiverClassResolver::class);
         $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
         $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
         Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $user->id]);
         $relation = $post->comments();
+        $copy = method_exists(Relation::class, 'clone') ? HasMany::class : Builder::class;
 
         expect($resolver->resolve(receiverExpr('$this->resource->comments()->where("id", ">", 0)'), postScope()))
             ->toEqual(new ReceiverType([HasMany::class], relatedModel: Comment::class))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->clone()'), postScope()))
-            ->toEqual(new ReceiverType([Builder::class], relatedModel: Comment::class))
+            ->toEqual(new ReceiverType([$copy], relatedModel: Comment::class))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->first()'), postScope()))->toEqual(ReceiverType::of(Comment::class))
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->firstWhere("id", 1)'), postScope()))
             ->toEqual(ReceiverType::of(Comment::class))
@@ -267,7 +270,7 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->count()'), postScope()))->toBeNull()
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->addHasWhere($query, $relation)'), postScope()))->toBeNull()
             ->and($relation->where('id', '>', 0))->toBe($relation)
-            ->and($relation->clone())->toBeInstanceOf(Builder::class)
+            ->and($relation->clone())->toBeInstanceOf($copy)
             ->and($relation->first())->toBeInstanceOf(Comment::class)
             ->and($relation->firstWhere('id', 0))->toBeNull();
     });
