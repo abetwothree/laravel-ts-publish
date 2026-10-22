@@ -10,8 +10,8 @@ use Workbench\App\Models\Post;
 
 /**
  * A test-only resource whose merge calls and spread helpers join a value the engine cannot type with a typed one: a
- * merged closure's literal and built local, a merged literal beside a `null` default, a spread helper's literal and
- * built local, and a merged helper whose own join leaves the value untyped.
+ * merged closure's literal and built local, a merged literal beside a `null` or `[]` default, a spread helper's
+ * literal and built local, and a merged helper whose own join leaves the value untyped.
  *
  * @mixin Post
  */
@@ -32,6 +32,7 @@ final class DroppedBranchJoinResource extends JsonResource
             ...$this->spreadRows(),
             ...$this->spreadBuilt(),
             $this->mergeWhen($this->id > 0, $this->twoRows(), ['nested' => $this->title]),
+            $this->mergeWhen($this->id > 0, ['merged_rows' => $this->opaqueRows()], ['merged_rows' => []]),
         ];
     }
 

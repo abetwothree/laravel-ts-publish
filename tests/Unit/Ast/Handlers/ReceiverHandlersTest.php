@@ -1173,6 +1173,7 @@ describe('narrowing', function () {
         'a member write of a value its column holds, directly or through a relation' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = \'x\'; $a->author->name = \'y\';', ['a' => [Post::class]]],
         'a member write of a value its column does not hold' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = 5;', []],
         'an append, which names no member' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a[] = 1;', []],
+        'a member and a key write through $this->resource after its guard' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource->touched = true; $this->resource[\'k\'] = 1;', [AnalysisScope::PROXY_GUARDS => [Post::class]]],
         'a value its column does not hold, written through $this' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->title = 5;', []],
         'a value its column does not hold, written through $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource->title = 5;', []],
     ]);

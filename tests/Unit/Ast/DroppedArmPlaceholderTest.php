@@ -176,9 +176,10 @@ test('a merge call and a spread helper that leave out a value they cannot type w
         .'it reads a return type or a `@return` docblock.';
 
     expect(joinDropWarnings(DroppedBranchJoinResource::class))
-        ->toBe([$warning(24), $warning(27), $warning(42), $warning(56), $warning(68)])
+        ->toBe([$warning(24), $warning(27), $warning(43), $warning(57), $warning(69)])
         ->and(placeholderWarnings(DroppedBranchJoinResource::class))->toBe([
             $placeholder(31, '`null`, as if it were always null'),
+            $placeholder(35, '`never[]`, an array that is always empty'),
         ])
         ->and(publishedResourceKeyTypes(DroppedBranchJoinResource::class, Post::class))->toBe([
             'merged' => 'string',
@@ -187,6 +188,7 @@ test('a merge call and a spread helper that leave out a value they cannot type w
             'spread' => 'string',
             'spread_built' => 'string',
             'nested' => 'string',
+            'merged_rows' => 'never[]',
         ]);
 });
 
@@ -206,6 +208,7 @@ test('sends the value a merge call or a spread helper leaves out of its publishe
             'spread' => 'array',
             'spread_built' => 'string',
             'nested' => 'array',
+            'merged_rows' => 'array',
         ]);
 });
 
