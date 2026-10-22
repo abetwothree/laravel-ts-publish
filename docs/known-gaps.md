@@ -305,13 +305,15 @@ Check which spelling you wrote before you assume a value is `unknown`:
   the earlier tests rule `$x` into, and after a guard such as `if (! $x instanceof Post) { return null; }` up to the
   end of its block, which a guard nested in a loop or `switch` may also leave by `break` or `continue`, as
   `BlockScopedBindingsResource` shows. A write to `$x` between the test and the end of what it narrows means no binding
-  at all, even for reads before that write.
+  at all, even for reads before that write, unless it only goes through a member or key of `$x`, such as
+  `$x->title = …`.
 - **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
   condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
 - **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
   on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
   ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
-  the one model a test on it leaves.
+  the one model a test on it leaves. An `if` binds no such chain: inside `if ($this->imageable instanceof Post) { … }`,
+  `$this->imageable` reads the whole `morphTo` union.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.

@@ -332,7 +332,9 @@ A test binds `$x` only when no write to it can land between the test and the end
 the test, such as the `foreach` assigning the value it tests before each pass, or past the block a nested proof ends
 with, is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` pins both cases. Both see an
 argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
-in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name.
+in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. A write through
+a member or key of `$x`, such as `$x->title = …`, ends only a non-null proof, since it leaves the class; under
+`PROXY_GUARDS`, only a write of `$this->resource` itself ends a class proof.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -600,16 +602,17 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 `KnownFunctionCallHandler`'s `data_get()` default, `CoalesceHandler`,
 `ConditionalMethodHandler::applyConditionalDefault()`, `MatchHandler`'s arms, `VariableHandler`'s join of a parameter
 past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
-where an earlier value still reaches the read) and the walk's branch join (`walk-branch-join`, naming the last key write
-or array item the branch saw, never a sibling's, that it reads as `unknown`). `analyzeClosureUnion()` records because
-`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
-left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
-union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
-`applyConditionalDefault()` records a default only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()`
-records nothing for a spread helper's branches or a merge call's sides, since it unions type strings and cannot name the
-expression it drops; the walk's join names one only through the untyped writes `ReadsReturnedVariables` notes. One arm
-is never left out: `$this->resource` read whole under its own `instanceof` proof, as the proven class with no published
-type, leaves the ternary `unknown`.
+where an earlier value still reaches the read), the walk's branch join (`walk-branch-join`, naming the last key write or
+array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a
+spread helper's returns (`merge-branch-join`, naming the same for each walked or literal branch).
+`analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
+it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
+returns that `null`, which the ternary union would keep. It unions both operands through `unionResults()`, which leaves
+an untyped one out. `applyConditionalDefault()` records a default only beside a value arm with a type.
+`ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
+joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
+walked or literal branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole under its
+own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
@@ -617,8 +620,10 @@ answer.
 
 Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Where a drop leaves the union only `null`
 and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
-when nothing was dropped. The two join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
-the read, so beside a typed arm it warns that the published type may not admit every value the read sends.
+when nothing was dropped. The three join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
+the read, so beside a typed arm it warns that the published type may not admit every value the read sends. It covers
+only a value a join leaves out: past a write naming no class, a member read keeps the old class (`receiversKeep`) and
+warns of nothing.
 `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
 getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
 A class the generation cache serves prints none, since the cache stores no analysis warnings, until `--fresh` analyzes
