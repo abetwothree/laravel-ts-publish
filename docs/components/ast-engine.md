@@ -13,7 +13,7 @@ folder by role, and a new class joins the folder whose role it shares:
 
 | Folder | Holds |
 | --- | --- |
-| `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record |
+| `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
 | `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included |
 | `Concerns/`, `Contracts/` | Shared traits, and the handler and engine interfaces |
