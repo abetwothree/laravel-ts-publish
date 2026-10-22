@@ -90,13 +90,13 @@ every profile, the order handlers run in decides which one answers; see
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
-  spread the same way. It sets every name-keyed table aside through `AnalysisScope::nameBindings()`, keeping only the
-  guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, empties the `resolvingLocalVars` guard and clears
-  `closureRelationModelClass`, since the helper's `$this` is the subject. It re-derives `requestVarNames` and
-  `declaringFileClass`, binds the method's parameters, and what the call passes them through `CallSite::passedTo()`, as
-  [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and restores all of them
-  in a `finally`. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle into an empty analysis
-  instead of recursing until memory runs out.
+  spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
+  the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, empties the `resolvingLocalVars` and `readingLocals`
+  guards and clears `closureRelationModelClass`, since the helper's `$this` is the subject. It re-derives
+  `requestVarNames` and `declaringFileClass`, binds the method's parameters, and what the call passes them through
+  `CallSite::passedTo()`, as [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters)
+  says, and `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread
+  or a cycle into an empty analysis instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key

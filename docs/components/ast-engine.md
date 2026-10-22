@@ -199,19 +199,21 @@ docblocks say what each binding table holds. These seven facts span other classe
 
 ### Writing a scope binding
 
-A writer that binds a name for one body, such as a closure, a loop or a spread, first snapshots what it changes. It then
-mutates the scope, resolves the body, and restores the snapshot in a `finally`. Every mutation, and every seeding step
-that can throw, sits inside that `try`.
+A writer that binds a name for one body, arm or value, such as a closure, a spread or a narrowing, has one primitive:
+`AnalysisScope::within()`. Its `$enter` makes every change, every seeding step that can throw included, and `within()`
+runs the read, then puts back every name table and ambient field in a `finally`.
 
 The scope outlives the expression, so a binding an exception leaves behind raises nothing. The binding answers a later
-property with a wrong but plausible type, far from the writer that leaked it. Restore the whole table, not the one key
-you believe you wrote.
+property with a wrong but plausible type, far from the writer that leaked it. So no writer restores only the key it
+believes it wrote, and a new ambient field joins `within()`'s list, which `AnalysisScopeTest` enforces.
 
-Closure writers and `ClosureHandler` snapshot with `AnalysisScope::nameBindings()` and restore with
-`restoreNameBindings()`. `NarrowsInstanceofSubjects::resolveNarrowed()` hand-rolls its snapshot.
-`ResolvesModelRelationTypes::bindForeachLoopVariables()` takes none, because a `foreach` binding holds for the whole
-body by design, and `ClosureHandler` calls it inside its own snapshot. The closure writers' snapshots restore over it,
-so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
+A closure a call passes values to, such as a conditional's value, a `map()` callback or a merge closure, is read through
+`readClaimedClosure()`, which claims its parameters inside `within()`. A subject method's body is read with
+`enterSubjectMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
+restores one name's entry, and so does the analyzer's walk, whose notes are no scope state.
+`ResolvesModelRelationTypes::bindForeachLoopVariables()` takes no snapshot, because a `foreach` binding holds for the
+whole body by design, and `ClosureHandler` calls it inside its own `within()`. The closure writers' reads restore over
+it, so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
 
 #### A closure parameter owns its name
 
@@ -221,12 +223,12 @@ enum case. So an outer binding of a parameter's name, left in any table, outrank
 reader. Nested in `map(fn (Comment $c) => …)`, a `collect(...)->map(fn ($c) => …)` would read its string element as a
 `Comment`.
 
-Every writer that binds a closure parameter therefore calls `AnalysisScope::claimParameters()` inside its `try`. The
-claim drops each parameter name from every table, its binding end included, and marks the closure claimed. The writer
-reads the value the call passes before it claims, since the claim can release a name that value shares, then binds the
-parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a closure no
-writer claimed, such as a `whenNull()` value closure. It then binds each parameter whose native type names one class and
-that no writer bound to a class, or to a value that names one or is `null`: a non-null concrete model in
+Every writer that binds a closure parameter therefore reads the closure through `readClaimedClosure()`, whose
+`claimParameters()` drops each parameter name from every table, its binding end included, and marks the closure claimed.
+The writer reads the value the call passes before it claims, since the claim can release a name that value shares, then
+binds the parameter to it. `ClosureHandler` calls `releaseUnclaimedParameters()`, which makes the same drop for a
+closure no writer claimed, such as a `whenNull()` value closure. It then binds each parameter whose native type names
+one class and that no writer bound to a class, or to a value that names one or is `null`: a non-null concrete model in
 `varModelBindings`, any other class in `varDeclaredBindings`, before it seeds the body, so a write that replaces the
 parameter ends that binding.
 
@@ -314,8 +316,9 @@ and each restores its binding in a `finally`:
   `instanceofProofs()` reads a test through `!`, an `&&` that holds, an `||` that fails, or an `||` chain on one
   variable. An earlier `return` and a guard's own body read `$x` unnarrowed, and a proof inside another holds what both
   prove (`ReceiverClassResolver::provenClasses()`). On an API resource a test on `$this->resource` binds under
-  `AnalysisScope::PROXY_GUARDS`, and `ResourceAstAnalyzer::analyzeValueExpression()` resolves a value inside one of its
-  spans through `resolveNarrowed()`, as a ternary's proven arm.
+  `AnalysisScope::PROXY_GUARDS`, and `NarrowsInstanceofSubjects::resolveUnderProxyProof()` resolves a value inside one
+  of its spans through `resolveNarrowed()`, as a ternary's proven arm, and a value nested in it reads that proof as
+  applied.
 - **A ternary's proven arm**: `TernaryHandler` resolves it under `NarrowsInstanceofSubjects::resolveNarrowed()`, which
   binds a variable in `varGuardBindings` past its test, or records `provenProxy` for `$this->resource`, setting
   `modelClass` too when one model is left, or pushes a chain of property reads on `$this` onto `narrowedReads`, which
