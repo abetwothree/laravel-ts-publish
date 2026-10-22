@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -212,7 +213,7 @@ trait CollectsLocalVarBindings
     protected function bindBlockLocals(array $stmts, AnalysisScope $scope, array $writes, ?array &$parked = null): void
     {
         foreach ($stmts as $stmt) {
-            foreach ($this->innerBlocks($stmt) as $block) {
+            foreach (StatementBlocks::inner($stmt) as $block) {
                 $this->bindBlock($block, $stmts, $scope, $writes, $parked);
             }
         }
@@ -607,7 +608,7 @@ trait CollectsLocalVarBindings
                 $this->bindBlockAssignment($stmt, $stmt->expr, $stmt->expr->var->name, $block, $scope, $writes);
             }
 
-            foreach ($this->innerBlocks($stmt) as $inner) {
+            foreach (StatementBlocks::inner($stmt) as $inner) {
                 $this->bindBlock($inner, $body, $scope, $writes, $parked);
             }
         }
@@ -666,7 +667,7 @@ trait CollectsLocalVarBindings
             }
 
             $holder = $node->getStartFilePos() > $after
-                ? array_find($block, fn (Node\Stmt $later): bool => $this->encloses($later, $node))
+                ? array_find($block, fn (Node\Stmt $later): bool => StatementBlocks::encloses($later, $node))
                 : null;
             $end = $holder === null ? $end : min($end, $holder->getStartFilePos() - 1);
         }
@@ -993,12 +994,12 @@ trait CollectsLocalVarBindings
             // the loop does when a loop around both runs it again; unset() breaks the reference.
             $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
                 && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
-                && $this->encloses($loop, $node));
+                && StatementBlocks::encloses($loop, $node));
             $values = $this->elementValues(array_values(array_filter(
                 $writes,
                 fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
                     && ($write[1]->getStartFilePos() > $node->getStartFilePos()
-                        || array_any($loops, fn (Node $loop): bool => $this->encloses($loop, $write[1]))),
+                        || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
             )));
 
             return $values === null
@@ -1205,9 +1206,9 @@ trait CollectsLocalVarBindings
             $block = array_values($owner->stmts);
 
             if ($block !== []
-                && array_any($block, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $node))
+                && array_any($block, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $node))
                 && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
-                && ! array_any($enclosures, fn (Node $around): bool => $this->encloses($around, $owner))
+                && ! array_any($enclosures, fn (Node $around): bool => StatementBlocks::encloses($around, $owner))
                 && $this->alwaysExits($block)
             ) {
                 $innermost = $block;
@@ -1268,7 +1269,7 @@ trait CollectsLocalVarBindings
         $after = $from;
 
         foreach ($stmts as $stmt) {
-            $own = array_values(array_filter($writes, fn (array $write): bool => $this->encloses($stmt, $write[1])));
+            $own = array_values(array_filter($writes, fn (array $write): bool => StatementBlocks::encloses($stmt, $write[1])));
             $assigned = $own === [] ? null : $this->wholeAssignment($stmt, $own);
 
             // A write in a block that always exits reaches no read past it, which only a known value needs checked; a
@@ -1354,7 +1355,7 @@ trait CollectsLocalVarBindings
 
         $thrown = $this->joinNested(array_values(array_filter(
             $writes,
-            fn (array $write): bool => array_any($try->stmts, fn (Node\Stmt $stmt): bool => $this->encloses($stmt, $write[1])),
+            fn (array $write): bool => array_any($try->stmts, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $write[1])),
         )), $state);
         $left = [$this->joinStatements($name, $try->stmts, $body, $writes, $ender, $state, $this->blockStart($try->stmts), $scope)];
 
@@ -1484,7 +1485,7 @@ trait CollectsLocalVarBindings
     private function endWithin(array $block, Node $node): ?int
     {
         foreach ($block as $stmt) {
-            if ($this->encloses($stmt, $node)) {
+            if (StatementBlocks::encloses($stmt, $node)) {
                 return $stmt instanceof ExpressionStmt && $stmt->expr === $node && ($node instanceof Assign || $node instanceof AssignOp)
                     ? $stmt->getEndFilePos()
                     : $stmt->getStartFilePos() - 1;
@@ -1492,14 +1493,6 @@ trait CollectsLocalVarBindings
         }
 
         return null;
-    }
-
-    /**
-     * Whether a node lies within another by their file offsets.
-     */
-    private function encloses(Node $outer, Node $inner): bool
-    {
-        return $outer->getStartFilePos() <= $inner->getStartFilePos() && $inner->getEndFilePos() <= $outer->getEndFilePos();
     }
 
     /**
@@ -1825,10 +1818,10 @@ trait CollectsLocalVarBindings
     private function holdingList(array $stmts, Node $node): array
     {
         foreach ($stmts as $stmt) {
-            $inner = $stmt instanceof Node\Stmt && $this->encloses($stmt, $node)
-                ? array_find($this->innerBlocks($stmt), fn (array $block): bool => array_any(
+            $inner = $stmt instanceof Node\Stmt && StatementBlocks::encloses($stmt, $node)
+                ? array_find(StatementBlocks::inner($stmt), fn (array $block): bool => array_any(
                     $block,
-                    fn (Node\Stmt $held): bool => $this->encloses($held, $node),
+                    fn (Node\Stmt $held): bool => StatementBlocks::encloses($held, $node),
                 ))
                 : null;
 

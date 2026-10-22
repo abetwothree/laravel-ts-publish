@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -19,21 +20,16 @@ use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Scalar\Int_;
-use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
-use PhpParser\Node\Stmt\Case_;
-use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
-use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
-use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 
 /**
@@ -200,7 +196,7 @@ trait CollectsInstanceofGuards
                 $this->bindIfGuards($stmt, $end, $scope, $writes);
             }
 
-            foreach ($this->innerBlocks($stmt) as $block) {
+            foreach (StatementBlocks::inner($stmt) as $block) {
                 if ($block !== []) {
                     $this->bindBlockGuards($block, $block[array_key_last($block)]->getEndFilePos(), $scope, $writes);
                 }
@@ -336,7 +332,7 @@ trait CollectsInstanceofGuards
                 $this->proveIfGuards($stmt, $end, $scope, $writes);
             }
 
-            foreach ($this->innerBlocks($stmt) as $block) {
+            foreach (StatementBlocks::inner($stmt) as $block) {
                 if ($block !== []) {
                     $this->proveBlockGuards($block, $block[array_key_last($block)]->getEndFilePos(), $scope, $writes);
                 }
@@ -406,32 +402,6 @@ trait CollectsInstanceofGuards
                 $this->proveNonNull([$read], $scope, $after, $before);
             }
         }
-    }
-
-    /**
-     * The statement blocks a statement holds: its branches, a loop's or a bare block's body, a `try`'s blocks and a
-     * `switch`'s cases.
-     *
-     * @return array<array<Node\Stmt>>
-     */
-    private function innerBlocks(Node\Stmt $stmt): array
-    {
-        return match (true) {
-            $stmt instanceof If_ => [
-                $stmt->stmts,
-                ...array_map(fn (ElseIf_ $elseif): array => $elseif->stmts, $stmt->elseifs),
-                ...($stmt->else === null ? [] : [$stmt->else->stmts]),
-            ],
-            $stmt instanceof Foreach_, $stmt instanceof For_, $stmt instanceof While_, $stmt instanceof Do_,
-            $stmt instanceof Block => [$stmt->stmts],
-            $stmt instanceof TryCatch => [
-                $stmt->stmts,
-                ...array_map(fn (Catch_ $catch): array => $catch->stmts, $stmt->catches),
-                ...($stmt->finally === null ? [] : [$stmt->finally->stmts]),
-            ],
-            $stmt instanceof Switch_ => array_map(fn (Case_ $case): array => $case->stmts, $stmt->cases),
-            default => [],
-        };
     }
 
     /**
