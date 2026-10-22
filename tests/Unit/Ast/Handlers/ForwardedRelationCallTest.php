@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Metadata\ModelMetadataAnalyzer;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedFirstReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedFirstValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ForwardedRelationCallResource;
@@ -97,7 +97,7 @@ it('types a narrowed relation count in a metadata provider', function () {
 });
 
 it('names the class whose declaration answers a call a relation or an Eloquent builder forwards', function (string $class, string $method, ?string $answers) {
-    expect(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass($class, $method))->toBe($answers);
+    expect(QueryForwarding::forwardedClass($class, $method))->toBe($answers);
 })->with([
     'an aggregate the builder passes through to the base query' => [HasMany::class, 'count', QueryBuilder::class],
     'a builder method' => [HasMany::class, 'where', Builder::class],
@@ -120,8 +120,8 @@ it('forwards no call a macro answers', function () {
     Builder::macro('average', fn (): string => 'builder macro');
 
     try {
-        expect(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass(HasMany::class, 'count'))->toBeNull()
-            ->and(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass(HasMany::class, 'average'))->toBeNull()
+        expect(QueryForwarding::forwardedClass(HasMany::class, 'count'))->toBeNull()
+            ->and(QueryForwarding::forwardedClass(HasMany::class, 'average'))->toBeNull()
             ->and($post->comments()->count())->toBe('relation macro')
             ->and($post->comments()->average('id'))->toBe('builder macro');
     } finally {
@@ -134,7 +134,7 @@ it('forwards no call a macro answers', function () {
 it('forwards no call to a builder method the relation cannot reach', function () {
     $relation = forwardedRelationCallPost(User::create(['name' => 'Di', 'email' => 'di@example.com', 'password' => 'secret']), [])->comments();
 
-    expect(resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass(HasMany::class, 'addHasWhere'))->toBeNull()
+    expect(QueryForwarding::forwardedClass(HasMany::class, 'addHasWhere'))->toBeNull()
         ->and(fn () => $relation->addHasWhere($relation->getQuery(), $relation, '>=', 1, 'and'))->toThrow(BadMethodCallException::class);
 });
 

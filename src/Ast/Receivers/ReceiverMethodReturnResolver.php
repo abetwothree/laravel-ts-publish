@@ -22,11 +22,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use Closure;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr\MethodCall;
@@ -34,7 +31,6 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionProperty;
 
 /**
  * Types a method call from the PHP classes its receiver holds; the rules are in
@@ -228,39 +224,6 @@ final class ReceiverMethodReturnResolver
         DependencyRecorder::recordClass($class);
 
         return $this->modelRule($class, $methodName) !== null;
-    }
-
-    /**
-     * The class whose declaration answers a method a relation or an Eloquent builder does not declare, or null.
-     *
-     * A relation's `__call()` forwards the call to its Eloquent builder, and the builder's sends a name its `$passthru`
-     * lists to the base query; a macro under the name answers before either forwards, so that call forwards nowhere.
-     *
-     * @return class-string|null
-     */
-    public function forwardedQueryClass(string $class, string $methodName): ?string
-    {
-        if (method_exists($class, $methodName)) {
-            return null;
-        }
-
-        if (is_a($class, Relation::class, true)) {
-            return match (true) {
-                Relation::hasMacro($methodName) => null,
-                method_exists(Builder::class, $methodName) && new ReflectionMethod(Builder::class, $methodName)->isPublic() => Builder::class,
-                default => $this->forwardedQueryClass(Builder::class, $methodName),
-            };
-        }
-
-        if (! is_a($class, Builder::class, true) || Builder::hasGlobalMacro($methodName)) {
-            return null;
-        }
-
-        $passthru = new ReflectionProperty($class, 'passthru')->getDefaultValue();
-
-        return is_array($passthru) && in_array(strtolower($methodName), $passthru, true) && method_exists(QueryBuilder::class, $methodName)
-            ? QueryBuilder::class
-            : null;
     }
 
     /**
@@ -524,7 +487,7 @@ final class ReceiverMethodReturnResolver
     private function resolveOn(string $class, string $methodName, bool $fromInside, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName)) {
-            $forwarded = $this->forwardedQueryClass($class, $methodName);
+            $forwarded = QueryForwarding::forwardedClass($class, $methodName);
 
             return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site);
         }

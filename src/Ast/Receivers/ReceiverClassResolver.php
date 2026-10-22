@@ -599,7 +599,7 @@ final class ReceiverClassResolver
     {
         $answering = $this->isCallable($class, $method, false)
             ? $class
-            : resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass($class, $method);
+            : QueryForwarding::forwardedClass($class, $method);
         $template = $answering === null ? null : $this->queryTemplate($answering);
 
         if ($answering === null || $template === null) {
@@ -1413,7 +1413,7 @@ final class ReceiverClassResolver
      */
     private function forwardedQueryMethod(string $class, string $method, ?string $queried): ?ReceiverType
     {
-        $forwarded = resolve(ReceiverMethodReturnResolver::class)->forwardedQueryClass($class, $method);
+        $forwarded = QueryForwarding::forwardedClass($class, $method);
 
         if ($forwarded === Builder::class && is_a($class, Relation::class, true) && $this->declaredReturn($forwarded, $method) === '$this') {
             return new ReceiverType([$class], relatedModel: $queried);
