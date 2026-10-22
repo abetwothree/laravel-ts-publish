@@ -508,12 +508,8 @@ final class VariableHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
-        $position = $read->getStartFilePos();
-        $forms = array_filter(
-            $scope->byReferenceForms[$name] ?? [],
-            fn (array $form): bool => $position < 0
-                || ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])),
-        );
+        // A read the source does not place takes every form.
+        $forms = $read->getStartFilePos() < 0 ? $scope->byReferenceForms[$name] ?? [] : $scope->formsAt($read);
 
         if ($forms === []) {
             return $value;
@@ -554,15 +550,9 @@ final class VariableHandler implements ExpressionHandler
             return false;
         }
 
-        $position = $read->getStartFilePos();
+        $form = $scope->formsAt($read)[0] ?? null;
 
-        foreach ($scope->byReferenceForms[$read->name] ?? [] as $form) {
-            if ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])) {
-                return $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === [];
-            }
-        }
-
-        return false;
+        return $form !== null && $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === [];
     }
 
     /**

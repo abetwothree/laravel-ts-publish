@@ -252,7 +252,8 @@ final class AnalysisScope
      * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
      * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
      *
-     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS.
+     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS. Each holds
+     * for the offsets past its `after` and through its `before`.
      *
      * @var VarGuardBindingsMap
      */
@@ -260,7 +261,8 @@ final class AnalysisScope
 
     /**
      * Read paths a guard proves non-null, keyed by the variable each starts at: a condition's for the value, arm or
-     * block it runs, an exit's for the rest of its block, each between the offsets it sets.
+     * block it runs, an exit's for the rest of its block, each for the offsets past its `after` and short of its
+     * `before`, a bound it leaves null being open.
      *
      * A resource built around one never serializes as null. Scoped like varClassBindings, and a closure parameter, or a
      * write in a closure's or a called method's body, drops the proofs of its name.
@@ -273,6 +275,8 @@ final class AnalysisScope
      * Variables an inline `@var` on their assignment declares a type for: the type as written, the class whose file
      * resolves its names, the value assigned, and the reads it holds for, past the assignment and before the top-level
      * statement that next writes the variable. Written by CollectsLocalVarBindings, and scoped like localVarBindings.
+     *
+     * Each holds for the offsets past its `after` and short of its `before`.
      *
      * @var VarDocBindingsMap
      */
@@ -327,7 +331,8 @@ final class AnalysisScope
      * name each writes: `sort()` keeps a list, `asort()` an object. Written by CollectsLocalVarBindings, which binds
      * the variable across them; a read past a call, and before the end of a block it returns from, takes its form.
      *
-     * A form's `sole` says no write but calls of its effect reaches the name.
+     * Each holds for the offsets past its `after` and through its `before`. A form's `sole` says no write but calls of
+     * its effect reaches the name.
      *
      * @var ByReferenceFormsMap
      */
@@ -335,7 +340,8 @@ final class AnalysisScope
 
     /**
      * The offset at which each name stops holding the binding it came into the body with, a parameter's or a seeded
-     * one: the body's first write that replaces it with another class. A read past it sees that write instead.
+     * one: the body's first write that replaces it with another class. A read at it still holds the binding; a read
+     * past it sees that write instead.
      *
      * @var array<string, int>
      */
@@ -347,6 +353,7 @@ final class AnalysisScope
      * nested in a block, from past that statement to its block's end or the block's statement holding the next write.
      *
      * A name written more than once, or a parameter a write may replace, has one past each statement that writes it.
+     * Each holds for the offsets past its first and through its second.
      *
      * Each carries its writes' values, or null where one assigns none the scan reads, whether the old binding may still
      * hold, past a write that may not run, and whether a receiver keeps it past a write whose value names no class. A
@@ -613,6 +620,25 @@ final class AnalysisScope
         return is_string($variable->name)
             ? self::latestGap($this->bindingGaps[$variable->name] ?? [], $variable->getStartFilePos())
             : null;
+    }
+
+    /**
+     * The by-reference forms a read of a variable falls within, in the order the scan found their calls.
+     *
+     * @return list<ByReferenceForm>
+     */
+    public function formsAt(Variable $variable): array
+    {
+        if (! is_string($variable->name)) {
+            return [];
+        }
+
+        $position = $variable->getStartFilePos();
+
+        return array_values(array_filter(
+            $this->byReferenceForms[$variable->name] ?? [],
+            fn (array $form): bool => $position > $form['after'] && ($form['before'] === null || $position <= $form['before']),
+        ));
     }
 
     /**
