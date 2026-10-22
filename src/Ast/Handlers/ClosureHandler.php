@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
@@ -71,7 +72,7 @@ final class ClosureHandler implements ExpressionHandler
             $scope->releaseUnclaimedParameters($expr);
             // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
             $this->bindDeclaredParameters($expr, $scope);
-            $this->markFilledDefaults($expr, $scope);
+            ModelFills::markDefaults($expr, $scope);
 
             if ($expr instanceof ClosureExpr) {
                 $this->seedBody($expr->stmts, $scope, $expr);

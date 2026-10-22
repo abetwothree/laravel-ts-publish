@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
@@ -797,7 +798,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
         return $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
-            $this->markFilledDefaults($expr, $this->scope);
+            ModelFills::markDefaults($expr, $this->scope);
 
             // Seeded as ClosureHandler seeds a closure, so a local the body assigns shadows the method's of its name.
             if ($expr instanceof ClosureExpr) {

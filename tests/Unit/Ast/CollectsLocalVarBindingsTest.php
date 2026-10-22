@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -608,34 +609,18 @@ it('keeps a local holding a model across a write through it, and reads an array 
 });
 
 /**
- * What markFilled() marks the `new` a parsed body's `$p = new Post;` assigns, past $before, as holding: every attribute
- * (true), the members a write fills, or none (false).
+ * What ModelFills::mark() marks the `new` a parsed body's `$p = new Post;` assigns, past $before, as holding: every
+ * attribute (true), the members a write fills, or none (false).
  *
  * @return list<string>|bool
  */
 function marksFilled(string $body, string $before = ''): array|bool
 {
-    $host = new class
-    {
-        use CollectsLocalVarBindings;
-
-        /**
-         * Mark the `new` from the body.
-         *
-         * @param  array<Node\Stmt>  $stmts
-         */
-        public function mark(New_ $new, array $stmts): void
-        {
-            $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-            $this->markFilled($new, 'p', $stmts, VariableWrites::of($stmts), $scope);
-        }
-    };
-
     /** @var array<Node\Stmt> $stmts */
     $stmts = new AstParser()->parseSource('<?php '.$before.'$p = new \\Workbench\\App\\Models\\Post; '.$body);
     $new = new NodeFinder()->findFirstInstanceOf($stmts, New_::class);
     assert($new instanceof New_);
-    $host->mark($new, $stmts);
+    ModelFills::mark($new, 'p', $stmts, VariableWrites::of($stmts), new AnalysisScope(new ReflectionClass(PostResource::class), Post::class));
 
     return $new->getAttribute(ReceiverClassResolver::HOLDS_ATTRIBUTES) === true
         ?: $new->getAttribute(ReceiverClassResolver::FILLED_MEMBERS, false);

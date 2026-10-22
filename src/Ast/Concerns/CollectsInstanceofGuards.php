@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
@@ -407,8 +408,8 @@ trait CollectsInstanceofGuards
 
     /**
      * Whether an assignment through a member or key of a variable keeps every typed member a class proof reads: it
-     * stores a value the member's column holds, as keepsModelThrough() decides, or names a member no column or relation
-     * of the proven models types. A write of `$this->resource` itself replaces the value the proxy's proof tested.
+     * stores a value the member's column holds, as ModelFills::keepsModelThrough() decides, or names a member no column
+     * or relation of the proven models types. A write of `$this->resource` itself replaces the value the proof tested.
      *
      * @param  NamedWrite  $write
      * @param  non-empty-list<class-string>  $classes
@@ -421,7 +422,7 @@ trait CollectsInstanceofGuards
             return false;
         }
 
-        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
+        [$holder, $member] = ModelFills::writtenMember($node) ?? [null, ''];
         // A member of `$this` reads as one of the value the proxy's proof tested, as one of `$this->resource` does.
         $onSubject = ($holder instanceof Variable && $holder->name === $variable)
             || ($variable === 'this' && $holder instanceof Expr && $this->isResourceFetch($holder));
@@ -430,7 +431,7 @@ trait CollectsInstanceofGuards
         return ($onSubject && array_all($classes, fn (string $class): bool => is_a($class, Model::class, true)
                 && $attributes->resolveAttribute($class, $member)['type'] === 'unknown'
                 && $attributes->resolveRelation($class, $member)['type'] === 'unknown'))
-            || $this->keepsModelThrough($node, $variable, $classes, $scope);
+            || ModelFills::keepsModelThrough($node, $variable, $classes, $scope);
     }
 
     /**
