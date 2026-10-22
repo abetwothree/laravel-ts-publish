@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedArmPlaceholderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PlaceholderAccessorPost;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Post;
@@ -137,4 +138,13 @@ test('a join that leaves out a value it cannot type warns that the published typ
         ])
         ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(3)
         ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 28 ');
+});
+
+// The resource's token has no import in the model file, so the getter publishes what the model declares instead.
+test('an accessor body declined for a class its model file cannot name raises no warning', function () {
+    AnalysisWarnings::reset();
+
+    expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PlaceholderAccessorPost::class, 'author_card')['type'])
+        ->toBe('unknown')
+        ->and(AnalysisWarnings::all())->toBe([]);
 });

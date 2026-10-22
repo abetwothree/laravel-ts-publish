@@ -81,13 +81,24 @@ final class AccessorBodyAnalyzer
 
         try {
             // A body declined here gives way to what the model declares, so its placeholder is never published.
-            $result = DroppedUnionArms::replaceable(
-                fn (): ?array => $this->resolveBody($modelFqcn, $attributeName, $carriesImports),
-                fn (?array $result): bool => $this->bodyStands($result, $dropped),
+            return DroppedUnionArms::replaceable(
+                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $dropped),
+                fn (?array $info): bool => $info !== null,
             );
         } finally {
             $memo->leave($key);
         }
+    }
+
+    /**
+     * The type a getter body publishes; null where it does not stand or spells a class the model file cannot name.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return TypeScriptTypeInfo|null
+     */
+    private function publishedBody(string $modelFqcn, string $attributeName, bool $carriesImports, int $dropped): ?array
+    {
+        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
 
         if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
