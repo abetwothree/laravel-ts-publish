@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node;
@@ -56,6 +57,7 @@ use PhpParser\NodeFinder;
  * @phpstan-type KeptWrites = list<array{string, ByReferenceForm}>
  * @phpstan-type PartitionedWrites = array{NamedWrites, KeptWrites}
  * @phpstan-type JoinedState = array{list<Expr>|null, bool, bool, list<Expr>|null}
+ * @phpstan-type ExitingBlockLookup = Closure(Node): (non-empty-list<Node\Stmt>|null)
  *
  * @phpstan-import-type ByReferenceForm from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
@@ -81,7 +83,8 @@ trait CollectsLocalVarBindings
     protected function seedBody(array $stmts, AnalysisScope $scope, ?ClosureExpr $closure = null): void
     {
         $writes = VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
-        [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
+        $exitingBlock = $this->exitingBlocks($stmts);
+        [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope, $exitingBlock);
         $binding = $this->bindingWrites($replacing, $scope);
 
         foreach ($binding as [$name]) {
@@ -119,8 +122,9 @@ trait CollectsLocalVarBindings
         $this->collectLocalVarBindings($stmts, $scope, $binding, $parked);
         $this->bindBlockLocals($stmts, $scope, $binding, $parked);
         // After the locals: keepsBinding() reads the `@var` spans they record.
-        $ended = $this->endBindingsAtWrites($stmts, $scope, $writes);
-        $this->bindJoinedLocals($stmts, $scope, $binding, $ended, $closure === null ? [] : $this->parameterNames($closure));
+        $ended = $this->endBindingsAtWrites($stmts, $scope, $writes, $exitingBlock);
+        $parameters = $closure === null ? [] : $this->parameterNames($closure);
+        $this->bindJoinedLocals($stmts, $scope, $binding, $ended, $parameters, $exitingBlock);
         // After the join: a read it binds takes that value, and only the reads it leaves unbound walk the key writes.
         $this->collectKeyBuiltLocals($stmts, $scope, $binding);
         // A call that keeps a value leaves it an array or a number, so it ends no guard's class or non-null proof; a
@@ -208,6 +212,7 @@ trait CollectsLocalVarBindings
      * @param  NamedWrites  $writes  the body's writes that replace a variable
      * @param  array<string, Node>  $ended  the write that ended each binding, from endBindingsAtWrites()
      * @param  list<string>  $parameters  the names of the parameters of the closure whose body the statements are
+     * @param  ExitingBlockLookup|null  $exitingBlock  the body's lookup, when the caller has made one
      */
     protected function bindJoinedLocals(
         array $stmts,
@@ -215,7 +220,9 @@ trait CollectsLocalVarBindings
         array $writes,
         array $ended = [],
         array $parameters = [],
+        ?Closure $exitingBlock = null,
     ): void {
+        $exitingBlock ??= $this->exitingBlocks($stmts);
         $byName = [];
 
         foreach ($writes as $write) {
@@ -239,7 +246,7 @@ trait CollectsLocalVarBindings
                     $passed => [[], true, false, []],
                     default => [null, false, false, null],
                 };
-                $this->joinStatements($name, $stmts, $stmts, $own, $ended[$name] ?? null, $initial, null, $scope);
+                $this->joinStatements($name, $stmts, $exitingBlock, $own, $ended[$name] ?? null, $initial, null, $scope);
             }
         }
     }
@@ -284,20 +291,26 @@ trait CollectsLocalVarBindings
      *
      * A top-level `$x = …;` ends it past its own statement, so the reads its value makes keep the old binding; a write
      * nested in a statement ends it where that statement starts, since a loop can run the write before a read. A write
-     * in an `if` or `switch` block that always leaves the function (exitingBlock()) ends it inside that block alone.
+     * in an `if` or `switch` block that always leaves the function (exitingBlocks()) ends it inside that block alone.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  NamedWrites|null  $writes  the body's writes, when the caller has scanned them
+     * @param  ExitingBlockLookup|null  $exitingBlock  the body's lookup, when the caller has made one
      * @return array<string, Node> the write that ended each binding a write ended
      */
-    protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope, ?array $writes = null): array
-    {
+    protected function endBindingsAtWrites(
+        array $stmts,
+        AnalysisScope $scope,
+        ?array $writes = null,
+        ?Closure $exitingBlock = null,
+    ): array {
         if (! $scope->bindsAnyName()) {
             return [];
         }
 
         $ended = [];
         $writes ??= VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $exitingBlock ??= $this->exitingBlocks($stmts);
 
         foreach ($writes as [$name, $node, $target, $kind]) {
             // A write past an end already recorded cannot move it earlier.
@@ -314,7 +327,7 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            $block = $this->exitingBlock($stmts, $node);
+            $block = $exitingBlock($node);
             $end = $this->endWithin($block ?? $stmts, $node);
 
             if ($end === null) {
@@ -683,17 +696,19 @@ trait CollectsLocalVarBindings
      *
      * @param  NamedWrites  $writes
      * @param  array<Node>  $stmts  the body the writes were scanned from
+     * @param  ExitingBlockLookup|null  $exitingBlock  the body's lookup, when the caller has made one
      * @return PartitionedWrites
      */
-    private function partitionWrites(array $writes, array $stmts, AnalysisScope $scope): array
+    private function partitionWrites(array $writes, array $stmts, AnalysisScope $scope, ?Closure $exitingBlock = null): array
     {
+        $exitingBlock ??= $this->exitingBlocks($stmts);
         [$replacing, $formed] = VariableWrites::partition($writes, $stmts, $scope);
         $kept = [];
 
         foreach ($formed as [$write, $form]) {
             // A read before the call, such as a copy's, sees the value it held; a call in a block that returns
             // leaves the reads past that block alone, as a binding end or gap does.
-            $block = $this->exitingBlock($stmts, $write[1]);
+            $block = $exitingBlock($write[1]);
             $form['after'] = $this->endWithin($block ?? $stmts, $write[1]) ?? PHP_INT_MIN;
             $form['before'] = $block === null ? null : $block[array_key_last($block)]->getEndFilePos();
             $kept[] = [$write[0], $form];
@@ -778,20 +793,48 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always leaves the
-     * function, or null when none does. A block inside a nested function leaves that function, and one inside a `try`
-     * whose `catch` or `finally` can run after it may resume past it.
+     * A lookup of the statements of the innermost `if`, `elseif`, `else` or `case` block of a body holding a node that
+     * always leaves the function, or null when none does, which reads the body once, at its first call.
      *
      * @param  array<Node>  $stmts
-     * @return non-empty-list<Node\Stmt>|null
+     * @return ExitingBlockLookup
      */
-    private function exitingBlock(array $stmts, Node $node): ?array
+    private function exitingBlocks(array $stmts): Closure
+    {
+        /** @var list<non-empty-list<Node\Stmt>>|null $blocks */
+        $blocks = null;
+
+        return function (Node $node) use ($stmts, &$blocks): ?array {
+            $blocks ??= $this->blocksThatExit($stmts);
+            $innermost = null;
+
+            foreach ($blocks as $block) {
+                if (array_any($block, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $node))
+                    && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
+                ) {
+                    $innermost = $block;
+                }
+            }
+
+            return $innermost;
+        };
+    }
+
+    /**
+     * The statements of each `if`, `elseif`, `else` or `case` block of a body that always leaves the function, in the
+     * order the body holds them. A block inside a nested function leaves that function, and one inside a `try` whose
+     * `catch` or `finally` can run after it may resume past it, so neither is one.
+     *
+     * @param  array<Node>  $stmts
+     * @return list<non-empty-list<Node\Stmt>>
+     */
+    private function blocksThatExit(array $stmts): array
     {
         $finder = new NodeFinder;
         $enclosures = $finder->find($stmts, fn (Node $around): bool => $around instanceof ClosureExpr
             || $around instanceof ArrowFunction || $around instanceof Function_ || $around instanceof ClassLike
             || ($around instanceof TryCatch && ($around->catches !== [] || $around->finally !== null)));
-        $innermost = null;
+        $blocks = [];
 
         foreach ($finder->find($stmts, fn (Node $owner): bool => $owner instanceof If_ || $owner instanceof ElseIf_
             || $owner instanceof Else_ || $owner instanceof Case_) as $owner) {
@@ -799,16 +842,14 @@ trait CollectsLocalVarBindings
             $block = array_values($owner->stmts);
 
             if ($block !== []
-                && array_any($block, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $node))
-                && ($innermost === null || $block[0]->getStartFilePos() > $innermost[0]->getStartFilePos())
                 && ! array_any($enclosures, fn (Node $around): bool => StatementBlocks::encloses($around, $owner))
                 && $this->alwaysExits($block)
             ) {
-                $innermost = $block;
+                $blocks[] = $block;
             }
         }
 
-        return $innermost;
+        return $blocks;
     }
 
     /**
@@ -841,7 +882,7 @@ trait CollectsLocalVarBindings
      * stops.
      *
      * @param  array<Node\Stmt>  $stmts  the list walked
-     * @param  array<Node\Stmt>  $body  the whole body, which a block that always exits leaves
+     * @param  ExitingBlockLookup  $exitingBlock  the whole body's, whose blocks that always exit a write in them leaves
      * @param  NamedWrites  $writes  the name's own writes
      * @param  Node|null  $ender  the write that ended the name's binding, if one did
      * @param  JoinedState  $state  the values the name may hold, null for none the scan knows, whether the binding it
@@ -852,7 +893,7 @@ trait CollectsLocalVarBindings
     private function joinStatements(
         string $name,
         array $stmts,
-        array $body,
+        Closure $exitingBlock,
         array $writes,
         ?Node $ender,
         array $state,
@@ -868,7 +909,7 @@ trait CollectsLocalVarBindings
             // A write in a block that always exits reaches no read past it, which only a known value needs checked; a
             // `try` resumes past its blocks.
             if ($assigned === null && $state[0] !== null && ! $stmt instanceof TryCatch) {
-                $own = array_values(array_filter($own, fn (array $write): bool => $this->exitingBlock($body, $write[1]) === null));
+                $own = array_values(array_filter($own, fn (array $write): bool => $exitingBlock($write[1]) === null));
             }
 
             if ($own === []) {
@@ -878,7 +919,7 @@ trait CollectsLocalVarBindings
             // The value a statement assigns reads what the name held before it, so that span runs through it.
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
-                $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $body, $writes, $ender, $state, $scope),
+                $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $exitingBlock, $writes, $ender, $state, $scope),
                 // Past its own `$x = …;` a value read takes what it wrote, a model's where that is a typed value naming
                 // no class; any other class alone is endBindingsAtWrites()'s.
                 $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope)
@@ -928,7 +969,7 @@ trait CollectsLocalVarBindings
      * The state past a `try`: what its body, or a catch it resumes in, leaves, then what its finally leaves of that. A
      * catch starts from what the name held before the `try` or any value the body assigned before it threw.
      *
-     * @param  array<Node\Stmt>  $body
+     * @param  ExitingBlockLookup  $exitingBlock
      * @param  NamedWrites  $writes  the name's own writes
      * @param  JoinedState  $state
      * @return JoinedState|null
@@ -936,7 +977,7 @@ trait CollectsLocalVarBindings
     private function joinTry(
         string $name,
         TryCatch $try,
-        array $body,
+        Closure $exitingBlock,
         array $writes,
         ?Node $ender,
         array $state,
@@ -950,7 +991,7 @@ trait CollectsLocalVarBindings
             $writes,
             fn (array $write): bool => array_any($try->stmts, fn (Node\Stmt $stmt): bool => StatementBlocks::encloses($stmt, $write[1])),
         )), $state);
-        $left = [$this->joinStatements($name, $try->stmts, $body, $writes, $ender, $state, $this->blockStart($try->stmts), $scope)];
+        $left = [$this->joinStatements($name, $try->stmts, $exitingBlock, $writes, $ender, $state, $this->blockStart($try->stmts), $scope)];
 
         if ($thrown !== null && $try->stmts !== []) {
             $thrown[2] = $thrown[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) >= $try->stmts[array_key_last($try->stmts)]->getEndFilePos();
@@ -959,7 +1000,7 @@ trait CollectsLocalVarBindings
         foreach ($try->catches as $catch) {
             $left[] = $thrown === null
                 ? null
-                : $this->joinStatements($name, $catch->stmts, $body, $writes, $ender, $thrown, $this->blockStart($catch->stmts), $scope);
+                : $this->joinStatements($name, $catch->stmts, $exitingBlock, $writes, $ender, $thrown, $this->blockStart($catch->stmts), $scope);
         }
 
         if (in_array(null, $left, true)) {
@@ -978,7 +1019,7 @@ trait CollectsLocalVarBindings
 
         return $try->finally === null
             ? $joined
-            : $this->joinStatements($name, $try->finally->stmts, $body, $writes, $ender, $joined, $this->blockStart($try->finally->stmts), $scope);
+            : $this->joinStatements($name, $try->finally->stmts, $exitingBlock, $writes, $ender, $joined, $this->blockStart($try->finally->stmts), $scope);
     }
 
     /**
