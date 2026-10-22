@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedMedia
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrImageResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrStringResource;
@@ -1997,6 +1998,17 @@ describe('what $this->resource holds, through every path', function () {
         ['max', 'number'],
         ['max_via_resource', 'number'],
         ['prefixes', 'prefixes'],
+    ]);
+
+    // A test on Model rules out neither redeclared class, so the values it holds, nested ones included, read unproven.
+    test('a guard that rules out no redeclared class leaves the values under it as they read unguarded', function (string $key, string $type) {
+        $props = collect(pipelineAnalyzer(ProxyModelGuardResource::class)->analyze()->properties)->keyBy('name');
+
+        expect($props[$key]['type'])->toBe($type);
+    })->with([
+        ['nested', '{ a: { b: { c: { d: { e: string } } } } }'],
+        ['proven', 'Post'],
+        ['narrowed', 'string | null'],
     ]);
 });
 
