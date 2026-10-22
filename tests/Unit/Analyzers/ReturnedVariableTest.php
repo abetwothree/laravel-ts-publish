@@ -725,7 +725,8 @@ test('a local written once reads as its array where a variable starts from it or
 ]);
 
 // A closure sees an outer local only through `use`, and a write of its own replaces it. The engine still reads one a
-// merge closure neither imports nor writes, through boundLocal(), but Laravel throws `Undefined variable` there.
+// merge closure neither imports nor writes, through AnalysisScope::literalWriteAt(), but Laravel throws `Undefined
+// variable` there.
 test('a merge closure adds with + a local it imports, and its own local in place of the method\'s of that name', function () {
     $tag = new Tag;
     $tag->forceFill(['id' => 9, 'name' => 'php', 'slug' => 'php-slug']);

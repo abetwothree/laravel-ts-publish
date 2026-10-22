@@ -408,17 +408,46 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 });
 
 /**
- * A value for a scope field, from its name and the phase, so a field each phase sets reads as changed and a field
- * put back from another's value differs. A bool flips with its name's first letter, so the two bools differ too.
+ * The scope fields a builder sets once, which within() leaves alone.
+ *
+ * @return list<string>
  */
-function analysisScopeFieldValue(ReflectionProperty $field, string $phase): mixed
+function analysisScopeSetOnceFields(): array
+{
+    return ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
+}
+
+/**
+ * The bool fields within() puts back, one dataset row each; a placeholder row where there are none, so the test runs.
+ *
+ * @return list<string>
+ */
+function analysisScopeRestoredBools(): array
+{
+    $bools = array_values(array_map(
+        fn (ReflectionProperty $field): string => $field->getName(),
+        array_filter(
+            new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+            fn (ReflectionProperty $field): bool => ! $field->isStatic() && (string) $field->getType() === 'bool'
+                && ! in_array($field->getName(), analysisScopeSetOnceFields(), true),
+        ),
+    ));
+
+    return $bools === [] ? [''] : $bools;
+}
+
+/**
+ * A value for a scope field, from its name and the phase, so a field each phase sets reads as changed and a field
+ * put back from another's value differs. A bool holds one of two values, so only $odd starts apart from the others.
+ */
+function analysisScopeFieldValue(ReflectionProperty $field, string $phase, string $odd): mixed
 {
     $name = $field->getName();
 
     return match ((string) $field->getType()) {
         'array', '?array' => [$name.$phase => true],
         '?string' => "{$name}:{$phase}",
-        'bool' => ($phase === 'before') === (ord($name[0]) % 2 === 0),
+        'bool' => ($phase === 'before') === ($name === $odd),
         'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
         default => throw new LogicException("No value for {$name}'s type."),
     };
@@ -426,8 +455,8 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase): mixe
 
 // Every field but those a builder sets once is given a value, and $enter changes each, so a field added to the scope
 // fails here until within() puts it back or it joins the fields set once.
-it('within() restores every name table and ambient field after a read, a throw included', function (string $throws) {
-    $setOnce = ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
+it('within() restores every name table and ambient field after a read, a throw included', function (string $throws, string $odd) {
+    $setOnce = analysisScopeSetOnceFields();
     $ambient = [
         'closureRelationModelClass', 'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass',
         'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof',
@@ -441,7 +470,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $names = array_map(fn (ReflectionProperty $field): string => $field->getName(), $fields);
 
     foreach ($fields as $field) {
-        $field->setValue($scope, analysisScopeFieldValue($field, 'before'));
+        $field->setValue($scope, analysisScopeFieldValue($field, 'before', $odd));
     }
 
     $before = get_object_vars($scope);
@@ -450,9 +479,9 @@ it('within() restores every name table and ambient field after a read, a throw i
 
     try {
         $read = $scope->within(
-            function (AnalysisScope $entered) use ($fields, &$seen, $throws): void {
+            function (AnalysisScope $entered) use ($fields, &$seen, $throws, $odd): void {
                 foreach ($fields as $field) {
-                    $field->setValue($entered, analysisScopeFieldValue($field, 'entered'));
+                    $field->setValue($entered, analysisScopeFieldValue($field, 'entered', $odd));
                 }
 
                 if ($throws === 'enter') {
@@ -479,7 +508,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     'a read that returns' => ['none'],
     'a read that throws' => ['read'],
     'an enter that throws' => ['enter'],
-]);
+])->with(analysisScopeRestoredBools());
 
 // within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
 it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
