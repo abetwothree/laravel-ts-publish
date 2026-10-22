@@ -250,6 +250,8 @@ a builder such as `$this->hasMany(` in its body, and also one whose declared ret
 (`declaresRelationReturn()`): `@return Ancestors<static, static>` over a package's own helper, or `Notifiable`'s
 `readNotifications()`. A method that declares neither is missed; see
 [known gaps](../known-gaps.md#a-relation-method-that-declares-no-relation-class-and-builds-it-through-a-helper-is-left-out).
+It reads them in the order PHP 8.5 binds the model's methods, each class's own and then its traits', from the model
+up, so PHP 8.4, which binds a class's traits after its parent, lists them the same.
 
 Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads a relation as
 a list when its `type` names "many", or when its class extends one of Laravel's to-many relations and keeps that

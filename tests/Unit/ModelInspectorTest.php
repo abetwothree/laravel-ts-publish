@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\ModelsCollector;
 use AbeTwoThree\LaravelTsPublish\ModelInspector;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DeclaredRelationCategory;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReviewedCategory;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TreeCategory;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationFacility;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnreadableRelationTrail;
@@ -88,6 +89,19 @@ describe('ModelInspector with a relation method declared only by its @return rel
             ->and($declares(DeclaredRelationCategory::class, 'ancestorsUpTo'))->toBeFalse()
             ->and($declares(TreeCategory::class, 'branches'))->toBeFalse()
             ->and($declares(Model::class, 'newQuery'))->toBeFalse();
+    });
+});
+
+// PHP 8.4 binds a class's traits after its parent, so get_class_methods() lists a trait's methods after the inherited
+// ones there, and a trait method that redeclares an inherited one in the inherited one's place.
+describe('ModelInspector relation order', function () {
+    test('lists a trait relation that redeclares an inherited one in the trait\'s own order', function () {
+        expect(resolve(ModelInspector::class)->relationsOf(new ReviewedCategory)->all())->toBe([
+            ['name' => 'reviewer', 'type' => 'BelongsTo', 'related' => User::class, 'class' => BelongsTo::class],
+            ['name' => 'parent', 'type' => 'BelongsTo', 'related' => Category::class, 'class' => BelongsTo::class],
+            ['name' => 'children', 'type' => 'HasMany', 'related' => Category::class, 'class' => HasMany::class],
+            ['name' => 'posts', 'type' => 'HasMany', 'related' => Post::class, 'class' => HasMany::class],
+        ]);
     });
 });
 

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Override;
+use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 use SplFileObject;
@@ -115,25 +117,19 @@ class ModelInspector extends EloquentModelInspector
     {
         $relations = [];
 
-        foreach (get_class_methods($model) as $name) {
-            $method = new ReflectionMethod($model, $name);
-
-            if (! $this->readsAsRelation($method)) {
-                continue;
-            }
-
+        foreach ($this->relationMethods($model) as $method) {
             try {
                 $relation = $method->invoke($model);
 
                 if ($relation instanceof Relation) {
-                    $relations[] = $this->relationInfo($name, $relation);
+                    $relations[] = $this->relationInfo($method->name, $relation);
                 }
             } catch (Throwable $exception) {
                 // A relation the model excludes is never published, so its failure is nothing to report.
                 if ($method->getAttributes(TsExclude::class) === []) {
                     AnalysisWarnings::addOnce($model::class, sprintf(
                         'Reading its %s() relation threw [%s], so the relation is left out.',
-                        $name,
+                        $method->name,
                         $exception->getMessage(),
                     ));
                 }
@@ -141,6 +137,61 @@ class ModelInspector extends EloquentModelInspector
         }
 
         return new Collection($relations);
+    }
+
+    /**
+     * The model's methods read as relations, in the order PHP 8.5 lists them: each class's own, then its traits', from
+     * the model up. PHP 8.4 binds a class's traits after its parent, so it lists them after every inherited method.
+     *
+     * @return list<ReflectionMethod>
+     */
+    private function relationMethods(Model $model): array
+    {
+        $depths = [];
+
+        for ($class = new ReflectionClass($model); $class !== false; $class = $class->getParentClass()) {
+            $depths[$class->getName()] = count($depths);
+        }
+
+        $placed = [];
+
+        foreach (get_class_methods($model) as $name) {
+            $method = new ReflectionMethod($model, $name);
+
+            if ($this->readsAsRelation($method)) {
+                $placed[] = ['place' => $this->bindingPlace($method, $depths), 'method' => $method];
+            }
+        }
+
+        usort($placed, fn (array $a, array $b): int => $a['place'] <=> $b['place']);
+
+        return array_column($placed, 'method');
+    }
+
+    /**
+     * Where PHP 8.5 binds a method into the model: its declaring class's distance from the model, then whether a trait
+     * declares it, then its place among the methods that class's traits bring, in `use` order.
+     *
+     * @param  array<string, int>  $depths  each class from the model up, by its distance from the model
+     * @return array{int, int, int}
+     */
+    private function bindingPlace(ReflectionMethod $method, array $depths): array
+    {
+        $depth = $depths[$method->class] ?? PHP_INT_MAX;
+
+        if (! LaravelTsPublish::methodDeclaringFileClass($method)->isTrait()) {
+            return [$depth, 0, 0];
+        }
+
+        $traitMethods = [];
+
+        foreach ($method->getDeclaringClass()->getTraitNames() as $trait) {
+            foreach (get_class_methods($trait) as $name) {
+                $traitMethods[strtolower($name)] ??= count($traitMethods);
+            }
+        }
+
+        return [$depth, 1, $traitMethods[strtolower($method->name)] ?? PHP_INT_MAX];
     }
 
     /**
