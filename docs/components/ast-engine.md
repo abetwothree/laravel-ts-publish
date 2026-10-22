@@ -332,9 +332,10 @@ A test binds `$x` only when no write to it can land between the test and the end
 the test, such as the `foreach` assigning the value it tests before each pass, or past the block a nested proof ends
 with, is fine; a by-reference `foreach` binds nothing. `GuardWritePostResource` pins both cases. Both see an
 argument a call passes to a by-reference parameter of a callee the scan can name, but a built-in's that keeps the value
-in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. A write through
-a member or key of `$x`, such as `$x->title = …`, ends only a non-null proof, since it leaves the class; under
-`PROXY_GUARDS`, only a write of `$this->resource` itself ends a class proof.
+in some form ([By-reference calls](#by-reference-calls)); neither sees one on a receiver it cannot name. An assignment
+through a member or key of `$x` leaves its class, so `keepsProvenClass()` keeps a class proof past one that stores a
+value the member's column holds, as `keepsModelThrough()` decides, or names a member no column or relation of the proven
+models types; a write of `$this->resource` itself always ends the proxy's proof, and a non-null proof ends at each.
 
 A guard also proves reads non-null, in `AnalysisScope::$nonNullReads`: a `when()`, `unless()`, `mergeWhen()` or
 `mergeUnless()` condition for its value, a ternary's for each arm, `transform()`'s filled value for its callback, an
@@ -604,15 +605,15 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
 where an earlier value still reaches the read), the walk's branch join (`walk-branch-join`, naming the last key write or
 array item the branch saw, never a sibling's, that it reads as `unknown`) and the join of a merge call's sides or a
-spread helper's returns (`merge-branch-join`, naming the same for each walked or literal branch).
+spread helper's returns (`merge-branch-join`, naming the same for each walked, literal or joined branch).
 `analyzeClosureUnion()` records because `unionResults()` receives only resolved results and cannot name the expression
 it drops. `CoalesceHandler` strips its left operand's `null` with `ValueResult::stripNullArm()`, because `??` never
 returns that `null`, which the ternary union would keep. It unions both operands through `unionResults()`, which leaves
 an untyped one out. `applyConditionalDefault()` records a default only beside a value arm with a type.
 `ResourceAstAnalyzer::branchUnion()` unions type strings and cannot name the expression it drops, so the two branch
 joins name one through the untyped writes `ReadsReturnedVariables` notes, which a merge call's or a spread helper's
-walked or literal branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole under its
-own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
+walked, literal or joined branch keeps beside its analysis. One arm is never left out: `$this->resource` read whole
+under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
