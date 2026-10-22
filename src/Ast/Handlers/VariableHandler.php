@@ -434,12 +434,16 @@ final class VariableHandler implements ExpressionHandler
     {
         $dropped = DroppedUnionArms::dropped();
         // A placeholder the tag replaces is never published, so the warnings its reading raised are not either.
-        $reading = DroppedUnionArms::replaceable(
-            fn (): ?array => $this->boundExpressionValue($name, $span['expr'], $scope, $engine),
-            fn (?array $reading): bool => $this->declaredReplacement($span, $reading, $dropped) === null,
+        [$reading, $replacement] = DroppedUnionArms::replaceable(
+            function () use ($name, $span, $scope, $engine, $dropped): array {
+                $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
+
+                return [$reading, $this->declaredReplacement($span, $reading, $dropped)];
+            },
+            fn (array $read): bool => $read[1] === null,
         );
 
-        return $this->declaredReplacement($span, $reading, $dropped) ?? $reading;
+        return $replacement ?? $reading;
     }
 
     /**
