@@ -284,7 +284,7 @@ final class ReceiverMethodReturnResolver
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
             && $this->runsEloquentCollectionFilter($class, $methodName)
         ) {
-            $keyed = resolve(ReceiverClassResolver::class)->eloquentKeyedAfter($call, $methodName, $receiver->keyed);
+            $keyed = CollectionSteps::eloquentKeyedAfter($call, $methodName, $receiver->keyed);
 
             return $this->listedModels($receiver->elementModel, $keyed);
         }

@@ -113,33 +113,6 @@ final class ReceiverClassResolver
     /** The Support\Collection methods that return one item, or null where none matches and no default is passed. */
     private const array COLLECTION_ELEMENTS = ['first', 'last', 'firstWhere'];
 
-    /** The collection methods that hand back the same items, or a leading run of them, under the keys they had. */
-    private const array SAME_ITEMS = [
-        'load', 'loadMissing', 'loadCount', 'loadMorph', 'loadMorphCount', 'loadAggregate', 'loadSum', 'loadMax',
-        'loadMin', 'loadAvg', 'loadExists', 'each', 'tap', 'collect', 'toBase', 'makeHidden', 'mergeHidden',
-        'makeVisible', 'mergeVisible', 'setVisible', 'setHidden', 'append', 'setAppends', 'withoutAppends',
-        'withRelationshipAutoloading', 'takeUntil', 'takeWhile',
-    ];
-
-    /** The collection methods that hand back some of the same items, under keys they may leave out of 0..n-1. */
-    private const array SAME_ITEMS_KEYED = [
-        'filter', 'reject', 'where', 'whereStrict', 'whereIn', 'whereInStrict', 'whereNotIn', 'whereNotInStrict',
-        'whereNull', 'whereNotNull', 'whereBetween', 'whereNotBetween', 'whereInstanceOf', 'unique', 'uniqueStrict',
-        'sortBy', 'sortByDesc', 'sort', 'sortDesc', 'sortKeys', 'sortKeysDesc', 'sortKeysUsing', 'keyBy', 'skip',
-        'skipUntil', 'skipWhile', 'slice', 'reverse', 'forPage', 'take', 'diff', 'intersect', 'except', 'only',
-        'fresh',
-    ];
-
-    /** The collection steps that hand back other values than the items, though their docblocks may name none. */
-    private const array REPLACES_ITEMS = [
-        'pluck', 'map', 'mapWithKeys', 'mapToDictionary', 'mapToGroups', 'mapSpread', 'mapInto', 'flatMap', 'keys',
-        'flip', 'countBy', 'zip', 'collapse', 'flatten', 'pad', 'partition', 'groupBy', 'chunk', 'chunkWhile', 'split',
-        'splitIn', 'sliding', 'crossJoin', 'combine', 'transform', 'select', 'dot', 'undot',
-    ];
-
-    /** The SAME_ITEMS_KEYED steps Eloquent\Collection overrides to re-index the models it keeps, for most arguments. */
-    private const array ELOQUENT_RELISTS = ['only', 'except', 'unique', 'uniqueStrict', 'diff', 'intersect'];
-
     /** The docblock template each query, relation and factory class binds to the model it builds. */
     private const array QUERY_MODEL_TEMPLATES = [
         Builder::class => 'TModel',
@@ -516,45 +489,6 @@ final class ReceiverClassResolver
         return $element === null && ! $keyed
             ? $declared
             : new ReceiverType($declared->classes, elementModel: $element, keyed: $keyed);
-    }
-
-    /**
-     * Whether an Eloquent\Collection's own `only()`, `except()`, `unique()`, `diff()` or `intersect()` leaves the keys
-     * out of 0..n-1: each re-indexes the models it keeps, but for `only(null)` and `except(null)`, which keep every
-     * key, and a `unique()` by a key, which Support\Collection's own runs.
-     */
-    public function eloquentKeyedAfter(MethodCall|NullsafeMethodCall $call, string $method, bool $keyed): bool
-    {
-        if ($method === 'diff' || $method === 'intersect') {
-            return false;
-        }
-
-        $arguments = CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $method));
-        $filters = $method === 'only' || $method === 'except';
-        $passed = $arguments->named($filters ? 'keys' : 'key')?->value;
-        $nothing = $passed === null || $this->isNullLiteral($passed);
-
-        return match (true) {
-            $arguments->hasUnpack() => true,
-            $filters => $nothing && $keyed,
-            default => ! $nothing,
-        };
-    }
-
-    /**
-     * Whether a chain of calls takes a step that hands back other values than the items, as `pluck()` or `map()` does.
-     */
-    public function replacesItems(Expr $value): bool
-    {
-        while ($value instanceof MethodCall || $value instanceof NullsafeMethodCall) {
-            if ($value->name instanceof Identifier && in_array($value->name->toString(), self::REPLACES_ITEMS, true)) {
-                return true;
-            }
-
-            $value = $value->var;
-        }
-
-        return false;
     }
 
     /**
@@ -1835,8 +1769,8 @@ final class ReceiverClassResolver
      */
     private function keptItems(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver, bool $shortCircuits): ?ReceiverType
     {
-        $keepsKeys = in_array($method, self::SAME_ITEMS, true);
-        $keepsItems = $keepsKeys || $method === 'values' || in_array($method, self::SAME_ITEMS_KEYED, true);
+        $keepsKeys = CollectionSteps::keepsKeys($method);
+        $keepsItems = CollectionSteps::keepsItems($method);
 
         if (! $keepsItems
             || $receiver->collectedItems
@@ -1854,34 +1788,10 @@ final class ReceiverClassResolver
             in_array($method, ['collect', 'toBase'], true) ? [Collection::class] : $receiver->classes,
             $shortCircuits,
             elementModel: $receiver->elementModel,
-            keyed: $keepsKeys ? $receiver->keyed : $this->keyedAfter($call, $method, $receiver),
+            keyed: $keepsKeys
+                ? $receiver->keyed
+                : CollectionSteps::keyedAfter($call, $method, $receiver->keyed, $receiver->within([EloquentCollection::class])),
         );
-    }
-
-    /**
-     * Whether a step that may move a collection's keys leaves them out of 0..n-1: `values()` re-indexes, as an
-     * Eloquent\Collection's ELOQUENT_RELISTS steps do for most arguments; a front `take()` or a bare `sortKeys()`
-     * keeps a list a list, while a callback, a flag or any other step may reorder or gap it.
-     */
-    private function keyedAfter(MethodCall|NullsafeMethodCall $call, string $method, ReceiverType $receiver): bool
-    {
-        return match (true) {
-            $method === 'values' => false,
-            $method === 'take' => $receiver->keyed || ! $this->takesFromFront($call),
-            $method === 'sortKeys' => $receiver->keyed || $call->getArgs() !== [],
-            in_array($method, self::ELOQUENT_RELISTS, true) && $receiver->within([EloquentCollection::class]) => $this->eloquentKeyedAfter($call, $method, $receiver->keyed),
-            default => true,
-        };
-    }
-
-    /**
-     * Whether a `take()` call takes a literal count from the front, where a list stays a list.
-     */
-    private function takesFromFront(MethodCall|NullsafeMethodCall $call): bool
-    {
-        $arguments = CallArguments::for($call, new ReflectionMethod(Collection::class, 'take'));
-
-        return $arguments->passedCount() === 1 && ! $arguments->hasUnpack() && $arguments->named('limit')?->value instanceof Int_;
     }
 
     /**

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -83,11 +84,9 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
         foreach (array_reverse($ops) as $op) {
             if (in_array($op['name'], $identityOps, true)) {
-                $sequentialKeys = match ($op['name']) {
-                    'values' => true,
-                    'all' => $sequentialKeys,
-                    default => false,
-                };
+                $sequentialKeys = $op['name'] === 'all'
+                    ? $sequentialKeys
+                    : ! CollectionSteps::keyedAfter($op['node'], $op['name'], ! $sequentialKeys, false);
 
                 continue;
             }

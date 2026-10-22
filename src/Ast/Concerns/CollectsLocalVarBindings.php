@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -665,7 +666,7 @@ trait CollectsLocalVarBindings
 
         return match (true) {
             // A step such as pluck() or groupBy() replaces a collection's models, though the resolver may name nothing.
-            $element !== null && $resolver->replacesItems($node->expr) => false,
+            $element !== null && CollectionSteps::replacesItems($node->expr) => false,
             $held === null => true,
             $classes !== null => $held->within($classes),
             // A write holding fewer of a declared union's classes ends it, so a later read takes the narrower value.
