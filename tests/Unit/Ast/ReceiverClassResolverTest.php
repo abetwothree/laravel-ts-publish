@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -534,44 +535,38 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
     });
 });
 
-describe('ReceiverClassResolver::returnClasses()', function () {
+describe('DeclaredClasses::returnClasses()', function () {
     test('self names the declaring class, while static and $this name the class read through', function () {
         $resolver = resolve(ReceiverClassResolver::class);
         $viaChild = receiverExpr('(new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Unit\\Ast\\Fixtures\\ReceiverChildDto)->copy()');
 
-        expect($resolver->returnClasses(ReceiverChildDto::class, 'copy'))->toBe([ReceiverBaseDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'fresh'))->toBe([ReceiverChildDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docCopy'))->toBe([ReceiverBaseDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docFresh'))->toBe([ReceiverChildDto::class])
+        expect(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'copy'))->toBe([ReceiverBaseDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'fresh'))->toBe([ReceiverChildDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'docCopy'))->toBe([ReceiverBaseDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'docFresh'))->toBe([ReceiverChildDto::class])
             ->and($resolver->resolve($viaChild, postScope())?->classes)->toBe([ReceiverBaseDto::class]);
     });
 
     test('a native class, static, or class-and-null union return names its classes', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
-
-        expect($resolver->returnClasses(Carbon::class, 'setTimezone'))->toBe([Carbon::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'fluent'))->toBe([ReceiverReturnsProbe::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'classUnion'))->toBe([UrlService::class, Post::class]);
+        expect(DeclaredClasses::returnClasses(Carbon::class, 'setTimezone'))->toBe([Carbon::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'fluent'))->toBe([ReceiverReturnsProbe::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'classUnion'))->toBe([UrlService::class, Post::class]);
     });
 
     test('a native return with a builtin arm, or a missing method, names nothing', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
-
-        expect($resolver->returnClasses(ReceiverReturnsProbe::class, 'builtinUnion'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'publishable'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'noSuchMethod'))->toBeNull();
+        expect(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'builtinUnion'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'publishable'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'noSuchMethod'))->toBeNull();
     });
 
     test('an untyped method falls back to its @return docblock', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
-
-        expect($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnion'))->toBe([UrlService::class, Post::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockThis'))->toBe([ReceiverReturnsProbe::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnresolvable'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'isFeatured'))->toBeNull()
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
+        expect(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockUnion'))->toBe([UrlService::class, Post::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockThis'))->toBe([ReceiverReturnsProbe::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockUnresolvable'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'isFeatured'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
     });
 });
 

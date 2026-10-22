@@ -504,7 +504,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $result = resolve(ReceiverClassResolver::class)->returnClasses($class, $methodName) === [$class]
+        $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
             : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
 

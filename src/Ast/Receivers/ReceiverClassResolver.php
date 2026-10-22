@@ -51,10 +51,7 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionNamedType;
 use ReflectionProperty;
-use ReflectionType;
-use ReflectionUnionType;
 use Throwable;
 
 /**
@@ -62,7 +59,6 @@ use Throwable;
  *
  * The rules are in docs/components/receiver-types.md § Receiver resolution.
  *
- * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
  * @phpstan-type ProxyArms array{classes: non-empty-list<class-string>, named: bool, nullable: bool}
  * @phpstan-type CollectionGeneric array{key: string|null, element: string}
  *
@@ -278,36 +274,6 @@ final class ReceiverClassResolver
         return $call->class instanceof Name
             ? $this->namedClass($call->class, $scope)
             : $this->resolve($call->class, $scope);
-    }
-
-    /**
-     * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
-     *
-     * `static` and `$this` name the receiver class; `self` names the class that declares the method. Visibility is the
-     * caller's concern.
-     *
-     * @return non-empty-list<class-string>|null
-     */
-    public function returnClasses(string $class, string $method): ?array
-    {
-        DependencyRecorder::recordClass($class);
-
-        if (! method_exists($class, $method)) {
-            return null;
-        }
-
-        $reflection = new ReflectionMethod($class, $method);
-        $declaring = $reflection->getDeclaringClass()->getName();
-
-        if ($reflection->hasReturnType()) {
-            return $this->nativeClasses($reflection->getReturnType(), $class, $declaring);
-        }
-
-        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
-
-        return $docblock === null
-            ? null
-            : $this->docblockClasses($docblock, LaravelTsPublish::methodDeclaringFileClass($reflection), $class, $declaring);
     }
 
     /**
@@ -680,7 +646,7 @@ final class ReceiverClassResolver
      */
     private function declaredClasses(array $span, AnalysisScope $scope): ?array
     {
-        return $this->docblockClasses($span['type'], $span['context'], $scope->subjectReflection->getName(), $span['context']->getName());
+        return DeclaredClasses::docblockClasses($span['type'], $span['context'], $scope->subjectReflection->getName(), $span['context']->getName());
     }
 
     /**
@@ -1068,7 +1034,7 @@ final class ReceiverClassResolver
         $function = resolve(MacroCallResolver::class)->reflect($macro);
 
         if ($function instanceof ReflectionMethod) {
-            return $this->returnClasses($function->getDeclaringClass()->getName(), $function->getName());
+            return DeclaredClasses::returnClasses($function->getDeclaringClass()->getName(), $function->getName());
         }
 
         if ($function === null) {
@@ -1076,7 +1042,7 @@ final class ReceiverClassResolver
         }
 
         if ($function->hasReturnType()) {
-            return $this->nativeClasses($function->getReturnType(), $subjectClass, $subjectClass);
+            return DeclaredClasses::nativeClasses($function->getReturnType(), $subjectClass, $subjectClass);
         }
 
         $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $function->getDocComment());
@@ -1084,7 +1050,7 @@ final class ReceiverClassResolver
 
         return $docblock === null || $context === null
             ? null
-            : $this->docblockClasses($docblock, $context, $subjectClass, $subjectClass);
+            : DeclaredClasses::docblockClasses($docblock, $context, $subjectClass, $subjectClass);
     }
 
     /**
@@ -1399,7 +1365,7 @@ final class ReceiverClassResolver
             : null;
 
         if ($related !== null) {
-            return new ReceiverType($this->returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
+            return new ReceiverType(DeclaredClasses::returnClasses($class, $method) ?? [Relation::class], relatedModel: $related);
         }
 
         return $this->returned($class, $method);
@@ -1440,7 +1406,7 @@ final class ReceiverClassResolver
      */
     private function returned(string $class, string $method): ?ReceiverType
     {
-        $classes = $this->returnClasses($class, $method);
+        $classes = DeclaredClasses::returnClasses($class, $method);
 
         if ($classes === [EloquentCollection::class] && ReceiverType::isConcreteModel($class)) {
             $declared = $this->declaredReturn($class, $method);
@@ -1489,7 +1455,7 @@ final class ReceiverClassResolver
             return in_array($method, self::UNSAVED_QUERY_MODELS, true) ? $model->asUnsaved() : $model;
         }
 
-        $classes = $this->returnClasses($class, $method);
+        $classes = DeclaredClasses::returnClasses($class, $method);
 
         return $classes === [$class] ? new ReceiverType($classes, relatedModel: $queried) : null;
     }
@@ -1506,7 +1472,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $list = $this->typeOf($this->returnClasses($class, $method));
+        $list = $this->typeOf(DeclaredClasses::returnClasses($class, $method));
 
         return $list !== null && $list->within([Enumerable::class]) ? new ReceiverType($list->classes, elementModel: $queried) : null;
     }
@@ -1612,7 +1578,7 @@ final class ReceiverClassResolver
             default => $name->toString(),
         };
 
-        return $class !== null && $this->isClassLike($class) ? ReceiverType::of($class) : null;
+        return $class !== null && DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
     }
 
     /**
@@ -1623,7 +1589,7 @@ final class ReceiverClassResolver
         $abstract = ($call->getArgs()[0] ?? null)?->value;
         $class = $abstract === null ? null : $this->classNameFetch($abstract)?->toString();
 
-        return $class !== null && $this->isClassLike($class) ? ReceiverType::of($class) : null;
+        return $class !== null && DeclaredClasses::isClassLike($class) ? ReceiverType::of($class) : null;
     }
 
     /**
@@ -1655,7 +1621,7 @@ final class ReceiverClassResolver
     private function propertyClasses(ReflectionProperty $property, string $receiverClass): ?array
     {
         $declaring = $property->getDeclaringClass();
-        $native = $this->nativeClasses($property->getType(), $receiverClass, $declaring->getName());
+        $native = DeclaredClasses::nativeClasses($property->getType(), $receiverClass, $declaring->getName());
 
         if ($native !== null) {
             return $native;
@@ -1666,7 +1632,7 @@ final class ReceiverClassResolver
 
         return $declared === null || $declared === ''
             ? null
-            : $this->docblockClasses($declared, $declaring, $receiverClass, $declaring->getName());
+            : DeclaredClasses::docblockClasses($declared, $declaring, $receiverClass, $declaring->getName());
     }
 
     /**
@@ -1690,7 +1656,7 @@ final class ReceiverClassResolver
             return null;
         }
 
-        $arms = $this->docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
+        $arms = DeclaredClasses::docblockArms($declared, $declaring, $subject->getName(), $declaring->getName());
 
         return $arms['classes'] === [] ? null : $arms;
     }
@@ -1783,103 +1749,6 @@ final class ReceiverClassResolver
             : [$scope->instanceOfWrappedClass, $backing];
 
         return array_values(array_unique(array_filter([...$scope->provenProxy ?? [], ...$backed, ...$fallback])));
-    }
-
-    /**
-     * The classes a native type names; null when it is absent, an intersection, or has any builtin arm but `null`.
-     *
-     * @return non-empty-list<class-string>|null
-     */
-    private function nativeClasses(?ReflectionType $type, string $staticClass, string $selfClass): ?array
-    {
-        $members = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
-        $classes = [];
-
-        foreach ($members as $member) {
-            if (! $member instanceof ReflectionNamedType) {
-                return null;
-            }
-
-            $name = $member->getName();
-
-            if ($name === 'null') {
-                continue;
-            }
-
-            $class = match ($name) {
-                'static' => $staticClass,
-                'self' => $selfClass,
-                default => $name,
-            };
-
-            if (($member->isBuiltin() && $name !== 'static') || ! $this->isClassLike($class)) {
-                return null;
-            }
-
-            $classes[] = $class;
-        }
-
-        return $classes === [] ? null : array_values(array_unique($classes));
-    }
-
-    /**
-     * The classes a docblock union names, resolved against the declaring file's imports; null for any arm not a class.
-     *
-     * @param  ReflectionClass<object>  $context
-     * @return non-empty-list<class-string>|null
-     */
-    private function docblockClasses(string $type, ReflectionClass $context, string $staticClass, string $selfClass): ?array
-    {
-        $arms = $this->docblockArms($type, $context, $staticClass, $selfClass);
-
-        return $arms['named'] && $arms['classes'] !== [] ? $arms['classes'] : null;
-    }
-
-    /**
-     * The class arms a docblock union names, resolved against the declaring file's imports, whether every arm but
-     * `null` names one, and whether a `null` arm or a `?` prefix admits null.
-     *
-     * @param  ReflectionClass<object>  $context
-     * @return DocblockArms
-     */
-    private function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
-    {
-        $useMap = LaravelTsPublish::parseFileUseStatements($context);
-        $classes = [];
-        $named = true;
-        $nullable = false;
-
-        foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
-            // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
-            if (! preg_match('/^\??([\\\\\w$]+)(?:<.*>)?$/s', $part, $match)) {
-                $named = false;
-
-                continue;
-            }
-
-            $name = $match[1];
-            $nullable = $nullable || str_starts_with($part, '?');
-
-            if (strtolower($name) === 'null') {
-                $nullable = true;
-
-                continue;
-            }
-
-            $class = match ($name) {
-                '$this', 'static' => $staticClass,
-                'self' => $selfClass,
-                default => LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $context->getNamespaceName()),
-            };
-
-            if ($this->isClassLike($class)) {
-                $classes[] = $class;
-            } else {
-                $named = false;
-            }
-        }
-
-        return ['classes' => array_values(array_unique($classes)), 'named' => $named, 'nullable' => $nullable];
     }
 
     /**
@@ -2066,7 +1935,7 @@ final class ReceiverClassResolver
      */
     private function returnsItself(ReceiverType $receiver, string $method): bool
     {
-        return array_all($receiver->classes, fn (string $class): bool => $this->returnClasses($class, $method) === [$class]);
+        return array_all($receiver->classes, fn (string $class): bool => DeclaredClasses::returnClasses($class, $method) === [$class]);
     }
 
     /**
@@ -2090,15 +1959,5 @@ final class ReceiverClassResolver
     private function namesNothingNarrower(?ReceiverType $held, string $bound): bool
     {
         return $held === null || array_all($held->classes, fn (string $class): bool => is_a($bound, $class, true));
-    }
-
-    /**
-     * Whether a name is a loadable class, interface, or enum.
-     *
-     * @phpstan-assert-if-true class-string $name
-     */
-    private function isClassLike(string $name): bool
-    {
-        return class_exists($name) || interface_exists($name) || enum_exists($name);
     }
 }

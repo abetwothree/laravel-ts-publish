@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -94,7 +94,7 @@ class ModelInspector extends EloquentModelInspector
     public function declaresRelationReturn(ReflectionMethod $method): bool
     {
         $classes = $this->isRelationCandidate($method)
-            ? resolve(ReceiverClassResolver::class)->returnClasses($method->class, $method->name)
+            ? DeclaredClasses::returnClasses($method->class, $method->name)
             : null;
 
         return $classes !== null && array_all(

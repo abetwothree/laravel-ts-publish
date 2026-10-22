@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -1257,7 +1258,7 @@ class ModelAttributeResolver
     {
         $receivers = resolve(ReceiverClassResolver::class);
 
-        return $this->castersValueClass($receivers->returnClasses($castable, 'castUsing'))
+        return $this->castersValueClass(DeclaredClasses::returnClasses($castable, 'castUsing'))
             ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
     }
 

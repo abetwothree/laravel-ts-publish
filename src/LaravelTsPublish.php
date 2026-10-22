@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
@@ -1764,7 +1765,7 @@ class LaravelTsPublish
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $infos = $this->serializedCastersTypes($receivers->returnClasses($castable, 'castUsing'))
+        $infos = $this->serializedCastersTypes(DeclaredClasses::returnClasses($castable, 'castUsing'))
             ?? $this->serializedCastersTypes($receivers->bodyReturnClasses($castable, 'castUsing'));
 
         return $infos === null ? null : $this->mergeTypeScriptInfos($infos);

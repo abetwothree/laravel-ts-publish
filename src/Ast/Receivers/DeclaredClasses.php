@@ -1,0 +1,163 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionType;
+use ReflectionUnionType;
+
+/**
+ * The classes a declaration names: a method's native return type or `@return` docblock, any native type, and a
+ * docblock union's class arms. The receiver resolver reads declarations through it, and model inspection reads a
+ * relation method's return here without the resolver.
+ *
+ * @phpstan-type DocblockArms array{classes: list<class-string>, named: bool, nullable: bool}
+ *
+ * @internal
+ */
+final class DeclaredClasses
+{
+    /**
+     * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
+     *
+     * `static` and `$this` name the receiver class; `self` names the class that declares the method. Visibility is the
+     * caller's concern.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public static function returnClasses(string $class, string $method): ?array
+    {
+        DependencyRecorder::recordClass($class);
+
+        if (! method_exists($class, $method)) {
+            return null;
+        }
+
+        $reflection = new ReflectionMethod($class, $method);
+        $declaring = $reflection->getDeclaringClass()->getName();
+
+        if ($reflection->hasReturnType()) {
+            return self::nativeClasses($reflection->getReturnType(), $class, $declaring);
+        }
+
+        $docblock = resolve(PropertyDocblockTypeReader::class)->extractReturnType((string) $reflection->getDocComment());
+
+        return $docblock === null
+            ? null
+            : self::docblockClasses($docblock, LaravelTsPublish::methodDeclaringFileClass($reflection), $class, $declaring);
+    }
+
+    /**
+     * The classes a native type names; null when it is absent, an intersection, or has any builtin arm but `null`.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    public static function nativeClasses(?ReflectionType $type, string $staticClass, string $selfClass): ?array
+    {
+        $members = $type instanceof ReflectionUnionType ? $type->getTypes() : [$type];
+        $classes = [];
+
+        foreach ($members as $member) {
+            if (! $member instanceof ReflectionNamedType) {
+                return null;
+            }
+
+            $name = $member->getName();
+
+            if ($name === 'null') {
+                continue;
+            }
+
+            $class = match ($name) {
+                'static' => $staticClass,
+                'self' => $selfClass,
+                default => $name,
+            };
+
+            if (($member->isBuiltin() && $name !== 'static') || ! self::isClassLike($class)) {
+                return null;
+            }
+
+            $classes[] = $class;
+        }
+
+        return $classes === [] ? null : array_values(array_unique($classes));
+    }
+
+    /**
+     * The classes a docblock union names, resolved against the declaring file's imports; null for any arm not a class.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @return non-empty-list<class-string>|null
+     */
+    public static function docblockClasses(string $type, ReflectionClass $context, string $staticClass, string $selfClass): ?array
+    {
+        $arms = self::docblockArms($type, $context, $staticClass, $selfClass);
+
+        return $arms['named'] && $arms['classes'] !== [] ? $arms['classes'] : null;
+    }
+
+    /**
+     * The class arms a docblock union names, resolved against the declaring file's imports, whether every arm but
+     * `null` names one, and whether a `null` arm or a `?` prefix admits null.
+     *
+     * @param  ReflectionClass<object>  $context
+     * @return DocblockArms
+     */
+    public static function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
+    {
+        $useMap = LaravelTsPublish::parseFileUseStatements($context);
+        $classes = [];
+        $named = true;
+        $nullable = false;
+
+        foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
+            // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
+            if (! preg_match('/^\??([\\\\\w$]+)(?:<.*>)?$/s', $part, $match)) {
+                $named = false;
+
+                continue;
+            }
+
+            $name = $match[1];
+            $nullable = $nullable || str_starts_with($part, '?');
+
+            if (strtolower($name) === 'null') {
+                $nullable = true;
+
+                continue;
+            }
+
+            $class = match ($name) {
+                '$this', 'static' => $staticClass,
+                'self' => $selfClass,
+                default => LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $context->getNamespaceName()),
+            };
+
+            if (self::isClassLike($class)) {
+                $classes[] = $class;
+            } else {
+                $named = false;
+            }
+        }
+
+        return ['classes' => array_values(array_unique($classes)), 'named' => $named, 'nullable' => $nullable];
+    }
+
+    /**
+     * Whether a name is a loadable class, interface, or enum.
+     *
+     * @phpstan-assert-if-true class-string $name
+     */
+    public static function isClassLike(string $name): bool
+    {
+        return class_exists($name) || interface_exists($name) || enum_exists($name);
+    }
+}
