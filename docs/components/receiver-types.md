@@ -91,7 +91,7 @@ Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `v
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
 and loses its short circuit; where no class it holds can pass, or it holds none, the proven classes stand. So a plain
 `$x = …;` local, a closure parameter and a loop variable narrow alike. An unbound variable is `null`. No reader of a
-variable's members guesses its model from the ambient `closureRelationModelClass`, and a `...$x->toArray()` spread no
+variable's members guesses its model from an enclosing relation closure, and a `...$x->toArray()` spread no
 binding names spreads the one model `$x` holds. [AST engine § Narrowing](ast-engine.md#narrowing) covers what writes
 `varGuardBindings`.
 
@@ -391,11 +391,9 @@ and every resource still publish the getter's own analysis, and `CommentRelation
 `ReleaseColumnsResource` pin both kinds of body. See
 [AccessorBodyAnalyzer § A reader that carries no import][reader-no-import].
 
-One read keeps imports on purpose: `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` types
-`EnumResource::make($author->role)` on a bound closure parameter from the attribute's first enum FQCN, a channel a
-spelling without imports can lose. The enum it names is one the body fallback drops anyway. A wrap over a local or any
-other resolved payload, and a `$this->helper()` that `SubjectHelperReturnResolver` reads, stay `unknown` without
-imports, so their siblings keep their types.
+An `EnumResource` wrap over a closure parameter's column, a local or any other resolved payload, and a
+`$this->helper()` that `SubjectHelperReturnResolver` reads, stay `unknown` without imports, so their siblings keep their
+types.
 
 An accessor still costs the method its whole shape when its type names a class any other way:
 

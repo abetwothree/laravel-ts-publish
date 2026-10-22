@@ -91,12 +91,12 @@ every profile, the order handlers run in decides which one answers; see
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()` and `...static::m()`
   spread the same way. It sets every name-keyed table aside through `AnalysisScope::enterSubjectMethod()`, keeping only
-  the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, empties the `resolvingLocalVars` and `readingLocals`
-  guards and clears `closureRelationModelClass`, since the helper's `$this` is the subject. It re-derives
-  `requestVarNames` and `declaringFileClass`, binds the method's parameters, and what the call passes them through
-  `CallSite::passedTo()`, as [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters)
-  says, and `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread
-  or a cycle into an empty analysis instead of recursing until memory runs out.
+  the guard proofs `ReadsNonNullGuards::proofsAcrossCall()` names, and empties the `resolvingLocalVars` and
+  `readingLocals` guards. It re-derives `requestVarNames` and `declaringFileClass`, binds the method's parameters, and
+  what the call passes them through `CallSite::passedTo()`, as
+  [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
+  `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
+  into an empty analysis instead of recursing until memory runs out.
 - **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
   `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
   own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
@@ -432,9 +432,8 @@ on a key no cast covers.
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
 [`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
-chain at `$modelClass`, and
-`RelationCollectionChainHandler` and `StaticCallHandler` never type a `$this->prop` call from
-`AnalysisScope::$closureRelationModelClass`, the relation's model. A model that declares a real `resource` relation
+chain at `$modelClass`, and `RelationCollectionChainHandler` and `StaticCallHandler` type a `$this->prop` call from it
+too, never from the model the closure's parameter holds. A model that declares a real `resource` relation
 reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call
 on `$this->resource` inside such a closure.
 
@@ -916,7 +915,9 @@ stands for two different things, so it stays two references.
 parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
 to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
 list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
-in every subject: an enum branch returns before `resourceWrapType()`.
+in every subject, since an enum branch returns before `resourceWrapType()`, but `enumWrapValue()` keeps that method's
+`filter()` reach: a `make()` or `new` wrap in a `map()` body kept as a `Collection` drops it, inside a relation closure
+or not.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
