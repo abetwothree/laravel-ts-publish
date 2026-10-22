@@ -394,6 +394,13 @@ to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
 
+### A mapped API resource read through `toArray()` or `jsonSerialize()` publishes `unknown`
+
+`$this->members->map(fn ($m) => new ProfileResource($m->profile))->all()` publishes `(ProfileResource | null)[]`, since
+Laravel sends `null` for a profile loaded as `null`. The same map ending in `->toArray()` publishes `unknown`, and a
+helper returning that list `unknown[]`, though Laravel sends the same list; `->jsonSerialize()`, which resolves each
+resource at once, publishes `unknown` too. End the chain with `->all()`.
+
 ### A relation method that declares no relation class and builds it through a helper is left out
 
 A method with neither a relation return type nor a `@return` naming a relation class, whose body builds the relation
@@ -728,6 +735,13 @@ left side sets. Only an operand typed as one object, such as a `Record` cast or 
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
 adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value, a merge
 closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
+
+### A `+` default for a key only some paths set is left out
+
+`if ($c) { $d['label'] = 5; } $d += ['label' => 'none'];` publishes `label?: number`, though Laravel always sends
+`label`, as `5` or `'none'`: a key the left side of `+` holds drops the right side's copy, even where the left's is
+optional. Write the default first, `$d = ['label' => 'none'];`, and the branch's write after it, which publishes
+`label: string | number`.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
