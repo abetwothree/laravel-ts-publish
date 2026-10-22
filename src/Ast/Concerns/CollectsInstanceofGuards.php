@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -34,13 +35,13 @@ use PhpParser\Node\Stmt\While_;
 
 /**
  * The guard pass: an `if` condition narrows a variable by its `instanceof` tests, and proves reads non-null, in the
- * blocks it runs and past the branches that leave. CollectsLocalVarBindings composes it: its write collection is what
- * decides a binding or a proof is safe, and both passes read the same statement list.
+ * blocks it runs and past the branches that leave. CollectsLocalVarBindings composes it: the VariableWrites scan it
+ * passes decides a binding or a proof is safe, and both passes read the same statement list.
  *
  * @phpstan-type VariableProofs = list<array{string, non-empty-list<class-string>, Expr}>
  *
- * @phpstan-import-type NamedWrite from CollectsLocalVarBindings
- * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
+ * @phpstan-import-type NamedWrite from VariableWrites
+ * @phpstan-import-type NamedWrites from VariableWrites
  *
  * @internal
  */
@@ -60,11 +61,11 @@ trait CollectsInstanceofGuards
      * unless the write is an assignment through a member or key of it that keepsProvenClass() says keeps the proof.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
+     * @param  NamedWrites|null  $writes  the body's writes, when the caller has scanned them
      */
     protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
-        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         $this->bindBlockGuards($stmts, null, $scope, $writes);
         $this->proveGuardedReads($stmts, $scope, $writes);
@@ -85,7 +86,7 @@ trait CollectsInstanceofGuards
 
         $paths = [];
 
-        foreach ($this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, , $target]) {
+        foreach (VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass) as [$name, , $target]) {
             $path = $name === 'this' ? $this->thisReadPath($target) : null;
 
             if ($path !== null) {
@@ -187,7 +188,7 @@ trait CollectsInstanceofGuards
      * $end is the offset the block ends at, or null for a whole body.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function bindBlockGuards(array $stmts, ?int $end, AnalysisScope $scope, array $writes): void
     {
@@ -209,7 +210,7 @@ trait CollectsInstanceofGuards
      * failed tests of earlier branches in later ones and the `else`, and those of the leading branches that always
      * leave for the statements after the chain, up to $end.
      *
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function bindIfGuards(If_ $if, ?int $end, AnalysisScope $scope, array $writes): void
     {
@@ -251,7 +252,7 @@ trait CollectsInstanceofGuards
      *
      * @param  VariableProofs  $proofs
      * @param  array<Node\Stmt>  $block
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function bindBranch(array $proofs, array $block, AnalysisScope $scope, array $writes): void
     {
@@ -307,7 +308,7 @@ trait CollectsInstanceofGuards
      * called method's body may rewrite a read its caller's guard tested.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function proveGuardedReads(array $stmts, AnalysisScope $scope, array $writes): void
     {
@@ -323,7 +324,7 @@ trait CollectsInstanceofGuards
      * is the offset the block ends at, or null for a whole body.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function proveBlockGuards(array $stmts, ?int $end, AnalysisScope $scope, array $writes): void
     {
@@ -345,7 +346,7 @@ trait CollectsInstanceofGuards
      * the `else` where all failed, and the statements after the chain, up to $end, where the conditions of the leading
      * branches that always exit failed.
      *
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function proveIfGuards(If_ $if, ?int $end, AnalysisScope $scope, array $writes): void
     {
@@ -384,7 +385,7 @@ trait CollectsInstanceofGuards
      *
      * @param  list<Expr>  $reads
      * @param  array<Node\Stmt>  $block
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function proveBlock(array $reads, array $block, If_ $if, AnalysisScope $scope, array $writes): void
     {
@@ -438,7 +439,7 @@ trait CollectsInstanceofGuards
      * proof's $classes pass over a write that keeps them.
      *
      * @param  list<array<Node\Stmt>>  $exits
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      * @param  list<class-string>  $classes  the classes a class proof gives the variable; none for a non-null proof
      */
     private function writtenWithin(
@@ -453,7 +454,7 @@ trait CollectsInstanceofGuards
         // `$this->resource` is written through the `this` variable.
         $variable = $name === AnalysisScope::PROXY_GUARDS ? 'this' : $name;
 
-        foreach ($this->writesFrom($variable, $from, $writes) as $write) {
+        foreach (VariableWrites::from($variable, $from, $writes) as $write) {
             [, $node, , $kind] = $write;
 
             // A `foreach` around the test assigns its value before each pass, so never between the test and a read.

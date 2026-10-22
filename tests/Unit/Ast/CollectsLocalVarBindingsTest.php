@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -23,29 +24,16 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
- * The names collectVariableWrites() reports for a parsed body, in order, with UnseenWritesResource as the subject.
+ * The names VariableWrites::of() reports for a parsed body, in order, with UnseenWritesResource as the subject.
  *
  * @return list<string>
  */
 function localWriteNames(string $body): array
 {
-    $host = new class
-    {
-        use CollectsLocalVarBindings;
-
-        /**
-         * The names the write scan reports.
-         *
-         * @param  array<Node>  $stmts
-         * @return list<string>
-         */
-        public function names(array $stmts): array
-        {
-            return array_column($this->collectVariableWrites($stmts, new ReflectionClass(UnseenWritesResource::class)), 0);
-        }
-    };
-
-    return $host->names(new AstParser()->parseSource('<?php '.$body));
+    return array_column(
+        VariableWrites::of(new AstParser()->parseSource('<?php '.$body), new ReflectionClass(UnseenWritesResource::class)),
+        0,
+    );
 }
 
 // UnseenWritesResource declares fillByReference() and fillInstance(), each taking its argument by reference.
@@ -639,7 +627,7 @@ function marksFilled(string $body, string $before = ''): array|bool
         public function mark(New_ $new, array $stmts): void
         {
             $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-            $this->markFilled($new, 'p', $stmts, $this->collectVariableWrites($stmts), $scope);
+            $this->markFilled($new, 'p', $stmts, VariableWrites::of($stmts), $scope);
         }
     };
 

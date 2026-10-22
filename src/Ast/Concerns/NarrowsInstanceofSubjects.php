@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use PhpParser\Node\Expr\Variable;
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
  * ReceiverClassResolver's receiver alike, and an analyzer's value inside an `if` block that proves `$this->resource`.
- * Hosts must also use InspectsAstNodes and CollectsLocalVarBindings.
+ * Hosts must also use InspectsAstNodes.
  *
  * @phpstan-import-type VarGuardBinding from AnalysisScope
  *
@@ -70,7 +71,7 @@ trait NarrowsInstanceofSubjects
 
         // `$this->resource` and a `$this->prop` path are written through the `this` variable.
         if (($variable === null && ! $isProxy && $path === null)
-            || in_array($variable ?? 'this', $this->collectWrittenVariableNames([$arm], $scope), true)
+            || in_array($variable ?? 'this', VariableWrites::writtenNames([$arm], $scope), true)
         ) {
             return null;
         }

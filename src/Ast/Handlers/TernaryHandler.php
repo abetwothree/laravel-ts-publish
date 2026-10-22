@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\NarrowsInstanceofSubjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsInstanceofChains;
@@ -26,7 +25,6 @@ use PhpParser\Node\Expr\Ternary;
  */
 final class TernaryHandler implements ExpressionHandler
 {
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
     use NarrowsInstanceofSubjects;
     use ReadsInstanceofChains;

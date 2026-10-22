@@ -6,9 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
-use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
-use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
@@ -21,7 +20,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Enumerable;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
-use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\ClosureUse;
 use PhpParser\Node\Expr;
@@ -31,13 +29,10 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
-use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp;
-use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Cast;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
-use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\List_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
@@ -50,43 +45,32 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use PhpParser\Node\Param;
-use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\StaticVar;
 use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\Else_;
 use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\Expression as ExpressionStmt;
-use PhpParser\Node\Stmt\For_;
-use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Function_;
-use PhpParser\Node\Stmt\Global_;
 use PhpParser\Node\Stmt\If_;
-use PhpParser\Node\Stmt\Static_;
 use PhpParser\Node\Stmt\TryCatch;
-use PhpParser\Node\Stmt\Unset_;
-use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
-use ReflectionClass;
 
 /**
- * The one sequence that seeds a method's or a closure's body, seedBody(), and the write scan its passes share. Every
- * reader of a body seeds it here, so each reads the body's variables the same way.
+ * The one sequence that seeds a method's or a closure's body, seedBody(), from one VariableWrites scan its passes
+ * share. Every reader of a body seeds it here, so each reads the body's variables the same way.
  *
- * @phpstan-type NamedWrite = array{string, Node, Expr, VariableWrite}
- * @phpstan-type VariableWrites = list<NamedWrite>
  * @phpstan-type KeptWrites = list<array{string, ByReferenceForm}>
- * @phpstan-type PartitionedWrites = array{VariableWrites, KeptWrites}
+ * @phpstan-type PartitionedWrites = array{NamedWrites, KeptWrites}
  * @phpstan-type JoinedState = array{list<Expr>|null, bool, bool, list<Expr>|null}
  *
  * @phpstan-import-type ByReferenceForm from AnalysisScope
  * @phpstan-import-type BindingGap from AnalysisScope
+ * @phpstan-import-type NamedWrite from VariableWrites
+ * @phpstan-import-type NamedWrites from VariableWrites
  *
  * @internal
  */
@@ -109,7 +93,7 @@ trait CollectsLocalVarBindings
      */
     protected function seedBody(array $stmts, AnalysisScope $scope, ?ClosureExpr $closure = null): void
     {
-        $writes = $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes = VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
         [$replacing, $kept] = $this->partitionWrites($writes, $stmts, $scope);
         $binding = $this->bindingWrites($replacing, $scope);
 
@@ -165,7 +149,7 @@ trait CollectsLocalVarBindings
      * A by-reference call that keeps the value in some form is no write here; seedBody() records the form it keeps.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites|null  $writes  the body's writes that replace a variable, when the caller has sorted them
+     * @param  NamedWrites|null  $writes  the body's writes that replace a variable, when the caller has sorted them
      * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
     protected function collectLocalVarBindings(
@@ -175,7 +159,7 @@ trait CollectsLocalVarBindings
         ?array &$parked = null,
     ): void {
         $writes ??= $this->bindingWrites($this->partitionWrites(
-            $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
+            VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass),
             $stmts,
             $scope,
         )[0], $scope);
@@ -207,7 +191,7 @@ trait CollectsLocalVarBindings
      * runs it again. A name holding a parameter's or a seeded binding keeps the rules endBindingsAtWrites() sets.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
     protected function bindBlockLocals(array $stmts, AnalysisScope $scope, array $writes, ?array &$parked = null): void
@@ -234,7 +218,7 @@ trait CollectsLocalVarBindings
      * A closure's parameter nothing binds starts holding what its call passed, which no receiver keeps.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      * @param  array<string, Node>  $ended  the write that ended each binding, from endBindingsAtWrites()
      * @param  list<string>  $parameters  the names of the parameters of the closure whose body the statements are
      */
@@ -279,7 +263,7 @@ trait CollectsLocalVarBindings
      * write through, is left out.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      */
     protected function collectKeyBuiltLocals(array $stmts, AnalysisScope $scope, array $writes): void
     {
@@ -316,7 +300,7 @@ trait CollectsLocalVarBindings
      * in an `if` or `switch` block that always leaves the function (exitingBlock()) ends it inside that block alone.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
+     * @param  NamedWrites|null  $writes  the body's writes, when the caller has scanned them
      * @return array<string, Node> the write that ended each binding a write ended
      */
     protected function endBindingsAtWrites(array $stmts, AnalysisScope $scope, ?array $writes = null): array
@@ -326,7 +310,7 @@ trait CollectsLocalVarBindings
         }
 
         $ended = [];
-        $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $writes ??= VariableWrites::of($stmts, $scope->subjectReflection, $scope->declaringFileClass);
 
         foreach ($writes as [$name, $node, $target, $kind]) {
             // A write past an end already recorded cannot move it earlier.
@@ -337,7 +321,7 @@ trait CollectsLocalVarBindings
                 continue;
             }
 
-            $form = $this->byReferenceForm($node, $target, $writes, $stmts, $scope);
+            $form = VariableWrites::byReferenceForm($node, $target, $writes, $stmts, $scope);
 
             if ($this->keepsBinding($name, $node, $kind, $form, $scope, $this->isStatementOf($stmts, $node))) {
                 continue;
@@ -377,74 +361,12 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * Collect every local variable name written anywhere in a statement tree, as collectVariableWrites() counts writes,
-     * but a by-reference call that keeps the value in some form, whose form the read checks.
-     *
-     * @param  array<Node>  $stmts
-     * @return list<string>
-     */
-    protected function collectWrittenVariableNames(array $stmts, AnalysisScope $scope): array
-    {
-        return array_column($this->partitionWrites(
-            $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass),
-            $stmts,
-            $scope,
-        )[0], 0);
-    }
-
-    /**
-     * Every local variable write in a statement tree, as the name written, the node writing it and the expression it
-     * writes to: an assignment or increment, a `foreach` target or by-reference array, a `catch` variable, `unset()`,
-     * `static`, `global`, a by-reference `use`, or an argument to a by-reference parameter of a callee the call names.
-     *
-     * An assignment, an increment, a `foreach` target and a `use` also count the variable a member or key they write
-     * goes through; the rest count just the variable they name or key into, so `unset($o->p)` writes nothing.
-     *
-     * A nested closure's write reaches the body only for a name it imports by reference, and an arrow function's only
-     * through `$this`; a nested class's or a named function's never does.
-     *
-     * @param  array<Node>  $stmts
-     * @param  ReflectionClass<object>|null  $subject  the class `$this`, `self` and `static` name, for a call's callee
-     * @param  ReflectionClass<object>|null  $declaration  the class or trait whose body holds the statements, else the
-     *                                                     subject
-     * @return VariableWrites
-     */
-    protected function collectVariableWrites(
-        array $stmts,
-        ?ReflectionClass $subject = null,
-        ?ReflectionClass $declaration = null,
-    ): array {
-        /** @var VariableWrites $writes */
-        $writes = [];
-
-        $this->collectWritesInto($stmts, [], $writes, $subject, $declaration ?? $subject);
-
-        return $writes;
-    }
-
-    /**
-     * The writes to a variable that can still land once the body reaches an offset: each that does not end before it.
-     *
-     * The one position-ordered rule both the early-exit guard pass and an inline `@var` read a variable's writes by.
-     *
-     * @param  VariableWrites  $writes
-     * @return VariableWrites
-     */
-    protected function writesFrom(string $name, int $offset, array $writes): array
-    {
-        return array_values(array_filter(
-            $writes,
-            fn (array $write): bool => $write[0] === $name && $write[1]->getEndFilePos() >= $offset,
-        ));
-    }
-
-    /**
      * Mark the `new` a variable is bound to as holding the attributes its body fills, before a read or after it, but
      * not past a later write in the list holding that write: Laravel then sends what was written. An attribute writer
      * or calls on it as a statement fill every one; a member or key write fills that column.
      *
      * @param  array<Node>  $body
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, read here once
      */
     protected function markFilled(
@@ -502,7 +424,7 @@ trait CollectsLocalVarBindings
             if ($param->var instanceof Variable && is_string($param->var->name) && $param->default instanceof New_
                 && ($scope->closureParamExprBindings[$param->var->name] ?? null) === $param->default
             ) {
-                $writes ??= $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass);
+                $writes ??= VariableWrites::of($body, $scope->subjectReflection, $scope->declaringFileClass);
                 $this->markFilled($param->default, $param->var->name, $body, $writes, $scope, $parked);
             }
         }
@@ -514,7 +436,7 @@ trait CollectsLocalVarBindings
      * sees a later write; a loop holding both is one statement, so the span ends where it starts, not at the write.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function bindDeclaredType(
         ExpressionStmt $assignment,
@@ -530,7 +452,7 @@ trait CollectsLocalVarBindings
 
         $before = null;
 
-        foreach ($this->writesFrom($name, $assignment->getStartFilePos(), $writes) as [, $write]) {
+        foreach (VariableWrites::from($name, $assignment->getStartFilePos(), $writes) as [, $write]) {
             if ($write === $assign) {
                 continue;
             }
@@ -593,7 +515,7 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $block
      * @param  array<Node\Stmt>  $body  the whole body, for the writes that fill a `new` model a local holds
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      * @param  list<ArrowFunction|ClosureExpr>|null  $parked  the body's closures that never run, once read
      */
     private function bindBlock(array $block, array $body, AnalysisScope $scope, array $writes, ?array &$parked): void
@@ -619,7 +541,7 @@ trait CollectsLocalVarBindings
      * block's statement holding the name's next write.
      *
      * @param  non-empty-array<Node\Stmt>  $block
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function bindBlockAssignment(
         ExpressionStmt $statement,
@@ -651,7 +573,7 @@ trait CollectsLocalVarBindings
      * else at the block's end. Null where another name or a closure can write the variable through a reference.
      *
      * @param  non-empty-array<Node\Stmt>  $block
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      */
     private function blockSpanEnd(string $name, int $after, array $block, array $writes): ?int
     {
@@ -680,7 +602,7 @@ trait CollectsLocalVarBindings
      * closure declares the name or imports it by reference: from there the name is the closure's own variable.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      */
     private function endCapturedBindings(ClosureExpr $closure, array $stmts, AnalysisScope $scope, array $writes): void
     {
@@ -842,24 +764,16 @@ trait CollectsLocalVarBindings
      * Split a body's writes into those that replace a variable's value and the by-reference ones that keep it in some
      * form, each with the form it keeps.
      *
-     * @param  VariableWrites  $writes
+     * @param  NamedWrites  $writes
      * @param  array<Node>  $stmts  the body the writes were scanned from
      * @return PartitionedWrites
      */
     private function partitionWrites(array $writes, array $stmts, AnalysisScope $scope): array
     {
-        $replacing = [];
+        [$replacing, $formed] = VariableWrites::partition($writes, $stmts, $scope);
         $kept = [];
 
-        foreach ($writes as $write) {
-            $form = $this->byReferenceForm($write[1], $write[2], $writes, $stmts, $scope);
-
-            if ($form === null || $form['effect'] === ByReferenceEffect::Replaces) {
-                $replacing[] = $write;
-
-                continue;
-            }
-
+        foreach ($formed as [$write, $form]) {
             // A read before the call, such as a copy's, sees the value it held; a call in a block that returns
             // leaves the reads past that block alone, as a binding end or gap does.
             $block = $this->exitingBlock($stmts, $write[1]);
@@ -875,8 +789,8 @@ trait CollectsLocalVarBindings
      * The writes that replace what a variable holds, but each through a member or an offset of a variable holding only
      * models: Laravel stores the write as an attribute of the same model, so the binding stands.
      *
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
-     * @return VariableWrites
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
+     * @return NamedWrites
      */
     private function bindingWrites(array $writes, AnalysisScope $scope): array
     {
@@ -900,7 +814,7 @@ trait CollectsLocalVarBindings
      * binding it came in with, if any, and each value the body assigns it, where no write of another kind gives it a
      * value the scan cannot read, and each member or key write stores a value its column holds.
      *
-     * @param  VariableWrites  $writes  the body's writes that replace a variable
+     * @param  NamedWrites  $writes  the body's writes that replace a variable
      */
     private function holdsOnlyModels(string $name, array $writes, AnalysisScope $scope): bool
     {
@@ -972,219 +886,6 @@ trait CollectsLocalVarBindings
     }
 
     /**
-     * What a by-reference argument or a by-reference `foreach` leaves in the variable it writes, or in the member a key
-     * path of literal keys names, with the values it adds or writes into an element; null for a write neither makes.
-     *
-     * @param  VariableWrites  $writes  every write of the body, for those a `foreach` element's variable makes
-     * @param  array<Node>  $stmts  the body, for the loops around a `foreach`
-     * @return ByReferenceForm|null
-     */
-    private function byReferenceForm(Node $node, Expr $target, array $writes, array $stmts, AnalysisScope $scope): ?array
-    {
-        $path = $this->keyPath($target);
-
-        if ($node instanceof Foreach_ && $node->byRef && $node->expr === $target) {
-            $element = $node->valueVar instanceof Variable && is_string($node->valueVar->name) ? $node->valueVar->name : null;
-
-            if ($element === null || $path === null) {
-                return $this->form(ByReferenceEffect::Replaces);
-            }
-
-            // After the loop the variable still points at the last element, so a later write lands in it, as one before
-            // the loop does when a loop around both runs it again; unset() breaks the reference.
-            $loops = new NodeFinder()->find($stmts, fn (Node $loop): bool => $loop !== $node
-                && ($loop instanceof For_ || $loop instanceof Foreach_ || $loop instanceof While_ || $loop instanceof Do_)
-                && StatementBlocks::encloses($loop, $node));
-            $values = $this->elementValues(array_values(array_filter(
-                $writes,
-                fn (array $write): bool => $write[0] === $element && $write[1] !== $node && ! $write[1] instanceof Unset_
-                    && ($write[1]->getStartFilePos() > $node->getStartFilePos()
-                        || array_any($loops, fn (Node $loop): bool => StatementBlocks::encloses($loop, $write[1]))),
-            )));
-
-            return $values === null
-                ? $this->form(ByReferenceEffect::Replaces)
-                : $this->form(ByReferenceEffect::WritesElements, $values, $path);
-        }
-
-        if (! $node instanceof CallLike) {
-            return null;
-        }
-
-        if ($path === null) {
-            return $this->form(ByReferenceEffect::Replaces);
-        }
-
-        $effect = resolve(ByReferenceArguments::class)->effect($node, $target);
-
-        return match ($effect) {
-            ByReferenceEffect::Appends => $this->appendedForm($node, $target, $path),
-            ByReferenceEffect::WritesElements, ByReferenceEffect::WritesLeaves => $this->walkedForm($node, $effect, $path, $scope),
-            default => $this->form($effect, [], $path),
-        };
-    }
-
-    /**
-     * The literal keys a target reaches into its variable through, outermost first: none for the variable itself, and
-     * null for a computed or appended key, or anything but a variable at the root.
-     *
-     * @return list<string>|null
-     */
-    private function keyPath(Expr $target): ?array
-    {
-        $path = [];
-
-        while ($target instanceof ArrayDimFetch) {
-            if (! $target->dim instanceof String_ && ! $target->dim instanceof Int_) {
-                return null;
-            }
-
-            array_unshift($path, (string) $target->dim->value);
-            $target = $target->var;
-        }
-
-        return $target instanceof Variable && is_string($target->name) ? $path : null;
-    }
-
-    /**
-     * What array_push(), array_unshift() or array_splice() leaves: the list, with each value it adds, unless one is
-     * unpacked. array_splice() adds its replacement, a list literal's items or the one value it is.
-     *
-     * @param  list<string>  $path
-     * @return ByReferenceForm
-     */
-    private function appendedForm(CallLike $call, Expr $target, array $path): array
-    {
-        if ($call instanceof FuncCall && $call->name instanceof Name && $call->name->toLowerString() === 'array_splice') {
-            $replacement = CallArguments::fromNames($call->getArgs(), ['array', 'offset', 'length', 'replacement'])
-                ->named('replacement')?->value;
-            $values = match (true) {
-                $replacement === null => [],
-                $replacement instanceof Array_ => array_any($replacement->items, fn (?ArrayItem $item): bool => $item === null || $item->unpack)
-                    ? null
-                    : array_values(array_filter(array_map(fn (?ArrayItem $item): ?Expr => $item?->value, $replacement->items))),
-                default => [$replacement],
-            };
-        } else {
-            $added = array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->value !== $target));
-            $values = array_any($added, fn (Arg $arg): bool => $arg->unpack) ? null : array_map(fn (Arg $arg): Expr => $arg->value, $added);
-        }
-
-        return $values === null
-            ? $this->form(ByReferenceEffect::Replaces)
-            : $this->form(ByReferenceEffect::Appends, $values, $path);
-    }
-
-    /**
-     * What array_walk() or array_walk_recursive() leaves: every element, when its callback takes none by reference,
-     * else each element, or each leaf, with the values its callback writes into it, read only from a closure written
-     * at the call and read in that closure's own scope.
-     *
-     * @param  list<string>  $path
-     * @return ByReferenceForm
-     */
-    private function walkedForm(CallLike $call, ByReferenceEffect $effect, array $path, AnalysisScope $scope): array
-    {
-        $callback = CallArguments::fromNames($call->getArgs(), ['array', 'callback', 'arg'])->named('callback')?->value;
-
-        if (! $callback instanceof ClosureExpr && ! $callback instanceof ArrowFunction) {
-            return $this->form(ByReferenceEffect::Replaces);
-        }
-
-        $parameter = $callback->params[0] ?? null;
-
-        if ($parameter === null || ! $parameter->byRef) {
-            return $this->form(ByReferenceEffect::KeepsAny, [], $path);
-        }
-
-        $element = ! $parameter->variadic && $parameter->var instanceof Variable && is_string($parameter->var->name)
-            ? $parameter->var->name
-            : null;
-        $body = $callback instanceof ClosureExpr ? $callback->stmts : [$callback->expr];
-        $values = $element === null ? null : $this->elementValues(array_values(array_filter(
-            $this->collectVariableWrites($body, $scope->subjectReflection, $scope->declaringFileClass),
-            fn (array $write): bool => $write[0] === $element,
-        )));
-
-        return $values === null ? $this->form(ByReferenceEffect::Replaces) : $this->form($effect, $values, $path, $callback);
-    }
-
-    /**
-     * The values writes to an element's variable put in the element, or null when one is a write the scan cannot type:
-     * anything but an assignment, an arithmetic or `.=` operator, `??=`, `++` or `--` of the variable itself. An
-     * increment stands for its own value, and an operator for the operation it performs.
-     *
-     * @param  VariableWrites  $writes
-     * @return list<Expr>|null
-     */
-    private function elementValues(array $writes): ?array
-    {
-        $values = [];
-
-        foreach ($writes as [, $node, $target]) {
-            $value = match (true) {
-                ! $target instanceof Variable => null,
-                $node instanceof Assign, $node instanceof CoalesceAssign => $node->expr,
-                $node instanceof AssignOp => $this->compoundValue($node),
-                $node instanceof PreInc, $node instanceof PostInc, $node instanceof PreDec, $node instanceof PostDec => $node,
-                default => null,
-            };
-
-            if ($value === null) {
-                return null;
-            }
-
-            $values[] = $value;
-        }
-
-        return $values;
-    }
-
-    /**
-     * The operation a compound assignment performs, `$v .= 'x'` as `$v . 'x'`, or null for a bitwise or shift operator.
-     */
-    private function compoundValue(AssignOp $assign): ?Expr
-    {
-        $attributes = $assign->getAttributes();
-
-        return match (true) {
-            $assign instanceof AssignOp\Concat => new BinaryOp\Concat($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Plus => new BinaryOp\Plus($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Minus => new BinaryOp\Minus($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Mul => new BinaryOp\Mul($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Div => new BinaryOp\Div($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Mod => new BinaryOp\Mod($assign->var, $assign->expr, $attributes),
-            $assign instanceof AssignOp\Pow => new BinaryOp\Pow($assign->var, $assign->expr, $attributes),
-            default => null,
-        };
-    }
-
-    /**
-     * A by-reference form of an effect, with the values the call adds or writes, the key path it takes, the walk's
-     * callback whose scope reads those values, and the span of reads it holds for, every read until it is placed.
-     *
-     * @param  list<Expr>  $values
-     * @param  list<string>  $path
-     * @return ByReferenceForm
-     */
-    private function form(
-        ByReferenceEffect $effect,
-        array $values = [],
-        array $path = [],
-        ArrowFunction|ClosureExpr|null $callback = null,
-    ): array {
-        return [
-            'effect' => $effect,
-            'values' => $values,
-            'path' => $path,
-            'callback' => $callback,
-            'after' => PHP_INT_MIN,
-            'before' => null,
-            'sole' => false,
-        ];
-    }
-
-    /**
      * The statements of the innermost `if`, `elseif`, `else` or `case` block holding a node that always leaves the
      * function, or null when none does. A block inside a nested function leaves that function, and one inside a `try`
      * whose `catch` or `finally` can run after it may resume past it.
@@ -1249,7 +950,7 @@ trait CollectsLocalVarBindings
      *
      * @param  array<Node\Stmt>  $stmts  the list walked
      * @param  array<Node\Stmt>  $body  the whole body, which a block that always exits leaves
-     * @param  VariableWrites  $writes  the name's own writes
+     * @param  NamedWrites  $writes  the name's own writes
      * @param  Node|null  $ender  the write that ended the name's binding, if one did
      * @param  JoinedState  $state  the values the name may hold, null for none the scan knows, whether the binding it
      *                              came in with may still hold, whether a receiver keeps that binding, and in a
@@ -1336,7 +1037,7 @@ trait CollectsLocalVarBindings
      * catch starts from what the name held before the `try` or any value the body assigned before it threw.
      *
      * @param  array<Node\Stmt>  $body
-     * @param  VariableWrites  $writes  the name's own writes
+     * @param  NamedWrites  $writes  the name's own writes
      * @param  JoinedState  $state
      * @return JoinedState|null
      */
@@ -1392,7 +1093,7 @@ trait CollectsLocalVarBindings
      * The state past a statement whose writes of the name lie nested in it: the values before it and those its
      * assignments add, or none the scan knows where one is a write of another kind, which stops a parameter's walk.
      *
-     * @param  VariableWrites  $writes  the statement's writes of the name
+     * @param  NamedWrites  $writes  the statement's writes of the name
      * @param  JoinedState  $state
      * @return JoinedState|null
      */
@@ -1575,181 +1276,6 @@ trait CollectsLocalVarBindings
                 $bound,
                 fn (): bool => resolve(ReceiverClassResolver::class)->resolve($bound, $scope) === null,
             ) === true);
-    }
-
-    /**
-     * What a write node does to the variable a target of it names, read once as the scan records the write; the one
-     * place writes are told apart.
-     */
-    private function writeKind(Node $node, Expr $target): VariableWrite
-    {
-        return match (true) {
-            $node instanceof ClosureExpr => VariableWrite::InClosure,
-            $node instanceof AssignRef, $node instanceof Global_, $node instanceof Static_,
-            $node instanceof Foreach_ && $node->byRef && $node->valueVar === $target => VariableWrite::References,
-            $node instanceof CallLike, $node instanceof Foreach_ && $node->byRef => VariableWrite::ByReference,
-            $node instanceof Foreach_ => VariableWrite::Foreach,
-            $node instanceof Catch_ => VariableWrite::Catches,
-            $node instanceof Unset_ => VariableWrite::Unsets,
-            $target instanceof List_, $target instanceof Array_ => VariableWrite::Destructures,
-            ! $target instanceof Variable => VariableWrite::MemberOrOffset,
-            $node instanceof CoalesceAssign => VariableWrite::Coalesces,
-            $node instanceof Assign => VariableWrite::Replaces,
-            default => VariableWrite::Compounds,
-        };
-    }
-
-    /**
-     * Walk nodes for the writes that reach the body, tracking the nested closures and arrow functions around each.
-     *
-     * @param  array<mixed>|Node  $nodes
-     * @param  list<ArrowFunction|ClosureExpr>  $enclosing  the nested functions between the body and the nodes
-     * @param  VariableWrites  $writes
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
-     */
-    private function collectWritesInto(
-        array|Node $nodes,
-        array $enclosing,
-        array &$writes,
-        ?ReflectionClass $subject,
-        ?ReflectionClass $declaration,
-    ): void {
-        foreach (is_array($nodes) ? $nodes : [$nodes] as $node) {
-            if (is_array($node)) {
-                $this->collectWritesInto($node, $enclosing, $writes, $subject, $declaration);
-
-                continue;
-            }
-
-            if (! $node instanceof Node || $node instanceof ClassLike || $node instanceof Function_) {
-                continue;
-            }
-
-            foreach ($this->writeTargets($node) as $target) {
-                foreach ($this->writtenVariables($target) as $name) {
-                    if ($this->reachesBody($name, $enclosing)) {
-                        $writes[] = [$name, $node, $target, $this->writeKind($node, $target)];
-                    }
-                }
-            }
-
-            foreach ($this->rootedWriteTargets($node, $subject, $declaration) as $target) {
-                $name = $this->rootVariable($target);
-
-                if ($name !== null && $this->reachesBody($name, $enclosing)) {
-                    $writes[] = [$name, $node, $target, $this->writeKind($node, $target)];
-                }
-            }
-
-            $inner = $node instanceof ClosureExpr || $node instanceof ArrowFunction
-                ? [...$enclosing, $node]
-                : $enclosing;
-
-            foreach ($node->getSubNodeNames() as $subNode) {
-                $child = $node->{$subNode};
-
-                if ($child instanceof Node || is_array($child)) {
-                    // A closure's `use` clause and parameter defaults run in the enclosing scope.
-                    $within = in_array($subNode, ['uses', 'params'], true) ? $enclosing : $inner;
-                    $this->collectWritesInto($child, $within, $writes, $subject, $declaration);
-                }
-            }
-        }
-    }
-
-    /**
-     * The expressions an assignment, an increment, a `foreach` target or a by-reference `use` writes to, each counted
-     * for the variables writtenVariables() names.
-     *
-     * @return list<Expr>
-     */
-    private function writeTargets(Node $node): array
-    {
-        $targets = match (true) {
-            $node instanceof AssignRef => [$node->var, $node->expr],
-            $node instanceof Assign, $node instanceof AssignOp, $node instanceof PreInc, $node instanceof PostInc,
-            $node instanceof PreDec, $node instanceof PostDec => [$node->var],
-            $node instanceof Foreach_ => [$node->valueVar, $node->keyVar],
-            $node instanceof ClosureExpr => array_map(
-                fn (ClosureUse $use): Expr => $use->var,
-                array_filter($node->uses, fn (ClosureUse $use): bool => $use->byRef),
-            ),
-            default => [],
-        };
-
-        return array_values(array_filter($targets, fn (?Expr $target): bool => $target !== null));
-    }
-
-    /**
-     * The expressions a `catch`, `unset()`, `static`, `global`, a by-reference `foreach` or a by-reference argument
-     * writes to, each counted only for the variable rootVariable() finds.
-     *
-     * @param  ReflectionClass<object>|null  $subject
-     * @param  ReflectionClass<object>|null  $declaration
-     * @return list<Expr>
-     */
-    private function rootedWriteTargets(Node $node, ?ReflectionClass $subject, ?ReflectionClass $declaration): array
-    {
-        if ($node instanceof CallLike) {
-            // Only a call passing a variable or a key of one pays for reflecting its callee.
-            $passed = $node->isFirstClassCallable() ? [] : array_filter(
-                $node->getArgs(),
-                fn (Arg $arg): bool => $this->rootVariable($arg->value) !== null,
-            );
-
-            return $passed === []
-                ? []
-                : resolve(ByReferenceArguments::class)->of($node, $passed, $subject, $declaration);
-        }
-
-        $targets = match (true) {
-            $node instanceof Foreach_ => $node->byRef ? [$node->expr] : [],
-            $node instanceof Catch_ => [$node->var],
-            $node instanceof Unset_, $node instanceof Global_ => $node->vars,
-            $node instanceof Static_ => array_map(fn (StaticVar $static): Expr => $static->var, $node->vars),
-            default => [],
-        };
-
-        return array_values(array_filter($targets, fn (?Expr $target): bool => $target !== null));
-    }
-
-    /**
-     * The variable a target rewrites when it is that variable or a key of it; a property keeps its holder, and a
-     * temporary such as a call's result holds no variable.
-     */
-    private function rootVariable(Expr $target): ?string
-    {
-        while ($target instanceof ArrayDimFetch) {
-            $target = $target->var;
-        }
-
-        return $target instanceof Variable && is_string($target->name) ? $target->name : null;
-    }
-
-    /**
-     * The names of the variables a write target writes: the variable, each a destructuring list spells, or the one a
-     * member or offset write goes through. A variable a key or a member name reads is not written, and neither is the
-     * one a variable variable names.
-     *
-     * @return list<string>
-     */
-    private function writtenVariables(Expr $target): array
-    {
-        if ($target instanceof List_ || $target instanceof Array_) {
-            return array_merge(...array_map(
-                fn (?ArrayItem $item): array => $item === null ? [] : $this->writtenVariables($item->value),
-                $target->items,
-            ));
-        }
-
-        while ($target instanceof ArrayDimFetch || $target instanceof PropertyFetch || $target instanceof MethodCall
-            || $target instanceof NullsafePropertyFetch || $target instanceof NullsafeMethodCall
-        ) {
-            $target = $target->var;
-        }
-
-        return $target instanceof Variable && is_string($target->name) ? [$target->name] : [];
     }
 
     /**
@@ -1982,22 +1508,5 @@ trait CollectsLocalVarBindings
         }
 
         return $parked;
-    }
-
-    /**
-     * Whether a write inside nested functions reaches the body around them: only where each is a closure importing the
-     * name by reference, since a by-value import or an arrow function writes a copy. A write through `$this` always
-     * reaches, as every function shares the object and none can reassign it.
-     *
-     * @param  list<ArrowFunction|ClosureExpr>  $enclosing
-     */
-    private function reachesBody(string $name, array $enclosing): bool
-    {
-        if ($name === 'this') {
-            return true;
-        }
-
-        return array_all($enclosing, fn (ArrowFunction|ClosureExpr $function): bool => $function instanceof ClosureExpr
-            && array_any($function->uses, fn (ClosureUse $use): bool => $use->byRef && $use->var->name === $name));
     }
 }

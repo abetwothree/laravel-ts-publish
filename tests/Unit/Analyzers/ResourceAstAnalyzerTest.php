@@ -5657,7 +5657,7 @@ describe('local variable bindings', function () {
             ->and($props['shadowed']['type'])->toBe('string');
     });
 
-    // Guards the regression narrowing collectWrittenVariableNames() alone would introduce: with no
+    // Guards the regression narrowing VariableWrites::writtenNames() alone would introduce: with no
     // scoped binding for the closure param, the outer local must stay unknown, not leak through.
     test('does not leak an outer local into a closure that shadows its name', function () {
         $props = collect(

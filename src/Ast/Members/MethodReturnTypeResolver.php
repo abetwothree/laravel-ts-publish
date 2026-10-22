@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -58,7 +58,6 @@ use ReflectionMethod;
 final class MethodReturnTypeResolver
 {
     use BuildsInlineObjectTypes;
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /**
@@ -326,7 +325,7 @@ final class MethodReturnTypeResolver
             }
         }
 
-        foreach ($returned === [] ? [] : $this->collectVariableWrites($stmts, $subject, $declaration) as [$name, , $target]) {
+        foreach ($returned === [] ? [] : VariableWrites::of($stmts, $subject, $declaration) as [$name, , $target]) {
             if (! isset($returned[$name])) {
                 continue;
             }
@@ -334,7 +333,7 @@ final class MethodReturnTypeResolver
             if (! $target instanceof ArrayDimFetch) {
                 // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
                 unset($returned[$name]);
-            } elseif ($this->rootVariable($target) === $name) {
+            } elseif (VariableWrites::rootVariable($target) === $name) {
                 $returned[$name] = true;
             }
         }

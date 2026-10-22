@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
@@ -60,7 +61,6 @@ use WeakMap;
  */
 trait ReadsReturnedVariables
 {
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
@@ -214,7 +214,7 @@ trait ReadsReturnedVariables
     {
         $assigned = false;
 
-        foreach ($this->collectVariableWrites($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
+        foreach (VariableWrites::of($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
             if ($written !== $varName) {
                 continue;
             }
@@ -504,12 +504,12 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a statement writes the named variable anywhere within it, as collectVariableWrites() counts a write.
+     * Whether a statement writes the named variable anywhere within it, as VariableWrites::of() counts a write.
      */
     private function writesVariable(Node\Stmt $stmt, string $varName): bool
     {
         return array_any(
-            $this->collectVariableWrites([$stmt], $this->subjectReflection()),
+            VariableWrites::of([$stmt], $this->subjectReflection()),
             fn (array $write): bool => $write[0] === $varName,
         );
     }

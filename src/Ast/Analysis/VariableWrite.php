@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 /**
  * What one write does to the variable it names, as the passes that end, gap or join a binding read it. Each write is
- * classified once, by CollectsLocalVarBindings::writeKind().
+ * classified once, as VariableWrites scans it.
  *
  * @internal
  */
