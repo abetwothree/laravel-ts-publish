@@ -587,11 +587,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The string, int or class-constant literal a local written once holds at a read, as boundLocal() reads it.
+     * The string, int or class-constant literal a local written once holds at a read, as literalWriteAt() reads it.
      */
     protected function literalLocal(Variable $read): ?Expr
     {
-        $bound = $this->boundLocal($read);
+        $bound = $this->scope->literalWriteAt($read);
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
     }
@@ -1705,7 +1705,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        $bound = $this->boundLocal($expr);
+        $bound = $this->scope->literalWriteAt($expr);
 
         return $bound === null ? null : [$expr->name, $bound];
     }
@@ -1728,26 +1728,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         } finally {
             unset($this->scope->readingLocals[$local[0]]);
         }
-    }
-
-    /**
-     * The value a local written once holds at a read, but where a by-reference call reshapes it.
-     */
-    private function boundLocal(Variable $read): ?Expr
-    {
-        $name = $read->name;
-        $scope = $this->scope;
-
-        if (! is_string($name)) {
-            return null;
-        }
-
-        // As VariableHandler::boundValue() reads it: a parameter's binding, or a join, holds there instead.
-        if (($scope->bindsName($name) && $scope->holdsBinding($read)) || $scope->gapAt($read) !== null) {
-            return null;
-        }
-
-        return $scope->literalLocalBindings()[$name] ?? null;
     }
 
     /**

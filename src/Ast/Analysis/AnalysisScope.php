@@ -616,6 +616,21 @@ final class AnalysisScope
     }
 
     /**
+     * The value a local written once holds at a read, but where a by-reference call reshapes it: none where a
+     * parameter's binding or a join holds there instead, as VariableHandler::boundValue() reads it.
+     */
+    public function literalWriteAt(Variable $read): ?Expr
+    {
+        $name = $read->name;
+
+        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read)) || $this->gapAt($read) !== null) {
+            return null;
+        }
+
+        return $this->literalLocalBindings()[$name] ?? null;
+    }
+
+    /**
      * Run a read with $enter's changes to the scope, then put back every name table and ambient field, even on a throw:
      * the one way a reader binds names, sets the caller aside or narrows a subject for one body, arm or value.
      *
