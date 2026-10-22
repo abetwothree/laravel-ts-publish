@@ -508,7 +508,6 @@ final class VariableHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
-        // A read the source does not place takes every form.
         $forms = $read->getStartFilePos() < 0 ? $scope->byReferenceForms[$name] ?? [] : $scope->formsAt($read);
 
         if ($forms === []) {
