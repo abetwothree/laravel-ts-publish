@@ -24,7 +24,7 @@ use PhpParser\ParserFactory;
 class AstParser
 {
     /** Spread analysis re-reads the same file many times per run; the cap keeps a large app from ballooning memory. */
-    private const int MAX_CACHED_FILES = 128;
+    private const int MAX_CACHED_FILES = 256;
 
     /** @var array<string, array<Node>> */
     protected array $fileAsts = [];
