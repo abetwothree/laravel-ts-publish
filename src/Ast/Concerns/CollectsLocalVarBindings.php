@@ -40,6 +40,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\InterpolatedString;
+use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -206,6 +207,9 @@ trait CollectsLocalVarBindings
      * A parameter, or a seeded name, starts holding its binding, which nested writes join for a value read only. While
      * it holds, a write of another kind, or its own `$x = …;` where it binds no value, stops the walk, leaving the rest
      * to endBindingsAtWrites(); else that `$x = …;` replaces the value. Past an ending write it walks as a local.
+     *
+     * Its walk also goes into each block a statement holds, for the reads there, where such an `$x = …;` joins the
+     * binding it leaves standing instead.
      *
      * A closure's parameter nothing binds starts holding what its call passed, which no receiver keeps.
      *
@@ -889,6 +893,7 @@ trait CollectsLocalVarBindings
      * @param  JoinedState  $state  the values the name may hold, null for none the scan knows, whether the binding it
      *                              came in with may still hold, whether a receiver keeps that binding, and in a
      *                              parameter's walk the values nested writes added, null in a local's
+     * @param  bool  $inBlock  the list is a block a parameter's walk descended into, past which the walk goes on
      * @return JoinedState|null
      */
     private function joinStatements(
@@ -900,12 +905,15 @@ trait CollectsLocalVarBindings
         array $state,
         ?int $from,
         AnalysisScope $scope,
+        bool $inBlock = false,
     ): ?array {
         $after = $from;
 
         foreach ($stmts as $stmt) {
-            $own = array_values(array_filter($writes, fn (array $write): bool => StatementBlocks::encloses($stmt, $write[1])));
-            $assigned = $own === [] ? null : $this->wholeAssignment($stmt, $own);
+            $held = array_values(array_filter($writes, fn (array $write): bool => StatementBlocks::encloses($stmt, $write[1])));
+            $assigned = $held === [] ? null : $this->wholeAssignment($stmt, $held);
+            $own = $held;
+            $before = $state;
 
             // A write in a block that always exits reaches no read past it, which only a known value needs checked; a
             // `try` resumes past its blocks.
@@ -914,6 +922,8 @@ trait CollectsLocalVarBindings
             }
 
             if ($own === []) {
+                $this->joinBlocks($name, $stmt, $held, $exitingBlock, $writes, $ender, $state, $state, $scope);
+
                 continue;
             }
 
@@ -921,17 +931,7 @@ trait CollectsLocalVarBindings
             $this->addJoinedGap($scope, $name, $after, $assigned === null ? $stmt->getStartFilePos() - 1 : $stmt->getEndFilePos(), $state);
             $state = match (true) {
                 $stmt instanceof TryCatch => $this->joinTry($name, $stmt, $exitingBlock, $writes, $ender, $state, $scope),
-                // Past its own `$x = …;` a value read takes what it wrote, a model's where that is a typed value naming
-                // no class; any other class alone is endBindingsAtWrites()'s.
-                $assigned !== null => ($state[2] && ! $this->bindsValue($name, $scope)
-                    && ! $this->replacesModelValue($name, $assigned, $scope))
-                    ? null
-                    : [
-                        [$assigned],
-                        false,
-                        $state[2] && $own[0][1] !== $ender && $this->keepsReceiverPast($name, $assigned, $scope),
-                        $this->nothingNested($state),
-                    ],
+                $assigned !== null => $this->assignedState($name, $own[0], $assigned, $state, $ender, $inBlock, $scope),
                 default => $this->joinNested($own, $state),
             };
 
@@ -942,6 +942,7 @@ trait CollectsLocalVarBindings
             // Past a write that ended the binding, its own read of the name finds none, so a receiver stops keeping it.
             $state[2] = $state[2] && ($scope->bindingEnds[$name] ?? PHP_INT_MAX) >= $stmt->getEndFilePos();
             $after = $stmt->getEndFilePos();
+            $this->joinBlocks($name, $stmt, $held, $exitingBlock, $writes, $ender, $before, $state, $scope);
         }
 
         if ($stmts !== []) {
@@ -949,6 +950,81 @@ trait CollectsLocalVarBindings
         }
 
         return $state;
+    }
+
+    /**
+     * The state past the name's own `$x = …;`: the value it wrote, a model's where that is a typed value naming no
+     * class. Any other class binding is endBindingsAtWrites()'s, which stops a walk at the top level; inside a block it
+     * stands beside the value where the write leaves it, as it does past the block.
+     *
+     * @param  NamedWrite  $write
+     * @param  JoinedState  $state
+     * @return JoinedState|null
+     */
+    private function assignedState(
+        string $name,
+        array $write,
+        Expr $assigned,
+        array $state,
+        ?Node $ender,
+        bool $inBlock,
+        AnalysisScope $scope,
+    ): ?array {
+        if ($state[2] && ! $this->bindsValue($name, $scope) && ! $this->replacesModelValue($name, $assigned, $scope)) {
+            if (! $inBlock) {
+                return null;
+            }
+
+            if ($this->keepsBinding($name, $write[1], $write[3], null, $scope, false)) {
+                return $this->joinNested([$write], $state);
+            }
+        }
+
+        return [
+            [$assigned],
+            false,
+            $state[2] && $write[1] !== $ender && $this->keepsReceiverPast($name, $assigned, $scope),
+            $this->nothingNested($state),
+        ];
+    }
+
+    /**
+     * Walk each block a statement holds for a parameter's reads in it: an `if` branch or a bare block from what the
+     * name held before it; a loop body, a `switch` case or a branch past a condition's write also from every value it
+     * writes, since an earlier pass or a case falling through may have run. A local keeps its block gaps.
+     *
+     * @param  NamedWrites  $held  the statement's writes of the name
+     * @param  ExitingBlockLookup  $exitingBlock
+     * @param  NamedWrites  $writes  the name's own writes
+     * @param  JoinedState  $before  the state before the statement
+     * @param  JoinedState  $past  the state past it
+     */
+    private function joinBlocks(
+        string $name,
+        Node\Stmt $stmt,
+        array $held,
+        Closure $exitingBlock,
+        array $writes,
+        ?Node $ender,
+        array $before,
+        array $past,
+        AnalysisScope $scope,
+    ): void {
+        $blocks = StatementBlocks::inner($stmt);
+
+        if ($held === [] || $blocks === [] || $before[3] === null || $stmt instanceof TryCatch) {
+            return;
+        }
+
+        $outside = array_any($held, fn (array $write): bool => ! array_any($blocks, fn (array $block): bool => array_any(
+            $block,
+            fn (Node\Stmt $inner): bool => StatementBlocks::encloses($inner, $write[1]),
+        )));
+        $entry = ($stmt instanceof If_ || $stmt instanceof Block) && ! $outside ? $before : $past;
+
+        foreach ($blocks as $block) {
+            $this->joinStatements($name, $block, $exitingBlock, $writes, $ender, $entry, $this->blockStart($block), $scope, true);
+        }
     }
 
     /**

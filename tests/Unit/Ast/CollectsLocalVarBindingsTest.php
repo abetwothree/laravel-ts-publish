@@ -22,6 +22,7 @@ use PhpParser\NodeFinder;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Profile;
 use Workbench\App\Models\User;
 
 /**
@@ -287,8 +288,8 @@ function seededReceiverClasses(string $body, Closure $seed): array
     );
 }
 
-// Past a nested write the receiver keeps what the parameter came in with, as when the write never ran, unless the
-// write ended it: its value names another class, which its own read of the parameter no longer reaches.
+// Past a nested write the receiver keeps what the parameter came in with, as when the write never ran, beside a class
+// the written value names: the write's own read of the parameter, inside its block, still sees the old binding.
 it('keeps a parameter\'s receiver past a nested write naming no class', function (string $body, Closure $seed, array $classes) {
     expect(seededReceiverClasses($body, $seed))->toBe($classes);
 })->with([
@@ -304,7 +305,7 @@ it('keeps a parameter\'s receiver past a nested write naming no class', function
         function (AnalysisScope $scope): void {
             $scope->varModelBindings['p'] = User::class;
         },
-        [null],
+        [[User::class, Profile::class]],
     ],
     'an expression binding, a value naming no class' => [
         'foreach ($cs as $c) { if ($c) { $p = $c; continue; } } $p->x;',
