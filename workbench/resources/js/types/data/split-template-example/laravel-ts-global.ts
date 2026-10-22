@@ -3210,7 +3210,7 @@ declare global {
             status_resource?: app.enums.OrderStatusType;
             status_bare?: app.enums.OrderStatusType;
             currency_resource?: app.enums.CurrencyType;
-            user_role?: app.enums.RoleType;
+            user_role?: app.enums.RoleType | null;
         }
         /**
          * Exercises issue #38 using non-arrow (full) closures with a parameter.

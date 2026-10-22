@@ -408,9 +408,7 @@ final class StaticCallHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        return $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
-            ?? ValueResult::unknown();
+        return $this->enumWrapValue($payload, $scope, $engine) ?? ValueResult::unknown();
     }
 
     /**

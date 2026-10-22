@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -68,29 +67,6 @@ trait ResolvesEnumPropertyArgTypes
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
                     return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));
-                }
-            }
-
-            // `$variable->property` inside a relation closure, on the model the variable is bound to.
-            if (
-                $scope->closureRelationModelClass !== null
-                && $argExpr instanceof PropertyFetch
-                && $argExpr->var instanceof Variable
-                && $argExpr->name instanceof Identifier
-            ) {
-                $boundModel = resolve(ReceiverClassResolver::class)->boundModel($argExpr->var, $scope);
-
-                if ($boundModel !== null) {
-                    $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($boundModel, $argExpr->name->toString());
-
-                    /** @var class-string|null $enumFqcn */
-                    $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-                    // toTsType() on the FQCN directly yields the pure enum type, without the nullable
-                    // suffix appendNullable() adds from the DB column definition.
-                    return $enumFqcn === null
-                        ? null
-                        : [...$result, 'type' => LaravelTsPublish::toTsType($enumFqcn)['type'], 'enumFqcn' => $enumFqcn];
                 }
             }
 
@@ -156,6 +132,22 @@ trait ResolvesEnumPropertyArgTypes
             'type' => $info['type'],
             'enumFqcn' => $info['enumFqcn'],
         ];
+    }
+
+    /**
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm stays only where
+     * JsonResource::filter() reaches the wrap, as a resource wrap's does: a Collection sends a null payload as `[]`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    protected function enumWrapValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->resolveEnumFromPropertyArg($payload, $scope)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
+
+        return $result === null || $scope->filtersNestedResources
+            ? $result
+            : [...$result, 'type' => ValueResult::stripNullArm($result['type'])];
     }
 
     /**

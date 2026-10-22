@@ -12,9 +12,9 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /**
- * Wraps each user's nullable `role` column in maps over a query, a local holding one, with and without a model hint, a
- * `collect()` of a relation and the relation itself, in the first two and a `collect()` nested in a whenLoaded()
- * closure, and under an `instanceof` test on a loaded relation. EnumResource sends null for a null role.
+ * Wraps each user's nullable `role` in maps over a query and a local (each also kept as a Collection, the local also by
+ * `new`), a hinted local, a `collect()` of a relation and the relation; the first two and the `collect()` again in
+ * whenLoaded(); and under `instanceof`. A null role sends null where `->all()` hands the map to filter(), else `[]`.
  *
  * @mixin Team
  */
@@ -30,6 +30,10 @@ class MappedEnumColumnResource extends JsonResource
         return [
             'query_roles' => User::query()->get()->map(fn ($user) => EnumResource::make($user->role))->all(),
             'local_roles' => $users->map(fn ($user) => EnumResource::make($user->role))->all(),
+            'kept_query_roles' => User::query()->get()->map(fn ($user) => EnumResource::make($user->role)),
+            'kept_local_roles' => $users->map(fn ($user) => EnumResource::make($user->role)),
+            'new_local_roles' => $users->map(fn ($user) => new EnumResource($user->role))->all(),
+            'kept_new_local_roles' => $users->map(fn ($user) => new EnumResource($user->role)),
             'hinted_local_roles' => $users->map(fn (User $user) => EnumResource::make($user->role))->all(),
             'collected_roles' => collect($this->members)->map(fn ($member) => EnumResource::make($member->role))->all(),
             'chain_roles' => $this->members->map(fn ($member) => EnumResource::make($member->role))->all(),

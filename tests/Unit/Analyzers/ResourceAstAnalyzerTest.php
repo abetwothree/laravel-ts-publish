@@ -4730,12 +4730,12 @@ describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 en
             ->and($prop['optional'])->toBeTrue();
     });
 
-    // $this->whenLoaded('user', fn ($user) => ...) — $user is the User relation; $user->role is the Role enum.
-    test('whenLoaded() param → EnumResource::make($user->role) resolves to RoleType not unknown', function () {
+    // $this->whenLoaded('user', fn ($user) => ...) — $user is the User relation; $user->role is the nullable Role enum.
+    test('whenLoaded() param → EnumResource::make($user->role) resolves to RoleType | null not unknown', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'user_role');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('RoleType')
+            ->and($prop['type'])->toBe('RoleType | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });

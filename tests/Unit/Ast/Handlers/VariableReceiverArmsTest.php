@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BoundEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CapturedLocalClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedDraftCommentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GuardedLoopPostsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterfaceGuardedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LoadedOrderEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedEnumColumnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedOrderEnumColumnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MappedProfileWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NarrowedBoundPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SupertypeGuardedPostResource;
@@ -18,7 +21,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\OrderStatus;
+use Workbench\App\Enums\WeekDays;
+use Workbench\App\Http\Resources\ConditionalParamEnumResource;
+use Workbench\App\Http\Resources\EnumCollectionResource;
+use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Order;
+use Workbench\App\Models\OrderItem;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\Team;
@@ -62,7 +72,7 @@ it('types a variable read inside whenLoaded() only from the variable\'s own bind
         'static_guess?' => 'unknown',
         'static_bound?' => 'boolean',
         'to_resource_bound?' => 'UserResource',
-        'enum_bound?' => 'AsEnum<typeof Role>',
+        'enum_bound?' => 'AsEnum<typeof Role> | null',
         'to_resource_guess?' => 'unknown',
         'enum_guess?' => 'unknown',
         'local_post?' => 'string',
@@ -106,7 +116,6 @@ it('a captured outer local keeps its own binding inside a whenLoaded() closure',
     ]);
 });
 
-// Only inside a relation closure does the enum branch drop the column's null; anywhere else the read keeps it.
 it('keeps a nullable enum column\'s null arm for a model bound outside a relation closure', function () {
     $owner = (new User)->forceFill(['id' => 1, 'role' => null]);
     $team = (new Team)->forceFill(['id' => 9]);
@@ -121,10 +130,10 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
         ->toBe('{"data":{"owner_role":null,"member_role":null}}');
 });
 
-// Only a relation closure, a hinted map among them, drops the column's null (F24, for the owner); a map over a query,
-// a local or a collect() of a relation keeps it, as Laravel sends it, and so does one nested in a relation closure. A
-// collect() pipeline or an instanceof-proven map nested in one keeps the enclosing closure's drop (F24).
-it('keeps a nullable enum column\'s null arm in a map over a query, a local or a collect() of a relation', function () {
+// The null arm follows JsonResource::filter()'s reach, inside a relation closure or not: a map `->all()` hands to it
+// sends null, and one kept as a Collection serializes each wrap itself, sending `[]`, which no published form admits
+// (F60).
+it('keeps a nullable enum column\'s null arm in a map filter() reaches, inside a relation closure or not', function () {
     $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $team = (new Team)->forceFill(['id' => 9]);
     $team->setRelation('members', new EloquentCollection([$member]));
@@ -133,18 +142,26 @@ it('keeps a nullable enum column\'s null arm in a map over a query, a local or a
     expect(publishedResourceKeyTypes(MappedEnumColumnResource::class, Team::class))->toBe([
         'query_roles' => '(AsEnum<typeof Role> | null)[]',
         'local_roles' => '(AsEnum<typeof Role> | null)[]',
-        'hinted_local_roles' => 'AsEnum<typeof Role>[]',
+        'kept_query_roles' => 'AsEnum<typeof Role>[]',
+        'kept_local_roles' => 'AsEnum<typeof Role>[]',
+        'new_local_roles' => '(AsEnum<typeof Role> | null)[]',
+        'kept_new_local_roles' => 'AsEnum<typeof Role>[]',
+        'hinted_local_roles' => '(AsEnum<typeof Role> | null)[]',
         'collected_roles' => '(AsEnum<typeof Role> | null)[]',
-        'chain_roles' => 'AsEnum<typeof Role>[]',
+        'chain_roles' => '(AsEnum<typeof Role> | null)[]',
         'nested_query_roles?' => '(AsEnum<typeof Role> | null)[]',
         'nested_local_roles?' => '(AsEnum<typeof Role> | null)[]',
-        'nested_collected_roles?' => 'AsEnum<typeof Role>[]',
-        'narrowed_member_roles?' => 'AsEnum<typeof Role>[] | null',
+        'nested_collected_roles?' => '(AsEnum<typeof Role> | null)[]',
+        'narrowed_member_roles?' => '(AsEnum<typeof Role> | null)[] | null',
     ])
         ->and(json_decode((string) new MappedEnumColumnResource($team)->response(request())->getContent(), true))
         ->toBe(['data' => [
             'query_roles' => [null],
             'local_roles' => [null],
+            'kept_query_roles' => [[]],
+            'kept_local_roles' => [[]],
+            'new_local_roles' => [null],
+            'kept_new_local_roles' => [[]],
             'hinted_local_roles' => [null],
             'collected_roles' => [null],
             'chain_roles' => [null],
@@ -153,6 +170,88 @@ it('keeps a nullable enum column\'s null arm in a map over a query, a local or a
             'nested_collected_roles' => [null],
             'narrowed_member_roles' => [null],
         ]]);
+});
+
+// The column's nullability decides the null arm, not the closure the read sits in: a required column takes none.
+it('keeps a nullable enum column\'s null arm inside a whenLoaded() closure, and adds none for a required one', function () {
+    $item = (new OrderItem)->forceFill(['id' => 3]);
+    $item->setRelation('order', (new Order)->forceFill(['id' => 7, 'status' => 0, 'payment_method' => null]));
+    $pending = json_decode((string) json_encode(EnumResource::make(OrderStatus::Pending)), true);
+
+    expect(publishedResourceKeyTypes(LoadedOrderEnumColumnResource::class, OrderItem::class))->toBe([
+        'order_status?' => 'AsEnum<typeof OrderStatus>',
+        'order_payment_method?' => 'AsEnum<typeof PaymentMethod> | null',
+    ])
+        ->and(json_decode((string) new LoadedOrderEnumColumnResource($item)->response(request())->getContent(), true)['data'])
+        ->toBe(['order_status' => $pending, 'order_payment_method' => null]);
+});
+
+it('keeps a nullable enum column\'s null arm in a relation\'s arrayed map, and adds none for a required one', function () {
+    $user = (new User)->forceFill(['id' => 1]);
+    $user->setRelation('orders', new EloquentCollection([(new Order)->forceFill(['id' => 7, 'status' => 0, 'payment_method' => null])]));
+    $pending = json_decode((string) json_encode(EnumResource::make(OrderStatus::Pending)), true);
+
+    expect(publishedResourceKeyTypes(MappedOrderEnumColumnResource::class, User::class))->toBe([
+        'order_statuses' => 'AsEnum<typeof OrderStatus>[]',
+        'order_payment_methods' => '(AsEnum<typeof PaymentMethod> | null)[]',
+        'loaded_order_statuses?' => 'AsEnum<typeof OrderStatus>[]',
+        'loaded_order_payment_methods?' => '(AsEnum<typeof PaymentMethod> | null)[]',
+    ])
+        ->and(json_decode((string) new MappedOrderEnumColumnResource($user)->response(request())->getContent(), true)['data'])
+        ->toBe([
+            'order_statuses' => [$pending],
+            'order_payment_methods' => [null],
+            'loaded_order_statuses' => [$pending],
+            'loaded_order_payment_methods' => [null],
+        ]);
+});
+
+// RelationChainResource's own toArray() never runs (its `map(...)->values()` calls values() on a Closure), so its three
+// keys are sent through a subclass with the same PHP. The kept Collections send `[]` for a null role (F60).
+it('publishes the workbench\'s relation-closure enum wraps with the null each sends', function () {
+    $first = (new User)->forceFill(['id' => 1, 'role' => null]);
+    $second = (new User)->forceFill(['id' => 2, 'role' => null]);
+    $order = (new Order)->forceFill(['id' => 7]);
+    $order->setRelation('user', $first);
+    $team = (new Team)->forceFill(['id' => 9, 'week_days' => [WeekDays::Monday]]);
+    $team->setRelation('members', new EloquentCollection([$first, $second]));
+    $chain = new class($team) extends RelationChainResource
+    {
+        /** @return array<string, mixed> */
+        public function toArray(Request $request): array
+        {
+            return [
+                'member_role_resources' => $this->members->take(5)->map(fn ($member) => EnumResource::make($member->role))->values(),
+                'member_role_resources_filtered' => $this->members->filter(fn ($member) => $member->id > 1)
+                    ->map(fn ($member) => EnumResource::make($member->role)),
+                'wrapped_filtered' => [
+                    'roles' => $this->members->filter(fn ($member) => $member->id > 1)
+                        ->map(fn ($member) => EnumResource::make($member->role)),
+                ],
+            ];
+        }
+    };
+    $sends = fn (JsonResource $resource): array => json_decode((string) $resource->response(request())->getContent(), true)['data'];
+
+    expect(publishedResourceKeyTypes(ConditionalParamEnumResource::class, Order::class)['user_role?'])
+        ->toBe('AsEnum<typeof Role> | null')
+        ->and($sends(new ConditionalParamEnumResource($order))['user_role'])->toBeNull()
+        ->and(publishedResourceKeyTypes(EnumCollectionResource::class, Team::class)['members_via_var?'])
+        ->toBe('AsEnum<typeof Role>[]')
+        ->and($sends(new EnumCollectionResource($team))['members_via_var'])->toBe([[], []])
+        ->and(array_intersect_key(
+            publishedResourceKeyTypes(RelationChainResource::class, Team::class),
+            array_flip(['member_role_resources', 'member_role_resources_filtered', 'wrapped_filtered']),
+        ))->toBe([
+            'member_role_resources' => 'AsEnum<typeof Role>[]',
+            'member_role_resources_filtered' => 'AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>',
+            'wrapped_filtered' => '{ roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> }',
+        ])
+        ->and($sends($chain))->toBe([
+            'member_role_resources' => [[], []],
+            'member_role_resources_filtered' => ['1' => []],
+            'wrapped_filtered' => ['roles' => ['1' => []]],
+        ]);
 });
 
 // The narrowing outranks the parameter's own model, so the subclass types the read.
