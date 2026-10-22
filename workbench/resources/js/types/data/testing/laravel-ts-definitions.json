@@ -20962,6 +20962,11 @@
                     "name": "walk_branch_join",
                     "type": "{ id: number; value: string }",
                     "optional": true
+                },
+                {
+                    "name": "merge_branch_join",
+                    "type": "string",
+                    "optional": false
                 }
             ]
         },

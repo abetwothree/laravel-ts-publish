@@ -13,7 +13,7 @@ use Workbench\App\Models\Post;
  *
  * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
  * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
- * 'binding_join' keys through a parameter's join past a block, and 'walk_branch_join' through a local's branch join.
+ * 'binding_join' keys, 'walk_branch_join' and 'merge_branch_join' through a parameter's, a local's and a merge's join.
  *
  * @mixin Post
  */
@@ -62,6 +62,8 @@ final class UnionHonestyResource extends JsonResource
 
                 return $built;
             }),
+            // The merged side, which no rule types, is left out beside the default's title.
+            $this->mergeWhen($this->id > 0, ['merge_branch_join' => $this->opaqueValue()], ['merge_branch_join' => $this->title]),
         ];
     }
 

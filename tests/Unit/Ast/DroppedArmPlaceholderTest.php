@@ -8,12 +8,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedArmPlaceholderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedBranchJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PlaceholderAccessorPost;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\Tag;
 
 /**
  * The warnings of one kind a fresh analysis of one resource raises, each prefixed with the subject it names.
@@ -157,8 +161,47 @@ test('a join that leaves out a value it cannot type warns that the published typ
             'parameter_kept?' => 'string',
             'walked_kept?' => '{ id: number; title: string }',
         ])
-        ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(3)
+        ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(4)
         ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 28 ');
+});
+
+// A merge call's sides and a spread helper's returns join as a local's branches do, and leave a value out alike.
+test('a merge call and a spread helper that leave out a value they cannot type warn as a join does', function () {
+    $warning = fn (int $line): string => DroppedBranchJoinResource::class.": The value on line {$line} leaves out "
+        .'`$this->opaqueRows()`, which could not be typed, so its published type may not admit every value it sends. '
+        .'Give what it reads a return type or a `@return` docblock.';
+
+    expect(joinDropWarnings(DroppedBranchJoinResource::class))->toBe([$warning(24), $warning(27), $warning(41), $warning(55)])
+        ->and(placeholderWarnings(DroppedBranchJoinResource::class))->toBe([
+            DroppedBranchJoinResource::class.': The value on line 31 publishes `null`, as if it were always null, because '
+            .'`$this->opaqueRows()` could not be typed and was left out of its union. Give what it reads a return type or a '
+            .'`@return` docblock.',
+        ])
+        ->and(publishedResourceKeyTypes(DroppedBranchJoinResource::class, Post::class))->toBe([
+            'merged' => 'string',
+            'merged_built' => 'string',
+            'merged_null' => 'null',
+            'spread' => 'string',
+            'spread_built' => 'string',
+        ]);
+});
+
+test('sends the value a merge call or a spread helper leaves out of its published type', function () {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+    $post = new Post;
+    $post->forceFill(['id' => 2, 'title' => 'Banana']);
+    $post->setRelation('tags', new EloquentCollection([$tag]));
+    $sent = json_decode((string) json_encode(new DroppedBranchJoinResource($post)->resolve(Request::create('/'))), true);
+
+    expect($sent)->toBeArray()
+        ->and(array_map(fn (mixed $value): string => get_debug_type($value), $sent))->toBe([
+            'merged' => 'array',
+            'merged_built' => 'array',
+            'merged_null' => 'array',
+            'spread' => 'array',
+            'spread_built' => 'string',
+        ]);
 });
 
 // The resource's token has no import in the model file, so the getter publishes what the model declares instead.

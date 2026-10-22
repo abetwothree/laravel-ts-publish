@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use Closure;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -42,6 +43,7 @@ use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use WeakMap;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
@@ -63,6 +65,9 @@ trait ReadsReturnedVariables
 
     /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
     private array $untypedKeyWrites = [];
+
+    /** @var WeakMap<MethodAnalysis, list<UntypedKeyWrite>>|null each walked or literal branch's untyped key writes */
+    private ?WeakMap $branchNotes = null;
 
     /**
      * The analysis of a whole-array write's value, or null for an expression the host does not read.
@@ -383,7 +388,7 @@ trait ReadsReturnedVariables
 
         foreach ($returns as $returned) {
             if ($returned instanceof Array_) {
-                $branches[] = $this->mergedArrayAnalysis($returned);
+                $branches[] = $this->literalBranch($returned, $this->mergedArrayAnalysis($returned));
 
                 continue;
             }
@@ -417,6 +422,37 @@ trait ReadsReturnedVariables
         $setsKey = array_any($branches, fn (MethodAnalysis $branch): bool => $branch->properties !== []);
 
         return [$setsKey ? $branches : [], $complete];
+    }
+
+    /**
+     * An array literal's analysis as a merge call's or a spread helper's branch, beside the items it types `unknown`.
+     *
+     * @param  TAnalysis  $branch
+     * @return TAnalysis
+     */
+    protected function literalBranch(Array_ $literal, MethodAnalysis $branch): MethodAnalysis
+    {
+        $this->branchNotes ??= new WeakMap;
+        $this->branchNotes[$branch] = $this->untypedItems($literal, $branch);
+
+        return $branch;
+    }
+
+    /**
+     * A merge call's or a spread helper's join, once each value it left out beside a typed one is recorded and warned
+     * of, as the walk's join does, naming the untyped write its walked or literal branch saw.
+     *
+     * @param  TAnalysis  $joined
+     * @param  list<TAnalysis>  $branches
+     * @return TAnalysis
+     */
+    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches): MethodAnalysis
+    {
+        $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
+        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'merge-branch-join');
+        $this->recordJoinDrops($joined, $branches, $notes, $record);
+
+        return $joined;
     }
 
     /**
@@ -503,6 +539,8 @@ trait ReadsReturnedVariables
 
         try {
             $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+            $this->branchNotes ??= new WeakMap;
+            $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
             $this->untypedKeyWrites = $outer;
         }
@@ -668,7 +706,8 @@ trait ReadsReturnedVariables
         }
 
         $joined = $this->joinedBranches($branches);
-        $this->recordJoinDrops($joined, $branches, $notes);
+        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
+        $this->recordJoinDrops($joined, $branches, $notes, $record);
         $into->replaceWith($joined);
     }
 
@@ -676,12 +715,13 @@ trait ReadsReturnedVariables
      * Record each branch value a join left out beside a typed one, naming the last untyped write of its key the branch
      * saw, and warn of each: it still reaches the read.
      *
-     * @param  non-empty-list<TAnalysis>  $branches
+     * @param  list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
+     * @param  Closure(Expr): void  $record  records one value left out, under its join's site
      */
-    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes): void
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $record): void
     {
-        if ($this->untypedKeyWrites === []) {
+        if (array_merge(...$notes) === []) {
             return;
         }
 
@@ -703,7 +743,7 @@ trait ReadsReturnedVariables
                     : null;
 
                 if ($write !== null) {
-                    DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
+                    $record($write);
                     $dropped[] = $write;
                 }
             }
@@ -736,19 +776,32 @@ trait ReadsReturnedVariables
      */
     private function noteUntypedItems(Expr $array, MethodAnalysis $write): void
     {
+        array_push($this->untypedKeyWrites, ...$this->untypedItems($array, $write));
+    }
+
+    /**
+     * Each item of an array literal whose key its analysis types `unknown`, with its value; none for another value.
+     *
+     * @return list<UntypedKeyWrite>
+     */
+    private function untypedItems(Expr $array, MethodAnalysis $analysis): array
+    {
         if (! $array instanceof Array_) {
-            return;
+            return [];
         }
 
-        $types = array_column($write->properties, 'type', 'name');
+        $types = array_column($analysis->properties, 'type', 'name');
+        $untyped = [];
 
         foreach ($array->items as $item) {
             $key = $item->key === null || $item->unpack ? null : $this->namedKey($item->key);
 
             if ($key !== null && ($types[$key] ?? null) === 'unknown') {
-                $this->untypedKeyWrites[] = [$key, $item->value];
+                $untyped[] = [$key, $item->value];
             }
         }
+
+        return $untyped;
     }
 
     /**

@@ -779,7 +779,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged = match (count($branches)) {
             0 => new ResourceAnalysis,
             1 => $branches[0],
-            default => $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
+            default => $this->recordedMergeJoin(
+                $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true),
+                $branches,
+            ),
         };
         $merged->readsCompletely = $merged->readsCompletely && $complete;
 
@@ -797,7 +800,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     protected function resolveMergedBranches(Expr $expr): array
     {
         if ($expr instanceof Array_) {
-            $branch = $this->mergedArrayAnalysis($expr);
+            $branch = $this->literalBranch($expr, $this->mergedArrayAnalysis($expr));
 
             return [[$branch], $branch->readsCompletely];
         }
@@ -926,7 +929,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
                 $branches[] = match (true) {
                     $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
-                    $returned instanceof Array_ => $this->analyzeReturnArray($returned, $topLevel),
+                    $returned instanceof Array_ => $this->literalBranch($returned, $this->analyzeReturnArray($returned, $topLevel)),
                     $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returned->name, $topLevel),
                     default => null,
                 };
@@ -935,7 +938,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             // Every branch classified: each is a shape the method can return, so a key missing from
             // one publishes optional. Anything unclassifiable falls back to the first-return path.
             $analysis = $branches !== [] && ! in_array(null, $branches, true)
-                ? (count($branches) === 1 ? $branches[0] : $this->mergeReturnBranches($branches, dropsUntypedBranches: true))
+                ? (count($branches) === 1
+                    ? $branches[0]
+                    : $this->recordedMergeJoin($this->mergeReturnBranches($branches, dropsUntypedBranches: true), $branches))
                 : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
