@@ -704,7 +704,7 @@ final class ReceiverClassResolver
             $span['context']->getNamespaceName(),
         );
 
-        return $this->isConcreteModel($element) ? $element : null;
+        return ReceiverType::isConcreteModel($element) ? $element : null;
     }
 
     /**
@@ -1427,7 +1427,7 @@ final class ReceiverClassResolver
      */
     private function forwardedStaticQuery(string $class, string $method): ?ReceiverType
     {
-        if (! $this->isConcreteModel($class) || method_exists($class, $method)) {
+        if (! ReceiverType::isConcreteModel($class) || method_exists($class, $method)) {
             return null;
         }
 
@@ -1442,7 +1442,7 @@ final class ReceiverClassResolver
     {
         $classes = $this->returnClasses($class, $method);
 
-        if ($classes === [EloquentCollection::class] && $this->isConcreteModel($class)) {
+        if ($classes === [EloquentCollection::class] && ReceiverType::isConcreteModel($class)) {
             $declared = $this->declaredReturn($class, $method);
 
             if ($declared !== null && $this->listsTemplate($declared, 'static')) {
@@ -2090,16 +2090,6 @@ final class ReceiverClassResolver
     private function namesNothingNarrower(?ReceiverType $held, string $bound): bool
     {
         return $held === null || array_all($held->classes, fn (string $class): bool => is_a($bound, $class, true));
-    }
-
-    /**
-     * Whether a class is a model a row can be read into: a subclass of Model that is not abstract.
-     *
-     * @phpstan-assert-if-true class-string<Model> $class
-     */
-    private function isConcreteModel(string $class): bool
-    {
-        return is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract();
     }
 
     /**

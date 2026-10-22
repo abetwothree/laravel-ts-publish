@@ -6,16 +6,17 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use Closure;
-use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -25,7 +26,6 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
-use ReflectionClass;
 
 /**
  * Closures and arrow functions used as a property value — resolves the body's return type(s),
@@ -125,23 +125,21 @@ final class ClosureHandler implements ExpressionHandler
     {
         foreach ($closure->params as $param) {
             $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
-            $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
-            $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
+            $declared = $name === null || $param->variadic ? null : ParameterBinder::declaredClass($param);
 
             if ($name === null
-                || $class === null
-                || $param->variadic
-                || (! class_exists($class) && ! interface_exists($class))
+                || $declared === null
                 || $scope->bindsClassName($name)
                 || $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
             ) {
                 continue;
             }
 
-            $nullable = $param->type instanceof NullableType
+            [$class, $nullable] = $declared;
+            $nullable = $nullable
                 || ($param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null');
 
-            if (! $nullable && is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract()) {
+            if (! $nullable && ReceiverType::isConcreteModel($class)) {
                 $scope->varModelBindings[$name] = $class;
             } else {
                 $scope->varDeclaredBindings[$name] = [$class];

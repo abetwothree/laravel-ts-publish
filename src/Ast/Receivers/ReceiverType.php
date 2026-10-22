@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use Illuminate\Database\Eloquent\Model;
+use ReflectionClass;
 
 /**
  * The PHP class(es) an expression holds, as ReceiverClassResolver answers it: a PHP class, never a TypeScript type.
@@ -50,6 +51,16 @@ final readonly class ReceiverType
     public static function of(string $class, bool $shortCircuits = false): self
     {
         return new self([$class], $shortCircuits);
+    }
+
+    /**
+     * Whether a class is a model a row can be read into: a subclass of Model that is not abstract.
+     *
+     * @phpstan-assert-if-true class-string<Model> $class
+     */
+    public static function isConcreteModel(string $class): bool
+    {
+        return is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract();
     }
 
     /**

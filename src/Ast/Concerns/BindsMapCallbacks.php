@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Name;
 use PhpParser\Node\Param;
-use ReflectionClass;
 
 /**
  * The one way a `map()` callback's first parameter is bound, shared by RelationCollectionChainHandler,
@@ -95,11 +95,8 @@ trait BindsMapCallbacks
      */
     protected function declaredMapModel(?Param $param): ?string
     {
-        $type = $param?->type;
-        $class = $type instanceof Name ? $type->toString() : null;
+        $declared = $param === null ? null : ParameterBinder::declaredClass($param);
 
-        return $class !== null && is_subclass_of($class, Model::class) && ! new ReflectionClass($class)->isAbstract()
-            ? $class
-            : null;
+        return $declared !== null && ! $declared[1] && ReceiverType::isConcreteModel($declared[0]) ? $declared[0] : null;
     }
 }

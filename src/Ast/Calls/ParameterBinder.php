@@ -18,7 +18,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\NullableType;
+use PhpParser\Node\Param;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -50,6 +53,22 @@ use ReflectionUnionType;
  */
 final class ParameterBinder
 {
+    /**
+     * The class a closure parameter's native type names, alone or behind a `?`, with whether the `?` is there; null for
+     * any other type, a special name such as `self`, or a name no class or interface has.
+     *
+     * @return array{class-string, bool}|null
+     */
+    public static function declaredClass(Param $param): ?array
+    {
+        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+        $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
+
+        return $class !== null && (class_exists($class) || interface_exists($class))
+            ? [$class, $param->type instanceof NullableType]
+            : null;
+    }
+
     /**
      * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
      *
@@ -124,7 +143,7 @@ final class ParameterBinder
         // Only a `new` of one class carries a model's unsaved mark into the body: a copy that may be more binds none.
         $classes = $held === null || ($unsaved && count($held->classes) !== 1) ? null : $held->classes;
         $unsaved = $unsaved && $classes !== null;
-        $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+        $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
         // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
         $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
 
@@ -184,7 +203,7 @@ final class ParameterBinder
     {
         $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
 
-        return $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+        return $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
     }
 
     /**
@@ -258,7 +277,7 @@ final class ParameterBinder
                 continue;
             }
 
-            $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+            $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
 
             if ($model !== null && ! ($parameter->getType()?->allowsNull() ?? true)) {
                 $scope->varModelBindings[$name] = $model;
@@ -289,17 +308,6 @@ final class ParameterBinder
         $class = $type instanceof ReflectionNamedType ? $type->getName() : null;
 
         return $class !== null && is_a($class, Request::class, true) ? $class : null;
-    }
-
-    /**
-     * The class as a model a variable binding can hold: an Eloquent model that is not abstract, else null.
-     *
-     * @param  class-string  $class
-     * @return class-string<Model>|null
-     */
-    private function concreteModel(string $class): ?string
-    {
-        return is_a($class, Model::class, true) && ! new ReflectionClass($class)->isAbstract() ? $class : null;
     }
 
     /**
