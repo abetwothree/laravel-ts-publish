@@ -49,29 +49,17 @@ trait NarrowsInstanceofSubjects
         $classes = $narrowed->classes;
 
         if ($subject instanceof Variable && $variable !== null) {
-            $previousVarGuardBindings = $scope->varGuardBindings;
-
-            try {
-                // The proof holds only past the test, so a value assigned earlier and read in the arm reads the
-                // variable as it was then.
+            // The proof holds only past the test, so a value assigned earlier and read in the arm reads the variable as
+            // it was then.
+            return $scope->within(function () use ($scope, $variable, $classes, $subject): void {
                 $scope->varGuardBindings[$variable][] = ['classes' => $classes, 'after' => $subject->getEndFilePos(), 'before' => null];
-
-                return $resolve();
-            } finally {
-                $scope->varGuardBindings = $previousVarGuardBindings;
-            }
+            }, $resolve);
         }
 
         if ($path !== null) {
-            $previousNarrowedReads = $scope->narrowedReads;
-
-            try {
+            return $scope->within(function () use ($scope, $path, $narrowed): void {
                 $scope->narrowedReads[] = [$path, $narrowed];
-
-                return $resolve();
-            } finally {
-                $scope->narrowedReads = $previousNarrowedReads;
-            }
+            }, $resolve);
         }
 
         // A test that rules out no class `$resource` is redeclared as proves nothing, so the arm reads it unproven.
@@ -79,11 +67,9 @@ trait NarrowsInstanceofSubjects
             return $resolve();
         }
 
-        $previousProvenProxy = $scope->provenProxy;
-        $previousModelClass = $scope->modelClass;
-        $previousForwardsTo = $scope->forwardsUndeclaredMembersTo;
-
-        try {
+        // within() puts the backing back as it was, never re-derived: an instanceof guard in toArray() may have backed
+        // the proxy the model did not.
+        return $scope->within(function () use ($scope, $classes): void {
             $scope->provenProxy = $classes;
 
             // One proven model also answers the subject's model reads, such as an undeclared `$this->prop`. Not
@@ -91,13 +77,6 @@ trait NarrowsInstanceofSubjects
             if (count($classes) === 1 && is_a($classes[0], Model::class, true)) {
                 $scope->setBackingModel($classes[0]);
             }
-
-            return $resolve();
-        } finally {
-            // Restored, never re-derived: an instanceof guard in toArray() may have backed the proxy the model did not.
-            $scope->provenProxy = $previousProvenProxy;
-            $scope->modelClass = $previousModelClass;
-            $scope->forwardsUndeclaredMembersTo = $previousForwardsTo;
-        }
+        }, $resolve);
     }
 }

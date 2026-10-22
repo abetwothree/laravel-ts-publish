@@ -102,13 +102,19 @@ use ReflectionClass;
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap
  * }
- * @phpstan-type CallerState array{
+ * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
- *      resolvingLocalVars: array<string, true>,
- *      declaringFileClass: ReflectionClass<object>,
  *      closureRelationModelClass: class-string<Model>|null,
  *      provenProxy: non-empty-list<class-string>|null,
- *      narrowedReads: list<NarrowedRead>
+ *      modelClass: class-string<Model>|null,
+ *      forwardsUndeclaredMembersTo: class-string|null,
+ *      declaringFileClass: ReflectionClass<object>,
+ *      resolvingLocalVars: array<string, true>,
+ *      readingLocals: array<string, true>,
+ *      visitedSpreadMethods: array<string, true>,
+ *      narrowedReads: list<NarrowedRead>,
+ *      filtersNestedResources: bool,
+ *      mapResultArrayed: bool
  * }
  *
  * @internal
@@ -368,6 +374,14 @@ final class AnalysisScope
     public array $resolvingLocalVars = [];
 
     /**
+     * The locals ResourceAstAnalyzer is reading the one written value of as a whole array, so a value naming its own
+     * local stops. A spread method's body starts with none, whatever local read its caller is in.
+     *
+     * @var array<string, true>
+     */
+    public array $readingLocals = [];
+
+    /**
      * Spread methods currently on the analysis stack, so a method that spreads itself — directly or
      * through a cycle — degrades to an empty analysis instead of recursing until memory runs out.
      *
@@ -573,6 +587,29 @@ final class AnalysisScope
     }
 
     /**
+     * Run a read with $enter's changes to the scope, then put back every name table and ambient field, even on a throw:
+     * the one way a reader binds names, sets the caller aside or narrows a subject for one body, arm or value.
+     *
+     * @template TRead
+     *
+     * @param  Closure(self): void  $enter
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function within(Closure $enter, Closure $read): mixed
+    {
+        $state = $this->state();
+
+        try {
+            $enter($this);
+
+            return $read();
+        } finally {
+            $this->restoreState($state);
+        }
+    }
+
+    /**
      * Run a read with one gap of a name lifted, so a value a write inside it assigns reads the name as it was before.
      *
      * @template TRead
@@ -625,6 +662,30 @@ final class AnalysisScope
             return $read();
         } finally {
             unset($this->resolvingLocalVars[$key]);
+        }
+    }
+
+    /**
+     * Run a read keyed by a name alone, or give null while a read of that name is under way, as VariableHandler's
+     * by-reference forms and key-built locals do.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead|null
+     */
+    public function resolvingName(string $name, Closure $read): mixed
+    {
+        if (isset($this->resolvingLocalVars[$name])) {
+            return null;
+        }
+
+        $this->resolvingLocalVars[$name] = true;
+
+        try {
+            return $read();
+        } finally {
+            unset($this->resolvingLocalVars[$name]);
         }
     }
 
@@ -716,25 +777,15 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read the subject's own method $method, until leaveSubjectMethod(): no caller name
+     * Set the caller's state aside to read the subject's own method $method, as within()'s $enter: no caller name
      * reaches its body, which reads `$this` as the subject from its own file, and only $proofs of `$this` reads hold.
      *
      * @param  ReflectionClass<object>  $declaringFileClass  the class or trait whose file holds the method's body
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
-     * @return CallerState
      */
-    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, array $rewritten = []): array
+    public function enterSubjectMethod(string $method, ReflectionClass $declaringFileClass, array $proofs, array $rewritten = []): void
     {
-        $caller = [
-            'bindings' => $this->nameBindings(),
-            'resolvingLocalVars' => $this->resolvingLocalVars,
-            'declaringFileClass' => $this->declaringFileClass,
-            'closureRelationModelClass' => $this->closureRelationModelClass,
-            'provenProxy' => $this->provenProxy,
-            'narrowedReads' => $this->narrowedReads,
-        ];
-
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
         $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
@@ -750,24 +801,6 @@ final class AnalysisScope
         // The method's body is no relation closure, even where the call is made from one.
         $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
-
-        return $caller;
-    }
-
-    /**
-     * Restore the caller's state enterSubjectMethod() set aside for a read of $method.
-     *
-     * @param  CallerState  $caller
-     */
-    public function leaveSubjectMethod(string $method, array $caller): void
-    {
-        $this->restoreNameBindings($caller['bindings']);
-        $this->resolvingLocalVars = $caller['resolvingLocalVars'];
-        $this->declaringFileClass = $caller['declaringFileClass'];
-        $this->closureRelationModelClass = $caller['closureRelationModelClass'];
-        $this->provenProxy = $caller['provenProxy'];
-        $this->narrowedReads = $caller['narrowedReads'];
-        unset($this->visitedSpreadMethods[$method]);
     }
 
     /**
@@ -1109,5 +1142,49 @@ final class AnalysisScope
                 $this->passedValues[$name],
             );
         }
+    }
+
+    /**
+     * Capture every name table and ambient field within() puts back.
+     *
+     * @return ScopeState
+     */
+    private function state(): array
+    {
+        return [
+            'bindings' => $this->nameBindings(),
+            'closureRelationModelClass' => $this->closureRelationModelClass,
+            'provenProxy' => $this->provenProxy,
+            'modelClass' => $this->modelClass,
+            'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
+            'declaringFileClass' => $this->declaringFileClass,
+            'resolvingLocalVars' => $this->resolvingLocalVars,
+            'readingLocals' => $this->readingLocals,
+            'visitedSpreadMethods' => $this->visitedSpreadMethods,
+            'narrowedReads' => $this->narrowedReads,
+            'filtersNestedResources' => $this->filtersNestedResources,
+            'mapResultArrayed' => $this->mapResultArrayed,
+        ];
+    }
+
+    /**
+     * Put back a state() capture, field by field, never re-deriving one from another.
+     *
+     * @param  ScopeState  $state
+     */
+    private function restoreState(array $state): void
+    {
+        $this->restoreNameBindings($state['bindings']);
+        $this->closureRelationModelClass = $state['closureRelationModelClass'];
+        $this->provenProxy = $state['provenProxy'];
+        $this->modelClass = $state['modelClass'];
+        $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];
+        $this->declaringFileClass = $state['declaringFileClass'];
+        $this->resolvingLocalVars = $state['resolvingLocalVars'];
+        $this->readingLocals = $state['readingLocals'];
+        $this->visitedSpreadMethods = $state['visitedSpreadMethods'];
+        $this->narrowedReads = $state['narrowedReads'];
+        $this->filtersNestedResources = $state['filtersNestedResources'];
+        $this->mapResultArrayed = $state['mapResultArrayed'];
     }
 }

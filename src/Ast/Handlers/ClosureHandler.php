@@ -62,43 +62,44 @@ final class ClosureHandler implements ExpressionHandler
         // Closures / arrow functions — body analysis first, return-type annotation as the fallback.
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
-        if ($closureReturns !== []) {
-            $previousNameBindings = $scope->nameBindings();
-
-            try {
-                // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
-                $scope->releaseUnclaimedParameters($expr);
-                // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
-                $this->bindDeclaredParameters($expr, $scope);
-                $this->markFilledDefaults($expr, $scope);
-
-                if ($expr instanceof ClosureExpr) {
-                    $this->seedBody($expr->stmts, $scope, $expr);
-                    $this->bindForeachLoopVariables($expr->stmts, $scope);
-                }
-
-                $resolve = $this->returnResolver($expr, $engine);
-                $bodyResult = count($closureReturns) === 1
-                    ? $resolve($closureReturns[0])
-                    : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
-
-                if ($bodyResult['type'] !== 'unknown') {
-                    return $bodyResult;
-                }
-
-                $annotationResult = $this->resolveClosureAstReturnType($expr);
-
-                if ($annotationResult !== null) {
-                    return [...$annotationResult, 'optional' => false];
-                }
-
-                return $bodyResult;
-            } finally {
-                $scope->restoreNameBindings($previousNameBindings);
-            }
+        if ($closureReturns === []) {
+            return null;
         }
 
-        return null;
+        return $scope->within(function () use ($expr, $scope): void {
+            // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
+            $scope->releaseUnclaimedParameters($expr);
+            // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
+            $this->bindDeclaredParameters($expr, $scope);
+            $this->markFilledDefaults($expr, $scope);
+
+            if ($expr instanceof ClosureExpr) {
+                $this->seedBody($expr->stmts, $scope, $expr);
+                $this->bindForeachLoopVariables($expr->stmts, $scope);
+            }
+        }, fn (): array => $this->resolveBody($expr, $closureReturns, $scope, $engine));
+    }
+
+    /**
+     * A closure's returns resolved in its own bindings, or its return-type annotation where they resolve to `unknown`.
+     *
+     * @param  non-empty-list<Expr>  $closureReturns
+     * @return ValueExpressionResult
+     */
+    private function resolveBody(ArrowFunction|ClosureExpr $closure, array $closureReturns, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        $resolve = $this->returnResolver($closure, $engine);
+        $bodyResult = count($closureReturns) === 1
+            ? $resolve($closureReturns[0])
+            : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
+
+        if ($bodyResult['type'] !== 'unknown') {
+            return $bodyResult;
+        }
+
+        $annotationResult = $this->resolveClosureAstReturnType($closure);
+
+        return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
     }
 
     /**

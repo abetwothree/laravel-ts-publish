@@ -272,9 +272,10 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
     $scope->claimParameters(new ArrowFunction(['params' => [new Param(new Variable('item'))], 'expr' => new Variable('item')]));
     $scope->copyBindings(new Variable('item', ['startFilePos' => 5]), 'param', $captured);
     $claimed = array_keys($scope->varGuardBindings);
-    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, []);
-    $inside = $scope->varGuardBindings;
-    $scope->leaveSubjectMethod('helper', $caller);
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', $scope->declaringFileClass, []),
+        fn (): array => $scope->varGuardBindings,
+    );
 
     expect($claimed)->toBe([AnalysisScope::PROXY_GUARDS, 'param'])
         ->and($inside)->toBe([])
@@ -399,14 +400,81 @@ it('captures every public array table but the re-entrancy guards and the narrowe
             fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
         ),
     );
-    $notNameKeyed = ['resolvingLocalVars', 'visitedSpreadMethods', 'narrowedReads'];
+    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads'];
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     expect(array_values(array_diff($tables, $notNameKeyed)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
         ->and(array_keys(AnalysisScope::NO_NAME_BINDINGS))->toBe(array_keys($scope->nameBindings()));
 });
 
-// leaveSubjectMethod() restores by hand each field enterSubjectMethod() set aside, so this round trip guards it.
+/**
+ * A value for a scope field of the given type, one per phase, so a field each phase sets reads as changed.
+ */
+function analysisScopeFieldValue(ReflectionProperty $field, string $phase): mixed
+{
+    $class = $phase === 'before' ? User::class : Post::class;
+
+    return match ((string) $field->getType()) {
+        'array' => [$phase => true],
+        '?array' => [$class],
+        '?string' => $class,
+        'bool' => $phase === 'before',
+        'ReflectionClass' => new ReflectionClass($class),
+        default => throw new LogicException("No value for {$field->getName()}'s type."),
+    };
+}
+
+// Every field but those a builder sets once is given a value, and $enter changes each, so a field added to the scope
+// fails here until within() puts it back or it joins the fields set once.
+it('within() restores every name table and ambient field after a read, a throw included', function (bool $throws) {
+    $setOnce = ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
+    $ambient = [
+        'closureRelationModelClass', 'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass',
+        'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'filtersNestedResources',
+        'mapResultArrayed',
+    ];
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $fields = array_values(array_filter(
+        new ReflectionClass(AnalysisScope::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+        fn (ReflectionProperty $field): bool => ! $field->isStatic() && ! in_array($field->getName(), $setOnce, true),
+    ));
+    $names = array_map(fn (ReflectionProperty $field): string => $field->getName(), $fields);
+
+    foreach ($fields as $field) {
+        $field->setValue($scope, analysisScopeFieldValue($field, 'before'));
+    }
+
+    $before = get_object_vars($scope);
+    $seen = [];
+    $read = null;
+
+    try {
+        $read = $scope->within(
+            function (AnalysisScope $entered) use ($fields): void {
+                foreach ($fields as $field) {
+                    $field->setValue($entered, analysisScopeFieldValue($field, 'entered'));
+                }
+            },
+            function () use ($scope, &$seen, $throws): string {
+                $seen = get_object_vars($scope);
+
+                return $throws ? throw new RuntimeException('The read failed.') : 'read';
+            },
+        );
+    } catch (RuntimeException) {
+    }
+
+    expect($names)->toEqualCanonicalizing([...array_keys(AnalysisScope::NO_NAME_BINDINGS), ...$ambient])
+        ->and(array_keys(array_filter($seen, fn (mixed $value, string $name): bool => $value !== $before[$name], ARRAY_FILTER_USE_BOTH)))
+        ->toEqualCanonicalizing($names)
+        ->and(get_object_vars($scope))->toBe($before)
+        ->and($read)->toBe($throws ? null : 'read');
+})->with([
+    'a read that returns' => [false],
+    'a read that throws' => [true],
+]);
+
+// within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
 it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
     $scope = analysisScopeWithEveryTableBound();
     $scope->resolvingLocalVars = ['item' => true];
@@ -414,24 +482,29 @@ it('restores every field a subject method read sets aside, the relation closure\
     $declaring = $scope->declaringFileClass;
     $before = $scope->nameBindings();
     $proofs = ['this' => [['read' => new Variable('this'), 'after' => null, 'before' => null]]];
+    $inside = [];
 
-    $caller = $scope->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs);
+    $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', new ReflectionClass(Post::class), $proofs),
+        function () use ($scope, &$inside): void {
+            $inside = [
+                $scope->nameBindings(),
+                $scope->resolvingLocalVars,
+                $scope->closureRelationModelClass,
+                $scope->declaringFileClass->getName(),
+                $scope->visitedSpreadMethods,
+            ];
 
-    expect($scope->nameBindings())->toBe([...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs])
-        ->and($scope->resolvingLocalVars)->toBe([])
-        ->and($scope->closureRelationModelClass)->toBeNull()
-        ->and($scope->declaringFileClass->getName())->toBe(Post::class)
-        ->and($scope->visitedSpreadMethods)->toBe(['helper' => true]);
+            $scope->localVarBindings['inner'] = new Variable('body');
+            $scope->bindingEnds['inner'] = 3;
+            $scope->resolvingLocalVars['inner'] = true;
+            $scope->closureRelationModelClass = Post::class;
+            $scope->declaringFileClass = new ReflectionClass(User::class);
+        },
+    );
 
-    $scope->localVarBindings['inner'] = new Variable('body');
-    $scope->bindingEnds['inner'] = 3;
-    $scope->resolvingLocalVars['inner'] = true;
-    $scope->closureRelationModelClass = Post::class;
-    $scope->declaringFileClass = new ReflectionClass(User::class);
-
-    $scope->leaveSubjectMethod('helper', $caller);
-
-    expect($scope->nameBindings())->toBe($before)
+    expect($inside)->toBe([[...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], null, Post::class, ['helper' => true]])
+        ->and($scope->nameBindings())->toBe($before)
         ->and($scope->resolvingLocalVars)->toBe(['item' => true])
         ->and($scope->closureRelationModelClass)->toBe(User::class)
         ->and($scope->declaringFileClass)->toBe($declaring)
@@ -445,9 +518,10 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)], [['author', 'team'], ReceiverType::of(Team::class)]];
     $before = $scope->narrowedReads;
 
-    $caller = $scope->enterSubjectMethod('helper', $scope->declaringFileClass, [], $rewritten);
-    $inside = [$scope->provenProxy, array_column($scope->narrowedReads, 0)];
-    $scope->leaveSubjectMethod('helper', $caller);
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterSubjectMethod('helper', $scope->declaringFileClass, [], $rewritten),
+        fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
+    );
 
     expect($inside)->toBe([$keepsProxy ? [SubscribedTeam::class] : null, $kept])
         ->and($scope->provenProxy)->toBe([SubscribedTeam::class])

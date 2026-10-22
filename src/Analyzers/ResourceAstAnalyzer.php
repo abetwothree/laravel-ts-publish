@@ -145,9 +145,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /** Whether the analyzed method's return is read as its whole value, which takes the collected list flat. */
     private bool $returnedWhole = true;
 
-    /** @var array<string, true> the locals whose written value is being read, so a value naming its own local stops */
-    private array $readingLocals = [];
-
     /**
      * Create an analyzer for a class, its optional backing model, and the method to analyze.
      *
@@ -881,7 +878,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Resolve and analyze a $this->method() spread; $topLevel carries the caller's own flatten-eligibility down into
      * the target's own return (see analyzeReturnArray()), and $call places the guard proofs that hold for it. The
-     * caller's state it sets aside is restored in a `finally`.
+     * caller's state it sets aside is put back by AnalysisScope::within(), a throw included.
      */
     protected function analyzeThisMethodSpread(string $methodName, bool $topLevel = true, ?Expr $call = null): ?ResourceAnalysis
     {
@@ -907,46 +904,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         // Read in the caller's tables, before they are set aside.
         $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
-        $caller = $this->scope->enterSubjectMethod(
-            $methodName,
-            LaravelTsPublish::methodDeclaringFileClass($method),
-            $this->proofsAcrossCall($this->scope, $call),
-            $this->rewrittenThisPaths($targetMethod->stmts, $this->scope),
-        );
+        $proofs = $this->proofsAcrossCall($this->scope, $call);
+        $stmts = $targetMethod->stmts;
+        $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
-        $readsAttributeNames = $this->readsKeylessAttributeNames;
-        // The helper's body is seeded with its own locals, whatever local read the caller is in.
-        $readingLocals = $this->readingLocals;
-        $this->readingLocals = [];
-
-        try {
-            $this->seedVarBindings($method, $targetMethod->stmts, $passed);
-
-            // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
-            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
-            $branches = [];
-
-            foreach ($this->collectReturnExpressions($targetMethod->stmts) as $returned) {
-                $branches[] = match (true) {
-                    $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
-                    $returned instanceof Array_ => $this->literalBranch($returned, $this->analyzeReturnArray($returned, $topLevel)),
-                    $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($targetMethod->stmts, $returned->name, $topLevel),
-                    default => null,
-                };
-            }
-
-            // Every branch classified: each is a shape the method can return, so a key missing from
-            // one publishes optional. Anything unclassifiable falls back to the first-return path.
-            $analysis = $branches !== [] && ! in_array(null, $branches, true)
-                ? (count($branches) === 1
-                    ? $branches[0]
-                    : $this->recordedMergeJoin($this->mergeReturnBranches($branches, dropsUntypedBranches: true), $branches))
-                : $this->analyzeFirstReturn($targetMethod->stmts, $topLevel);
-        } finally {
-            $this->readsKeylessAttributeNames = $readsAttributeNames;
-            $this->readingLocals = $readingLocals;
-            $this->scope->leaveSubjectMethod($methodName, $caller);
-        }
+        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($methodName, $method, $proofs, $rewritten, $stmts, $passed): void {
+            $scope->enterSubjectMethod($methodName, LaravelTsPublish::methodDeclaringFileClass($method), $proofs, $rewritten);
+            // The helper's body is seeded with its own locals, whatever local read the caller is in.
+            $scope->readingLocals = [];
+            $this->seedVarBindings($method, $stmts, $passed);
+        }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
         resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
         $this->applyTsCastsFromMethod($method, $analysis);
@@ -1345,6 +1312,41 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * What a spread method's returns build, read in its own bindings: each return a branch, else the first return.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function spreadReturnAnalysis(string $methodName, array $stmts, bool $topLevel): ResourceAnalysis
+    {
+        $readsAttributeNames = $this->readsKeylessAttributeNames;
+
+        try {
+            // Only the attributes Laravel builds from a JSON:API toAttributes() map a keyless name to the model's.
+            $this->readsKeylessAttributeNames = $methodName === 'toAttributes' && JsonApiResources::is($this->runtimeClass()->getName());
+            $branches = [];
+
+            foreach ($this->collectReturnExpressions($stmts) as $returned) {
+                $branches[] = match (true) {
+                    $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
+                    $returned instanceof Array_ => $this->literalBranch($returned, $this->analyzeReturnArray($returned, $topLevel)),
+                    $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel),
+                    default => null,
+                };
+            }
+
+            // Every branch classified: each is a shape the method can return, so a key missing from
+            // one publishes optional. Anything unclassifiable falls back to the first-return path.
+            return $branches !== [] && ! in_array(null, $branches, true)
+                ? (count($branches) === 1
+                    ? $branches[0]
+                    : $this->recordedMergeJoin($this->mergeReturnBranches($branches, dropsUntypedBranches: true), $branches))
+                : $this->analyzeFirstReturn($stmts, $topLevel);
+        } finally {
+            $this->readsKeylessAttributeNames = $readsAttributeNames;
+        }
+    }
+
+    /**
      * Analyze the items of an array literal analyzeReturnArray() reads. With $readsAttributeNames, a keyless string
      * reads the model attribute it names, `$this->resource->{name}`, and `...parent::toAttributes()` what it returns.
      */
@@ -1729,7 +1731,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function writtenLocal(Expr $expr): ?array
     {
-        if (! $expr instanceof Variable || ! is_string($expr->name) || isset($this->readingLocals[$expr->name])) {
+        if (! $expr instanceof Variable || ! is_string($expr->name) || isset($this->scope->readingLocals[$expr->name])) {
             return null;
         }
 
@@ -1749,12 +1751,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function readWrittenLocal(array $local, callable $read): mixed
     {
-        $this->readingLocals[$local[0]] = true;
+        $this->scope->readingLocals[$local[0]] = true;
 
         try {
             return $read($local[1]);
         } finally {
-            unset($this->readingLocals[$local[0]]);
+            unset($this->scope->readingLocals[$local[0]]);
         }
     }
 

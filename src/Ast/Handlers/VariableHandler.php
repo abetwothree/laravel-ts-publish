@@ -197,14 +197,9 @@ final class VariableHandler implements ExpressionHandler
         }
 
         $method = $call->name->toString();
-        $arrayed = $scope->mapResultArrayed;
-
-        try {
-            $scope->mapResultArrayed = $arrayed || $method === 'all';
-            $receiverResult = $engine->resolve($call->var);
-        } finally {
-            $scope->mapResultArrayed = $arrayed;
-        }
+        $receiverResult = $scope->within(function () use ($scope, $method): void {
+            $scope->mapResultArrayed = $scope->mapResultArrayed || $method === 'all';
+        }, fn (): array => $engine->resolve($call->var));
 
         $type = match (true) {
             $method === 'values' => $this->valuesList($receiverResult['type']),
@@ -336,17 +331,11 @@ final class VariableHandler implements ExpressionHandler
     {
         $stmts = $scope->keyBuiltLocals[$name] ?? null;
 
-        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues || isset($scope->resolvingLocalVars[$name])) {
+        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues) {
             return null;
         }
 
-        $scope->resolvingLocalVars[$name] = true;
-
-        try {
-            return $engine->walkedLocal($read, $stmts);
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
-        }
+        return $scope->resolvingName($name, fn (): ?array => $engine->walkedLocal($read, $stmts));
     }
 
     /**
@@ -530,14 +519,9 @@ final class VariableHandler implements ExpressionHandler
             return $value;
         }
 
-        if (isset($scope->resolvingLocalVars[$name])) {
-            return null;
-        }
+        return $scope->resolvingName($name, function () use ($forms, $value, $scope, $engine): ?array {
+            $type = $value['type'];
 
-        $scope->resolvingLocalVars[$name] = true;
-        $type = $value['type'];
-
-        try {
             foreach ($forms as $form) {
                 $read = [];
                 $written = function (string $element, string $key) use ($form, &$read, $scope, $engine): array {
@@ -554,11 +538,9 @@ final class VariableHandler implements ExpressionHandler
                     return null;
                 }
             }
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
-        }
 
-        return [...$value, 'type' => $type];
+            return [...$value, 'type' => $type];
+        });
     }
 
     /**
@@ -599,11 +581,9 @@ final class VariableHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): array {
-        $caller = $scope->nameBindings();
-        $ambient = $scope->closureRelationModelClass;
-
-        try {
+        return $scope->within(function () use ($callback, $element, $key, $scope): void {
             if ($callback instanceof ClosureExpr) {
+                $caller = $scope->nameBindings();
                 $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
                 $scope->closureRelationModelClass = null;
 
@@ -627,12 +607,7 @@ final class VariableHandler implements ExpressionHandler
             if ($callback instanceof ClosureExpr) {
                 $this->seedBody($callback->stmts, $scope);
             }
-
-            return array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values);
-        } finally {
-            $scope->restoreNameBindings($caller);
-            $scope->closureRelationModelClass = $ambient;
-        }
+        }, fn (): array => array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values));
     }
 
     /**
