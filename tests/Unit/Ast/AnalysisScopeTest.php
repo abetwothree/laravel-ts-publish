@@ -571,6 +571,18 @@ it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body 
     '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
 ]);
 
+it('takes one local by its syntax as the whole list does, leaving out one a by-reference call keeps in some form', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
+    $bound = new Int_(1);
+    $scope->localVarBindings = ['kept' => $bound, 'sorted' => new Int_(2)];
+    $scope->byReferenceForms['sorted'] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
+
+    expect($scope->literalLocalBinding('kept'))->toBe($bound)
+        ->and($scope->literalLocalBinding('sorted'))->toBeNull()
+        ->and($scope->literalLocalBinding('missing'))->toBeNull()
+        ->and($scope->literalLocalBindings())->toBe(['kept' => $bound]);
+});
+
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $scope->localVarBindings['item'] = new Variable('outer');

@@ -653,7 +653,7 @@ final class AnalysisScope
             return null;
         }
 
-        return $this->literalLocalBindings()[$name] ?? null;
+        return $this->literalLocalBinding($name);
     }
 
     /**
@@ -1067,6 +1067,14 @@ final class AnalysisScope
     public function literalLocalBindings(): array
     {
         return array_diff_key($this->localVarBindings, $this->byReferenceForms);
+    }
+
+    /**
+     * The local binding of one name a reader may take by its syntax, as literalLocalBindings() lists it, or null.
+     */
+    public function literalLocalBinding(string $name): ?Expr
+    {
+        return isset($this->byReferenceForms[$name]) ? null : ($this->localVarBindings[$name] ?? null);
     }
 
     /**

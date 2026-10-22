@@ -713,7 +713,7 @@ final class VariableHandler implements ExpressionHandler
             && $receiver instanceof Variable
             && is_string($receiver->name)
             && $receiver->name !== 'this'
-            && ! (($scope->literalLocalBindings()[$receiver->name] ?? null) instanceof Array_);
+            && ! ($scope->literalLocalBinding($receiver->name) instanceof Array_);
     }
 
     /**

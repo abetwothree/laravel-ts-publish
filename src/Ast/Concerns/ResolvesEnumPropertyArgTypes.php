@@ -64,7 +64,7 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                $local = $scope->literalLocalBindings()[$name] ?? null;
+                $local = $scope->literalLocalBinding($name);
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
                     return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));

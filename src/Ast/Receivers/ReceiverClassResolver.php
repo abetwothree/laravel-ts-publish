@@ -675,7 +675,7 @@ final class ReceiverClassResolver
      */
     private function rekeyedBefore(string $name, Variable $read, AnalysisScope $scope): bool
     {
-        $written = $scope->literalLocalBindings()[$name] ?? null;
+        $written = $scope->literalLocalBinding($name);
 
         return $written !== null
             && $read->getStartFilePos() > $written->getEndFilePos()
@@ -738,7 +738,7 @@ final class ReceiverClassResolver
      */
     private function fromLocal(string $name, AnalysisScope $scope): ?ReceiverType
     {
-        $bound = $scope->literalLocalBindings()[$name] ?? null;
+        $bound = $scope->literalLocalBinding($name);
 
         return $bound === null ? null : $this->fromBoundExpression($name, $bound, $scope);
     }
