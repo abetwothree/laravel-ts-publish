@@ -104,10 +104,9 @@ final class DroppedUnionArms
             return $union;
         }
 
-        $arms = array_unique(TsTypeString::splitTopLevelUnion($union['type']));
-        $placeholder = self::PLACEHOLDERS[implode('|', array_intersect(['null', 'never[]'], $arms))] ?? null;
+        $placeholder = self::placeholder($union['type']);
 
-        if ($placeholder === null || array_diff($arms, ['null', 'never[]']) !== []) {
+        if ($placeholder === null) {
             return $union;
         }
 
@@ -117,6 +116,37 @@ final class DroppedUnionArms
                 .'what it reads a return type or a `@return` docblock.',
                 $arm->getStartLine(),
                 $placeholder,
+                new Standard()->prettyPrintExpr($arm),
+            ));
+        }
+
+        return $union;
+    }
+
+    /**
+     * Warn in the run output, once per arm a join left out beside typed ones, each a value that still reaches the read:
+     * as warnOfPlaceholder() does where they leave only `null` or `never[]`, else that the published type may not admit
+     * every value the read sends. The union is returned as it is.
+     *
+     * @param  ValueExpressionResult  $union
+     * @param  list<Expr>  $dropped  the arms the join left out
+     * @return ValueExpressionResult
+     */
+    public static function warnOfJoinDrop(array $union, array $dropped, AnalysisScope $scope): array
+    {
+        if ($dropped === []) {
+            return $union;
+        }
+
+        if (self::placeholder($union['type']) !== null) {
+            return self::warnOfPlaceholder($union, $dropped, $scope);
+        }
+
+        foreach ($dropped as $arm) {
+            self::warn($scope->subjectReflection->getName(), sprintf(
+                'The value on line %d leaves out `%s`, which could not be typed, so its published type may not admit '
+                .'every value it sends. Give what it reads a return type or a `@return` docblock.',
+                $arm->getStartLine(),
                 new Standard()->prettyPrintExpr($arm),
             ));
         }
@@ -151,6 +181,16 @@ final class DroppedUnionArms
         }
 
         return $value;
+    }
+
+    /** How the warning words what a type made only of `null` and/or `never[]` publishes; null for any other type. */
+    private static function placeholder(string $type): ?string
+    {
+        $arms = array_unique(TsTypeString::splitTopLevelUnion($type));
+
+        return array_diff($arms, ['null', 'never[]']) === []
+            ? self::PLACEHOLDERS[implode('|', array_intersect(['null', 'never[]'], $arms))] ?? null
+            : null;
     }
 
     /** Hold a warning for the innermost replaceable() read under way, or add it to the run's warnings. */

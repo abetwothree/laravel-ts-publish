@@ -12,12 +12,12 @@ use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Post;
 
 /**
- * The placeholder warnings a fresh analysis of one resource raises, each prefixed with the subject it names.
+ * The warnings of one kind a fresh analysis of one resource raises, each prefixed with the subject it names.
  *
  * @param  class-string  $class
  * @return list<string>
  */
-function placeholderWarnings(string $class): array
+function droppedArmWarnings(string $class, string $kind): array
 {
     AnalysisWarnings::reset();
     resolve(AnalysisMemo::class)->reset();
@@ -25,8 +25,30 @@ function placeholderWarnings(string $class): array
 
     return array_values(array_map(
         fn (array $warning): string => $warning['subject'].': '.$warning['message'],
-        array_filter(AnalysisWarnings::all(), fn (array $warning): bool => str_contains($warning['message'], 'was left out of its union')),
+        array_filter(AnalysisWarnings::all(), fn (array $warning): bool => str_contains($warning['message'], $kind)),
     ));
+}
+
+/**
+ * The placeholder warnings a fresh analysis of one resource raises.
+ *
+ * @param  class-string  $class
+ * @return list<string>
+ */
+function placeholderWarnings(string $class): array
+{
+    return droppedArmWarnings($class, 'was left out of its union');
+}
+
+/**
+ * The warnings a fresh analysis of one resource raises for a join that left out a value it cannot type.
+ *
+ * @param  class-string  $class
+ * @return list<string>
+ */
+function joinDropWarnings(string $class): array
+{
+    return droppedArmWarnings($class, 'which could not be typed, so its published type may not admit');
 }
 
 /**
@@ -100,4 +122,19 @@ test('unknown[] beside never[] publishes unknown[]', function () {
     expect(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))
         ->toMatchArray(['listed' => 'unknown[]'])
         ->and(implode("\n", placeholderWarnings(DroppedArmPlaceholderResource::class)))->not->toContain('line 39 ');
+});
+
+// Each value a join leaves out still reaches the read, so a type it keeps beside them may not admit all Laravel sends.
+test('a join that leaves out a value it cannot type warns that the published type may not admit every value', function () {
+    $warning = fn (int $line): string => DroppedArmPlaceholderResource::class.": The value on line {$line} leaves out "
+        .'`$this->opaqueRows()`, which could not be typed, so its published type may not admit every value it sends. '
+        .'Give what it reads a return type or a `@return` docblock.';
+
+    expect(joinDropWarnings(DroppedArmPlaceholderResource::class))->toBe([$warning(61), $warning(72)])
+        ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
+            'parameter_kept?' => 'string',
+            'walked_kept?' => '{ id: number; title: string }',
+        ])
+        ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(3)
+        ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 28 ');
 });

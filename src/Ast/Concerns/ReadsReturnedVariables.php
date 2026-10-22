@@ -674,7 +674,7 @@ trait ReadsReturnedVariables
 
     /**
      * Record each branch value a join left out beside a typed one, naming the last untyped write of its key the branch
-     * saw, and warn where that leaves the key only `null` or `never[]`.
+     * saw, and warn of each: it still reaches the read.
      *
      * @param  non-empty-list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
@@ -708,8 +708,10 @@ trait ReadsReturnedVariables
                 }
             }
 
-            $union = [...ValueResult::unknown(), 'type' => $property['type']];
-            DroppedUnionArms::warnOfPlaceholder($union, $dropped, $this->analysisScope());
+            if ($dropped !== []) {
+                $union = [...ValueResult::unknown(), 'type' => $property['type']];
+                DroppedUnionArms::warnOfJoinDrop($union, $dropped, $this->analysisScope());
+            }
         }
     }
 

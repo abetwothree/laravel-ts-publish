@@ -319,7 +319,7 @@ final class VariableHandler implements ExpressionHandler
         $typed = array_values(array_filter($arms));
         $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
 
-        return DroppedUnionArms::warnOfPlaceholder($union, $dropped, $scope);
+        return DroppedUnionArms::warnOfJoinDrop($union, $dropped, $scope);
     }
 
     /**

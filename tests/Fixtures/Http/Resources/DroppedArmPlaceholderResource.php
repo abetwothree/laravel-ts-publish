@@ -10,9 +10,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
- * A test-only resource whose `[]` and `null` arms sit beside values the engine cannot type: in a union, in a local an
- * inline `@var` types or names a class with no published file, in a parameter's join past its block, and in the join
- * of a local's branches.
+ * A test-only resource whose `[]` and `null` arms, and typed ones, sit beside values the engine cannot type: in a
+ * union, in a local an inline `@var` types or names a class with no published file, in a parameter's join past its
+ * block, and in the join of a local's branches.
  *
  * @mixin Post
  */
@@ -54,6 +54,24 @@ class DroppedArmPlaceholderResource extends JsonResource
                     $built['rows'] = $this->opaqueRows();
                 } else {
                     $built['rows'] = [];
+                }
+
+                return $built;
+            }),
+            'parameter_kept' => $this->transform($this->opaqueRows(), function ($value) {
+                if ($this->id > 1) {
+                    $value = $this->title;
+                }
+
+                return $value;
+            }),
+            'walked_kept' => $this->when($this->id > 0, function () {
+                $built = ['id' => $this->id];
+
+                if ($this->id > 1) {
+                    $built['title'] = $this->opaqueRows();
+                } else {
+                    $built['title'] = $this->title;
                 }
 
                 return $built;
