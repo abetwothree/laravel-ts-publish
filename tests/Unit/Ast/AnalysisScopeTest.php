@@ -32,7 +32,6 @@ it('constructs with the given subject reflection and model class', function () {
         ->and($scope->modelClass)->toBe('App\\Models\\Post')
         ->and($scope->instanceOfWrappedClass)->toBeNull()
         ->and($scope->forwardsUndeclaredMembersTo)->toBeNull()
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->closureParamExprBindings)->toBe([])
         ->and($scope->varModelBindings)->toBe([])
         ->and($scope->varCollectionBindings)->toBe([])
@@ -458,9 +457,9 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase, strin
 it('within() restores every name table and ambient field after a read, a throw included', function (string $throws, string $odd) {
     $setOnce = analysisScopeSetOnceFields();
     $ambient = [
-        'closureRelationModelClass', 'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass',
-        'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof',
-        'filtersNestedResources', 'mapResultArrayed',
+        'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'resolvingLocalVars',
+        'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof', 'filtersNestedResources',
+        'mapResultArrayed',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(
@@ -511,10 +510,9 @@ it('within() restores every name table and ambient field after a read, a throw i
 ])->with(analysisScopeRestoredBools());
 
 // within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
-it('restores every field a subject method read sets aside, the relation closure\'s model included', function () {
+it('restores every field a subject method read sets aside', function () {
     $scope = analysisScopeWithEveryTableBound();
     $scope->resolvingLocalVars = ['item' => true];
-    $scope->closureRelationModelClass = User::class;
     $declaring = $scope->declaringFileClass;
     $before = $scope->nameBindings();
     $proofs = ['this' => [['read' => new Variable('this'), 'after' => null, 'before' => null]]];
@@ -526,7 +524,6 @@ it('restores every field a subject method read sets aside, the relation closure\
             $inside = [
                 $scope->nameBindings(),
                 $scope->resolvingLocalVars,
-                $scope->closureRelationModelClass,
                 $scope->declaringFileClass->getName(),
                 $scope->visitedSpreadMethods,
             ];
@@ -534,15 +531,13 @@ it('restores every field a subject method read sets aside, the relation closure\
             $scope->localVarBindings['inner'] = new Variable('body');
             $scope->bindingEnds['inner'] = 3;
             $scope->resolvingLocalVars['inner'] = true;
-            $scope->closureRelationModelClass = Post::class;
             $scope->declaringFileClass = new ReflectionClass(User::class);
         },
     );
 
-    expect($inside)->toBe([[...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], null, Post::class, ['helper' => true]])
+    expect($inside)->toBe([[...AnalysisScope::NO_NAME_BINDINGS, 'nonNullReads' => $proofs], [], Post::class, ['helper' => true]])
         ->and($scope->nameBindings())->toBe($before)
         ->and($scope->resolvingLocalVars)->toBe(['item' => true])
-        ->and($scope->closureRelationModelClass)->toBe(User::class)
         ->and($scope->declaringFileClass)->toBe($declaring)
         ->and($scope->visitedSpreadMethods)->toBe([]);
 });

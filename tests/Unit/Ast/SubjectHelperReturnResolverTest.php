@@ -29,7 +29,6 @@ use Workbench\App\Enums\WeekDays;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
-use Workbench\App\Models\User;
 
 /**
  * Helpers the workbench fixture leaves out, one per edge of the rule: each wraps one of the team's enums, or returns a
@@ -173,9 +172,8 @@ function subjectHelperReturn(
     $scope->localVarBindings['status'] = new PropertyFetch(new Variable('this'), 'title');
     $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'visibility');
     $scope->resolvingLocalVars['status'] = true;
-    $scope->closureRelationModelClass = User::class;
     $engine ??= new ResourceAstAnalyzer(new ReflectionClass($subject), $model, 'toArray', null, $scope);
-    $callerState = fn (): array => [$scope->nameBindings(), $scope->resolvingLocalVars, $scope->closureRelationModelClass, $scope->declaringFileClass];
+    $callerState = fn (): array => [$scope->nameBindings(), $scope->resolvingLocalVars, $scope->declaringFileClass];
     $before = $callerState();
 
     $result = resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn(

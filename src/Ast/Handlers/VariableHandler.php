@@ -574,7 +574,6 @@ final class VariableHandler implements ExpressionHandler
             if ($callback instanceof ClosureExpr) {
                 $caller = $scope->nameBindings();
                 $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
-                $scope->closureRelationModelClass = null;
 
                 foreach ($callback->uses as $use) {
                     if (is_string($use->var->name)) {
@@ -655,7 +654,6 @@ final class VariableHandler implements ExpressionHandler
             $elementModel,
             $elementValue,
             $scope->mapResultArrayed,
-            $this->mapsAsRelationClosure($call->var, $declared, $scope),
             $scope,
             $engine,
         );
@@ -671,19 +669,6 @@ final class VariableHandler implements ExpressionHandler
 
         // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
         return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? ValueResult::withNullArm($type) : $type, 'optional' => false];
-    }
-
-    /**
-     * Whether a map's body counts as a relation closure: one over a to-many whenLoaded() parameter's collection, or
-     * over any variable with a callback that declares the model it maps.
-     *
-     * @param  class-string<Model>|null  $declared
-     */
-    private function mapsAsRelationClosure(Expr $receiver, ?string $declared, AnalysisScope $scope): bool
-    {
-        return $receiver instanceof Variable
-            && $receiver->name !== 'this'
-            && ($declared !== null || resolve(ReceiverClassResolver::class)->boundElementModel($receiver, $scope) !== null);
     }
 
     /**

@@ -846,9 +846,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Bind a whenLoaded() closure to the relation it is passed: the related model opens the relation closure's gate, a
-     * variadic parameter collects the relation into a list, and a first parameter holds its model, its whole
-     * collection or its morphTo targets.
+     * Bind a whenLoaded() closure to the relation it is passed: a variadic parameter collects the relation into a list,
+     * and a first parameter holds its model, its whole collection or its morphTo targets.
      */
     private function bindLoadedRelation(Expr $closure, ?Expr $relationship, AnalysisScope $scope, ExpressionEngine $engine): void
     {
@@ -856,11 +855,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($relationInfo === null) {
             return;
-        }
-
-        // Resolve the related model so accesses on local variables inside the closure can be typed.
-        if ($relationInfo['modelFqcn'] !== null) {
-            $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
         }
 
         // A variadic parameter collects the relation into a list, which never holds null: the closure runs only for a

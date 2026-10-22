@@ -103,7 +103,6 @@ use ReflectionClass;
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
- *      closureRelationModelClass: class-string<Model>|null,
  *      provenProxy: non-empty-list<class-string>|null,
  *      modelClass: class-string<Model>|null,
  *      forwardsUndeclaredMembersTo: class-string|null,
@@ -221,14 +220,6 @@ final class AnalysisScope
      * VariableHandler's values()/all() arm sets it for its receiver, and only VariableHandler's map arm reads it.
      */
     public bool $mapResultArrayed = false;
-
-    /**
-     * Related model set while a relation closure resolves: a whenLoaded() closure, or a map() BindsMapCallbacks counts
-     * as one. ResolvesEnumPropertyArgTypes's enum gate reads only whether it is set.
-     *
-     * @var class-string<Model>|null
-     */
-    public ?string $closureRelationModelClass = null;
 
     /**
      * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
@@ -868,8 +859,6 @@ final class AnalysisScope
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
-        // The method's body is no relation closure, even where the call is made from one.
-        $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
     }
 
@@ -1269,7 +1258,6 @@ final class AnalysisScope
     {
         return [
             'bindings' => $this->nameBindings(),
-            'closureRelationModelClass' => $this->closureRelationModelClass,
             'provenProxy' => $this->provenProxy,
             'modelClass' => $this->modelClass,
             'forwardsUndeclaredMembersTo' => $this->forwardsUndeclaredMembersTo,
@@ -1292,7 +1280,6 @@ final class AnalysisScope
     private function restoreState(array $state): void
     {
         $this->restoreNameBindings($state['bindings']);
-        $this->closureRelationModelClass = $state['closureRelationModelClass'];
         $this->provenProxy = $state['provenProxy'];
         $this->modelClass = $state['modelClass'];
         $this->forwardsUndeclaredMembersTo = $state['forwardsUndeclaredMembersTo'];

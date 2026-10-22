@@ -185,17 +185,13 @@ function conditionalMethodHandlerResolveArms(string $method, array $value, ?arra
 }
 
 /**
- * An engine that records the scope's closureRelationModelClass/varModelBindings/
- * varCollectionBindings at the moment it is called, proving whenLoaded()'s bindings are live only
- * for the closure body's own resolution — and, for a to-many relation, that varModelBindings is
- * never written at all (the documented asymmetry: binding the element model to a bare param would
- * resolve it to a wrong-but-plausible singular type).
+ * An engine that records the scope's varModelBindings and varCollectionBindings when called: whenLoaded()'s bindings
+ * are live only for the closure body, and a to-many relation never writes varModelBindings (binding its element model
+ * to a bare parameter would type it as a wrong-but-plausible single model).
  */
 final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
 {
     public bool $wasCalled = false;
-
-    public ?string $relationModelClassDuringCall = null;
 
     /** @var array<string, class-string> */
     public array $varModelBindingsDuringCall = [];
@@ -210,7 +206,6 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
     public function resolve(Expr $expr): array
     {
         $this->wasCalled = true;
-        $this->relationModelClassDuringCall = $this->scope->closureRelationModelClass;
         $this->varModelBindingsDuringCall = $this->scope->varModelBindings;
         $this->varCollectionBindingsDuringCall = $this->scope->varCollectionBindings;
 
@@ -294,7 +289,6 @@ it('resolves whenCounted() with an explicit default as required and unioned', fu
 
 it('binds whenLoaded()\'s closure param to the related model only for the closure body, then restores scope', function () {
     $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
-    $scope->closureRelationModelClass = null;
     $scope->varModelBindings = ['unrelated' => Address::class];
     $scope->varCollectionBindings = [];
 
@@ -310,10 +304,8 @@ it('binds whenLoaded()\'s closure param to the related model only for the closur
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
     expect($engine->wasCalled)->toBeTrue()
-        ->and($engine->relationModelClassDuringCall)->toBe(Profile::class)
         ->and($engine->varModelBindingsDuringCall)->toBe(['unrelated' => Address::class, 'profile' => Profile::class])
         ->and($engine->varCollectionBindingsDuringCall)->toBe([])
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($result)->toBe(['type' => 'string | null', 'optional' => true]);
@@ -324,7 +316,6 @@ it('binds a to-many whenLoaded()\'s closure param to the collection type, never 
     // The asymmetry this pins: the element model is never bound to the bare param — only the whole
     // collection type is — because a wrong-but-plausible singular binding would be worse than none.
     $scope = new AnalysisScope(new ReflectionClass(UserResource::class), User::class);
-    $scope->closureRelationModelClass = null;
     $scope->varModelBindings = ['unrelated' => Address::class];
     $scope->varCollectionBindings = [];
 
@@ -340,12 +331,10 @@ it('binds a to-many whenLoaded()\'s closure param to the collection type, never 
     $result = (new ConditionalMethodHandler)->resolve($expr, $scope, $engine);
 
     expect($engine->wasCalled)->toBeTrue()
-        ->and($engine->relationModelClassDuringCall)->toBe(Post::class)
         ->and($engine->varModelBindingsDuringCall)->toBe(['unrelated' => Address::class])
         ->and($engine->varCollectionBindingsDuringCall)->toBe([
             'posts' => ['type' => 'Post[]', 'modelFqcn' => Post::class],
         ])
-        ->and($scope->closureRelationModelClass)->toBeNull()
         ->and($scope->varModelBindings)->toBe(['unrelated' => Address::class])
         ->and($scope->varCollectionBindings)->toBe([])
         ->and($result)->toBe(['type' => 'string', 'optional' => true]);

@@ -259,7 +259,6 @@ it('degrades a cyclic local-variable binding to unknown instead of recursing for
 it('declines only() and except() on a bound variable, whatever the key list', function (string $method, Arg $keys) {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
     $scope->varModelBindings['author'] = User::class;
-    $scope->closureRelationModelClass = User::class;
 
     $result = (new VariableHandler)->resolve(new MethodCall(new Variable('author'), $method, [$keys]), $scope, variableHandlersThrowingEngine());
 
@@ -370,7 +369,6 @@ it('reads $variable->map(callback: …) by name', function () {
     expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
 });
 
-// ReceiverClassResolver reads varModelBindings, not closureRelationModelClass, so a chain from the parameter needs it.
 it('resolves a nullsafe chain from a typed map-closure parameter', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
@@ -414,7 +412,6 @@ it('declines a trailing values()/all() the map arm does not answer, or on a vari
 
 it('resolves a nullsafe chain from an untyped map-closure parameter its receiver names the element of', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
-    $scope->closureRelationModelClass = Comment::class;
     $scope->varCollectionBindings['comments'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
     $expr = new AstParser()->parseSource('<?php $comments->map(fn ($comment) => $comment->user?->name);')[0]->expr;
     $engine = new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class, 'toArray', null, $scope);
@@ -434,8 +431,7 @@ it('binds the map-closure parameter over an outer binding of the same name, only
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))
         ->toBe(['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class])
-        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
-        ->and($scope->closureRelationModelClass)->toBeNull();
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class]);
 });
 
 it('restores the map-closure bindings when the body throws', function () {
@@ -449,8 +445,7 @@ it('restores the map-closure bindings when the body throws', function () {
 
     expect(fn () => (new VariableHandler)->resolve($expr, $scope, variableHandlersThrowingEngine()))
         ->toThrow(RuntimeException::class)
-        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
-        ->and($scope->closureRelationModelClass)->toBeNull();
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class]);
 });
 
 // A nested writer's parameter must beat an outer binding of its name in every table, whichever table each one uses.

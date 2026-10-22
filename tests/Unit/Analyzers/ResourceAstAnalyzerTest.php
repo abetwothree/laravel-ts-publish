@@ -4230,7 +4230,7 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     // plain and nullsafe chain traversal inside whenLoaded — $this->post —————————
 
     test('plain chain in whenLoaded closure — post_title resolves to string', function () {
-        // `fn () => $this->post->title` — the proxy step $this->post is skipped via closureRelationModelClass.
+        // `fn () => $this->post->title` — the chain starts at the resource's model, inside the closure too.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'post_title');
 
         expect($prop)->not->toBeNull()
@@ -6341,9 +6341,9 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
     });
 
     test('a to-many whenLoaded param\'s own toArray() spread is a Record<number, Model>, not the element model', function () {
-        // $members is bound in varCollectionBindings (a list), not varModelBindings (one model) —
-        // spreadModelToArrayFqcn() must not fall back to closureRelationModelClass for it. The
-        // spread renumbers the members 0..n, so they key by index beside the literal's 'flag'.
+        // $members is bound in varCollectionBindings (a list), not varModelBindings (one model), so
+        // spreadModelToArrayFqcn() names no model for it. The spread renumbers the members 0..n, so
+        // they key by index beside the literal's 'flag'.
         expect($this->props['members_collection_spread']['type'])->toBe('Record<number, User> & { flag: boolean }')
             ->and($this->props['members_collection_spread']['optional'])->toBeTrue()
             ->and($this->props['members_collection_spread']['type'])->not->toContain('Omit<')

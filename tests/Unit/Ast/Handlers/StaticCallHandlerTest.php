@@ -681,14 +681,14 @@ it('wraps a resolved payload only when it holds one enum and nothing else', func
 ]);
 
 it('routes $this->resource::m() to analyzeStaticMethodOnResource() even inside a closure with a related model bound', function () {
-    // A relation's closure never changes what `$this` is: Address declares no tableName(), so reading the closure's
-    // model would degrade to unknown instead of reflecting Post::tableName()'s `string`.
+    // A relation's closure never changes what `$this` is: Address declares no tableName(), so reading the closure
+    // parameter's model would degrade to unknown instead of reflecting Post::tableName()'s `string`.
     $expr = new StaticCall(
         new PropertyFetch(new Variable('this'), 'resource'),
         'tableName',
     );
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
-    $scope->closureRelationModelClass = Address::class;
+    $scope->varModelBindings['address'] = Address::class;
 
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
