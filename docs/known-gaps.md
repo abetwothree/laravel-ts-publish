@@ -757,6 +757,13 @@ reads a column from the model's declaration, never from a write to it. On a loca
 package cannot show the column holds leaves the local unread instead, so `$p = new Post; $p->title = null; $p->title`
 publishes `unknown`.
 
+### A guarded read past a write a mutator stores into its column publishes the column's type
+
+After `if (! $x instanceof Post) { return []; } $x->rating = 5;`, `$x->title` publishes `title`'s declared `string`,
+though a write-only `Attribute::make(set: …)` or a `__set()` that stores `rating` into `title` makes Laravel send `5`. A
+write to a member no column or relation of the proven class types keeps the proof, and the package never reads what a
+mutator stores. State the key's type in `#[TsCasts]`.
+
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
 A parameter keeps its binding past a write whose value names no class: after
