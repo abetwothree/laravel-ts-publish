@@ -286,7 +286,7 @@ trait CollectsInstanceofGuards
             return;
         }
 
-        $around = $scope->guardAt(new Variable($name, ['startFilePos' => $after + 1]));
+        $around = $scope->proofAt($name, $after + 1);
 
         $scope->varGuardBindings[$name][] = [
             'classes' => $around === null ? $classes : resolve(ReceiverClassResolver::class)->provenClasses($around['classes'], $classes),

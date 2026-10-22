@@ -9,17 +9,48 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 
 /**
  * The one narrowing an `instanceof` ternary's proven arm resolves under, for TernaryHandler's value and
- * ReceiverClassResolver's receiver alike, and ResourceAstAnalyzer's value inside an `if` block that proves
- * `$this->resource`. Hosts must also use InspectsAstNodes and CollectsLocalVarBindings.
+ * ReceiverClassResolver's receiver alike, and an analyzer's value inside an `if` block that proves `$this->resource`.
+ * Hosts must also use InspectsAstNodes and CollectsLocalVarBindings.
+ *
+ * @phpstan-import-type VarGuardBinding from AnalysisScope
  *
  * @internal
  */
 trait NarrowsInstanceofSubjects
 {
+    /**
+     * Resolve a value inside the span of an `if` proof on `$this->resource` as a ternary's proven arm resolves; as it
+     * is where no proof holds, or one is already in force for an enclosing value.
+     *
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $resolve
+     * @return TResult
+     */
+    protected function resolveUnderProxyProof(Expr $value, AnalysisScope $scope, Closure $resolve): mixed
+    {
+        $proof = $scope->provenProxy === null ? $scope->proofAt(AnalysisScope::PROXY_GUARDS, $value->getStartFilePos()) : null;
+
+        if ($proof === null || $proof === $scope->appliedProxyProof) {
+            return $resolve();
+        }
+
+        $narrowed = $this->resolveNarrowed(
+            new PropertyFetch(new Variable('this'), 'resource'),
+            $proof['classes'],
+            $value,
+            $scope,
+            fn (): mixed => $this->resolveUnderAppliedProof($proof, $scope, $resolve),
+        );
+
+        return $narrowed ?? $resolve();
+    }
+
     /**
      * Resolve an arm with the subject bound to what the test leaves of its own classes (a variable's varGuardBindings,
      * what the `$this->resource` proxy holds, or a `$this->prop` path's narrowedReads), then restore the scope. Null
@@ -77,6 +108,27 @@ trait NarrowsInstanceofSubjects
             if (count($classes) === 1 && is_a($classes[0], Model::class, true)) {
                 $scope->setBackingModel($classes[0]);
             }
+        }, $resolve);
+    }
+
+    /**
+     * Resolve under a proof on `$this->resource` that proved no class, marked as applied for the values nested in this
+     * one, since provenProxy stays null and each would look the proof up again; any other proof is in force already.
+     *
+     * @template TResult
+     *
+     * @param  VarGuardBinding  $proof
+     * @param  Closure(): TResult  $resolve
+     * @return TResult
+     */
+    private function resolveUnderAppliedProof(array $proof, AnalysisScope $scope, Closure $resolve): mixed
+    {
+        if ($scope->provenProxy !== null) {
+            return $resolve();
+        }
+
+        return $scope->within(function () use ($scope, $proof): void {
+            $scope->appliedProxyProof = $proof;
         }, $resolve);
     }
 }

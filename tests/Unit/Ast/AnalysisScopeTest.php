@@ -430,8 +430,8 @@ it('within() restores every name table and ambient field after a read, a throw i
     $setOnce = ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
     $ambient = [
         'closureRelationModelClass', 'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass',
-        'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'filtersNestedResources',
-        'mapResultArrayed',
+        'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads', 'appliedProxyProof',
+        'filtersNestedResources', 'mapResultArrayed',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(

@@ -68,7 +68,6 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -97,7 +96,6 @@ use ReflectionMethod;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
- * @phpstan-import-type VarGuardBinding from AnalysisScope
  *
  * @internal
  */
@@ -705,19 +703,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
-        $guard = isset($this->scope->varGuardBindings[AnalysisScope::PROXY_GUARDS]) && $this->scope->provenProxy === null
-            ? $this->proxyGuardAt($expr)
-            : null;
-
-        $narrowed = $guard === null ? null : $this->resolveNarrowed(
-            new PropertyFetch(new Variable('this'), 'resource'),
-            $guard['classes'],
-            $expr,
-            $this->scope,
-            fn (): array => $this->dispatchValue($expr),
-        );
-
-        return $narrowed ?? $this->dispatchValue($expr);
+        return $this->resolveUnderProxyProof($expr, $this->scope, fn (): array => $this->dispatchValue($expr));
     }
 
     /**
@@ -1192,16 +1178,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function runtimeClass(): ReflectionClass
     {
         return $this->runtimeClass ?? $this->scope->subjectReflection;
-    }
-
-    /**
-     * The proof on `$this->resource` a value's position falls within, the one that starts latest, or null.
-     *
-     * @return VarGuardBinding|null
-     */
-    private function proxyGuardAt(Expr $expr): ?array
-    {
-        return $this->scope->guardAt(new Variable(AnalysisScope::PROXY_GUARDS, ['startFilePos' => $expr->getStartFilePos()]));
     }
 
     /**

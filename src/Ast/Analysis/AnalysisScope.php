@@ -113,6 +113,7 @@ use ReflectionClass;
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
  *      narrowedReads: list<NarrowedRead>,
+ *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
  *      mapResultArrayed: bool
  * }
@@ -178,6 +179,14 @@ final class AnalysisScope
      * @var list<NarrowedRead>
      */
     public array $narrowedReads = [];
+
+    /**
+     * The proof on `$this->resource` a value inside its span resolves under while the proof leaves provenProxy null,
+     * so a value nested in that one skips the lookup the proof answered. Set by NarrowsInstanceofSubjects.
+     *
+     * @var VarGuardBinding|null
+     */
+    public ?array $appliedProxyProof = null;
 
     /**
      * What each item the runtime class, a ResourceCollection, collects publishes as: the element `$this->collection`
@@ -572,9 +581,18 @@ final class AnalysisScope
      */
     public function guardAt(Variable $variable): ?array
     {
-        return is_string($variable->name)
-            ? self::latestGuard($this->varGuardBindings[$variable->name] ?? [], $variable->getStartFilePos())
-            : null;
+        return is_string($variable->name) ? $this->proofAt($variable->name, $variable->getStartFilePos()) : null;
+    }
+
+    /**
+     * The `instanceof` proof on a name, PROXY_GUARDS included, an offset falls within: the one that starts latest, or
+     * on a tie the one bound last; null where none holds.
+     *
+     * @return VarGuardBinding|null
+     */
+    public function proofAt(string $name, int $offset): ?array
+    {
+        return self::latestGuard($this->varGuardBindings[$name] ?? [], $offset);
     }
 
     /**
@@ -1212,6 +1230,7 @@ final class AnalysisScope
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
             'narrowedReads' => $this->narrowedReads,
+            'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
         ];
@@ -1234,6 +1253,7 @@ final class AnalysisScope
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];
         $this->narrowedReads = $state['narrowedReads'];
+        $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];
     }
