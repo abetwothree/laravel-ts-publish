@@ -1167,7 +1167,17 @@ describe('narrowing', function () {
         'one write after the guard' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; } $a = $this->author;', []],
         'a write before the guard and one after it' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } foreach ([] as $a) {}', []],
         'a write in the condition after the test' => ['if (! $a instanceof \Workbench\App\Models\Post || ! ($a = $this->author)) { return; }', []],
+        'a member and a key write after the guard' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->touched = true; $a[\'k\'] = 1;', ['a' => [Post::class]]],
+        'a $this member write after a guard on $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->touched = true;', [AnalysisScope::PROXY_GUARDS => [Post::class]]],
+        'a write of $this->resource itself after its guard' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource = $this->author;', []],
     ]);
+
+    test('a member write after a guard still ends the proof that a read through the variable is not null', function () {
+        $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
+
+        expect($proven('$a = $this->author; if ($a->team === null) { return; } $b = 1;'))->toBe(['a'])
+            ->and($proven('$a = $this->author; if ($a->team === null) { return; } $a->team = null;'))->toBe([]);
+    });
 
     test('a guard narrows a variable never written or written only before it, and not one written after it', function () {
         $resource = new GuardWritePostResource(null);

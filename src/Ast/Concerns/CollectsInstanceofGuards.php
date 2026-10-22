@@ -58,7 +58,8 @@ trait CollectsInstanceofGuards
      * branches that always leave failed. Then prove the reads the body's guards show non-null.
      *
      * A binding carries the offsets it holds between, so a return placed before a guard, or a guard's own body, still
-     * reads the variable unnarrowed. A variable written between the test and the end of what it narrows is not bound.
+     * reads the variable unnarrowed. A variable written between the test and the end of what it narrows is not bound,
+     * unless the write only goes through a member or key of it, which leaves its class, other than `$this->resource`.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
@@ -66,8 +67,12 @@ trait CollectsInstanceofGuards
     protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
+        $classWrites = array_values(array_filter(
+            $writes,
+            fn (array $write): bool => $write[3] !== VariableWrite::MemberOrOffset || $this->spellsResourceFetch($write[2]),
+        ));
 
-        $this->bindBlockGuards($stmts, null, $scope, $writes);
+        $this->bindBlockGuards($stmts, null, $scope, $classWrites);
         $this->proveGuardedReads($stmts, $scope, $writes);
     }
 

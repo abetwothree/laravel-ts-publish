@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedGuards
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedParameterGapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockScopedReturnsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWriteGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -280,4 +281,18 @@ test('a guard nested in a block narrows the reads after it up to the end of that
         ->toBe(json_encode(['if_key' => 7, 'loop_key' => 7, 'try_key' => 7, 'case_key' => 7, 'past_switch_key' => 7, 'after_blocks' => 7]))
         ->and(json_encode(new BlockScopedGuardsResource($userImage)->resolve(Request::create('/', 'GET'))))
         ->toBe(json_encode(['after_blocks' => 3]));
+});
+
+// A member write cannot change the class of the value it writes through, so the guard's proof holds past it.
+test('a member write between a guard and a read keeps the class the guard proves', function () {
+    $image = new Image;
+    $image->forceFill(['id' => 21]);
+    $image->setRelation('imageable', blockScopedPost());
+
+    expect(publishedResourceKeyTypes(MemberWriteGuardResource::class, Image::class))->toBe([
+        'title?' => 'string',
+        'key?' => 'number',
+    ])
+        ->and(json_encode(new MemberWriteGuardResource($image)->resolve(Request::create('/', 'GET'))))
+        ->toBe(json_encode(['title' => 'Banana', 'key' => 7]));
 });
