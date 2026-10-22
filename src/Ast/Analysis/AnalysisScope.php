@@ -629,14 +629,14 @@ final class AnalysisScope
      */
     public function formsAt(Variable $variable): array
     {
-        if (! is_string($variable->name)) {
+        if (! is_string($variable->name) || ! isset($this->byReferenceForms[$variable->name])) {
             return [];
         }
 
         $position = $variable->getStartFilePos();
 
         return array_values(array_filter(
-            $this->byReferenceForms[$variable->name] ?? [],
+            $this->byReferenceForms[$variable->name],
             fn (array $form): bool => $position > $form['after'] && ($form['before'] === null || $position <= $form['before']),
         ));
     }
