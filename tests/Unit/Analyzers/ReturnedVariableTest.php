@@ -574,6 +574,10 @@ test('the join records each branch value it leaves out, a value held before the 
         ['$last walk-branch-join'],
     ],
     'every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', []],
+    'never a sibling branch\'s write' => [
+        '$d = []; $d["a"] = $first; if ($x) { $d["a"] = $other; } else { if ($y) { $d["a"] = null; } }',
+        ['$first walk-branch-join', '$other walk-branch-join'],
+    ],
 ]);
 
 test('a branch that throws leaves the join, so Laravel sends the key only as the other branch writes it', function () {

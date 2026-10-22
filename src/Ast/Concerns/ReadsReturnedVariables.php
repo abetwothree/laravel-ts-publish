@@ -644,17 +644,22 @@ trait ReadsReturnedVariables
             return;
         }
 
+        $before = $this->untypedKeyWrites;
         $branches = $mayRunNone ? [clone $into] : [];
-        // Each branch's span of the untyped writes: the copy of the keys held before holds those written before.
-        $spans = $mayRunNone ? [[0, count($this->untypedKeyWrites)]] : [];
+        // Each branch's untyped writes: those before the branches, then its own, never a sibling's.
+        $notes = $mayRunNone ? [$before] : [];
+        $added = [];
 
         foreach ($bodies as $body) {
-            $from = count($this->untypedKeyWrites);
+            $this->untypedKeyWrites = $before;
             $branch = clone $into;
             $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
             $branches[] = $branch;
-            $spans[] = [$from, count($this->untypedKeyWrites)];
+            $notes[] = $this->untypedKeyWrites;
+            array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
         }
+
+        $this->untypedKeyWrites = [...$before, ...$added];
 
         foreach ($branches as $index => $branch) {
             foreach (array_slice($branches, 0, $index) as $earlier) {
@@ -663,18 +668,18 @@ trait ReadsReturnedVariables
         }
 
         $joined = $this->joinedBranches($branches);
-        $this->recordJoinDrops($joined, $branches, $spans);
+        $this->recordJoinDrops($joined, $branches, $notes);
         $into->replaceWith($joined);
     }
 
     /**
-     * Record each branch value a join left out beside a typed one, naming the last untyped write of its key in the
-     * branch's span, and warn where that leaves the key only `null` or `never[]`.
+     * Record each branch value a join left out beside a typed one, naming the last untyped write of its key the branch
+     * saw, and warn where that leaves the key only `null` or `never[]`.
      *
      * @param  non-empty-list<TAnalysis>  $branches
-     * @param  list<array{int, int}>  $spans  each branch's span of untypedKeyWrites
+     * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
      */
-    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $spans): void
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes): void
     {
         if ($this->untypedKeyWrites === []) {
             return;
@@ -694,7 +699,7 @@ trait ReadsReturnedVariables
 
             foreach ($types as $index => $branchTypes) {
                 $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
-                    ? $this->lastUntypedWrite($property['name'], $spans[$index][0], $spans[$index][1])
+                    ? $this->lastUntypedWrite($property['name'], $notes[$index])
                     : null;
 
                 if ($write !== null) {
@@ -709,13 +714,15 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The last value the walk wrote a key that the engine cannot type, within a span of its untyped writes.
+     * The last value written to a key that the engine cannot type, among the untyped writes one branch saw.
+     *
+     * @param  list<UntypedKeyWrite>  $notes
      */
-    private function lastUntypedWrite(string $key, int $from, int $to): ?Expr
+    private function lastUntypedWrite(string $key, array $notes): ?Expr
     {
-        for ($index = $to - 1; $index >= $from; $index--) {
-            if ($this->untypedKeyWrites[$index][0] === $key) {
-                return $this->untypedKeyWrites[$index][1];
+        for ($index = count($notes) - 1; $index >= 0; $index--) {
+            if ($notes[$index][0] === $key) {
+                return $notes[$index][1];
             }
         }
 
