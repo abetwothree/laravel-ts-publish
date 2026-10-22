@@ -62,7 +62,7 @@ test('a value left only null by a dropped arm warns too', function () {
         placeholderWarning(34, '`never[]`, an array that is always empty', '$rows'),
         placeholderWarning(36, '`null | never[]`, as if it were always null or an empty array', '$this->opaqueRows()'),
         placeholderWarning(27, $null, '$this->opaqueRows()'),
-        placeholderWarning(48, $null, '$value'),
+        placeholderWarning(43, $null, '$this->opaqueRows()'),
         placeholderWarning(54, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
     ])
         ->and(placeholderWarnings(UnionHonestyResource::class))->toBe(array_map(

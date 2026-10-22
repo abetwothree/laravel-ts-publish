@@ -987,7 +987,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Bind a callback's first parameter to the value its call passes: a `$this->prop` read, every binding the passed
-     * variable held before the claim, the one model a filled value holds, or the value's own resolved type.
+     * variable held before the claim, the one model a filled value holds, or the value's own resolved type. A value no
+     * rule types binds nothing, and is only noted, for a join that leaves it out to name.
      *
      * @param  ValueExpressionResult|null  $resolvedValue
      * @param  NameBindingsSnapshot  $outer
@@ -1064,6 +1065,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($resolvedValue['type'] !== 'unknown') {
             $scope->varValueBindings[$name] = $resolvedValue;
+        } else {
+            $scope->passedValues[$name] = $value;
         }
     }
 

@@ -332,6 +332,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->bindingEnds[$name] = 0;
         $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
         $scope->keyBuiltLocals[$name] = [new Return_($outer)];
+        $scope->passedValues[$name] = $outer;
     }
 
     $before = $scope->nameBindings();

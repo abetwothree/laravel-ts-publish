@@ -302,7 +302,8 @@ final class VariableHandler implements ExpressionHandler
         }
 
         if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
-            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name] ?? $read;
+            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
+                ?? $scope->passedValues[$name] ?? $read;
         } elseif ($gap[3]) {
             array_unshift($arms, $old);
         }

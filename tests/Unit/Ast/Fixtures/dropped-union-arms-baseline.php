@@ -24,7 +24,7 @@ return [
     // Deliberate: baseModel() declares the framework's Model, which no generated file exports.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 69, 'expression' => '\\Workbench\\App\\Services\\UrlService::baseModel()', 'site' => 'ternary-narrowed'],
     // Deliberate: keys per recording site, each dropping `$this->opaqueValue()`, a method whose return type is
-    // deliberately absent, or the value it passes a callback. These ten stay permanently — they prove each site fires.
+    // deliberately absent. These ten stay permanently — they prove each site fires.
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 28, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 29, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 31, 'expression' => '$this->opaqueValue()', 'site' => 'ternary-narrowed'],
@@ -32,7 +32,7 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 33, 'expression' => '$this->opaqueValue()', 'site' => 'conditional-default'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 35, 'expression' => '$this->opaqueValue()', 'site' => 'match-arm'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 37, 'expression' => '$this->opaqueValue()', 'site' => 'coalesce-right'],
-    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 44, 'expression' => '$value', 'site' => 'binding-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 39, 'expression' => '$this->opaqueValue()', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 49, 'expression' => '$this->opaqueValue()', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 58, 'expression' => '$this->opaqueValue()', 'site' => 'walk-branch-join'],
 ];

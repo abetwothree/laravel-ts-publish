@@ -99,7 +99,8 @@ use ReflectionClass;
  *      claimedClosures: array<int, true>,
  *      bindingEnds: array<string, int>,
  *      bindingGaps: BindingGapsMap,
- *      keyBuiltLocals: KeyBuiltLocalsMap
+ *      keyBuiltLocals: KeyBuiltLocalsMap,
+ *      passedValues: ClosureParamExprBindingsMap
  * }
  * @phpstan-type CallerState array{
  *      bindings: NameBindingsSnapshot,
@@ -135,6 +136,7 @@ final class AnalysisScope
         'bindingEnds' => [],
         'bindingGaps' => [],
         'keyBuiltLocals' => [],
+        'passedValues' => [],
     ];
 
     /**
@@ -347,6 +349,14 @@ final class AnalysisScope
      * @var KeyBuiltLocalsMap
      */
     public array $keyBuiltLocals = [];
+
+    /**
+     * What a call passed each callback parameter no binding holds, since nothing types the value, so a join that leaves
+     * that value out names the expression passed. No reader takes a binding from it.
+     *
+     * @var ClosureParamExprBindingsMap
+     */
+    public array $passedValues = [];
 
     /**
      * Re-entrancy guard: the bindings mid-resolution, each keyed by its name and the bound expression, so a cyclic
@@ -675,6 +685,7 @@ final class AnalysisScope
             'bindingEnds' => $this->bindingEnds,
             'bindingGaps' => $this->bindingGaps,
             'keyBuiltLocals' => $this->keyBuiltLocals,
+            'passedValues' => $this->passedValues,
         ];
     }
 
@@ -701,6 +712,7 @@ final class AnalysisScope
         $this->bindingEnds = $snapshot['bindingEnds'];
         $this->bindingGaps = $snapshot['bindingGaps'];
         $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
+        $this->passedValues = $snapshot['passedValues'];
     }
 
     /**
@@ -899,6 +911,10 @@ final class AnalysisScope
         if (isset($snapshot['byReferenceForms'][$from])) {
             $this->byReferenceForms[$to] = $snapshot['byReferenceForms'][$from];
         }
+
+        if (isset($snapshot['passedValues'][$from])) {
+            $this->passedValues[$to] = $snapshot['passedValues'][$from];
+        }
     }
 
     /**
@@ -1090,6 +1106,7 @@ final class AnalysisScope
                 $this->bindingEnds[$name],
                 $this->bindingGaps[$name],
                 $this->keyBuiltLocals[$name],
+                $this->passedValues[$name],
             );
         }
     }

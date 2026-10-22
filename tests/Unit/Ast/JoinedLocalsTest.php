@@ -149,8 +149,8 @@ test('a parameter past its own write leaves out a nested write the engine cannot
         ->toMatchArray(['post_write_nested' => 'Banana', 'post_write_nested_typed' => 'Banana']);
 });
 
-// Each arm a join leaves out is the audit's: the old value no rule types (a property's, or the parameter a call no rule
-// types passes, named by its read), and a nested write no rule types while an earlier value still reaches the read.
+// Each arm a join leaves out is the audit's: the old value no rule types, a property's or the value of a call no rule
+// types, and a nested write no rule types while an earlier value still reaches the read.
 test('a parameter\'s join records each arm it leaves out', function () {
     DroppedUnionArms::start();
 
@@ -163,7 +163,7 @@ test('a parameter\'s join records each arm it leaves out', function () {
     expect(array_map(fn (array $arm): string => $arm['line'].' '.$arm['expression'].' '.$arm['site'], $dropped))->toBe([
         '44 $this->vague binding-join',
         '71 json_decode(\'{}\') binding-join',
-        '85 $value binding-join',
+        '76 $this->opaque() binding-join',
         '137 json_decode($title) binding-join',
     ]);
 });

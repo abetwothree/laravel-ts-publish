@@ -109,6 +109,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->bindingEnds[$name] = 0;
         $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
         $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
+        $scope->passedValues[$name] = $expr;
     }
 
     return $scope;
@@ -178,6 +179,7 @@ it('copies every entry a variable held in a capture onto a parameter, in every n
         ->and($scope->varDeclaredBindings['param'])->toBe([User::class])
         ->and($scope->varCollectionBindings['param'])->toBe(['type' => 'User[]', 'modelFqcn' => User::class])
         ->and($scope->varValueBindings['param'])->toBe(['type' => 'string', 'optional' => false])
+        ->and($scope->passedValues['param'])->toBe($captured['passedValues']['item'])
         ->and($scope->localVarBindings['param'])->toBe($captured['localVarBindings']['item'])
         ->and($scope->byReferenceForms['param'])->toBe($captured['byReferenceForms']['item'])
         ->and($scope->requestVarNames['param'])->toBe(Request::class);
@@ -366,7 +368,7 @@ it('copies only the body\'s own bindings of a variable passed past its end, and 
     $scope->copyBindings(new Variable('item', ['startFilePos' => 1]), 'param', $captured);
 
     expect(array_keys(array_filter(array_diff_key($scope->nameBindings(), ['claimedClosures' => true]))))
-        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds'])
+        ->toBe(['varGuardBindings', 'varDocBindings', 'localVarBindings', 'byReferenceForms', 'bindingEnds', 'passedValues'])
         ->and($scope->holdsBinding(new Variable('param', ['startFilePos' => 0])))->toBeFalse();
 });
 
