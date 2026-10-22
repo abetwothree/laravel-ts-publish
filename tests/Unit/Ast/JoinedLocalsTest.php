@@ -134,6 +134,13 @@ test('a parameter passed on past a nested write passes its old value and the wri
         ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['passed_joined' => 'Banana', 'passed_joined_id' => 3]);
 });
 
+// The copy keeps which of the gap's values a nested write added, so one the engine cannot type is left out there too.
+test('a parameter passed on past a nested write the engine cannot type passes its old value', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray(['passed_kept?' => 'string'])
+        ->and(joinedSends(JoinedParametersResource::class, true))->not->toHaveKey('passed_kept')
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['passed_kept' => 'Banana']);
+});
+
 // The value a parameter's own write left still reaches past a nested write, so one the engine cannot type is left out.
 // With no earlier value reaching, past a top-level write or a `try` and `catch` that both write, it reads unknown.
 test('a parameter past its own write leaves out a nested write the engine cannot type', function () {
@@ -164,8 +171,9 @@ test('a parameter\'s join records each arm it leaves out', function () {
         '44 $this->vague binding-join',
         '71 json_decode(\'{}\') binding-join',
         '76 $this->opaque() binding-join',
-        '137 json_decode($title) binding-join',
-        '205 $this->whenHas(\'missing_column\') binding-join',
+        '111 json_decode($title) binding-join',
+        '144 json_decode($title) binding-join',
+        '212 $this->whenHas(\'missing_column\') binding-join',
     ]);
 });
 

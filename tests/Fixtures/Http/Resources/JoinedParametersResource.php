@@ -106,6 +106,13 @@ final class JoinedParametersResource extends JsonResource
 
                 return $this->transform($author, fn ($value) => $value->id);
             }),
+            'passed_kept' => $this->transform($this->title, function ($title) {
+                if ($this->is_pinned) {
+                    $title = json_decode($title);
+                }
+
+                return $this->transform($title, fn ($value) => $value);
+            }),
             'declared_joined_id' => $this->whenLoaded('author', function ($author) {
                 foreach ($this->comments as $comment) {
                     if ($this->is_pinned && $comment->content !== '') {
