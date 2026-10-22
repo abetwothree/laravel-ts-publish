@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -296,3 +297,21 @@ test('a member write between a guard and a read keeps the class the guard proves
         ->and(json_encode(new MemberWriteGuardResource($image)->resolve(Request::create('/', 'GET'))))
         ->toBe(json_encode(['title' => 'Banana', 'key' => 7]));
 });
+
+// A write that may store what a typed member's column does not hold ends the proof, as it ends the binding.
+test('a member write ends the class proof unless it stores a value the member\'s column holds', function (string $method, array $types, array $query, array $sent) {
+    $image = new Image;
+    $image->forceFill(['id' => 21]);
+    $image->setRelation('imageable', blockScopedPost());
+    $published = collect(resolve(AstEngine::class)->analyze(MemberWriteGuardResource::class, $method, Image::class)->properties)
+        ->mapWithKeys(fn (array $property): array => [$property['name'].($property['optional'] ? '?' : '') => $property['type']]);
+
+    expect($published->all())->toBe($types)
+        ->and(json_encode(new MemberWriteGuardResource($image)->{$method}(Request::create('/', 'GET', $query))))
+        ->toBe(json_encode($sent));
+})->with([
+    'a string written to a string column' => ['fitting', ['title?' => 'string'], [], ['title' => 'x']],
+    'a null written to it in a block' => ['nulled', ['title?' => 'unknown'], ['r' => 1], ['title' => null]],
+    'a number written to it' => ['mistyped', ['title?' => 'unknown'], [], ['title' => 5]],
+    'a string written to a relation' => ['misrelated', ['author?' => 'unknown'], [], ['author' => 'not a user']],
+]);

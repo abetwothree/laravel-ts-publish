@@ -7,6 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
@@ -43,6 +45,7 @@ use PhpParser\Node\Stmt\While_;
  *
  * @phpstan-type VariableProofs = list<array{string, non-empty-list<class-string>, Expr}>
  *
+ * @phpstan-import-type NamedWrite from CollectsLocalVarBindings
  * @phpstan-import-type VariableWrites from CollectsLocalVarBindings
  *
  * @internal
@@ -59,7 +62,7 @@ trait CollectsInstanceofGuards
      *
      * A binding carries the offsets it holds between, so a return placed before a guard, or a guard's own body, still
      * reads the variable unnarrowed. A variable written between the test and the end of what it narrows is not bound,
-     * unless the write only goes through a member or key of it, which leaves its class, other than `$this->resource`.
+     * unless the write is an assignment through a member or key of it that keepsProvenClass() says keeps the proof.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  VariableWrites|null  $writes  the body's writes, when the caller has scanned them
@@ -67,12 +70,8 @@ trait CollectsInstanceofGuards
     protected function collectInstanceofGuards(array $stmts, AnalysisScope $scope, ?array $writes = null): void
     {
         $writes ??= $this->collectVariableWrites($stmts, $scope->subjectReflection, $scope->declaringFileClass);
-        $classWrites = array_values(array_filter(
-            $writes,
-            fn (array $write): bool => $write[3] !== VariableWrite::MemberOrOffset || $this->spellsResourceFetch($write[2]),
-        ));
 
-        $this->bindBlockGuards($stmts, null, $scope, $classWrites);
+        $this->bindBlockGuards($stmts, null, $scope, $writes);
         $this->proveGuardedReads($stmts, $scope, $writes);
     }
 
@@ -245,7 +244,7 @@ trait CollectsInstanceofGuards
 
         foreach ($pastChain as [$name, $classes, $test]) {
             // A body that always leaves never reaches the statements past the chain, so neither does a write inside it.
-            if (! $this->writtenWithin($name, $test->getStartFilePos(), $end, $exits, $writes)) {
+            if (! $this->writtenWithin($name, $test->getStartFilePos(), $end, $exits, $writes, $classes, $scope)) {
                 $this->bindGuard($scope, $name, $classes, $if->getEndFilePos(), $end);
             }
         }
@@ -268,7 +267,7 @@ trait CollectsInstanceofGuards
         $before = $block[array_key_last($block)]->getEndFilePos();
 
         foreach ($proofs as [$name, $classes, $test]) {
-            if (! $this->writtenWithin($name, $test->getStartFilePos(), $before, [], $writes)) {
+            if (! $this->writtenWithin($name, $test->getStartFilePos(), $before, [], $writes, $classes, $scope)) {
                 $this->bindGuard($scope, $name, $classes, $block[0]->getStartFilePos() - 1, $before);
             }
         }
@@ -449,20 +448,63 @@ trait CollectsInstanceofGuards
     }
 
     /**
+     * Whether an assignment through a member or key of a variable keeps every typed member a class proof reads: it
+     * stores a value the member's column holds, as keepsModelThrough() decides, or names a member no column or relation
+     * of the proven models types. A write of `$this->resource` itself replaces the value the proxy's proof tested.
+     *
+     * @param  NamedWrite  $write
+     * @param  non-empty-list<class-string>  $classes
+     */
+    private function keepsProvenClass(array $write, string $variable, array $classes, AnalysisScope $scope): bool
+    {
+        [, $node, $target, $kind] = $write;
+
+        if ($kind !== VariableWrite::MemberOrOffset || $this->spellsResourceFetch($target)) {
+            return false;
+        }
+
+        [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
+        // A member of `$this` reads as one of the value the proxy's proof tested, as one of `$this->resource` does.
+        $onSubject = ($holder instanceof Variable && $holder->name === $variable)
+            || ($variable === 'this' && $holder instanceof Expr && $this->spellsResourceFetch($holder));
+        $attributes = resolve(ModelAttributeResolver::class);
+
+        return ($onSubject && array_all($classes, fn (string $class): bool => is_a($class, Model::class, true)
+                && $attributes->resolveAttribute($class, $member)['type'] === 'unknown'
+                && $attributes->resolveRelation($class, $member)['type'] === 'unknown'))
+            || $this->keepsModelThrough($node, $variable, $classes, $scope);
+    }
+
+    /**
      * Whether a write to the variable can land between two offsets: one that does not end before $from, nor start past
-     * $to when it is set, and that sits in none of $exits, bodies that always exit before the reads it guards.
+     * $to when it is set, and that sits in none of $exits, bodies that always exit before the reads it guards. A class
+     * proof's $classes pass over a write that keeps them.
      *
      * @param  list<array<Node\Stmt>>  $exits
      * @param  VariableWrites  $writes
+     * @param  list<class-string>  $classes  the classes a class proof gives the variable; none for a non-null proof
      */
-    private function writtenWithin(string $name, int $from, ?int $to, array $exits, array $writes): bool
-    {
+    private function writtenWithin(
+        string $name,
+        int $from,
+        ?int $to,
+        array $exits,
+        array $writes,
+        array $classes = [],
+        ?AnalysisScope $scope = null,
+    ): bool {
         // `$this->resource` is written through the `this` variable.
         $variable = $name === AnalysisScope::PROXY_GUARDS ? 'this' : $name;
 
-        foreach ($this->writesFrom($variable, $from, $writes) as [, $node, , $kind]) {
+        foreach ($this->writesFrom($variable, $from, $writes) as $write) {
+            [, $node, , $kind] = $write;
+
             // A `foreach` around the test assigns its value before each pass, so never between the test and a read.
             if ($kind === VariableWrite::Foreach && $node->getStartFilePos() < $from) {
+                continue;
+            }
+
+            if ($classes !== [] && $scope !== null && $this->keepsProvenClass($write, $variable, $classes, $scope)) {
                 continue;
             }
 

@@ -1157,7 +1157,7 @@ describe('narrowing', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(new Variable('x'), $scope)?->classes)->toBe([Post::class]);
     });
 
-    test('a guard binds a variable exactly when no write to it sits after the guard tests it', function (string $body, array $bindings) {
+    test('a guard binds a variable exactly when no write that can change its class sits after the guard tests it', function (string $body, array $bindings) {
         expect(narrowingBindings($body))->toBe($bindings);
     })->with([
         'no write at all' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; }', ['a' => [Post::class]]],
@@ -1170,6 +1170,11 @@ describe('narrowing', function () {
         'a member and a key write after the guard' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->touched = true; $a[\'k\'] = 1;', ['a' => [Post::class]]],
         'a $this member write after a guard on $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->touched = true;', [AnalysisScope::PROXY_GUARDS => [Post::class]]],
         'a write of $this->resource itself after its guard' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource = $this->author;', []],
+        'a member write of a value its column holds, directly or through a relation' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = \'x\'; $a->author->name = \'y\';', ['a' => [Post::class]]],
+        'a member write of a value its column does not hold' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = 5;', []],
+        'an append, which names no member' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a[] = 1;', []],
+        'a value its column does not hold, written through $this' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->title = 5;', []],
+        'a value its column does not hold, written through $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource->title = 5;', []],
     ]);
 
     test('a member write after a guard still ends the proof that a read through the variable is not null', function () {
