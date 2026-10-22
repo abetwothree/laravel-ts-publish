@@ -766,6 +766,33 @@ describe('Arrayable property-shape inference', function () {
     });
 });
 
+// PHP 8.4 reflects every `self` and `parent` as written, and PHP 8.5 still does in a trait.
+describe('self and parent in a reflected native type', function () {
+    test('a trait property or return typed self publishes the class using the trait', function () {
+        $node = new ReflectionClass(SelfTypedTraitNode::class);
+
+        expect($this->service->propertyTypes($node, 'peer')['type'])->toBe('SelfTypedNode | null')
+            ->and($this->service->methodReturnedTypes($node, 'sibling')['type'])->toBe('SelfTypedNode')
+            ->and($this->service->methodOrDocblockReturnTypes($node, 'sibling')['type'])->toBe('SelfTypedNode');
+    });
+
+    test('a class property or return typed parent or self publishes the class it names', function () {
+        $child = new ReflectionClass(ParentTypedChild::class);
+
+        expect($this->service->propertyTypes($child, 'origin')['type'])->toBe('ParentTypedBase | null')
+            ->and($this->service->propertyTypes($child, 'either')['type'])->toBe('ParentTypedChild | number')
+            ->and($this->service->methodReturnedTypes($child, 'original')['type'])->toBe('ParentTypedBase');
+    });
+
+    test('resolveReflectionType() reads self against the declaring class it is given, and as written without one', function () {
+        $sibling = new ReflectionMethod(SelfTypedTraitNode::class, 'sibling')->getReturnType();
+
+        expect($this->service->resolveReflectionType($sibling, new ReflectionClass(SelfTypedTraitNode::class))['type'])
+            ->toBe('SelfTypedNode')
+            ->and($this->service->resolveReflectionType($sibling)['type'])->toBe('unknown');
+    });
+});
+
 describe('JsonSerializable DTO shape inference', function () {
     test('JsonSerializable with array-shape jsonSerialize docblock resolves to inline object type', function () {
         $result = $this->service->toTsType(JsonSerializableShapeValueObject::class);
@@ -3100,3 +3127,41 @@ class PhpstanTypeAliasHyphenSuffixHost {}
  * @phpstan-type PunctuationAlias.Suffix array{x: int}
  */
 class PhpstanTypeAliasDotSuffixHost {}
+
+/** Types a property and a return as `self`, which PHP reflects as written in a trait on every version. */
+trait DeclaresSelfTypedMembers
+{
+    public ?self $peer = null;
+
+    /** Returns this node. */
+    public function sibling(): self
+    {
+        return $this;
+    }
+}
+
+/** A class that takes `self`-typed members from a trait. */
+#[TsType('SelfTypedNode')]
+class SelfTypedTraitNode
+{
+    use DeclaresSelfTypedMembers;
+}
+
+/** The parent a `parent` type names. */
+#[TsType('ParentTypedBase')]
+class ParentTypedBase {}
+
+/** Types members as `parent` and `self`, which PHP 8.4 reflects as written. */
+#[TsType('ParentTypedChild')]
+class ParentTypedChild extends ParentTypedBase
+{
+    public ?parent $origin = null;
+
+    public self|int $either = 0;
+
+    /** Returns a fresh parent. */
+    public function original(): parent
+    {
+        return new ParentTypedBase;
+    }
+}

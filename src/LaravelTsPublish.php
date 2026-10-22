@@ -604,7 +604,9 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
         }
 
-        return $this->resolveReflectionType($class->getProperty($property)->getType());
+        $reflection = $class->getProperty($property);
+
+        return $this->resolveReflectionType($reflection->getType(), $reflection->getDeclaringClass());
     }
 
     /**
@@ -621,7 +623,9 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        return $this->resolveReflectionType($class->getMethod($method)->getReturnType());
+        $reflection = $class->getMethod($method);
+
+        return $this->resolveReflectionType($reflection->getReturnType(), $reflection->getDeclaringClass());
     }
 
     /**
@@ -642,7 +646,7 @@ class LaravelTsPublish
         }
 
         $reflectionMethod = $class->getMethod($method);
-        $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType());
+        $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass());
 
         if ($signatureInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($signatureInfo['type'])) {
             return $signatureInfo;
@@ -749,13 +753,18 @@ class LaravelTsPublish
         return $cache[$name] = $this->resolveReflectionType($returnType);
     }
 
-    /** @return TypeScriptTypeInfo */
-    public function resolveReflectionType(?ReflectionType $returnType): array
+    /**
+     * Resolve a reflected native type to TypeScript, reading `self` and `parent` against the declaring class.
+     *
+     * @param  ReflectionClass<object>|null  $declaringClass  the class whose member declares the type
+     * @return TypeScriptTypeInfo
+     */
+    public function resolveReflectionType(?ReflectionType $returnType, ?ReflectionClass $declaringClass = null): array
     {
         $result = $this->emptyTypeScriptInfo();
 
         if ($returnType instanceof ReflectionNamedType) {
-            $result = $this->toTsType($returnType->getName());
+            $result = $this->toTsType($this->reflectedTypeName($returnType, $declaringClass));
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
                 $result['type'] .= ' | null';
@@ -774,7 +783,7 @@ class LaravelTsPublish
 
             foreach ($returnType->getTypes() as $type) {
                 $infos[] = $type instanceof ReflectionNamedType
-                    ? $this->toTsType($type->getName())
+                    ? $this->toTsType($this->reflectedTypeName($type, $declaringClass))
                     : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
@@ -1891,7 +1900,7 @@ class LaravelTsPublish
     protected function castGetReturnTypes(ReflectionClass $cast): array
     {
         $get = $cast->getMethod('get');
-        $native = $this->resolveReflectionType($get->getReturnType());
+        $native = $this->resolveReflectionType($get->getReturnType(), $get->getDeclaringClass());
         $docComment = $get->getDocComment();
         $docReturn = $docComment !== false && TsTypeString::isVagueTsType($native['type'])
             ? $this->extractReturnTypeFromDocblock($docComment)
@@ -2179,6 +2188,25 @@ class LaravelTsPublish
     protected function braceAngleDepth(string $s): int
     {
         return substr_count($s, '{') + substr_count($s, '<') - substr_count($s, '}') - substr_count($s, '>');
+    }
+
+    /**
+     * A reflected named type's name, `self` and `parent` resolved against the class whose member declares it.
+     *
+     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait.
+     *
+     * @param  ReflectionClass<object>|null  $declaringClass
+     */
+    protected function reflectedTypeName(ReflectionNamedType $type, ?ReflectionClass $declaringClass): string
+    {
+        $name = $type->getName();
+        $parent = $declaringClass?->getParentClass();
+
+        return match (strtolower($name)) {
+            'self' => $declaringClass?->getName() ?? $name,
+            'parent' => $parent instanceof ReflectionClass ? $parent->getName() : $name,
+            default => $name,
+        };
     }
 
     /**
