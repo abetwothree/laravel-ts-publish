@@ -1282,6 +1282,15 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
+     * What a spread of the subject's own method adds to the array around it: its analysis, or an unread one where the
+     * analyzer cannot read the method.
+     */
+    private function ownMethodSpread(string $methodName, bool $topLevel, Expr $call): ResourceAnalysis
+    {
+        return $this->analyzeThisMethodSpread($methodName, $topLevel, $call) ?? ResourceAnalysis::unreadAnalysis();
+    }
+
+    /**
      * What a spread method's returns build, read in its own bindings: each return a branch, else the first return.
      *
      * @param  array<Node\Stmt>  $stmts
@@ -1381,10 +1390,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $analysis->merge(
-                    $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value)
-                    ?? ResourceAnalysis::unreadAnalysis(),
-                );
+                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value));
 
                 continue;
             }
@@ -1397,10 +1403,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->name instanceof Identifier
                 && $this->scope->subjectReflection->hasMethod($item->value->name->toString())
             ) {
-                $analysis->merge(
-                    $this->analyzeThisMethodSpread($item->value->name->toString(), $topLevel, $item->value)
-                    ?? ResourceAnalysis::unreadAnalysis(),
-                );
+                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value));
 
                 continue;
             }
@@ -1414,10 +1417,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $funcName = $funcCallName->getLast();
 
                     if ($this->scope->subjectReflection->hasMethod($funcName)) {
-                        $analysis->merge(
-                            $this->analyzeThisMethodSpread($funcName, $topLevel, $item->value)
-                            ?? ResourceAnalysis::unreadAnalysis(),
-                        );
+                        $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value));
                     }
                 }
 
