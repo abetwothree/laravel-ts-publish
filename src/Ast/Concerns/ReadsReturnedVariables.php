@@ -451,6 +451,9 @@ trait ReadsReturnedVariables
         $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
         $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'merge-branch-join');
         $this->recordJoinDrops($joined, $branches, $notes, $record);
+        // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
+        $this->branchNotes ??= new WeakMap;
+        $this->branchNotes[$joined] = array_merge(...$notes);
 
         return $joined;
     }

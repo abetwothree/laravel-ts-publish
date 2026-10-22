@@ -171,11 +171,14 @@ test('a merge call and a spread helper that leave out a value they cannot type w
         .'`$this->opaqueRows()`, which could not be typed, so its published type may not admit every value it sends. '
         .'Give what it reads a return type or a `@return` docblock.';
 
-    expect(joinDropWarnings(DroppedBranchJoinResource::class))->toBe([$warning(24), $warning(27), $warning(41), $warning(55)])
+    $placeholder = fn (int $line, string $published): string => DroppedBranchJoinResource::class.": The value on line {$line} "
+        ."publishes {$published}, because `\$this->opaqueRows()` could not be typed and was left out of its union. Give what "
+        .'it reads a return type or a `@return` docblock.';
+
+    expect(joinDropWarnings(DroppedBranchJoinResource::class))
+        ->toBe([$warning(24), $warning(27), $warning(42), $warning(56), $warning(68)])
         ->and(placeholderWarnings(DroppedBranchJoinResource::class))->toBe([
-            DroppedBranchJoinResource::class.': The value on line 31 publishes `null`, as if it were always null, because '
-            .'`$this->opaqueRows()` could not be typed and was left out of its union. Give what it reads a return type or a '
-            .'`@return` docblock.',
+            $placeholder(31, '`null`, as if it were always null'),
         ])
         ->and(publishedResourceKeyTypes(DroppedBranchJoinResource::class, Post::class))->toBe([
             'merged' => 'string',
@@ -183,6 +186,7 @@ test('a merge call and a spread helper that leave out a value they cannot type w
             'merged_null' => 'null',
             'spread' => 'string',
             'spread_built' => 'string',
+            'nested' => 'string',
         ]);
 });
 
@@ -201,6 +205,7 @@ test('sends the value a merge call or a spread helper leaves out of its publishe
             'merged_null' => 'array',
             'spread' => 'array',
             'spread_built' => 'string',
+            'nested' => 'array',
         ]);
 });
 
