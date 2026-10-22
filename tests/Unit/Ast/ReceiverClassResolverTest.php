@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -567,6 +569,56 @@ describe('DeclaredClasses::returnClasses()', function () {
             ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
             ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
             ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
+    });
+});
+
+describe('DeclaredClasses::docblockArms()', function () {
+    test('a type keyword PHP reserves names no class arm, in any case', function (string $type, bool $nullable) {
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+
+        expect(DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class))
+            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable]);
+    })->with([
+        'bool' => ['bool', false],
+        'a nullable string' => ['?string', true],
+        'uppercase, beside null' => ['STRING|null', true],
+        'capitalized' => ['Bool', false],
+        'a generic array' => ['array<int, Post>', false],
+        'callable' => ['callable', false],
+        'a generic iterable' => ['iterable<int>', false],
+        'never' => ['never', false],
+        'object or null' => ['object|null', true],
+        'true or false' => ['true|false', false],
+        'mixed' => ['mixed', false],
+        'void' => ['void', false],
+        'float or int' => ['float|int', false],
+    ]);
+
+    // The keywords need no import map, but a cached output still depends on the file the docblock lives in.
+    test('a docblock naming only type keywords reads no import, but records its file', function () {
+        LaravelTsPublish::partialMock()->shouldReceive('parseFileUseStatements')->never();
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+        DependencyRecorder::start();
+
+        try {
+            $arms = DeclaredClasses::docblockArms('int|string|null', $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
+            $paths = DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+
+        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true])
+            ->and($paths)->toBe([(string) $context->getFileName()]);
+    });
+
+    // PHP allows a class named `resource`, so only a lookup can tell; this file's imports name UrlService and Post.
+    test('a class arm beside a keyword resolves through the file\'s imports', function () {
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+        $arms = fn (string $type): array => DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
+
+        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true])
+            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true])
+            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false]);
     });
 });
 

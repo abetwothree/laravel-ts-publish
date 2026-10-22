@@ -24,6 +24,12 @@ use ReflectionUnionType;
  */
 final class DeclaredClasses
 {
+    /** Type keywords PHP never lets a class or an import alias take, so an arm naming one is no class in any file. */
+    private const array RESERVED_TYPES = [
+        'array', 'bool', 'callable', 'false', 'float', 'int', 'iterable', 'mixed', 'never', 'object', 'string', 'true',
+        'void',
+    ];
+
     /**
      * The classes a method returns: its native class type, else its `@return` docblock; null for any arm not a class.
      *
@@ -113,10 +119,16 @@ final class DeclaredClasses
      */
     public static function docblockArms(string $type, ReflectionClass $context, string $staticClass, string $selfClass): array
     {
-        $useMap = LaravelTsPublish::parseFileUseStatements($context);
+        $file = $context->getFileName();
+        // Most docblocks name only scalars, so the import map is read for the first arm that needs it.
+        $useMap = null;
         $classes = [];
         $named = true;
         $nullable = false;
+
+        if ($file !== false) {
+            DependencyRecorder::record($file);
+        }
 
         foreach (LaravelTsPublish::splitPhpDocUnionType($type) as $part) {
             // Generic arguments never change the class, but text after the closing `>`, such as `[]`, does.
@@ -135,10 +147,20 @@ final class DeclaredClasses
                 continue;
             }
 
+            if (in_array(strtolower($name), self::RESERVED_TYPES, true)) {
+                $named = false;
+
+                continue;
+            }
+
             $class = match ($name) {
                 '$this', 'static' => $staticClass,
                 'self' => $selfClass,
-                default => LaravelTsPublish::resolveDocblockTypeName($name, $useMap, $context->getNamespaceName()),
+                default => LaravelTsPublish::resolveDocblockTypeName(
+                    $name,
+                    $useMap ??= LaravelTsPublish::parseFileUseStatements($context),
+                    $context->getNamespaceName(),
+                ),
             };
 
             if (self::isClassLike($class)) {
