@@ -26,7 +26,8 @@ same way, though Laravel sends the groups nested or keyed by name. A parameter w
 came in with the same way: `transform($this->opaque(), …)` whose callback may set `$value = $comment->id` publishes
 `number`. So does the join of a local's branches, for a value one branch writes. Widening the union to `unknown` would
 be more honest but less specific. Where the drop leaves only `null` or `never[]`, the run output warns, naming the line
-and the arm left out; a class the generation cache serves prints nothing until a `--fresh` run. A spread helper's key or
+and the arm left out, and so does a parameter's or a branch join's drop, whose published type may not admit every
+value Laravel sends; a class the generation cache serves prints nothing until a `--fresh` run. A spread helper's key or
 a model accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever
 returns `null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the
 whole call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test,

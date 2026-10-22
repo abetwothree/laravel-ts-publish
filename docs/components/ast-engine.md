@@ -384,7 +384,8 @@ member read keeps the old binding, until the write `endBindingsAtWrites()` retur
 write of a value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine
 cannot type wherever an earlier value, the binding's or its own `$x = …;`'s, still reaches the read, and an old value it
 cannot type beside writes that all type. A closure parameter nothing binds, as `transform($this->opaque(), …)` leaves
-its callback's, walks from the value its call passed, which has no type, once a nested write needs the join.
+its callback's, walks from the value its call passed, which has no type, once a nested write needs the join;
+`AnalysisScope::$passedValues` keeps that argument, which no reader binds from, for the join to name.
 `CollectsLocalVarBindings::writeKind()` classifies each write once, as the scan records it. The cycle guard,
 `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so `$s = $s . 'x'` reads the
 value `$s` held before.
@@ -600,14 +601,15 @@ silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandle
 `ConditionalMethodHandler::applyConditionalDefault()`, `MatchHandler`'s arms, `VariableHandler`'s join of a parameter
 past its block (`binding-join`: an old value no rule types beside writes that all type, or a nested write no rule types
 where an earlier value still reaches the read) and the walk's branch join (`walk-branch-join`, naming the last key write
-or array item in the branch it reads as `unknown`). `analyzeClosureUnion()` records because `unionResults()` receives
-only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its left operand's `null` with
-`ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary union would keep. It unions
-both operands through `unionResults()`, which leaves an untyped one out. `applyConditionalDefault()` records a default
-only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()` records nothing for a spread helper's branches
-or a merge call's sides, since it unions type strings and cannot name the expression it drops; the walk's join names one
-only through the untyped writes `ReadsReturnedVariables` notes. One arm is never left out: `$this->resource` read whole
-under its own `instanceof` proof, as the proven class with no published type, leaves the ternary `unknown`.
+or array item the branch saw, never a sibling's, that it reads as `unknown`). `analyzeClosureUnion()` records because
+`unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler` strips its
+left operand's `null` with `ValueResult::stripNullArm()`, because `??` never returns that `null`, which the ternary
+union would keep. It unions both operands through `unionResults()`, which leaves an untyped one out.
+`applyConditionalDefault()` records a default only beside a value arm with a type. `ResourceAstAnalyzer::branchUnion()`
+records nothing for a spread helper's branches or a merge call's sides, since it unions type strings and cannot name the
+expression it drops; the walk's join names one only through the untyped writes `ReadsReturnedVariables` notes. One arm
+is never left out: `$this->resource` read whole under its own `instanceof` proof, as the proven class with no published
+type, leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
@@ -615,11 +617,13 @@ answer.
 
 Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Where a drop leaves the union only `null`
 and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
-when nothing was dropped. `replaceable()` holds the warnings of a read whose placeholder its caller may replace, a
-declared local's `@var` or a getter body that gives way to the model's declared type, and lets them through only where
-the reading stands. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
-`--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
-cast on the key leaves the reading, and so the warning, as it is.
+when nothing was dropped. The two join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
+the read, so beside a typed arm it warns that the published type may not admit every value the read sends.
+`replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
+getter body that gives way to the model's declared type, and lets them through only where nothing replaces the reading.
+A class the generation cache serves prints none, since the cache stores no analysis warnings, until `--fresh` analyzes
+it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a cast on the key
+leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
