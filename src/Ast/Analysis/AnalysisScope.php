@@ -834,9 +834,9 @@ final class AnalysisScope
     }
 
     /**
-     * Read a closure a call passes values to under its own parameter bindings: $beforeClaim reads what the call passes,
-     * every parameter name is claimed from the outer tables, $bind binds what the call passes, and each parameter past
-     * the $passed values holds its default; within() puts the scope back after, a throw included.
+     * Read a closure a call passes values to under its own parameter bindings: $beforeClaim makes the changes the claim
+     * may drop again, every parameter name is claimed from the outer tables, $bind binds what the call passes, and each
+     * parameter past the $passed values holds its default; within() puts the scope back after, a throw included.
      *
      * @template TRead
      *

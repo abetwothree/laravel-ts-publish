@@ -492,22 +492,30 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
         $value = $valueArg->value;
-        $resolvedValue = $engine->resolve($value);
-        $model = $this->filledModel($value, $resolvedValue, $scope);
-        $outer = $scope->nameBindings();
         $callback = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($callbackArg->value, $scope));
+        $resolvedValue = null;
+        $model = null;
+        $outer = AnalysisScope::NO_NAME_BINDINGS;
 
         $inner = $scope->readClaimedClosure(
             $callback,
             1,
             $engine,
-            fn (): array => $engine->resolve($callback),
-            function () use ($callback, $value, $resolvedValue, $outer, $scope, $engine, $model): void {
-                $this->bindPassedValue($callback, $value, $resolvedValue, $outer, $scope, $engine, model: $model);
+            function () use ($callback, $value, $scope, $engine): array {
                 // transform() calls back only for a filled value, so the read it passes is not null in the callback.
                 $this->proveNonNull([$value], $scope);
+
+                return $engine->resolve($callback);
+            },
+            function () use ($callback, $value, &$resolvedValue, &$outer, $scope, $engine, &$model): void {
+                $this->bindPassedValue($callback, $value, $resolvedValue, $outer, $scope, $engine, model: $model);
+            },
+            // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
+            function () use ($value, &$resolvedValue, &$model, &$outer, $scope, $engine): void {
+                $resolvedValue = $engine->resolve($value);
+                $model = $this->filledModel($value, $resolvedValue, $scope);
+                $outer = $scope->nameBindings();
             },
         );
 
