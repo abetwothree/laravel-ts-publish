@@ -15,11 +15,9 @@ use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Exit_;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
-use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -52,6 +50,7 @@ use PhpParser\Node\Stmt\While_;
  */
 trait CollectsInstanceofGuards
 {
+    use InspectsAstNodes;
     use ReadsInstanceofChains;
     use ReadsNonNullGuards;
 
@@ -182,7 +181,7 @@ trait CollectsInstanceofGuards
         return match (true) {
             $proof === null => [],
             $proof[0] instanceof Variable && is_string($proof[0]->name) => [[$proof[0]->name, $proof[1], $cond]],
-            $this->spellsResourceFetch($proof[0]) => [[AnalysisScope::PROXY_GUARDS, $proof[1], $cond]],
+            $this->isResourceFetch($proof[0]) => [[AnalysisScope::PROXY_GUARDS, $proof[1], $cond]],
             default => [],
         };
     }
@@ -305,18 +304,6 @@ trait CollectsInstanceofGuards
             || $stmt instanceof Break_
             || $stmt instanceof Continue_
             || ($stmt instanceof ExpressionStmt && ($stmt->expr instanceof Throw_ || $stmt->expr instanceof Exit_));
-    }
-
-    /**
-     * Whether an expression is spelled `$this->resource`; bindGuard() records its proofs only on an API resource.
-     */
-    private function spellsResourceFetch(Expr $expr): bool
-    {
-        return $expr instanceof PropertyFetch
-            && $expr->var instanceof Variable
-            && $expr->var->name === 'this'
-            && $expr->name instanceof Identifier
-            && $expr->name->toString() === 'resource';
     }
 
     /**
@@ -459,14 +446,14 @@ trait CollectsInstanceofGuards
     {
         [, $node, $target, $kind] = $write;
 
-        if ($kind !== VariableWrite::MemberOrOffset || $this->spellsResourceFetch($target)) {
+        if ($kind !== VariableWrite::MemberOrOffset || $this->isResourceFetch($target)) {
             return false;
         }
 
         [$holder, $member] = $this->writtenMember($node) ?? [null, ''];
         // A member of `$this` reads as one of the value the proxy's proof tested, as one of `$this->resource` does.
         $onSubject = ($holder instanceof Variable && $holder->name === $variable)
-            || ($variable === 'this' && $holder instanceof Expr && $this->spellsResourceFetch($holder));
+            || ($variable === 'this' && $holder instanceof Expr && $this->isResourceFetch($holder));
         $attributes = resolve(ModelAttributeResolver::class);
 
         return ($onSubject && array_all($classes, fn (string $class): bool => is_a($class, Model::class, true)
