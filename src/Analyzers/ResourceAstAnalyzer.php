@@ -810,11 +810,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
-        $previousNameBindings = $this->scope->nameBindings();
-
-        try {
-            $this->scope->claimParameters($expr);
-            $this->scope->bindUnpassedParameters($expr, 0, $this);
+        return $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
             $this->markFilledDefaults($expr, $this->scope);
 
             // Seeded as ClosureHandler seeds a closure, so a local the body assigns shadows the method's of its name.
@@ -824,9 +820,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             return $this->closureReturnBranches($expr);
-        } finally {
-            $this->scope->restoreNameBindings($previousNameBindings);
-        }
+        });
     }
 
     /**

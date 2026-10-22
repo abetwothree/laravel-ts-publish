@@ -449,6 +449,18 @@ final class AnalysisScope
     }
 
     /**
+     * A closure's first parameter name, or null for none, a variadic one, or an expression that is no closure.
+     */
+    public static function firstParameterName(Expr $closure): ?string
+    {
+        $first = $closure instanceof ArrowFunction || $closure instanceof ClosureExpr ? $closure->params[0] ?? null : null;
+
+        return $first !== null && ! $first->variadic && $first->var instanceof Variable && is_string($first->var->name)
+            ? $first->var->name
+            : null;
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *
@@ -801,6 +813,44 @@ final class AnalysisScope
         // The method's body is no relation closure, even where the call is made from one.
         $this->closureRelationModelClass = null;
         $this->declaringFileClass = $declaringFileClass;
+    }
+
+    /**
+     * Read a closure a call passes values to under its own parameter bindings: $beforeClaim reads what the call passes,
+     * every parameter name is claimed from the outer tables, $bind binds what the call passes, and each parameter past
+     * the $passed values holds its default; within() puts the scope back after, a throw included.
+     *
+     * @template TRead
+     *
+     * @param  int|null  $passed  how many values the call passes; null binds no default
+     * @param  Closure(): TRead  $read
+     * @param  (Closure(): void)|null  $bind
+     * @param  (Closure(): void)|null  $beforeClaim
+     * @return TRead
+     */
+    public function readClaimedClosure(
+        Expr $closure,
+        ?int $passed,
+        ExpressionEngine $engine,
+        Closure $read,
+        ?Closure $bind = null,
+        ?Closure $beforeClaim = null,
+    ): mixed {
+        return $this->within(function () use ($closure, $passed, $engine, $bind, $beforeClaim): void {
+            if ($beforeClaim !== null) {
+                $beforeClaim();
+            }
+
+            $this->claimParameters($closure);
+
+            if ($bind !== null) {
+                $bind();
+            }
+
+            if ($passed !== null) {
+                $this->bindUnpassedParameters($closure, $passed, $engine);
+            }
+        }, $read);
     }
 
     /**

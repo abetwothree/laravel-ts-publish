@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use ReflectionClass;
@@ -61,36 +60,31 @@ trait BindsMapCallbacks
 
         $declared = $this->declaredMapModel($first);
         $model = $elementModel !== null && ($declared === null || is_a($elementModel, $declared, true)) ? $elementModel : $declared;
-        $name = $first !== null && $first->var instanceof Variable && is_string($first->var->name) ? $first->var->name : null;
-        $previousNameBindings = $scope->nameBindings();
-        $previousRelationModel = $scope->closureRelationModelClass;
-        $filters = $scope->filtersNestedResources;
-        $outerArrayed = $scope->mapResultArrayed;
+        $name = AnalysisScope::firstParameterName($callback);
 
-        try {
-            $scope->filtersNestedResources = $filters && $arrayed;
-            $scope->mapResultArrayed = false;
+        return $scope->readClaimedClosure(
+            $callback,
+            null,
+            $engine,
+            fn (): array => $engine->resolve($callback),
+            function () use ($scope, $name, $model, $elementValue): void {
+                if ($name !== null && $model !== null) {
+                    $scope->varModelBindings[$name] = $model;
+                } elseif ($name !== null && $elementValue !== null) {
+                    $scope->varValueBindings[$name] = $elementValue;
+                }
+            },
+            function () use ($scope, $arrayed, $relationClosure, $model): void {
+                $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
+                $scope->mapResultArrayed = false;
 
-            // Only a relation closure opens ResolvesEnumPropertyArgTypes's gate, so a map that is not one closes it.
-            if ($relationClosure !== null) {
-                $scope->closureRelationModelClass = $relationClosure ? $model : null;
-            }
-
-            $scope->claimParameters($callback);
-
-            if ($name !== null && $model !== null) {
-                $scope->varModelBindings[$name] = $model;
-            } elseif ($name !== null && $elementValue !== null) {
-                $scope->varValueBindings[$name] = $elementValue;
-            }
-
-            return $engine->resolve($callback);
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
-            $scope->closureRelationModelClass = $previousRelationModel;
-            $scope->filtersNestedResources = $filters;
-            $scope->mapResultArrayed = $outerArrayed;
-        }
+                // Only a relation closure opens ResolvesEnumPropertyArgTypes's gate, so a map that is not one
+                // closes it.
+                if ($relationClosure !== null) {
+                    $scope->closureRelationModelClass = $relationClosure ? $model : null;
+                }
+            },
+        );
     }
 
     /**
