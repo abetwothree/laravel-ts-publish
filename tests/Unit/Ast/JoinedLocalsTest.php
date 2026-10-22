@@ -165,7 +165,15 @@ test('a parameter\'s join records each arm it leaves out', function () {
         '71 json_decode(\'{}\') binding-join',
         '76 $this->opaque() binding-join',
         '137 json_decode($title) binding-join',
+        '205 $this->whenHas(\'missing_column\') binding-join',
     ]);
+});
+
+// The value left out is a MissingValue for a pinned post, so Laravel leaves the key out there.
+test('a value a parameter\'s join leaves out keeps the key optional where it may be missing', function () {
+    expect(publishedResourceKeyTypes(JoinedParametersResource::class, Post::class))->toMatchArray(['helper_missing?' => 'string'])
+        ->and(joinedSends(JoinedParametersResource::class, true))->not->toHaveKey('helper_missing')
+        ->and(joinedSends(JoinedParametersResource::class, false))->toMatchArray(['helper_missing' => 'Banana']);
 });
 
 // The declared string holds for a read before the body's write, and joins a branch's write for a read past it.

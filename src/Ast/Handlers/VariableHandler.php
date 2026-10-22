@@ -292,10 +292,13 @@ final class VariableHandler implements ExpressionHandler
         $old = $gap[3] ? $this->heldValue($name, $scope, $engine) : null;
         $arms = [];
         $dropped = [];
+        // A value left out can still be a MissingValue, whose key Laravel drops.
+        $optional = false;
 
         foreach ($values as $index => $arm) {
             if ($reaches && $untyped($arm) && in_array($written[$index], $nested, true)) {
                 $dropped[] = $written[$index];
+                $optional = $optional || ($arm['optional'] ?? false);
             } else {
                 $arms[] = $arm;
             }
@@ -304,6 +307,7 @@ final class VariableHandler implements ExpressionHandler
         if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
             $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
                 ?? $scope->passedValues[$name] ?? $read;
+            $optional = $optional || ($old['optional'] ?? false);
         } elseif ($gap[3]) {
             array_unshift($arms, $old);
         }
@@ -319,7 +323,7 @@ final class VariableHandler implements ExpressionHandler
         $typed = array_values(array_filter($arms));
         $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
 
-        return DroppedUnionArms::warnOfJoinDrop($union, $dropped, $scope);
+        return DroppedUnionArms::warnOfJoinDrop([...$union, 'optional' => $union['optional'] || $optional], $dropped, $scope);
     }
 
     /**

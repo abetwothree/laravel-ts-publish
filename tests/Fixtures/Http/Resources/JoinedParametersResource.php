@@ -15,7 +15,7 @@ use Workbench\App\Models\Post;
 /**
  * Parameters a write inside a block may replace, read past that block: transform()'s passed the title, a property no
  * rule types or a call no rule types, ones a value no rule types replaces, ones a `try` writes, ones passed on to
- * another transform(), ones their own write replaced first, one an inline `@var` there retypes, and a helper's.
+ * another transform(), ones their own write replaced first, one an inline `@var` there retypes, and helpers'.
  *
  * @mixin Post
  */
@@ -164,6 +164,7 @@ final class JoinedParametersResource extends JsonResource
             }),
             'helper_joined' => $this->labelFor($this->title),
             'helper_copy' => $this->copyBefore($this->title),
+            'helper_missing' => $this->titleOrMissing($this->title),
         ];
     }
 
@@ -190,6 +191,18 @@ final class JoinedParametersResource extends JsonResource
     {
         if ($this->is_pinned) {
             $label = $this->id;
+        }
+
+        return $label;
+    }
+
+    /**
+     * The label, or for a pinned post an attribute the post lacks, which Laravel leaves out.
+     */
+    private function titleOrMissing(string $label)
+    {
+        if ($this->is_pinned) {
+            $label = $this->whenHas('missing_column');
         }
 
         return $label;
