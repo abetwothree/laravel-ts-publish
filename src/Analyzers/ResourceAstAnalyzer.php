@@ -704,6 +704,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     protected function analyzeValueExpression(Expr $expr): array
     {
+        // Every sub-expression comes through here, and most bodies hold no proof, which needs no closure to look up.
+        if ($this->scope->provenProxy !== null || ! isset($this->scope->varGuardBindings[AnalysisScope::PROXY_GUARDS])) {
+            return $this->dispatchValue($expr);
+        }
+
         return $this->resolveUnderProxyProof($expr, $this->scope, fn (): array => $this->dispatchValue($expr));
     }
 
