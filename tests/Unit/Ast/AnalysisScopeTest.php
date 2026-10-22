@@ -408,25 +408,25 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 });
 
 /**
- * A value for a scope field of the given type, one per phase, so a field each phase sets reads as changed.
+ * A value for a scope field, from its name and the phase, so a field each phase sets reads as changed and a field
+ * put back from another's value differs. A bool flips with its name's first letter, so the two bools differ too.
  */
 function analysisScopeFieldValue(ReflectionProperty $field, string $phase): mixed
 {
-    $class = $phase === 'before' ? User::class : Post::class;
+    $name = $field->getName();
 
     return match ((string) $field->getType()) {
-        'array' => [$phase => true],
-        '?array' => [$class],
-        '?string' => $class,
-        'bool' => $phase === 'before',
-        'ReflectionClass' => new ReflectionClass($class),
-        default => throw new LogicException("No value for {$field->getName()}'s type."),
+        'array', '?array' => [$name.$phase => true],
+        '?string' => "{$name}:{$phase}",
+        'bool' => ($phase === 'before') === (ord($name[0]) % 2 === 0),
+        'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
+        default => throw new LogicException("No value for {$name}'s type."),
     };
 }
 
 // Every field but those a builder sets once is given a value, and $enter changes each, so a field added to the scope
 // fails here until within() puts it back or it joins the fields set once.
-it('within() restores every name table and ambient field after a read, a throw included', function (bool $throws) {
+it('within() restores every name table and ambient field after a read, a throw included', function (string $throws) {
     $setOnce = ['subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys', 'collectedElement'];
     $ambient = [
         'closureRelationModelClass', 'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass',
@@ -450,15 +450,21 @@ it('within() restores every name table and ambient field after a read, a throw i
 
     try {
         $read = $scope->within(
-            function (AnalysisScope $entered) use ($fields): void {
+            function (AnalysisScope $entered) use ($fields, &$seen, $throws): void {
                 foreach ($fields as $field) {
                     $field->setValue($entered, analysisScopeFieldValue($field, 'entered'));
+                }
+
+                if ($throws === 'enter') {
+                    $seen = get_object_vars($entered);
+
+                    throw new RuntimeException('The enter failed.');
                 }
             },
             function () use ($scope, &$seen, $throws): string {
                 $seen = get_object_vars($scope);
 
-                return $throws ? throw new RuntimeException('The read failed.') : 'read';
+                return $throws === 'read' ? throw new RuntimeException('The read failed.') : 'read';
             },
         );
     } catch (RuntimeException) {
@@ -468,10 +474,11 @@ it('within() restores every name table and ambient field after a read, a throw i
         ->and(array_keys(array_filter($seen, fn (mixed $value, string $name): bool => $value !== $before[$name], ARRAY_FILTER_USE_BOTH)))
         ->toEqualCanonicalizing($names)
         ->and(get_object_vars($scope))->toBe($before)
-        ->and($read)->toBe($throws ? null : 'read');
+        ->and($read)->toBe($throws === 'none' ? 'read' : null);
 })->with([
-    'a read that returns' => [false],
-    'a read that throws' => [true],
+    'a read that returns' => ['none'],
+    'a read that throws' => ['read'],
+    'an enter that throws' => ['enter'],
 ]);
 
 // within() puts back each field enterSubjectMethod() set aside, the body's own writes included.
