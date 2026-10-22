@@ -119,7 +119,7 @@ final class AccessorBodyAnalyzer
     {
         return $result !== null
             && ! in_array($result['type'], ['unknown', 'never[]'], true)
-            && ($result['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped);
+            && ! DroppedUnionArms::leftNullSince($result['type'], $dropped);
     }
 
     /**

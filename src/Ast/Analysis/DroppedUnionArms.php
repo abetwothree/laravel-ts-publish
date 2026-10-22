@@ -15,8 +15,8 @@ use PhpParser\PrettyPrinter\Standard;
  * Audit trail for union arms the engine could not type and therefore left out of the union.
  *
  * Recording is off until a test calls start(), so a publish run pays one count and one null check per dropped arm.
- * The count is always kept: AccessorBodyAnalyzer reads it to tell a `null` a dropped arm left from a literal one. A
- * drop that leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
+ * The count is always kept, so leftNullSince() tells a `null` a dropped arm left from a literal one. A drop that
+ * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -65,6 +65,12 @@ final class DroppedUnionArms
     public static function dropped(): int
     {
         return self::$dropped;
+    }
+
+    /** Whether a type is the `null` an arm dropped since the count read $dropped left behind, not a literal one. */
+    public static function leftNullSince(string $type, int $dropped): bool
+    {
+        return $type === 'null' && self::$dropped !== $dropped;
     }
 
     /** Count the arms a reused analysis dropped when it was first computed, as computing it again would. */

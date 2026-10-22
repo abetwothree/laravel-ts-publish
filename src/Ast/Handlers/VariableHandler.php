@@ -445,7 +445,7 @@ final class VariableHandler implements ExpressionHandler
     {
         return $reading !== null
             && ! TsTypeString::isVagueTsType($reading['type'])
-            && ($reading['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped);
+            && ! DroppedUnionArms::leftNullSince($reading['type'], $dropped);
     }
 
     /**
