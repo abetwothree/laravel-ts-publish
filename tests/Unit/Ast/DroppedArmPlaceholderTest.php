@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DroppedArmPlaceholderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PlaceholderAccessorPost;
+use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\UnionHonestyResource;
 use Workbench\App\Models\Post;
@@ -50,6 +53,24 @@ function placeholderWarnings(string $class): array
 function joinDropWarnings(string $class): array
 {
     return droppedArmWarnings($class, 'which could not be typed, so its published type may not admit');
+}
+
+/**
+ * The warnings a placeholder raises inside one replaceable() read, run outside any other hold, that reach the run.
+ *
+ * @return list<string>
+ */
+function warningsKeptBy(bool $kept): array
+{
+    AnalysisWarnings::reset();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    DroppedUnionArms::replaceable(
+        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('held')], $scope),
+        fn (): bool => $kept,
+    );
+
+    return array_column(AnalysisWarnings::all(), 'message');
 }
 
 /**
@@ -147,4 +168,40 @@ test('an accessor body declined for a class its model file cannot name raises no
     expect(resolve(ModelAttributeResolver::class)->resolveAttribute(PlaceholderAccessorPost::class, 'author_card')['type'])
         ->toBe('unknown')
         ->and(AnalysisWarnings::all())->toBe([]);
+});
+
+test('a replaceable read prints the warnings it holds only where they are kept', function () {
+    expect(warningsKeptBy(true))->toHaveCount(1)
+        ->and(warningsKeptBy(false))->toBe([]);
+});
+
+test('a replaceable read that throws leaves no hold behind', function () {
+    AnalysisWarnings::reset();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+
+    expect(fn () => DroppedUnionArms::replaceable(fn () => throw new RuntimeException('read failed'), fn (): bool => true))
+        ->toThrow(RuntimeException::class, 'read failed');
+
+    DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('after')], $scope);
+
+    expect(AnalysisWarnings::all())->toHaveCount(1);
+});
+
+test('a nested read passes a kept warning to the read around it, which decides whether it prints', function () {
+    AnalysisWarnings::reset();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $inner = fn (bool $kept): Closure => fn () => DroppedUnionArms::replaceable(
+        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('inner')], $scope),
+        fn (): bool => $kept,
+    );
+
+    DroppedUnionArms::replaceable($inner(true), fn (): bool => false);
+    DroppedUnionArms::replaceable($inner(false), fn (): bool => true);
+
+    expect(AnalysisWarnings::all())->toBe([]);
+
+    DroppedUnionArms::replaceable($inner(true), fn (): bool => true);
+
+    expect(array_column(AnalysisWarnings::all(), 'message'))->toHaveCount(1)
+        ->each->toContain('`$inner`');
 });
