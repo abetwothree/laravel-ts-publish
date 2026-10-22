@@ -372,8 +372,8 @@ statement holding the next write (`bindBlockLocals()`), as a binding gap holding
 same reads, and types that value where a join carries it past the block (`AnalysisScope::declaredWrite()`), a bound
 name's only where a statement of its block follows the write. A block may not run and a loop runs it again, so a read
 before the write or past the block stays unbound, as does a name a reference can write through (`=&`, `use (&$x)`,
-`foreach (… as &$x)`, `global`, `static`). A name a parameter or a seeded binding holds gets no gap, since the rules
-below end that binding. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own
+`foreach (… as &$x)`, `global`, `static`). A name a parameter or a seeded binding holds takes its gaps from the join
+below instead. A body drops the outer gaps of each name it writes that holds no binding, so a closure's own
 `$x` never reads its enclosing block's, while a bound name keeps its exit-block gap for the value a closure captures, up
 to the closure's own first `$x = …` of it. `AnalysisScope::copyBindings()` passes a closure parameter the value of the
 gap one write opened, a block local's or a parameter's, and in a gap the old binding may still hold past, that binding
@@ -384,10 +384,13 @@ span a binding gap: past a top-level `$x = …;` a read takes that value, past a
 `$x = …` the values before it and theirs, and past a `try` what its body or a catch leaves, then its finally. A member
 read leaves out a joined `null`, as it does a ternary's `null` arm. A write in a block that always exits reaches no read
 past it. Any other write leaves the name unbound until its next top-level `$x = …;`, and a name a reference can write
-through is never joined. A parameter takes the same walk from its own binding, for values only. Its own `$x = …;`
-replaces the value it binds, alone or beside a class, and a model's where the write is a typed value naming no class, so
-`$t = json_decode($t)` reads `unknown` past it while a model's untyped write keeps the model (O11); any other class
-binding alone, or any other write, stops the walk. An expression binding the receiver resolver names a class for, such
+through is never joined. A parameter takes the same walk from its own binding, for values only, and walks each block a
+statement holds too, so a read there past the block's own `$x = …;` takes that value: an `if` branch starts from what
+the name held before the statement, a loop body or a `switch` case also from every value the statement writes. Its own
+`$x = …;` replaces the value it binds, alone or beside a class, and a model's where the write is a typed value naming no
+class, so `$t = json_decode($t)` reads `unknown` past it while a model's untyped write keeps the model (O11); any other
+class binding alone, or any other write, stops the walk, though in a block a write that leaves such a binding standing
+joins it, as past the block. An expression binding the receiver resolver names a class for, such
 as a relation read, holds that class beside its value. Its gaps carry `receiversKeep`: past a write naming no class a
 member read keeps the old binding, until the write `endBindingsAtWrites()` returns as ending it, but past a model's own
 write of a value the scan types, such as a column read, it does not. A value read leaves out a nested write the engine
