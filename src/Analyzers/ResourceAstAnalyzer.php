@@ -1649,7 +1649,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Flatten a spread collection's toArray() into an index-signature member: spreading a collection
      * renumbers its elements 0..n at runtime, so no single named property can stand in for it. Same
-     * `Record<number, Model>` shape InlineArrayHandler emits for a nested spread, spelled as a member.
+     * `Record<number, Model>` shape InlineObjectResult emits for a nested spread, spelled as a member.
      *
      * @param  class-string<Model>  $modelFqcn
      */

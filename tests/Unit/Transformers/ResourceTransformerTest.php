@@ -2778,7 +2778,7 @@ describe('ResourceTransformer with SameBasenameModelTrioResource', function () {
             ->and($m[1][0])->toBe($m[1][2])
             ->and($m[1][1])->not->toBe($m[1][0])
             // Pins the shape too: a flat inline array renders one object, never a union of two, and
-            // reaches InlineArrayHandler's own queue instead of mergeUnion().
+            // reaches InlineObjectResult's own queue instead of mergeUnion().
             ->and($trio)->toBe('{ a: CrmUser | null } | { b: WorkbenchUser | null; c: CrmUser | null }');
     });
 

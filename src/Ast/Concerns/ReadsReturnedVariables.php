@@ -10,7 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use Closure;
@@ -500,7 +500,7 @@ trait ReadsReturnedVariables
 
         resolve(IndexSignatureReconciler::class)->reconcile($branch);
 
-        return new InlineArrayHandler()->inlineObjectResult($branch);
+        return new InlineObjectResult()->of($branch);
     }
 
     /**

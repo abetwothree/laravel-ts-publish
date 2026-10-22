@@ -477,7 +477,7 @@ final class AnalysisComposer
             }
         }
 
-        // The inline lists go models first, then resources: InlineArrayHandler::sharedNames() relies on that order.
+        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $propName => $fqcns) {
                 $queues[$propName] = [...($queues[$propName] ?? []), ...$fqcns];
