@@ -65,8 +65,8 @@ class NestedResourceSpreadResource extends JsonResource
 
             // Direct spread of the whenLoaded closure param itself, not a ->map() element. $members
             // is a to-many param — bound in varCollectionBindings, not varModelBindings — so
-            // spreadModelToArrayFqcn() must not fall back to closureRelationModelClass here: this is
-            // a list of member arrays, not one User.
+            // the spread must not read it as one model: this is a list of member arrays, not one
+            // User.
             //
             // Declining that fallback must not drop the arm, though. Spreading a collection renumbers
             // its elements 0..n and the sibling string key rides alongside them, so the payload is

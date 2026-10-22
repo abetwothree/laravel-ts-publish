@@ -132,7 +132,7 @@ it('keeps a nullable enum column\'s null arm for a model bound outside a relatio
 
 // The null arm follows JsonResource::filter()'s reach, inside a relation closure or not: a map `->all()` hands to it
 // sends null, and one kept as a Collection serializes each wrap itself, sending `[]`, which no published form admits
-// (F60).
+// (docs/known-gaps.md, "An `EnumResource` map kept as a `Collection`…").
 it('keeps a nullable enum column\'s null arm in a map filter() reaches, inside a relation closure or not', function () {
     $member = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
     $team = (new Team)->forceFill(['id' => 9]);
@@ -207,7 +207,7 @@ it('keeps a nullable enum column\'s null arm in a relation\'s arrayed map, and a
 });
 
 // RelationChainResource's own toArray() never runs (its `map(...)->values()` calls values() on a Closure), so its three
-// keys are sent through a subclass with the same PHP. The kept Collections send `[]` for a null role (F60).
+// keys are sent through a subclass with the same PHP. Kept Collections send `[]` for a null role (docs/known-gaps.md).
 it('publishes the workbench\'s relation-closure enum wraps with the null each sends', function () {
     $first = (new User)->forceFill(['id' => 1, 'role' => null]);
     $second = (new User)->forceFill(['id' => 2, 'role' => null]);

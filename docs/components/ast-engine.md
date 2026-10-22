@@ -150,9 +150,8 @@ These `MethodCall` pairs are the ones most likely to break under an edit:
   at `unknown`. It rejects `Model::getKey()`'s `mixed`, so only `ReceiverMethodCallHandler` answers a forwarded
   `$this->getKey()` or `$this->resource->getKey()`.
 
-`VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`, never from a
-`whenLoaded()` closure's relation model. It declines anything else, a relation included, so
-`ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
+`VariableHandler` types `$x->member` only from an attribute of the model `varModelBindings` binds to `$x`. It declines
+anything else, a relation included, so `ReceiverPropertyFetchHandler` types the relation from what `$x` holds.
 
 The controller and middleware profiles add `ModelFinderHandler` to the `StaticCall` and `MethodCall` claimants, and
 `InertiaResourcePropHandler` to the `StaticCall`, `New_`, `MethodCall` and `NullsafeMethodCall` claimants. The two claim
