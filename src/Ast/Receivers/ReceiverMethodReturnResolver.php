@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesFilteredRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use Closure;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -42,6 +44,7 @@ final class ReceiverMethodReturnResolver
 {
     use FiltersAttributeKeys;
     use ResolvesFilteredRelationTypes;
+    use SpellsKeyedCollections;
 
     /** Model methods that return the receiver's own class or null, though Laravel declares `Model|null`. */
     private const array ROUTE_BINDINGS = ['resolveRouteBinding', 'resolveSoftDeletableRouteBinding'];
@@ -242,38 +245,48 @@ final class ReceiverMethodReturnResolver
             return $items;
         }
 
+        // first() and firstWhere() find the model the query builds, or null where no row matches.
+        if ($receiver->relatedModel !== null && resolve(ReceiverClassResolver::class)->findsQueriedModel($class, $methodName)) {
+            return $this->publishedModelOrNull($receiver->relatedModel);
+        }
+
         $modelRule = $this->modelRule($class, $methodName);
 
         if ($modelRule !== null) {
             return $modelRule($receiver);
         }
 
-        if ($methodName === 'modelKeys' && $receiver->elementModel !== null) {
+        // A base collection holding the models, as toBase() hands back, has no modelKeys().
+        if ($methodName === 'modelKeys' && $receiver->elementModel !== null && is_a($class, EloquentCollection::class, true)) {
             $keyType = resolve(ModelAttributeResolver::class)->keyTsType($receiver->elementModel);
 
-            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($keyType)];
+            return $keyType === null ? null : [...ValueResult::unknown(), 'type' => $this->listOrKeyed(ValueResult::arrayWrapType($keyType), $receiver)];
         }
 
-        // A relation's collection is keyed 0..n-1, so all() is the list of its models.
+        // all() hands back the models under their keys: a list, as a relation's are, unless a step broke them.
         if ($methodName === 'all' && $receiver->elementModel !== null) {
-            $models = [
-                ...ValueResult::unknown(),
-                'type' => ValueResult::arrayWrapType(class_basename($receiver->elementModel)),
-                'modelFqcn' => $receiver->elementModel,
-            ];
-
-            return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
+            return $this->listedModels($receiver->elementModel, $receiver->keyed);
         }
 
-        // A relation's collection is keyed 0..n-1, so it lists what each model's own toArray() writes.
+        // It writes what each model's own toArray() does, under the same keys.
         if ($methodName === 'toArray' && $receiver->elementModel !== null) {
             $element = $this->runsModelMethod($receiver->elementModel, $methodName) ? 'Record<string, unknown>' : 'unknown';
 
-            return [...ValueResult::unknown(), 'type' => ValueResult::arrayWrapType($element)];
+            return [...ValueResult::unknown(), 'type' => $this->listOrKeyed(ValueResult::arrayWrapType($element), $receiver)];
         }
 
         if (! in_array($methodName, $this->supportedAttributeFilters(), true)) {
             return null;
+        }
+
+        // Eloquent\Collection's own filter keeps whole models by primary key, as a relation's read does.
+        if ($receiver->elementModel !== null
+            && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
+            && $this->runsEloquentCollectionFilter($class, $methodName)
+        ) {
+            $keyed = CollectionSteps::eloquentKeyedAfter($call, $methodName, $receiver->keyed);
+
+            return $this->listedModels($receiver->elementModel, $keyed);
         }
 
         if ($this->runsCollectionFilter($class, $methodName)) {
@@ -309,7 +322,7 @@ final class ReceiverMethodReturnResolver
 
         // resolveRouteBindingQuery() queries the receiver itself, so first() holds its own class.
         if (in_array($methodName, self::ROUTE_BINDINGS, true) && $this->runsModelMethod($class, $methodName)) {
-            return fn (): ?array => $this->publishedSelfType($class);
+            return fn (): ?array => $this->publishedModelOrNull($class);
         }
 
         // Its keys hang on the relations loaded at runtime, so only an attribute-keyed object is sure.
@@ -465,7 +478,8 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * Type one class's method: a receiver-returning method keeps the receiver's own type, anything else reflects.
+     * Type one class's method: a receiver-returning method keeps the receiver's own type, anything else reflects; a
+     * method a relation or an Eloquent builder does not declare is typed on the class its query forwards it to.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
@@ -473,7 +487,9 @@ final class ReceiverMethodReturnResolver
     private function resolveOn(string $class, string $methodName, bool $fromInside, ?CallSite $site = null): ?array
     {
         if (! method_exists($class, $methodName)) {
-            return null;
+            $forwarded = QueryForwarding::forwardedClass($class, $methodName);
+
+            return $forwarded === null ? null : $this->resolveOn($forwarded, $methodName, false, $site);
         }
 
         $method = new ReflectionMethod($class, $methodName);
@@ -488,7 +504,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        $result = resolve(ReceiverClassResolver::class)->returnClasses($class, $methodName) === [$class]
+        $result = DeclaredClasses::returnClasses($class, $methodName) === [$class]
             ? $this->selfType($class, $this->returnAllowsNull($method))
             : resolve(MethodReturnTypeResolver::class)->resolve($class, $methodName, $site);
 
@@ -601,12 +617,12 @@ final class ReceiverMethodReturnResolver
     }
 
     /**
-     * The receiver class itself or null, as a route binding returns it, where the class is a published model.
+     * A model or null, as a route binding or a query's first() returns it, where the class is a published model.
      *
      * @param  class-string  $class
      * @return ValueExpressionResult|null
      */
-    private function publishedSelfType(string $class): ?array
+    private function publishedModelOrNull(string $class): ?array
     {
         $bound = $this->selfType($class, nullable: true);
 
@@ -635,5 +651,28 @@ final class ReceiverMethodReturnResolver
         }
 
         return false;
+    }
+
+    /**
+     * A collection's models as Laravel sends them: a list, with the object arm once its keys left 0..n-1; null where
+     * the model has no published file.
+     *
+     * @param  class-string<Model>  $model
+     * @return ValueExpressionResult|null
+     */
+    private function listedModels(string $model, bool $keyed): ?array
+    {
+        $list = ValueResult::arrayWrapType(class_basename($model));
+        $models = [...ValueResult::unknown(), 'type' => $keyed ? $this->keyedObjectArm($list) : $list, 'modelFqcn' => $model];
+
+        return ValueResult::namesOnlyPublishedModels($models) ? $models : null;
+    }
+
+    /**
+     * A list of a collection's items, with the object arm json_encode() writes once a step left the keys out of 0..n-1.
+     */
+    private function listOrKeyed(string $list, ReceiverType $receiver): string
+    {
+        return $receiver->keyed ? $this->keyedObjectArm($list) : $list;
     }
 }

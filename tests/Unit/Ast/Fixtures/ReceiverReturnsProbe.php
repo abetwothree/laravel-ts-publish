@@ -8,7 +8,7 @@ use Illuminate\Support\Collection;
 use Workbench\App\Models\Post;
 use Workbench\App\Services\UrlService;
 
-/** Return declarations `ReceiverClassResolver::returnClasses()` reads, one shape per method. */
+/** Return declarations `DeclaredClasses::returnClasses()` reads, one shape per method. */
 final class ReceiverReturnsProbe
 {
     /** A union of classes plus null. */

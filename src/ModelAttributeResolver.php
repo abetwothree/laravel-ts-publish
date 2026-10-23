@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -1257,7 +1258,7 @@ class ModelAttributeResolver
     {
         $receivers = resolve(ReceiverClassResolver::class);
 
-        return $this->castersValueClass($receivers->returnClasses($castable, 'castUsing'))
+        return $this->castersValueClass(DeclaredClasses::returnClasses($castable, 'castUsing'))
             ?? $this->castersValueClass($receivers->bodyReturnClasses($castable, 'castUsing'));
     }
 
@@ -1838,13 +1839,13 @@ class ModelAttributeResolver
     }
 
     /**
-     * Whether a relation loads a collection: its type names "many", and it is not a MorphTo, which loads one model.
+     * Whether a relation loads a collection, by its short type or, for a package's subclass, by its class.
      *
      * @param  RelationInfo  $relation
      */
     private static function isToManyRelation(array $relation): bool
     {
-        return ! self::isMorphToRelation($relation) && str_contains(strtolower($relation['type']), 'many');
+        return RelationMap::isToMany($relation['type'], $relation['class']);
     }
 
     /**

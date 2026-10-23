@@ -18,13 +18,17 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 87, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 92, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 98, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
+    // Deliberate: each default reads opaqueTotal(), untyped so that a merge call's join leaves that side out, as that
+    // fixture's own comments say.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\MergeDefaultResource', 'line' => 62, 'expression' => '$this->opaqueTotal()', 'site' => 'merge-branch-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\MergeDefaultResource', 'line' => 65, 'expression' => '$this->opaqueTotal()', 'site' => 'merge-branch-join'],
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],
     // Deliberate: baseModel() declares the framework's Model, which no generated file exports.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 69, 'expression' => '\\Workbench\\App\\Services\\UrlService::baseModel()', 'site' => 'ternary-narrowed'],
-    // Deliberate: one key per recording site, each dropping `$this->opaqueValue()`, a method whose
-    // return type is deliberately absent. These seven stay permanently — they prove each site fires.
+    // Deliberate: keys per recording site, each dropping `$this->opaqueValue()`, a method whose return type is
+    // deliberately absent. These eleven stay permanently — they prove each site fires.
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 28, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 29, 'expression' => '$this->opaqueValue()', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 31, 'expression' => '$this->opaqueValue()', 'site' => 'ternary-narrowed'],
@@ -32,4 +36,8 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 33, 'expression' => '$this->opaqueValue()', 'site' => 'conditional-default'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 35, 'expression' => '$this->opaqueValue()', 'site' => 'match-arm'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 37, 'expression' => '$this->opaqueValue()', 'site' => 'coalesce-right'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 39, 'expression' => '$this->opaqueValue()', 'site' => 'binding-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 49, 'expression' => '$this->opaqueValue()', 'site' => 'binding-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 58, 'expression' => '$this->opaqueValue()', 'site' => 'walk-branch-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 66, 'expression' => '$this->opaqueValue()', 'site' => 'merge-branch-join'],
 ];

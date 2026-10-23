@@ -21,12 +21,18 @@ one of the two tests.
 
 `$cond ? $untypable : null` and `$this->opaque() ?: null` publish `null`, because the engine drops the arm it cannot
 type ([AST engine § Dropped union arms](./components/ast-engine.md#dropped-union-arms) lists the sites that record a
-drop). Widening the union to `unknown` would be more honest but less specific. A spread helper's key or a model
-accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever returns
-`null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the whole
-call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test, whose
-untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
-`#[TsCasts]`, and it comes back.
+drop). `$matches ?? []` past a `preg_match()` that passes flags, or whose pattern names a group, publishes `never[]` the
+same way, though Laravel sends the groups nested or keyed by name. A parameter written in a block drops the value it
+came in with the same way: `transform($this->opaque(), …)` whose callback may set `$value = $comment->id` publishes
+`number`. So does the join of a local's branches, for a value one branch writes. Widening the union to `unknown` would
+be more honest but less specific. Where the drop leaves only `null` or `never[]`, the run output warns, naming the line
+and the arm left out, and so does a parameter's or a branch join's drop, whose published type may not admit every
+value Laravel sends; a class the generation cache serves prints nothing until a `--fresh` run. A spread helper's key or
+a model accessor's getter body left with only that `null` publishes `unknown` instead, while a getter that only ever
+returns `null` still publishes `null`. A method read as a value is the exception: one return it cannot type leaves the
+whole call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its own `instanceof` test,
+whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a `@return` docblock or
+`#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -89,9 +95,10 @@ bodies moves `DeferredAssignmentDto::$assignedLater`, which `NestedOptionalKeyDt
 ### A merge whose two sides name same-basename classes publishes only one of them
 
 `$this->mergeWhen($cond, ['party' => $this->sender], ['party' => $this->receiver])`, over an app `User` and a CRM
-`User`, types `party` with the CRM `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
-unions the two sides by type text, as it unions a method's return branches, so the later side's class takes the shared
-name. A ternary or `when()` keeps both classes, so spell the key that way.
+`User`, types `party` with the app `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
+unions the two sides by type text, as it unions a method's return branches and the branches a returned variable's walk
+joins, so the one `User` token takes the first side's class. A ternary or `when()` keeps both classes, so spell the key
+that way.
 
 ### A returned variable is read flat: an early return sees later writes, and some writes are not followed
 
@@ -99,12 +106,19 @@ A method that builds an array in a variable and returns it publishes the keys it
 (`ReadsReturnedVariables::resolveVariableReturnAnalysis()`), in one pass over the whole body:
 
 - An early `return $data;` publishes the keys written after it too, required when that write always runs.
+- The branches of an `if` chain and a loop's body join, so a key holds each branch's value, optional where a branch, or
+  a loop that never runs, leaves it unset. A branch that ends in a `throw` or another `return` stays out, but a
+  `continue` or `break` is not followed: after `foreach (…) { if (…) { $d['a'] = 1; continue; } $d['a'] = 'x'; }`,
+  `a?: string` publishes, though Laravel can send `1`. A `switch` case, a `try` body and a `catch` are read in sequence
+  instead: a key first set there is optional, and a key re-set there publishes only its last write's type.
 - A variable the walk does not read completely is skipped, as any other non-literal return is: one whose base is
-  `$this->resource->toArray()`, or a helper or a parent `toArray()` that returns something the walk cannot read, and
-  one with a write the walk does not read, such as `$data[] = …`, a dynamic or nested key, `sort($data)` or any other
-  by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
-  `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the
-  walk reads instead; with a `return` of another kind, the first `return` is read.
+  `$this->resource->toArray()`, a helper or a parent `toArray()` that returns something the walk cannot read, or a
+  literal with a `$this->`, `self::` or `static::` helper spread the analyzer declines, and one with a write the walk
+  does not read, such as `$data[] = …`, a key no literal or literal local names, a nested key, `sort($data)` or any
+  other by-reference call, or a `??=` to a key it does not hold. When no branch read completely has a key and every
+  `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block, it publishes the writes the walk
+  reads instead; with a `return` of another kind, the first `return` is read. A merge closure that returns only a
+  variable merges what the walk reads too, but nothing where an `unset()` the walk cannot name may remove a key.
 
 Return a literal on each path, or state the keys in `#[TsCasts]`.
 
@@ -114,7 +128,9 @@ parameter, therefore loses its own keys to that signature, and a `+=` on the par
 adds. Declare `@return array{…}` on the method to publish the exact shape.
 
 A local rewritten through a by-reference parameter of a method on a receiver the package cannot name, such as
-`$validator->normalize($data)`, or through `extract()`, keeps its earlier type.
+`$validator->normalize($data)`, or through `extract()`, keeps its earlier type. Such a write also leaves a non-null
+proof made before it standing, so after `if ($y === null) { return []; } $cleaner->clear($y);` a read of `$y` drops
+the `null` the call can write.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
@@ -285,20 +301,32 @@ the literal without the name, or cast to a type that uses the import.
 
 Check which spelling you wrote before you assume a value is `unknown`:
 
-- **A negated early-exit `if` on a local variable binds**: after `if (! $x instanceof Post) { return null; }`, also
-  through `||` or a `throw`, later reads of `$x` see `Post`, as `NarrowedParentResource` shows. A write to `$x` after
-  the guard means no binding at all, even for reads before that write.
-- **A positive `if` statement binds nothing**: `if ($x instanceof Post) { return $x->title; }` leaves `$x->title`
-  `unknown`, as `ReceiverHandlersTest` pins. The walk is flat, so the binding would outlive the `if`.
-- **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x` in `A`, and the negated test
-  narrows it in `B` ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)).
+- **An `if` binds `$x` where its test is proven**: inside `if ($x instanceof Post) { … }`, in an `elseif` or `else`
+  the earlier tests rule `$x` into, and after a guard such as `if (! $x instanceof Post) { return null; }` up to the
+  end of its block, which a guard nested in a loop or `switch` may also leave by `break` or `continue`, as
+  `BlockScopedBindingsResource` shows. A write to `$x` between the test and the end of what it narrows means no binding
+  at all, even for reads before that write, unless it is an assignment through a member or key of `$x` that
+  stores a constant its column holds, such as `$x->title = 'Draft'`, or names no column or relation, such as
+  `$x->seen = true`.
+- **Other conditions bind nothing**: an `||` of tests on two variables, an `&&` that fails, a `while` or `match`
+  condition, and a read inside the `if` condition itself leave `$x` unnarrowed.
+- **A ternary binds for the arm its test proves**: `$x instanceof C ? A : B` narrows `$x`, or a chain of property reads
+  on `$this` such as `$this->imageable`, in `A`, and the negated test narrows it in `B`
+  ([`TernaryHandler`](../src/Ast/Handlers/TernaryHandler.php)). A subject method `A` calls reads `$this->resource` as
+  the one model a test on it leaves. An `if` binds no chain other than `$this->resource`: inside
+  `if ($this->imageable instanceof Post) { … }`, `$this->imageable` reads the whole `morphTo` union.
 - **A ternary whose true arm is the tested expression narrows only reads through it**: after
   `$v = $this->imageable instanceof Post ? $this->imageable : null;`, `$v?->getKey()` reads `Post`, but `$v` itself
   publishes the whole `morphTo` union, as `NarrowedImageableResource` shows.
 
-On an API resource, `$this->resource` narrows in either polarity, for the whole method
-(`ResourceAstAnalyzer::resolveInstanceOfType()`), so a resource that guards on it needs no `#[TsCasts]` for what the
-guard proves.
+On an API resource, an `if` narrows `$this->resource` as it does `$x`, for each value inside a block its test proves,
+so a resource collection's items read as the paginator a block tests. The class of the first `if` that tests
+`$this->resource` alone, in either polarity, also holds for the whole method
+(`ResourceAstAnalyzer::resolveInstanceOfType()`): it is what `$this->resource` holds on a resource with no backing
+model, and a call `JsonResource` forwards, such as `$this->m()`, tries it ahead of the backing model on a model-backed
+resource too. So a resource that guards on it needs no `#[TsCasts]` for what the guard proves. A ternary that tests a
+resource with no backing model for two or more models still publishes `null` for an attribute its arm reads, such as
+`$this->title` (#127).
 
 ### A shape whose values name a class loses those values, in one of two ways
 
@@ -338,13 +366,13 @@ and a model-less subject's `$this->prop->toArray()`, publish what the override d
 `[...$user->toArray(), 'flag' => true]` publishes `Omit<User, 'flag'> & { flag: boolean }`.
 [Receiver types](./components/receiver-types.md#receiver-rules) gives the rule.
 
-### A model spread inside a `collect()->map()` closure names the wrong model, or none
+### A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list
 
-`collect($this->comments)->map(fn (Comment $c) => [...$c->toArray(), 'flag' => true])` binds `$c` to an element type
-with no model, so `InlineArrayHandler::spreadModelToArrayFqcn()` falls back to the model an enclosing `whenLoaded()` or
-relation `map()` set. At the top level there is none, and only `{ flag: boolean }` publishes. Inside
-`whenLoaded('author', …)` the element publishes as `Omit<User, 'flag'> & …`, though it is a `Comment`. Use the
-relation chain, `$this->comments->map(fn ($c) => [...$c->toArray(), 'flag' => true])`, which binds the model.
+`$bag->map(fn (Post $p) => ['id' => $p->id])` publishes `{ id: number }[]` when nothing names the class `$bag` holds,
+such as a container binding or a helper with no declared return: the model hint is read as the element of a collection.
+A hand-written bag whose own `map()` keeps string keys sends an object. Name the class, by a return type or an inline
+`@var`, and the bag's own `map()` answers. A local whose one write is an array literal publishes `unknown`, since PHP
+throws there.
 
 ### An index-signature model with a shared key loses its attribute types in `{Model}All` and `{Model}AllResource`
 
@@ -355,14 +383,44 @@ as `unknown` in `{Model}All`, and in `{Model}AllResource`, whose `Omit<{Model}Re
 Read the attributes from `{Model}` and the relations from `{Model}Relations`, which keep their types, or give the
 relation a name no attribute takes.
 
+### An `EnumResource` map kept as a `Collection` publishes no arm for the `[]` a null enum sends
+
+`$this->members->map(fn ($m) => EnumResource::make($m->role))` publishes `AsEnum<typeof Role>[]`, but a member whose
+nullable `role` is null sends `[]`: `JsonResource::filter()` turns a null-payload wrap into `null` only inside arrays,
+and a `Collection` (no `->all()`, or `->values()`, or `filter()->map()`) serializes each wrap itself. End the chain with
+`->all()` and it publishes `(AsEnum<typeof Role> | null)[]`, which is what Laravel sends.
+
 ### An API resource wrapping a relation the engine cannot type publishes it without `| null`
 
 With `nullable_relations` on, `CategoryResource::make($this->parent)` publishes `CategoryResource` where `parent` types
 `unknown` (an undeclared relation, a related model the run does not publish, or a `morphTo` with no resolvable target),
 though Laravel sends `null` for a relation loaded as `null`.
-`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`.
+`whenLoaded('parent', fn ($p) => CategoryResource::make($p))` does carry the `| null`. A `whenLoaded()` value that
+collects such a relation, such as `whenLoaded('branches', CategoryResource::collection(...))`, adds none, since only a
+to-many relation, which loads as a collection, fits there.
 Declare the relation method, naming a `morphTo`'s targets in `@return MorphTo<A|B, $this>`, or publish the related
 model, and the `| null` comes back.
+
+### A mapped API resource read through `toArray()` or `jsonSerialize()` publishes `unknown`
+
+`$this->members->map(fn ($m) => new ProfileResource($m->profile))->all()` publishes `(ProfileResource | null)[]`, since
+Laravel sends `null` for a profile loaded as `null`. The same map ending in `->toArray()` publishes `unknown`, and a
+helper returning that list `unknown[]`, though Laravel sends the same list; `->jsonSerialize()`, which resolves each
+resource at once, publishes `unknown` too. End the chain with `->all()`.
+
+### A relation method that declares no relation class and builds it through a helper is left out
+
+A method with neither a relation return type nor a `@return` naming a relation class, whose body builds the relation
+through the model's own helper rather than `$this->hasMany(...)` or another of Laravel's builders, is never read as a
+relation, as in Laravel's `model:show`. Its model interface leaves it out, and `whenLoaded()` over it publishes
+`unknown`. Declare the class, such as `@return Ancestors<static, static>`, and it is read.
+
+### A relation method whose `@return` is vaguer than its `@phpstan-return` is left out
+
+The docblock reader takes `@return` before `@phpstan-return`, so a method declared `@return mixed` with
+`@phpstan-return HasMany<Comment, $this>`, whose body builds the relation through a helper, is read as declaring no
+relation class and is left out like the entry above. Name the relation class in `@return` too. Reading the tags as one
+grammar would fix it.
 
 ### A method call on a `MorphTo<Model, $this>` relation publishes `unknown`
 
@@ -588,12 +646,10 @@ instead, yet publishes the same type. Type such a key with `#[TsCasts]`.
 `'k' => fn () => 1` publishes `number`, though Laravel sends the `Closure` as `{}`: only a first-class callable such
 as `strlen(...)` is read by where it sits. Props an Inertia controller delegates to another class's method, or a
 helper method the action calls, are read as that method's own values, so a first-class callable there publishes
-`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. So does one held in a local and then passed
-to `when()`, as in `$f = strlen(...); $this->when($c, $f)`, though Laravel calls it, and `mergeWhen()`'s value is not
-read as a position Laravel calls. Use a closure such as `fn () => $this->label()` there instead. A closure held in a
-local and passed to a helper, read as a value or spread, publishes what it returns, as in `$f = fn () => 1;
-$this->hold($f)` where `hold($v)` returns `['v' => $v]`: `{ v: number }`, though Laravel sends `{ v: {} }`. Type that
-key with `#[TsCasts]`.
+`Record<string, never>`, and `ts:publish` warns, though Inertia calls it. Use a closure such as
+`fn () => $this->label()` there instead. A closure held in a local and passed to a helper, read as a value or spread,
+publishes what it returns, as in `$f = fn () => 1; $this->hold($f)` where `hold($v)` returns `['v' => $v]`:
+`{ v: number }`, though Laravel sends `{ v: {} }`. Type that key with `#[TsCasts]`.
 
 ### A callable in a docblock publishes `unknown`
 
@@ -684,7 +740,15 @@ or on the left of `+`.
 `$this->published_at->toArray() + ['x' => 1]` publishes `{ x: number }`, though the response also carries every key the
 left side sets. Only an operand typed as one object, such as a `Record` cast or a relation's `only()`, joins the union
 as an arm of its own type. A list such as `explode()`'s, an enum list, a union of a shape and `[]`, or a `when()` value
-adds nothing. Type the operand with a docblock, or the key with `#[TsCasts]`.
+adds nothing. A local written once reads as the array it holds, in a method's whole `return` as in a value, a merge
+closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
+
+### A `+` default for a key only some paths set is left out
+
+`if ($c) { $d['label'] = 5; } $d += ['label' => 'none'];` publishes `label?: number`, though Laravel always sends
+`label`, as `5` or `'none'`: a key the left side of `+` holds drops the right side's copy, even where the left's is
+optional. Write the default first, `$d = ['label' => 'none'];`, and the branch's write after it, which publishes
+`label: string | number`.
 
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
@@ -706,12 +770,34 @@ parameter on a receiver the scan cannot resolve, such as `$other->fill($this->ta
 all change the value Laravel sends while the published type stays the default's. Declare the property's type, or give
 it a `@var` docblock.
 
+### A column a body writes publishes its declared type, not the value written
+
+A read of a column the body wrote through the model, such as `$this->resource->title = null;` then
+`'title' => $this->title`, publishes the column's declared type, `string`, though Laravel sends `null`: the package
+reads a column from the model's declaration, never from a write to it. On a local holding a new model, a write the
+package cannot show the column holds leaves the local unread instead, so `$p = new Post; $p->title = null; $p->title`
+publishes `unknown`.
+
+### A guarded read past a write a mutator stores into its column publishes the column's type
+
+After `if (! $x instanceof Post) { return []; } $x->rating = 5;`, `$x->title` publishes `title`'s declared `string`,
+though a write-only `Attribute::make(set: …)` or a `__set()` that stores `rating` into `title` makes Laravel send `5`. A
+write to a member no column or relation of the proven class types keeps the proof, and the package never reads what a
+mutator stores. State the key's type in `#[TsCasts]`.
+
 ### A parameter reassigned to a value the package cannot name keeps its old binding
 
-`whenLoaded('author', function (User $a) { $a = $a->comments->find(1); return $a->name; })` publishes `string`, though
-`$a` holds a `Comment` and Laravel sends `null`, because `find()` names no class. Annotate the assignment,
-`/** @var Comment $a */`, and the read follows it. A closure parameter passed a value does the same: after
-`$t = json_decode($t)`, `$t` keeps the type it was passed.
+A parameter keeps its binding past a write whose value names no class: after
+`function (User $a) { $a = $this->untyped($a); return $a->name; }` the read still takes `User`'s `name`, whatever the
+helper returns. Annotate the assignment, `/** @var Comment $a */`, and the read follows it. A parameter passed a value
+takes what its own `$t = …;` writes, so `$t = json_decode($t)` publishes `unknown`. A value read of a model parameter
+does too where the write is a typed value naming no class, so `$a = $a->name; return $a;` publishes `string`, while
+`$a = $this->untyped($a); return $a;` keeps `User`. Past such a write nested in a block, a value read takes the earlier
+value or the one written, and only the earlier one where the package cannot type the written one:
+`$t = trim($t); if ($c) { $t = json_decode($t); }` publishes `string`. Where it cannot type the earlier one, only the one
+written is read.
+`$a->comments->find(1)?->content` reads the comment's `content`, but the call alone publishes `unknown`, as `first()`
+does on a parameter's relation.
 
 ### An abstract model's key type misses a subclass the run does not publish
 

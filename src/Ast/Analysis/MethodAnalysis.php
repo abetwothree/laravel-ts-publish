@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -25,6 +26,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
  * @phpstan-type CastInForce = array{type: string, import: string|null, optional?: bool}
@@ -50,6 +52,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class MethodAnalysis
 {
     use DispatchesFqcnResults;
+
+    /**
+     * Whether every read behind these keys was followed. A returned variable built on one that was not is skipped
+     * beside a literal return, though the lenient rule can still read it alone.
+     */
+    public bool $readsCompletely = true;
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -167,13 +175,14 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning,
-     * and a key the source sets without a cast loses its entry. The four inline maps append WITHOUT deduping:
-     * aliasPropertyType() consumes each as a positional queue against the rendered type. `carried` unions per kind.
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key the
+     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
+     * consumes each as a positional queue against the rendered type. `carried` unions per kind; `readsCompletely` ANDs.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
+        $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
@@ -213,6 +222,96 @@ class MethodAnalysis
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
         }
+    }
+
+    /**
+     * Take over every key, channel, cast and flag of another analysis, as a returned variable's walk does where
+     * exclusive branches join.
+     */
+    public function replaceWith(self $source): void
+    {
+        $this->properties = $source->properties;
+        $this->readsCompletely = $source->readsCompletely;
+        $this->enumResources = $source->enumResources;
+        $this->nestedResources = $source->nestedResources;
+        $this->customImports = $source->customImports;
+        $this->directEnumFqcns = $source->directEnumFqcns;
+        $this->modelFqcns = $source->modelFqcns;
+        $this->inlineEnumFqcns = $source->inlineEnumFqcns;
+        $this->inlineModelFqcns = $source->inlineModelFqcns;
+        $this->inlineResourceFqcns = $source->inlineResourceFqcns;
+        $this->multiEnumResourceFqcns = $source->multiEnumResourceFqcns;
+        $this->inlineEnumResourceFqcns = $source->inlineEnumResourceFqcns;
+        $this->enumResourceArmShapes = $source->enumResourceArmShapes;
+        $this->casts = $source->casts;
+        $this->carried = $source->carried;
+        $this->flatTypeAlias = $source->flatTypeAlias;
+        $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
+    }
+
+    /**
+     * Drop what this branch of a join only repeats from another, which would pile up per join: the queue of a key
+     * both hold with the same entries and queue, whose type the join spells once, and each custom import both bring.
+     */
+    public function dropRepeatsOf(self $other): void
+    {
+        $theirs = [];
+
+        foreach ($other->properties as $property) {
+            $theirs[$property['name']][] = $property;
+        }
+
+        $mine = [];
+
+        foreach ($this->properties as $property) {
+            $mine[$property['name']][] = $property;
+        }
+
+        foreach ($mine as $name => $entries) {
+            if ($entries !== ($theirs[$name] ?? null)) {
+                continue;
+            }
+
+            $this->inlineEnumFqcns = self::withoutRepeat($this->inlineEnumFqcns, $other->inlineEnumFqcns, $name);
+            $this->inlineModelFqcns = self::withoutRepeat($this->inlineModelFqcns, $other->inlineModelFqcns, $name);
+            $this->inlineResourceFqcns = self::withoutRepeat(
+                $this->inlineResourceFqcns, $other->inlineResourceFqcns, $name,
+            );
+            $this->inlineEnumResourceFqcns = self::withoutRepeat(
+                $this->inlineEnumResourceFqcns, $other->inlineEnumResourceFqcns, $name,
+            );
+        }
+
+        foreach ($this->customImports as $path => $types) {
+            $this->customImports[$path] = array_values(array_diff($types, $other->customImports[$path] ?? []));
+        }
+    }
+
+    /**
+     * Queue, in branch order, the class each branch of a merge types a key with where two branches type it apart, as a
+     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import. Run on the
+     * merged analysis, whose types decide whether the enums the branches wrap a key in can be listed per token.
+     *
+     * @param  list<self>  $branches
+     */
+    public function queueSplitClasses(array $branches): void
+    {
+        [$this->nestedResources, $this->inlineResourceFqcns] = self::queuedSplitClasses(
+            $this->nestedResources,
+            $this->inlineResourceFqcns,
+            array_map(fn (self $branch): array => [$branch->nestedResources, $branch->inlineResourceFqcns], $branches),
+        );
+        [$this->directEnumFqcns, $this->inlineEnumFqcns] = self::queuedSplitClasses(
+            $this->directEnumFqcns,
+            $this->inlineEnumFqcns,
+            array_map(fn (self $branch): array => [$branch->directEnumFqcns, $branch->inlineEnumFqcns], $branches),
+        );
+        [$this->modelFqcns, $this->inlineModelFqcns] = self::queuedSplitClasses(
+            $this->modelFqcns,
+            $this->inlineModelFqcns,
+            array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
+        );
+        $this->listSplitEnumResources($branches);
     }
 
     /**
@@ -300,5 +399,126 @@ class MethodAnalysis
         }
 
         unset($property);
+    }
+
+    /**
+     * A class map and its queue map with each key the branches type with different classes moved onto its queue: every
+     * branch's class there in branch order, each kept for its import under its own FQCN, as an embedded class is.
+     *
+     * @param  ClassMapType  $classes
+     * @param  FqcnQueueMap  $queues
+     * @param  list<array{ClassMapType, FqcnQueueMap}>  $branches
+     * @return array{ClassMapType, FqcnQueueMap}
+     */
+    private static function queuedSplitClasses(array $classes, array $queues, array $branches): array
+    {
+        $byKey = [];
+
+        foreach ($branches as [$branchClasses]) {
+            foreach ($branchClasses as $name => $fqcn) {
+                $byKey[$name][$fqcn] = true;
+            }
+        }
+
+        foreach ($byKey as $name => $fqcns) {
+            if (count($fqcns) < 2) {
+                continue;
+            }
+
+            $queue = [];
+
+            foreach ($branches as [$branchClasses, $branchQueues]) {
+                if (isset($branchClasses[$name])) {
+                    $queue[] = $branchClasses[$name];
+                }
+
+                array_push($queue, ...$branchQueues[$name] ?? []);
+            }
+
+            unset($classes[$name]);
+
+            foreach (array_keys($fqcns) as $fqcn) {
+                $classes[$fqcn] = $fqcn;
+            }
+
+            $queues[$name] = $queue;
+        }
+
+        return [$classes, $queues];
+    }
+
+    /**
+     * A queue map without one key's queue, where the other map queues the same classes for that key.
+     *
+     * @param  FqcnQueueMap  $queues
+     * @param  FqcnQueueMap  $other
+     * @return FqcnQueueMap
+     */
+    private static function withoutRepeat(array $queues, array $other, int|string $name): array
+    {
+        if (isset($queues[$name]) && $queues[$name] === ($other[$name] ?? null)) {
+            unset($queues[$name]);
+        }
+
+        return $queues;
+    }
+
+    /**
+     * List in branch order the enums the branches wrap a key in where they wrap it in different ones, as a ternary of
+     * EnumResource arms is listed, when no branch reads it bare and its type holds one token per enum.
+     *
+     * @param  list<self>  $branches
+     */
+    private function listSplitEnumResources(array $branches): void
+    {
+        $wrapping = array_replace([], ...array_map(
+            fn (self $branch): array => $branch->enumResources + $branch->multiEnumResourceFqcns,
+            $branches,
+        ));
+
+        foreach ($this->properties as $property) {
+            if (! isset($wrapping[$property['name']])) {
+                continue;
+            }
+
+            $wrapped = $this->wrappedEnums($property['name'], $branches);
+            $tokens = array_diff(TsTypeString::splitTopLevelUnion($property['type']), ['null']);
+
+            if ($wrapped === null || count($wrapped) < 2 || count($tokens) !== count($wrapped)) {
+                continue;
+            }
+
+            unset($this->enumResources[$property['name']], $this->enumResourceArmShapes[$property['name']]);
+            $this->multiEnumResourceFqcns[$property['name']] = $wrapped;
+        }
+    }
+
+    /**
+     * Each enum the branches holding a key wrap it in, once each in branch order; null where one of them does not wrap
+     * it, or also reads it bare.
+     *
+     * @param  list<self>  $branches
+     * @return list<class-string>|null
+     */
+    private function wrappedEnums(string $name, array $branches): ?array
+    {
+        $wrapped = [];
+
+        foreach ($branches as $branch) {
+            if (! in_array($name, array_column($branch->properties, 'name'), true)) {
+                continue;
+            }
+
+            $own = $branch->multiEnumResourceFqcns[$name]
+                ?? (isset($branch->enumResources[$name]) ? [$branch->enumResources[$name]] : null);
+
+            if ($own === null || isset($branch->directEnumFqcns[$name])) {
+                return null;
+            }
+
+            array_push($wrapped, ...$own);
+        }
+
+        return array_values(array_unique($wrapped));
     }
 }

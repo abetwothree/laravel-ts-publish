@@ -46,9 +46,6 @@ trait ResolvesEnumPropertyArgTypes
     /**
      * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
      *
-     * Handles `$this->property` against the resource's own model, and `$variable->property` against
-     * `$closureRelationModelClass` inside a whenLoaded() closure.
-     *
      * @return ValueExpressionResult|null
      */
     protected function resolveEnumFromPropertyArg(Expr $argExpr, AnalysisScope $scope): ?array
@@ -57,8 +54,8 @@ trait ResolvesEnumPropertyArgTypes
 
         if (! $this->isThisPropertyFetch($argExpr)) {
             // A bare $variable may be a closure parameter bound to $this->prop by a when() condition, or a local
-            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: it is keyed by
-            // name, and a parameter, never bound to a variable, may shadow an outer local that is mid-resolution.
+            // assigned once. Only the local takes VariableHandler's guard against a cyclic binding: a parameter is
+            // never bound to a variable.
             if ($argExpr instanceof Variable && is_string($argExpr->name)) {
                 $name = $argExpr->name;
 
@@ -66,46 +63,11 @@ trait ResolvesEnumPropertyArgTypes
                     return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
                 }
 
-                $local = $scope->literalLocalBindings()[$name] ?? null;
+                $local = $scope->literalLocalBinding($name);
 
-                if ($scope->carriesImports && $local !== null && ! isset($scope->resolvingLocalVars[$name])) {
-                    $scope->resolvingLocalVars[$name] = true;
-
-                    try {
-                        return $this->resolveEnumFromPropertyArg($local, $scope);
-                    } finally {
-                        unset($scope->resolvingLocalVars[$name]);
-                    }
+                if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
+                    return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));
                 }
-            }
-
-            // Handle $variable->property inside a whenLoaded closure.
-            if (
-                $argExpr instanceof PropertyFetch
-                && $argExpr->var instanceof Variable
-                && $argExpr->name instanceof Identifier
-                && $scope->closureRelationModelClass !== null
-                && $scope->holdsBinding($argExpr->var)
-            ) {
-                $propName = $argExpr->name->toString();
-                $tsInfo = resolve(ModelAttributeResolver::class)->resolveAttribute($scope->closureRelationModelClass, $propName);
-
-                /** @var class-string|null $enumFqcn */
-                $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-                if ($enumFqcn === null) {
-                    return null;
-                }
-
-                // toTsType() on the FQCN directly yields the pure enum type, without the nullable
-                // suffix appendNullable() adds from the DB column definition.
-                $enumTsInfo = LaravelTsPublish::toTsType($enumFqcn);
-
-                return [
-                    ...$result,
-                    'type' => $enumTsInfo['type'],
-                    'enumFqcn' => $enumFqcn,
-                ];
             }
 
             // `$this->resource->property` is equivalent to `$this->property`, since $this->resource
@@ -170,6 +132,22 @@ trait ResolvesEnumPropertyArgTypes
             'type' => $info['type'],
             'enumFqcn' => $info['enumFqcn'],
         ];
+    }
+
+    /**
+     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps. Its null arm stays only where
+     * JsonResource::filter() reaches the wrap, as a resource wrap's does: a Collection sends a null payload as `[]`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    protected function enumWrapValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->resolveEnumFromPropertyArg($payload, $scope)
+            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
+
+        return $result === null || $scope->filtersNestedResources
+            ? $result
+            : [...$result, 'type' => ValueResult::stripNullArm($result['type'])];
     }
 
     /**

@@ -1403,8 +1403,8 @@ declare global {
             loop_b: unknown;
             /** The same four filters on the model itself, read as a getter body. */
             column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
-            /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
-            dynamic_totals: unknown[];
+            /** Loop-built dynamic keys: an object of the `k`-prefixed keys the loop writes, their values untyped. */
+            dynamic_totals: { [key: `k${string}`]: unknown | undefined };
             /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
             length_callable: Record<string, never>;
             /** The same for a first-class callable on the model's own method. */
@@ -1819,6 +1819,14 @@ declare global {
             notifications: illuminate.notifications.DatabaseNotification[];
             notifications_count: number;
             notifications_exists: boolean;
+            /** Get the entity's read notifications. */
+            read_notifications: illuminate.notifications.DatabaseNotification[];
+            read_notifications_count: number;
+            read_notifications_exists: boolean;
+            /** Get the entity's unread notifications. */
+            unread_notifications: illuminate.notifications.DatabaseNotification[];
+            unread_notifications_count: number;
+            unread_notifications_exists: boolean;
         }
         export interface UuidPost {
             // Columns
@@ -2625,6 +2633,22 @@ declare global {
         export interface BaseSharedResource extends SharedInterface {
         }
         /**
+         * Bindings that hold inside one block: a local assigned in an `if` or a `try` block, read after it there; an early-exit
+         * `instanceof` guard nested in a block, for the rest of that block; and a positive `instanceof` test, in its block.
+         *
+         * `imageable` is a morphTo over int-keyed Post and User and string-keyed Product, so a narrowed key read loses the
+         * string arm.
+         */
+        export interface BlockScopedBindingsResource {
+            label?: string;
+            bytes?: number;
+            loop_post_key?: number;
+            guarded_post_key?: number;
+            positive_title?: string;
+            positive_email?: string;
+            loaded_post_key?: { k: number } | null;
+        }
+        /**
          * Declares neither a toArray() nor a @mixin — pins parent-docblock model inheritance: the model
          * has to come from OrderResource's own `@mixin Order`, since the naming convention would look for
          * a Workbench\App\Models\BodylessOrder that does not exist. Without it every column is unknown.
@@ -2832,6 +2856,20 @@ declare global {
         export interface CastRestoredFillResource {
             [key: `${string}_tag`]: string | number | undefined;
             main_tag: number;
+        }
+        /**
+         * Exercises: a returned variable whose keys exclusive branches write. Each branch of an if chain holds its own value
+         * for a key, so a key every branch of a chain ending in else writes is required with each branch's type, and a key a
+         * chain without else writes keeps the value it held before as one more arm.
+         */
+        export interface CategoryBranchesResource {
+            id: number;
+            label: number | string;
+            mode: number | string;
+            top: CategoryResource | null;
+            tier: string | number | boolean;
+            first_only?: boolean;
+            described?: boolean;
         }
         /**
          * Every whenLoaded() spelling over `parent`, a BelongsTo whose nullable foreign key makes it load as null, and over
@@ -3172,7 +3210,7 @@ declare global {
             status_resource?: app.enums.OrderStatusType;
             status_bare?: app.enums.OrderStatusType;
             currency_resource?: app.enums.CurrencyType;
-            user_role?: app.enums.RoleType;
+            user_role?: app.enums.RoleType | null;
         }
         /**
          * Exercises issue #38 using non-arrow (full) closures with a parameter.
@@ -3313,8 +3351,8 @@ declare global {
         }
         /**
          * The engine reads each local's assigned value as a known type, so that reading stands over the inline `@var` and a
-         * wider declaration never widens it. It cannot read what `$opaque` holds, so the declaration applies there, and inside
-         * whenLoaded() the loaded relation's model, which is a `Model` too, types the member read.
+         * wider declaration never widens it. `$opaque` holds the author `getRelationValue()` loads, so its member read inside
+         * whenLoaded() types from that relation, not from the `Model` the declaration names.
          */
         export interface DeclaredReadingResource {
             title: string;
@@ -3372,6 +3410,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
@@ -3453,6 +3493,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * Exercises EnumResource::collection() across its backing shapes: an accessor returning
@@ -3843,15 +3885,12 @@ declare global {
         }
         /**
          * Regression fixture (Task 12 review, Critical 2): two TOP-LEVEL assignments to the
-         * same variable, separated by a guard-clause return, must not resolve either return
-         * branch through a single static binding — which assignment was "last" depends on
-         * which branch actually ran, and this analyzer does not do flow analysis. Both
-         * `early` and `late` must degrade to unknown rather than resolving through
-         * whichever assignment happens to be recorded.
+         * same variable, separated by a guard-clause return. Each branch reads the assignment
+         * that reaches it: `early` the notes and `late` the key, never the one recorded last.
          */
         export interface LocalVarGuardClauseResource {
-            early?: unknown;
-            late?: unknown;
+            early?: string | null;
+            late?: number;
         }
         /**
          * Regression fixture (Task 12 review, Important 3): a variable reassigned through a
@@ -3888,12 +3927,12 @@ declare global {
          *
          * `shadowed` is a Task 12 regression: a variable assigned at the top level AND
          * reassigned inside nested control flow must not resolve through the (possibly
-         * stale) top-level binding — it degrades to unknown instead.
+         * stale) top-level binding alone — it joins the values that can reach the read.
          */
         export interface LocalVarResource {
             label: string;
             key: number;
-            shadowed: unknown;
+            shadowed: string | null;
         }
         /**
          * Regression fixture (Task 12 review, Critical 1): $localVarBindings collected for
@@ -3924,6 +3963,31 @@ declare global {
         export interface MapRelationFilterResource {
             id: number;
             map: Pick<app.models.User, 'id' | 'name'>;
+        }
+        /**
+         * Maps a post's comments through receivers other than `$this->comments`: a `collect()` root, a local holding the
+         * relation, `getRelation()`, a key-breaking step, a query and a helper whose body maps them.
+         */
+        export interface MappedCollectionsResource {
+            collected_spread: (Omit<app.models.Comment, 'flag'> & { flag: boolean })[];
+            collected_reads: ({ content: string; who: string | null })[];
+            collected_spread_in_author?: (Omit<app.models.Comment, 'flag'> & { flag: boolean })[];
+            local_rows: ({ who: string | null })[];
+            loaded_rows: (Pick<app.models.Comment, 'id' | 'content'>)[];
+            local_proxy: { id: number; content: string }[];
+            reassigned_parameter: string[];
+            keyed_rows: { id: number }[] | Record<string, { id: number }>;
+            sorted_ids: number[] | Record<string, number>;
+            sorted_listed_ids: number[];
+            sorted_first: string | null;
+            loaded_values: { id: number }[];
+            mapped_values: { id: number }[];
+            query_rows: { id: number }[];
+            declared_first: string | null;
+            all_posts: PostResource[];
+            post_rows: { id: number }[];
+            query_service_rows: { id: number }[];
+            unflagged_rows: { id: number }[];
         }
         export interface MediaTypeInstanceOfResource {
             name?: string;
@@ -4420,6 +4484,17 @@ declare global {
             attachment_public: Pick<app.models.Attachment, 'id' | 'filename'>;
             attachment_hidden: Pick<app.models.Attachment, 'id' | 'internal_notes'>;
         }
+        /**
+         * Exercises: a value-position closure, and a helper read as a value, that build an array in a variable through key
+         * writes and return it. Each reads the variable through its writes, as a method's own returned variable is read, and
+         * a helper's literal return stands beside it as one more arm.
+         */
+        export interface PostBuiltValuesResource {
+            built?: { id: number; title: string };
+            branched?: { id: number; flag: string | number };
+            key_written: { id: number } | { id: number; title: string };
+            unset_beside: { id: number };
+        }
         export interface PostCollection {
             data: PostResource[];
         }
@@ -4816,7 +4891,7 @@ declare global {
             extra: string;
             dynamic?: string;
             normal_merge_key?: string;
-            formatted: unknown;
+            formatted: string;
             plain_user: UserResource;
             empty_user: UserResource;
             empty_enum: unknown;
@@ -5184,6 +5259,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             full_name: string;
         }
         /**
@@ -5224,6 +5301,8 @@ declare global {
             owned_teams?: app.models.Team[];
             images?: app.models.Image[];
             notifications?: illuminate.notifications.DatabaseNotification[];
+            read_notifications?: illuminate.notifications.DatabaseNotification[];
+            unread_notifications?: illuminate.notifications.DatabaseNotification[];
             metadata?: { profile_bio: string | null; profile_avatar: unknown; profile_theme: unknown; profile_locale: string } | null;
         }
         /**
@@ -5395,6 +5474,23 @@ declare global {
         export interface SupplierSummaryResource {
             id: number;
         }
+        /** Exercises: a whole return that adds a local's defaults with `+`, whose keys the left side keeps. */
+        export interface TagDefaultsResource {
+            id: number;
+            note: string;
+        }
+        /** Exercises: parent::toArray() `+` a local's defaults, as the whole return. */
+        export interface TagParentDefaultsResource {
+            id: number;
+            name: string;
+            slug: string;
+            color: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            posts?: app.models.Post[];
+            products?: app.models.Product[];
+            note: string;
+        }
         /** Exercises: whenCounted on two polymorphic relations. */
         export interface TagResource {
             id: number;
@@ -5561,9 +5657,9 @@ declare global {
         /**
          * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
          *
-         * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
-         * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
-         * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
+         * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
+         * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
+         * 'binding_join' keys, 'walk_branch_join' and 'merge_branch_join' through a parameter's, a local's and a merge's join.
          */
         export interface UnionHonestyResource {
             elvis: null;
@@ -5574,6 +5670,10 @@ declare global {
             conditional_default: string;
             match_arm: string;
             coalesce_right: string;
+            binding_join_old?: string;
+            binding_join_written?: string;
+            walk_branch_join?: { id: number; value: string };
+            merge_branch_join: string;
         }
         /**
          * Resource wrapping a unit enum (no backing type) to test the ->value fallback.
@@ -5625,6 +5725,8 @@ declare global {
             ownedTeams: app.models.Team[];
             images: app.models.Image[];
             notifications: illuminate.notifications.DatabaseNotification[];
+            readNotifications: illuminate.notifications.DatabaseNotification[];
+            unreadNotifications: illuminate.notifications.DatabaseNotification[];
         }
         /**
          * A map over a relation loaded under a name the model does not declare, so nothing names what the local holds. The

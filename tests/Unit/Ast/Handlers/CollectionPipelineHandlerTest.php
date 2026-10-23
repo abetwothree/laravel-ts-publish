@@ -115,3 +115,15 @@ test('a collect() root resolving to a top-level union declines', function () {
             $engine,
         ))->toBeNull();
 });
+
+// Where the receiver resolver names no element for the root's argument, such as an array of models, the model its value
+// carries binds instead.
+test('a collect() root binds its map parameter to the model its value carries', function (string $php, string $type) {
+    $scope = collectionPipelineScope();
+
+    expect(collectionPipelineEngine($scope)->resolve(collectionPipelineExpr($php))['type'])->toBe($type);
+})->with([
+    'the relation\'s all()' => ['collect($this->comments->all())->map(fn ($c) => $c->content)->all()', 'string[]'],
+    'a whenLoaded() value' => ['collect($this->whenLoaded(\'comments\'))->map(fn ($c) => ["id" => $c->id])->all()', '{ id: number }[]'],
+    'a spread of the element' => ['collect($this->comments->all())->map(fn ($c) => [...$c->toArray(), "f" => 1])->all()', "(Omit<Comment, 'f'> & { f: number })[]"],
+]);

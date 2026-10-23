@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNullablePayloads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesEnumPropertyArgTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
@@ -54,7 +53,6 @@ final class StaticCallHandler implements ExpressionHandler
     use ReadsNullablePayloads;
     use ResolvesAuthHelperCalls;
     use ResolvesEnumPropertyArgTypes;
-    use ResolvesRelatedModelTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -65,19 +63,6 @@ final class StaticCallHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // `$variable::staticMethod()` in a whenLoaded closure. Must precede the general StaticCall
-        // handler, which only matches class-name receivers.
-        if ($scope->closureRelationModelClass !== null
-            && $expr instanceof StaticCall
-            && $expr->class instanceof Variable
-            && is_string($expr->class->name)
-            && $expr->class->name !== 'this'
-            && $expr->name instanceof Identifier
-            && $scope->holdsBinding($expr->class)
-        ) {
-            return $this->analyzeRelatedModelMethodCall($expr->name->toString(), $scope);
-        }
-
         // SomeResource::collection(...)->resolve() — strip the trailing ->resolve() and delegate. resolve() runs the
         // resource's own toArray(), so a null payload never makes it null.
         if ($expr instanceof MethodCall
@@ -423,9 +408,7 @@ final class StaticCallHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        return $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
-            ?? ValueResult::unknown();
+        return $this->enumWrapValue($payload, $scope, $engine) ?? ValueResult::unknown();
     }
 
     /**

@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
@@ -167,7 +168,7 @@ final class ResourceExpressionHandlers
     }
 
     /**
-     * Construct all 27 handlers in registration order — the single source every profile above filters.
+     * Construct all 28 handlers in registration order — the single source every profile above filters.
      *
      * @return list<ExpressionHandler>
      */
@@ -198,6 +199,7 @@ final class ResourceExpressionHandlers
             new VariableHandler,
             new TernaryHandler,
             new MatchHandler,
+            new OffsetReadHandler,
             new ReceiverPropertyFetchHandler,
             new ReceiverMethodCallHandler,
             new KnownMethodRuleHandler,

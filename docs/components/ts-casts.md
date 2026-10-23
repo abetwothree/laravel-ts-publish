@@ -68,7 +68,7 @@ published text still needs it.
 `CastChannels::fit()` applies the rule once, over the casts in force, so no `AsEnum` rewrite, `Partial<>` or alias
 queue meets the displaced value. `ResourceTransformer::runAstAnalysis()` and
 `BroadcastEventTransformer::transformProperties()` call it after the reconcile, `AnalysisComposer::compose()` first,
-for `AstEngine::analyze()`, and `InlineArrayHandler` over an inline array's members, whose casts no outer cast can
+for `AstEngine::analyze()`, and `InlineObjectResult` over an inline object's members, whose casts no outer cast can
 retype. A class-level event cast whose key names no payload property adds neither the key nor its import, while a
 method-level cast on `broadcastWith()` adds the key, as a resource method cast does. The Inertia analyzers still drop a
 cast key's import channels with `forgetChannels()`.

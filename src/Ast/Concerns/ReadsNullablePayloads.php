@@ -18,7 +18,8 @@ use PhpParser\Node\Name;
 
 /**
  * The type of a resource built around a payload that can serialize as null. Only JsonResource::filter() turns a
- * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null.
+ * nested resource whose payload is null into null, so only a JsonResource subject's own output carries that null, and
+ * only where filter() reaches the wrap: it recurses into arrays, never into a Collection.
  *
  * @internal
  */
@@ -83,7 +84,10 @@ trait ReadsNullablePayloads
             return null;
         }
 
-        if (! ValueResult::hasNullArm($resolved['type']) || $this->isProvenNonNull($payload, $scope)) {
+        if (! $scope->filtersNestedResources
+            || ! ValueResult::hasNullArm($resolved['type'])
+            || $this->isProvenNonNull($payload, $scope)
+        ) {
             return null;
         }
 

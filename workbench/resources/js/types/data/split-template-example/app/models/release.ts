@@ -31,8 +31,8 @@ export interface ReleaseMutators
     loop_b: unknown;
     /** The same four filters on the model itself, read as a getter body. */
     column_picks: { named: Pick<Release, 'major' | 'minor'>; rest: Pick<Release, 'id' | 'major' | 'minor' | 'created_at' | 'updated_at'>; picked: Record<string, unknown>; left: Record<string, unknown> };
-    /** Loop-built dynamic keys: must stay unknown[], nothing here is statically knowable. */
-    dynamic_totals: unknown[];
+    /** Loop-built dynamic keys: an object of the `k`-prefixed keys the loop writes, their values untyped. */
+    dynamic_totals: { [key: `k${string}`]: unknown | undefined };
     /** A getter that returns a first-class callable returns a Closure, which json_encode() writes as `{}`. */
     length_callable: Record<string, never>;
     /** The same for a first-class callable on the model's own method. */

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -49,7 +50,8 @@ const METHOD_CALL_PINNED = [
 function methodCallHandlerClaims(ExpressionHandler $handler, MethodCall $expr): bool
 {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler], $scope);
+    // ClosureHandler claims no MethodCall, so it joins no pair, but every map writer reads its callback through it.
+    $engine = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, 'toArray', [$handler, new ClosureHandler], $scope);
 
     return $handler->resolve($expr, $scope, $engine) !== null;
 }

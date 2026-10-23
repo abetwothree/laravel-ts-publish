@@ -5,7 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -116,7 +116,7 @@ it('records the enums a model names, since #[TsEnum] renames their type', functi
 
 it('records the class a chain link reads a return class from', function () {
     $paths = recordedWhile(
-        fn () => expect(resolve(ReceiverClassResolver::class)->returnClasses(ShiftClock::class, 'handoverNote'))->toBe([ShiftNote::class]),
+        fn () => expect(DeclaredClasses::returnClasses(ShiftClock::class, 'handoverNote'))->toBe([ShiftNote::class]),
     );
 
     expect($paths)->toContain(fileOf(ShiftClock::class));

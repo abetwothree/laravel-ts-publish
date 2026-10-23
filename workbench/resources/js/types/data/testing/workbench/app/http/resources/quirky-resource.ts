@@ -13,7 +13,7 @@ export interface QuirkyResource
     extra: string;
     dynamic?: string;
     normal_merge_key?: string;
-    formatted: unknown;
+    formatted: string;
     plain_user: UserResource;
     empty_user: UserResource;
     empty_enum: unknown;

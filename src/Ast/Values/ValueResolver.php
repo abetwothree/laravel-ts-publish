@@ -175,6 +175,18 @@ final class ValueResolver
     }
 
     /**
+     * The TypeScript type of a constant expression, or null for any other.
+     */
+    public function constantType(Expr $value, AnalysisScope $scope): ?string
+    {
+        try {
+            return $this->resolveConstantValue($this->evaluateConstantExpression($value, $scope))['type'] ?? null;
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
+    }
+
+    /**
      * Type an array literal json_encode() writes as a list, keyless or keyed 0 to n-1, as that list; null for an empty
      * one, one with any other keys or a by-ref item, or one spreading anything but a list. A constant one is typed as a
      * parameter default is.

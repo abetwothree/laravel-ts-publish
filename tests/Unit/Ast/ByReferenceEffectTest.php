@@ -51,6 +51,12 @@ it('leaves a value the type it held while it has the form the call keeps', funct
     'a walk writing nothing' => [ByReferenceEffect::WritesElements, '{ a: number }', [], '{ a: number }'],
     'a walk over a class' => [ByReferenceEffect::WritesElements, 'User', [], null],
     'a replacing call' => [ByReferenceEffect::Replaces, 'string[]', [], null],
+    'preg_match()\'s matches over a value the scan cannot type, which a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'unknown', [], null],
+    'preg_match()\'s matches over an empty list' => [ByReferenceEffect::WritesMatches, 'never[]', [], 'string[]'],
+    'preg_match()\'s matches over an empty tuple' => [ByReferenceEffect::WritesMatches, '[]', [], 'string[]'],
+    'preg_match()\'s matches over a list of strings' => [ByReferenceEffect::WritesMatches, 'string[]', [], 'string[]'],
+    'preg_match()\'s matches over a string a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'string', [], null],
+    'preg_match()\'s matches over a nullable list' => [ByReferenceEffect::WritesMatches, 'string[] | null', [], null],
 ]);
 
 // An API resource re-indexes a list a key-keeping sort reorders, so there it sends the list it was.

@@ -1337,7 +1337,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The inline lists go models first, then resources: InlineArrayHandler::sharedNames() relies on that order.
+        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([
             $this->propertyModelFqcnsList,
             $this->propertyEnumFqcnsList,

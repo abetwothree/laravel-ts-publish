@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
@@ -214,9 +215,9 @@ it('resolves a bare variable bound to a whole relation collection to the collect
     expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class]);
 });
 
-it('resolves $variable->pluck() against the ambient closure relation model', function () {
+it('resolves $variable->pluck() against the element model of its own to-many binding', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
 
     $result = (new VariableHandler)->resolve(
         new MethodCall(new Variable('users'), 'pluck', [new Arg(new String_('name'))]),
@@ -225,24 +226,6 @@ it('resolves $variable->pluck() against the ambient closure relation model', fun
     );
 
     expect($result)->toBe(['type' => 'string[]', 'optional' => false]);
-});
-
-// Guard-order pin: the pluck guard must precede the generic `$variable->method()` guard. Both claim
-// this node — the generic guard's bound model is non-null here — but it resolves `pluck` as a method
-// on User, which has none, so swapping the two turns this into 'unknown'.
-it('tries the pluck guard before the generic bound-method guard', function () {
-    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
-    $scope->varModelBindings['users'] = User::class;
-
-    $result = (new VariableHandler)->resolve(
-        new MethodCall(new Variable('users'), 'pluck', [new Arg(new String_('name'))]),
-        $scope,
-        variableHandlersThrowingEngine(),
-    );
-
-    expect(method_exists(User::class, 'pluck'))->toBeFalse()
-        ->and($result)->toBe(['type' => 'string[]', 'optional' => false]);
 });
 
 // Guard-order pin: the model-binding guard must precede the expression-binding guard. Both claim
@@ -276,7 +259,6 @@ it('degrades a cyclic local-variable binding to unknown instead of recursing for
 it('declines only() and except() on a bound variable, whatever the key list', function (string $method, Arg $keys) {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
     $scope->varModelBindings['author'] = User::class;
-    $scope->closureRelationModelClass = User::class;
 
     $result = (new VariableHandler)->resolve(new MethodCall(new Variable('author'), $method, [$keys]), $scope, variableHandlersThrowingEngine());
 
@@ -360,7 +342,7 @@ it('declines a method call no known-method rule matches', function () {
 
 it('reads $variable->pluck(key: …, value: …) by name', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), Comment::class);
-    $scope->closureRelationModelClass = User::class;
+    $scope->varCollectionBindings['users'] = ['type' => 'User[]', 'modelFqcn' => User::class];
 
     $result = (new VariableHandler)->resolve(
         new MethodCall(new Variable('users'), 'pluck', [
@@ -382,12 +364,11 @@ it('reads $variable->map(callback: …) by name', function () {
         'expr' => $body,
     ]);
     $expr = new MethodCall(new Variable('users'), 'map', [new Arg($closure, name: new Identifier('callback'))]);
-    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+    $engine = new VariableHandlersLoopEngine([new ClosureHandler, new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))->toBe(['type' => 'string[]', 'optional' => false]);
 });
 
-// ReceiverClassResolver reads varModelBindings, not closureRelationModelClass, so a chain from the parameter needs it.
 it('resolves a nullsafe chain from a typed map-closure parameter', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
@@ -402,6 +383,19 @@ it('keeps a typed map over a relation the model does not declare through a trail
     expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[] | null')
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
+
+// A collection of plain values names no element model, so each value its list holds binds instead; a keyed list's
+// elements could come from either arm, so it declines.
+it('binds a map parameter to the value a list of plain values holds', function (string $local, string $php, string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
+    $scope->localVarBindings['values'] = new AstParser()->parseSource('<?php '.$local.';')[0]->expr;
+
+    expect(variableHandlersResolveOn($php, Post::class, $scope)['type'])->toBe($type);
+})->with([
+    'a plucked column' => ['$this->comments->pluck("id")', '$values->map(fn ($id) => $id)', 'number[]'],
+    'an earlier map()' => ['$this->comments->map(fn (\Workbench\App\Models\Comment $c) => $c->content)', '$values->map(fn ($c) => ["c" => $c])', '{ c: string }[]'],
+    'a keyed pluck' => ['$this->comments->pluck("content", "id")', '$values->map(fn ($c) => $c)', 'unknown'],
+]);
 
 // Only the map arm's own answer passes through an unnamed receiver: nothing is invented,
 // and a named model still declines.
@@ -418,7 +412,6 @@ it('declines a trailing values()/all() the map arm does not answer, or on a vari
 
 it('resolves a nullsafe chain from an untyped map-closure parameter its receiver names the element of', function () {
     $scope = new AnalysisScope(new ReflectionClass(PostCommentAuthorsResource::class), Post::class);
-    $scope->closureRelationModelClass = Comment::class;
     $scope->varCollectionBindings['comments'] = ['type' => 'Comment[]', 'modelFqcn' => Comment::class];
     $expr = new AstParser()->parseSource('<?php $comments->map(fn ($comment) => $comment->user?->name);')[0]->expr;
     $engine = new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class, 'toArray', null, $scope);
@@ -434,12 +427,11 @@ it('binds the map-closure parameter over an outer binding of the same name, only
         'expr' => new Variable('comment'),
     ]);
     $expr = new MethodCall(new Variable('rows'), 'map', [new Arg($closure)]);
-    $engine = new VariableHandlersLoopEngine([new VariableHandler], $scope);
+    $engine = new VariableHandlersLoopEngine([new ClosureHandler, new VariableHandler], $scope);
 
     expect((new VariableHandler)->resolve($expr, $scope, $engine))
         ->toBe(['type' => 'Comment[]', 'optional' => false, 'modelFqcn' => Comment::class])
-        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
-        ->and($scope->closureRelationModelClass)->toBeNull();
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class]);
 });
 
 it('restores the map-closure bindings when the body throws', function () {
@@ -453,8 +445,7 @@ it('restores the map-closure bindings when the body throws', function () {
 
     expect(fn () => (new VariableHandler)->resolve($expr, $scope, variableHandlersThrowingEngine()))
         ->toThrow(RuntimeException::class)
-        ->and($scope->varModelBindings)->toBe(['comment' => User::class])
-        ->and($scope->closureRelationModelClass)->toBeNull();
+        ->and($scope->varModelBindings)->toBe(['comment' => User::class]);
 });
 
 // A nested writer's parameter must beat an outer binding of its name in every table, whichever table each one uses.
@@ -606,14 +597,15 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
     public function __construct(private AnalysisScope $scope, private string $variable) {}
 
     /**
-     * Record the variable's class binding while a string-literal arm resolves, and type every arm as a string.
+     * Record the classes the guard in force at a string-literal arm binds the variable to, and type every arm a string.
      *
      * @return array<string, mixed>
      */
     public function resolve(Expr $expr): array
     {
         if ($expr instanceof String_) {
-            $this->classesPerArm[$expr->value] = $this->scope->varClassBindings[$this->variable] ?? null;
+            $read = new Variable($this->variable, ['startFilePos' => $expr->getStartFilePos()]);
+            $this->classesPerArm[$expr->value] = $this->scope->guardAt($read)['classes'] ?? null;
         }
 
         return ['type' => 'string', 'optional' => false];
@@ -646,7 +638,7 @@ it('binds the proven arm\'s subject to what the test leaves of its own classes, 
     (new TernaryHandler)->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr, $scope, $engine);
 
     expect($engine->classesPerArm)->toBe($classes)
-        ->and($scope->varClassBindings)->toBe([]);
+        ->and($scope->varGuardBindings)->toBe([]);
 })->with([
     'a supertype' => ['$post instanceof \Illuminate\Database\Eloquent\Model ? "if" : "else"', ['if' => [Post::class], 'else' => null]],
     'a negated interface' => ['! $post instanceof \JsonSerializable ? "if" : "else"', ['else' => [Post::class], 'if' => null]],

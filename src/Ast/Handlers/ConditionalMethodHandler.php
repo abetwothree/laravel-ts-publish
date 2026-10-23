@@ -32,6 +32,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -39,6 +40,7 @@ use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use ReflectionMethod;
 
@@ -181,6 +183,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             // Only a value arm with a type publishes without the default, so only then is an arm left out.
             if ($value['type'] !== 'unknown') {
                 DroppedUnionArms::record($defaultExpr, $scope, 'conditional-default');
+                DroppedUnionArms::warnOfPlaceholder($value, [$defaultExpr], $scope);
             }
 
             return [...$value, 'optional' => $value['optional'] || $default['optional']];
@@ -221,20 +224,16 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $this->warnOfUnpassedArgument($method, $valueArg->value, $scope);
         }
 
-        $previousNameBindings = $scope->nameBindings();
-
-        try {
+        $inner = $scope->readClaimedClosure(
+            $valueArg->value,
+            0,
+            $engine,
+            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall(FirstClassCallableHandler::heldCallable($valueArg->value, $scope))),
+            bind: fn () => $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope),
             // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
             // closure parameter named like a proven read drops its proof.
-            $this->proveNonNull($this->nonNullReads($condition->value, $method === 'when'), $scope);
-            $scope->claimParameters($valueArg->value);
-            $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope);
-            $scope->bindUnpassedParameters($valueArg->value, 0, $engine);
-
-            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
-        }
+            beforeClaim: fn () => $this->proveNonNull($this->nonNullReads($condition->value, $method === 'when'), $scope),
+        );
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine);
     }
@@ -363,7 +362,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Analyze $this->whenNotNull($value, $default) — the success arm returns $value, proven non-null.
+     * Analyze $this->whenNotNull($value, $default): the success arm returns $value proven non-null, or, for a closure
+     * or first-class callable, which is never null, what it returns, null included.
      *
      * @return ValueExpressionResult
      */
@@ -385,7 +385,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Shared logic for whenNotNull()/whenNull(): argument 0 is the value, argument 1 the optional
-     * default. An explicit default makes the key required and unions its type into the result.
+     * default. An explicit default makes the key required and unions its type into the result, but for a whenNotNull()
+     * callable, which always runs.
      *
      * @return ValueExpressionResult
      */
@@ -398,7 +399,14 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($valueArg->value));
+        $held = FirstClassCallableHandler::heldCallable($valueArg->value, $scope);
+        $called = $stripNull ? $this->calledWithNothing($held, $scope, $engine) : null;
+
+        if ($called !== null) {
+            return $called;
+        }
+
+        $value = $engine->resolve(FirstClassCallableHandler::invokedCall($held));
 
         if ($stripNull) {
             $value['type'] = ValueResult::stripNullArm($value['type']);
@@ -427,78 +435,18 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($valueExpr !== null && ! $this->isNullConstFetch($valueExpr)) {
             // Laravel calls a callable with the loaded relation, so a first-class one binds it as a closure does.
-            $valueExpr = FirstClassCallableHandler::passingOneValue($valueExpr);
-            // Resolve the related model so accesses on local variables inside the closure can be typed.
-            $previousRelationModel = $scope->closureRelationModelClass;
-            $previousNameBindings = $scope->nameBindings();
+            $valueExpr = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($valueExpr, $scope));
+            $inner = $scope->readClaimedClosure(
+                $valueExpr,
+                1,
+                $engine,
+                fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($valueExpr)),
+                fn () => $this->bindLoadedRelation($valueExpr, $relationship, $scope, $engine),
+            );
 
-            try {
-                $scope->claimParameters($valueExpr);
-                $relationInfo = null;
+            $loaded = $this->withLoadedNullArm($inner, $relationship, $valueExpr, $scope);
 
-                if ($relationship instanceof String_) {
-                    $relationInfo = $this->resolveModelRelationTypeInfo($relationship->value, $scope);
-
-                    if ($relationInfo['modelFqcn'] !== null) {
-                        $scope->closureRelationModelClass = $relationInfo['modelFqcn'];
-                    }
-                }
-
-                // A variadic parameter collects the relation into a list, which never holds null: the closure runs
-                // only for a loaded value that is not null.
-                if ($relationInfo !== null && ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== [])) {
-                    $this->bindVariadicList($valueExpr, [
-                        'type' => ValueResult::stripNullArm($relationInfo['type']),
-                        'optional' => false,
-                        ...($relationInfo['modelFqcn'] !== null
-                            ? ['modelFqcn' => $relationInfo['modelFqcn']]
-                            : ['embeddedModelFqcns' => $relationInfo['morphFqcns']]),
-                    ], $scope, $engine);
-                }
-
-                if ($relationInfo !== null
-                    && $relationInfo['modelFqcn'] !== null
-                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
-                    && isset($valueExpr->params[0])
-                    && ! $valueExpr->params[0]->variadic
-                    && $valueExpr->params[0]->var instanceof Variable
-                    && is_string($valueExpr->params[0]->var->name)
-                ) {
-                    $paramName = $valueExpr->params[0]->var->name;
-
-                    if (str_ends_with($relationInfo['type'], '[]')) {
-                        $scope->varCollectionBindings[$paramName] = [
-                            'type' => $relationInfo['type'],
-                            'modelFqcn' => $relationInfo['modelFqcn'],
-                        ];
-                    } else {
-                        $scope->varModelBindings[$paramName] = $relationInfo['modelFqcn'];
-                    }
-                }
-
-                // A morphTo names no single model, so its param holds any one of the targets: bind them all
-                // and let each reader union them.
-                if ($relationInfo !== null
-                    && $relationInfo['modelFqcn'] === null
-                    && $relationInfo['morphFqcns'] !== []
-                    && ($valueExpr instanceof ClosureExpr || $valueExpr instanceof ArrowFunction)
-                    && isset($valueExpr->params[0])
-                    && ! $valueExpr->params[0]->variadic
-                    && $valueExpr->params[0]->var instanceof Variable
-                    && is_string($valueExpr->params[0]->var->name)
-                ) {
-                    $scope->varClassBindings[$valueExpr->params[0]->var->name] = $relationInfo['morphFqcns'];
-                }
-
-                $scope->bindUnpassedParameters($valueExpr, 1, $engine);
-
-                $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($valueExpr));
-            } finally {
-                $scope->closureRelationModelClass = $previousRelationModel;
-                $scope->restoreNameBindings($previousNameBindings);
-            }
-
-            return $this->applyConditionalDefault($this->withLoadedNullArm($inner, $relationship, $scope), $args, $scope, $engine);
+            return $this->applyConditionalDefault($loaded, $args, $scope, $engine);
         }
 
         // Also `whenLoaded('rel', null, …)` and `whenLoaded('rel', default: …)`: Laravel swaps the null $value for the
@@ -544,29 +492,36 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        $previousNameBindings = $scope->nameBindings();
+        $value = $valueArg->value;
+        $callback = FirstClassCallableHandler::passingOneValue(FirstClassCallableHandler::heldCallable($callbackArg->value, $scope));
+        $resolvedValue = null;
+        $model = null;
+        $outer = AnalysisScope::NO_NAME_BINDINGS;
 
-        try {
+        $inner = $scope->readClaimedClosure(
+            $callback,
+            1,
+            $engine,
+            function () use ($callback, $value, $scope, $engine): array {
+                // transform() calls back only for a filled value, so the read it passes is not null in the callback.
+                $this->proveNonNull([$value], $scope);
+
+                return $engine->resolve($callback);
+            },
+            function () use ($callback, $value, &$resolvedValue, &$outer, $scope, $engine, &$model): void {
+                $this->bindPassedValue($callback, $value, $resolvedValue, $outer, $scope, $engine, model: $model);
+            },
             // transform() calls $callback($value), so the value is typed before the claim releases a name it may share.
-            $value = $valueArg->value;
-            $resolvedValue = $engine->resolve($value);
-            $model = $this->filledModel($value, $resolvedValue, $scope);
-            $callback = FirstClassCallableHandler::passingOneValue($callbackArg->value);
-
-            $scope->claimParameters($callback);
-            $this->bindPassedValue($callback, $value, $resolvedValue, $previousNameBindings, $scope, $engine, model: $model);
-            $scope->bindUnpassedParameters($callback, 1, $engine);
-            // transform() calls back only for a filled value, so the read it passes is not null in the callback.
-            $this->proveNonNull([$value], $scope);
-
-            $inner = $engine->resolve($callback);
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
-        }
+            function () use ($value, &$resolvedValue, &$model, &$outer, $scope, $engine): void {
+                $resolvedValue = $engine->resolve($value);
+                $model = $this->filledModel($value, $resolvedValue, $scope);
+                $outer = $scope->nameBindings();
+            },
+        );
 
         // transform()'s default runs through the global transform() helper's $default($value) — one
         // argument — unlike the rest of the family's zero-argument value($default).
-        $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $previousNameBindings];
+        $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $outer];
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
     }
@@ -612,18 +567,59 @@ final class ConditionalMethodHandler implements ExpressionHandler
     /**
      * The value arm with the `null` whenLoaded() returns, without reading the value, for a relation loaded as null. A
      * relation the model does not declare holds whatever setRelation() stored, so only relationLoadsNull()'s `false`
-     * rules the arm out.
+     * rules the arm out, or a value that collects the relation, which then is a to-many one.
      *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult
      */
-    private function withLoadedNullArm(array $value, ?Expr $relationship, AnalysisScope $scope): array
+    private function withLoadedNullArm(array $value, ?Expr $relationship, Expr $valueExpr, AnalysisScope $scope): array
     {
-        if (! $relationship instanceof String_ || $this->relationLoadsNull($relationship->value, $scope) === false) {
+        if (! $relationship instanceof String_) {
+            return $value;
+        }
+
+        $loadsNull = $this->relationLoadsNull($relationship->value, $scope);
+
+        if ($loadsNull === false || ($loadsNull === null && $this->collectsLoadedValue($valueExpr, $scope))) {
             return $value;
         }
 
         return [...$value, 'type' => ValueResult::withNullArm($value['type'])];
+    }
+
+    /**
+     * Whether a whenLoaded() value hands the loaded relation to a resource's `collection()`: a closure whose one return
+     * is `X::collection($param)` on its first parameter, which passingOneValue() makes of `X::collection(...)` too.
+     */
+    private function collectsLoadedValue(Expr $value, AnalysisScope $scope): bool
+    {
+        $param = $value instanceof ArrowFunction || $value instanceof ClosureExpr ? ($value->params[0] ?? null) : null;
+
+        if ($param === null || $param->variadic || ! $param->var instanceof Variable) {
+            return false;
+        }
+
+        $returns = $this->resolveClosureReturnExpressions($value);
+        $call = count($returns) === 1 ? $returns[0] : null;
+
+        if (! $call instanceof StaticCall || $call->isFirstClassCallable() || ! $this->isResourceCollectionCall($call, $scope)) {
+            return false;
+        }
+
+        $passed = $call->getArgs()[0] ?? null;
+
+        return $passed !== null && ! $passed->unpack && $passed->value instanceof Variable && $passed->value->name === $param->var->name;
+    }
+
+    /**
+     * Whether a static call is `collection()` on an API resource class, `self` and `static` naming the subject.
+     */
+    private function isResourceCollectionCall(StaticCall $call, AnalysisScope $scope): bool
+    {
+        return $call->name instanceof Identifier
+            && $call->name->toLowerString() === 'collection'
+            && $call->class instanceof Name
+            && $this->isResourceClass($this->subjectClassName($call->class, $scope->subjectReflection));
     }
 
     /**
@@ -700,22 +696,24 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     private function resolveConditionalDefault(Expr $default, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $previousNameBindings = $scope->nameBindings();
+        $default = FirstClassCallableHandler::heldCallable($default, $scope);
         $default = $passed === null ? $default : FirstClassCallableHandler::passingOneValue($default);
 
-        try {
-            $scope->claimParameters($default);
-
-            if ($passed !== null) {
-                $this->bindPassedValue($default, $passed['value'], $passed['resolved'], $passed['outer'], $scope, $engine, keepNull: true);
-            }
-
-            $scope->bindUnpassedParameters($default, $passed === null ? 0 : 1, $engine);
-
-            return $engine->resolve(FirstClassCallableHandler::invokedCall($default));
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
-        }
+        return $scope->readClaimedClosure(
+            $default,
+            $passed === null ? 0 : 1,
+            $engine,
+            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($default)),
+            $passed === null ? null : fn () => $this->bindPassedValue(
+                $default,
+                $passed['value'],
+                $passed['resolved'],
+                $passed['outer'],
+                $scope,
+                $engine,
+                keepNull: true,
+            ),
+        );
     }
 
     /**
@@ -773,41 +771,39 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return null;
         }
 
-        $previousNameBindings = $scope->nameBindings();
+        $value = FirstClassCallableHandler::heldCallable($value, $scope);
         $value = $argument === null ? $value : FirstClassCallableHandler::passingOneValue($value);
 
-        try {
-            $scope->claimParameters($value);
+        return $scope->readClaimedClosure(
+            $value,
+            $argument === null ? 0 : 1,
+            $engine,
+            fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($value)),
+            $argument === null ? null : fn () => $this->bindValueArgument($value, $argument, $scope, $engine),
+        );
+    }
 
-            if ($argument !== null) {
-                $this->bindVariadicList($value, $argument, $scope, $engine);
-            }
+    /**
+     * Bind the first parameter of a value closure to the one argument Laravel passes it: a variadic one to its list.
+     *
+     * @param  Expr|ValueExpressionResult  $argument
+     */
+    private function bindValueArgument(Expr $value, Expr|array $argument, AnalysisScope $scope, ExpressionEngine $engine): void
+    {
+        $this->bindVariadicList($value, $argument, $scope, $engine);
 
-            // A variadic parameter collects the argument into a list, so it never holds the argument itself.
-            if ($argument !== null
-                && ($value instanceof ClosureExpr || $value instanceof ArrowFunction)
-                && isset($value->params[0])
-                && ! $value->params[0]->variadic
-                && $value->params[0]->var instanceof Variable
-                && is_string($value->params[0]->var->name)
-            ) {
-                $name = $value->params[0]->var->name;
+        // A variadic parameter collects the argument into a list, so it never holds the argument itself.
+        $name = AnalysisScope::firstParameterName($value);
 
-                if ($argument instanceof Expr) {
-                    $scope->closureParamExprBindings[$name] = $argument;
-                } elseif ($argument['type'] !== 'unknown') {
-                    $scope->varValueBindings[$name] = $argument;
-                }
-            }
-
-            $scope->bindUnpassedParameters($value, $argument === null ? 0 : 1, $engine);
-
-            $inner = $engine->resolve(FirstClassCallableHandler::invokedCall($value));
-        } finally {
-            $scope->restoreNameBindings($previousNameBindings);
+        if ($name === null) {
+            return;
         }
 
-        return $inner;
+        if ($argument instanceof Expr) {
+            $scope->closureParamExprBindings[$name] = $argument;
+        } elseif ($argument['type'] !== 'unknown') {
+            $scope->varValueBindings[$name] = $argument;
+        }
     }
 
     /**
@@ -850,7 +846,81 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Warn that a when() or unless() closure requires an argument Laravel never passes, so it throws whenever it runs.
+     * Bind a whenLoaded() closure to the relation it is passed: a variadic parameter collects the relation into a list,
+     * and a first parameter holds its model, its whole collection or its morphTo targets.
+     */
+    private function bindLoadedRelation(Expr $closure, ?Expr $relationship, AnalysisScope $scope, ExpressionEngine $engine): void
+    {
+        $relationInfo = $relationship instanceof String_ ? $this->resolveModelRelationTypeInfo($relationship->value, $scope) : null;
+
+        if ($relationInfo === null) {
+            return;
+        }
+
+        // A variadic parameter collects the relation into a list, which never holds null: the closure runs only for a
+        // loaded value that is not null.
+        if ($relationInfo['modelFqcn'] !== null || $relationInfo['morphFqcns'] !== []) {
+            $this->bindVariadicList($closure, [
+                'type' => ValueResult::stripNullArm($relationInfo['type']),
+                'optional' => false,
+                ...($relationInfo['modelFqcn'] !== null
+                    ? ['modelFqcn' => $relationInfo['modelFqcn']]
+                    : ['embeddedModelFqcns' => $relationInfo['morphFqcns']]),
+            ], $scope, $engine);
+        }
+
+        $name = AnalysisScope::firstParameterName($closure);
+
+        if ($name !== null && $relationInfo['modelFqcn'] !== null) {
+            if (str_ends_with($relationInfo['type'], '[]')) {
+                $scope->varCollectionBindings[$name] = [
+                    'type' => $relationInfo['type'],
+                    'modelFqcn' => $relationInfo['modelFqcn'],
+                ];
+            } else {
+                $scope->varModelBindings[$name] = $relationInfo['modelFqcn'];
+            }
+        }
+
+        // A morphTo names no single model, so its param holds any one of the targets: bind them all and let each
+        // reader union them.
+        if ($name !== null && $relationInfo['modelFqcn'] === null && $relationInfo['morphFqcns'] !== []) {
+            $scope->varClassBindings[$name] = $relationInfo['morphFqcns'];
+        }
+    }
+
+    /**
+     * What whenNotNull() sends for a closure or first-class callable, which is never null: value() calls it with
+     * nothing, so its parameters hold their defaults and its own null stays; null for any other value.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function calledWithNothing(Expr $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (! $this->isCallableValue($value)) {
+            return null;
+        }
+
+        if ($this->closureRequiresArguments($value)) {
+            $this->warnOfUnpassedArgument('whenNotNull', $value, $scope);
+        }
+
+        return $scope->readClaimedClosure($value, 0, $engine, fn (): array => $engine->resolve(FirstClassCallableHandler::invokedCall($value)));
+    }
+
+    /**
+     * Whether a value is a closure, an arrow function or a first-class callable: a Closure, which value() calls.
+     */
+    private function isCallableValue(Expr $value): bool
+    {
+        return $value instanceof ClosureExpr
+            || $value instanceof ArrowFunction
+            || ($value instanceof CallLike && $value->isFirstClassCallable());
+    }
+
+    /**
+     * Warn that a when(), unless() or whenNotNull() closure requires an argument Laravel never passes, so it throws
+     * whenever it runs.
      */
     private function warnOfUnpassedArgument(string $method, Expr $closure, AnalysisScope $scope): void
     {
@@ -891,7 +961,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
     /**
      * Bind a callback's first parameter to the value its call passes: a `$this->prop` read, every binding the passed
-     * variable held before the claim, the one model a filled value holds, or the value's own resolved type.
+     * variable held before the claim, the one model a filled value holds, or the value's own resolved type. A value no
+     * rule types binds nothing, and is only noted, for a join that leaves it out to name.
      *
      * @param  ValueExpressionResult|null  $resolvedValue
      * @param  NameBindingsSnapshot  $outer
@@ -960,7 +1031,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             $binding = $binder->passedBinding($filled, $model);
 
             if ($binding !== null) {
-                $binder->bindPassed($callback->getStmts(), [$name => $binding], $scope);
+                $binder->bindPassed([$name => $binding], $scope);
             }
 
             return;
@@ -968,6 +1039,8 @@ final class ConditionalMethodHandler implements ExpressionHandler
 
         if ($resolvedValue['type'] !== 'unknown') {
             $scope->varValueBindings[$name] = $resolvedValue;
+        } else {
+            $scope->passedValues[$name] = $value;
         }
     }
 

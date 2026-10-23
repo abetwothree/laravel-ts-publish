@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaResource
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaServiceTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\InertiaTableController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\KeyKeepingSortController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\MappedPagePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ReassignedRouteModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
@@ -176,11 +177,16 @@ it('types the route-bound model parameter and the injected service call', functi
     expect($data['pageType'])->toBe('Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } }');
 });
 
-// `$post->author` reads as unknown through a model-bound variable, so `bare` follows it there; a copy of the same
-// model, in a branch or not, keeps the parameter's binding.
+it('types a route-bound model\'s relation reads by the models they load', function () {
+    expect(pageData(TypedActionParametersController::class.'@relations')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { author: User, comments: Comment[] }');
+});
+
+// `$post->author` reads as the relation's model through a model-bound variable, so `bare` follows it there; a copy of
+// the same model, in a branch or not, keeps the parameter's binding.
 it('reads a route-bound parameter past its reassignment through what the action assigned', function () {
     expect(pageData(ReassignedRouteModelController::class.'@show')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: unknown }')
+        ->toBe('Inertia.SharedData & { title: unknown, name: string, bare: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@branch')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@fresh')['pageType'] ?? null)
@@ -188,7 +194,7 @@ it('reads a route-bound parameter past its reassignment through what the action 
         ->and(pageData(ReassignedRouteModelController::class.'@coalesceAssign')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@compacted')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { post: unknown }')
+        ->toBe('Inertia.SharedData & { post: User }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByValue')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { title: string }')
         ->and(pageData(ReassignedRouteModelController::class.'@capturedByReference')['pageType'] ?? null)
@@ -199,6 +205,12 @@ it('reads a route-bound parameter past its reassignment through what the action 
 it('types a list a key-keeping sort leaves out of order as an object of its elements', function () {
     expect(pageData(KeyKeepingSortController::class.'@show')['pageType'] ?? null)
         ->toBe('Inertia.SharedData & { tags: Record<number, string>, sorted: string[], member: { x: Record<number, string> } }');
+});
+
+// keyBy() keys the rows by id, so Inertia sends an object unless the ids run 0..n-1.
+it('a keyed map and an offset read type in a page\'s props', function () {
+    expect(pageData(MappedPagePropsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { rows: { id: number }[] | Record<string, { id: number }>, a: number }');
 });
 
 // Laravel passes null for an optional route model left out of the URL, so a bare read keeps the null arm. An abstract

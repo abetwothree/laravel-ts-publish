@@ -16,6 +16,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
@@ -33,6 +34,9 @@ final class ByReferenceArguments
 {
     /** By-reference functions that only move an array's internal pointer, so the value keeps its type. */
     private const array POINTER_FUNCTIONS = ['end', 'next', 'prev', 'reset'];
+
+    /** A named group in a PCRE pattern, whatever letters its name uses: `(?<name>`, `(?P<name>` or `(?'name'`. */
+    private const string NAMED_GROUP = '/\(\?(?:P?<(?![=!])|\')/';
 
     /** The sort flags that compare int keys as numbers, so ksort() leaves a list's keys in order. */
     private const array NUMERIC_SORT_FLAGS = ['SORT_REGULAR', 'SORT_NUMERIC'];
@@ -52,6 +56,7 @@ final class ByReferenceArguments
         'ksort' => ['array' => ByReferenceEffect::KeepsAny],
         'natcasesort' => ['array' => ByReferenceEffect::KeepsObject],
         'natsort' => ['array' => ByReferenceEffect::KeepsObject],
+        'preg_match' => ['matches' => ByReferenceEffect::WritesMatches],
         'preg_replace' => ['count' => ByReferenceEffect::KeepsNumber],
         'preg_replace_callback' => ['count' => ByReferenceEffect::KeepsNumber],
         'rsort' => ['array' => ByReferenceEffect::KeepsList],
@@ -111,6 +116,11 @@ final class ByReferenceArguments
             if ($arg->value === $argument) {
                 $parameter = $this->parameterAt($function?->getParameters() ?? [], $index, $arg);
                 $effect = $effects[$parameter?->getName() ?? ''] ?? ByReferenceEffect::Replaces;
+
+                // The matches type a whole variable; a key the call writes them into stays unread.
+                if ($effect === ByReferenceEffect::WritesMatches) {
+                    return $argument instanceof Variable && $this->capturesStringList($call) ? $effect : ByReferenceEffect::Replaces;
+                }
 
                 // A string comparison puts `10` before `2`, keying a list out of order.
                 return $effect === ByReferenceEffect::KeepsAny && ! $this->comparesKeysAsNumbers($call)
@@ -172,6 +182,20 @@ final class ByReferenceArguments
 
         return $flags === null
             || ($flags instanceof ConstFetch && in_array($flags->name->toString(), self::NUMERIC_SORT_FLAGS, true));
+    }
+
+    /**
+     * Whether a preg_match() call writes a list of strings: it passes no flags, which nest each group, and its pattern
+     * is a literal naming no group, since a named group keys the matches as an object.
+     */
+    private function capturesStringList(CallLike $call): bool
+    {
+        $arguments = CallArguments::fromNames($call->getArgs(), ['pattern', 'subject', 'matches', 'flags', 'offset']);
+        $pattern = $arguments->named('pattern')?->value;
+
+        return $arguments->named('flags') === null
+            && $pattern instanceof String_
+            && preg_match(self::NAMED_GROUP, $pattern->value) !== 1;
     }
 
     /**

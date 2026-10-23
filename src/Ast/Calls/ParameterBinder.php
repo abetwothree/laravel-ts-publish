@@ -5,21 +5,23 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use Closure;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
-use PhpParser\Node\Stmt;
+use PhpParser\Node\NullableType;
+use PhpParser\Node\Param;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -32,15 +34,16 @@ use ReflectionUnionType;
  * they declare, which hold for every call; and one whose declaration binds nothing, or an argument narrows or passes as
  * a model no row backs yet, by what that argument binds, which a value read's memos key on (CallSite::signature()).
  *
- * A body write that replaces a parameter ends its class binding there: the caller seeds the body (seedBody()) once
- * its parameters are bound. A written parameter binds no value, since a value binding outlives a write naming no class,
- * such as `$n = (string) $n`, where the body's own local answers.
+ * A body write that replaces a parameter with another class, or a collection's models with other values, ends its
+ * binding there, and the parameter's own `$x = …;` the value it binds: the caller seeds the body (seedBody()) once its
+ * parameters are bound.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type PassedBinding = array{
  *     model: class-string<Model>|null,
  *     classes: non-empty-list<class-string>|null,
+ *     elementModel: class-string<Model>|null,
  *     value: ValueExpressionResult|null,
  *     unsaved: bool,
  *     refines: bool,
@@ -50,37 +53,78 @@ use ReflectionUnionType;
  */
 final class ParameterBinder
 {
-    use CollectsLocalVarBindings;
-
     /**
-     * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes. The
-     * body's writes are scanned once, and only if a parameter's value binding needs them.
+     * The class a closure parameter's native type names, alone or behind a `?`, with whether the `?` is there; null for
+     * any other type, a special name such as `self`, or a name no class or interface has.
      *
-     * @param  array<Stmt>  $stmts  the method's body
-     * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
+     * @return array{class-string, bool}|null
      */
-    public function bindCall(ReflectionMethod $method, array $stmts, array $passed, AnalysisScope $scope): void
+    public static function declaredClass(Param $param): ?array
     {
-        $written = $this->writtenNames($stmts, $scope);
+        $type = $param->type instanceof NullableType ? $param->type->type : $param->type;
+        $class = $type instanceof Name && ! $type->isSpecialClassName() ? $type->toString() : null;
 
-        $this->bindDeclared($method, $scope, $written);
-        $this->bindPassedNames($passed, $scope, $written);
+        return $class !== null && (class_exists($class) || interface_exists($class))
+            ? [$class, $param->type instanceof NullableType]
+            : null;
     }
 
     /**
-     * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, other classes
-     * in varDeclaredBindings, and its value, which a parameter the body writes leaves to its local.
+     * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
+     *
+     * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
+     */
+    public function bindCall(ReflectionMethod $method, array $passed, AnalysisScope $scope): void
+    {
+        $this->bindDeclared($method, $scope);
+        $this->bindPassed($passed, $scope);
+    }
+
+    /**
+     * Bind each parameter the scope leaves unbound as its argument binds it: a model in varModelBindings, an Eloquent
+     * collection of one model in varCollectionBindings, other classes in varDeclaredBindings, and its value.
      *
      * A model no row may back yet binds as a `new` of it, which the receiver resolver reads again with that mark, in
      * place of a declared concrete model's binding, as a narrower argument replaces a declared abstract class's,
      * interface's or union's. A closure's parameters bind here too, having no method for bindCall().
      *
-     * @param  array<Stmt>  $stmts  the method's or the closure's body
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
      */
-    public function bindPassed(array $stmts, array $passed, AnalysisScope $scope): void
+    public function bindPassed(array $passed, AnalysisScope $scope): void
     {
-        $this->bindPassedNames($passed, $scope, $this->writtenNames($stmts, $scope));
+        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
+            $declaredModel = $scope->varModelBindings[$name] ?? null;
+
+            if ($refines && isset($scope->varDeclaredBindings[$name])) {
+                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
+            } elseif ($unsaved && $classes !== null && $declaredModel !== null && is_a($classes[0], $declaredModel, true)) {
+                // A declared concrete model binds as a saved row, so a passed one no row backs yet replaces it.
+                unset($scope->varModelBindings[$name]);
+            } elseif ($scope->bindsName($name)) {
+                continue;
+            }
+
+            if ($model !== null) {
+                $scope->varModelBindings[$name] = $model;
+
+                continue;
+            }
+
+            if ($classes !== null && $unsaved) {
+                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]), [], [ReceiverClassResolver::HOLDS_ATTRIBUTES => true]);
+            } elseif ($elementModel !== null) {
+                $scope->varCollectionBindings[$name] = [
+                    'type' => $value['type'] ?? ValueResult::arrayWrapType(class_basename($elementModel)),
+                    'modelFqcn' => $elementModel,
+                ];
+            } elseif ($classes !== null) {
+                $scope->varDeclaredBindings[$name] = $classes;
+            }
+
+            if ($value !== null) {
+                $scope->varValueBindings[$name] = $value;
+            }
+        }
     }
 
     /**
@@ -99,11 +143,13 @@ final class ParameterBinder
         // Only a `new` of one class carries a model's unsaved mark into the body: a copy that may be more binds none.
         $classes = $held === null || ($unsaved && count($held->classes) !== 1) ? null : $held->classes;
         $unsaved = $unsaved && $classes !== null;
-        $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+        $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
+        // A listed Eloquent collection keeps its items' model, which the receiver rules read for first() and the rest.
+        $elementModel = $classes === [EloquentCollection::class] && ! $held->keyed ? $held->elementModel : null;
 
         // A value that may be null keeps its `null` arm for a bare read, as a nullable declared parameter does.
         if ($model !== null && ! $unsaved && ! ValueResult::hasNullArm($value['type'])) {
-            return ['model' => $model, 'classes' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
+            return ['model' => $model, 'classes' => null, 'elementModel' => null, 'value' => null, 'unsaved' => false, 'refines' => $refines];
         }
 
         // The parameter holds the value alone: whether the caller's key may be absent, and `??` fills it, stays there.
@@ -112,7 +158,7 @@ final class ParameterBinder
 
         return $classes === null && ($value === null || $refines)
             ? null
-            : ['model' => null, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
+            : ['model' => null, 'classes' => $classes, 'elementModel' => $elementModel, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines];
     }
 
     /**
@@ -157,7 +203,7 @@ final class ParameterBinder
     {
         $classes = $parameter->isVariadic() ? null : $this->nativeClasses($parameter->getType());
 
-        return $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+        return $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
     }
 
     /**
@@ -195,10 +241,8 @@ final class ParameterBinder
      *
      * A Request parameter binds as a request, except in an API resource, whose output was inferred without the request
      * rules; a name the scope already binds is left as it is.
-     *
-     * @param  Closure(): list<string>  $written  the names the body writes
      */
-    private function bindDeclared(ReflectionMethod $method, AnalysisScope $scope, Closure $written): void
+    private function bindDeclared(ReflectionMethod $method, AnalysisScope $scope): void
     {
         $parameters = $method->getParameters();
 
@@ -233,7 +277,7 @@ final class ParameterBinder
                 continue;
             }
 
-            $model = $classes !== null && count($classes) === 1 ? $this->concreteModel($classes[0]) : null;
+            $model = $classes !== null && count($classes) === 1 && ReceiverType::isConcreteModel($classes[0]) ? $classes[0] : null;
 
             if ($model !== null && ! ($parameter->getType()?->allowsNull() ?? true)) {
                 $scope->varModelBindings[$name] = $model;
@@ -245,65 +289,12 @@ final class ParameterBinder
                 $scope->varDeclaredBindings[$name] = $classes;
             }
 
-            $value = in_array($name, $written(), true) ? null : $this->declaredValue($parameter, $docComment, $context);
+            $value = $this->declaredValue($parameter, $docComment, $context);
 
             if ($value !== null) {
                 $scope->varValueBindings[$name] = $value;
             }
         }
-    }
-
-    /**
-     * Apply each argument's binding to the parameter it is passed.
-     *
-     * @param  array<string, PassedBinding>  $passed
-     * @param  Closure(): list<string>  $written  the names the body writes
-     */
-    private function bindPassedNames(array $passed, AnalysisScope $scope, Closure $written): void
-    {
-        foreach ($passed as $name => ['model' => $model, 'classes' => $classes, 'value' => $value, 'unsaved' => $unsaved, 'refines' => $refines]) {
-            $declaredModel = $scope->varModelBindings[$name] ?? null;
-
-            if ($refines && isset($scope->varDeclaredBindings[$name])) {
-                unset($scope->varDeclaredBindings[$name], $scope->varValueBindings[$name]);
-            } elseif ($unsaved && $classes !== null && $declaredModel !== null && is_a($classes[0], $declaredModel, true)) {
-                // A declared concrete model binds as a saved row, so a passed one no row backs yet replaces it.
-                unset($scope->varModelBindings[$name]);
-            } elseif ($scope->bindsName($name)) {
-                continue;
-            }
-
-            if ($model !== null) {
-                $scope->varModelBindings[$name] = $model;
-
-                continue;
-            }
-
-            if ($classes !== null && $unsaved) {
-                $scope->closureParamExprBindings[$name] = new New_(new FullyQualified($classes[0]));
-            } elseif ($classes !== null) {
-                $scope->varDeclaredBindings[$name] = $classes;
-            }
-
-            if ($value !== null && ! in_array($name, $written(), true)) {
-                $scope->varValueBindings[$name] = $value;
-            }
-        }
-    }
-
-    /**
-     * The names a body writes, scanned on the first call and kept for the next.
-     *
-     * @param  array<Stmt>  $stmts
-     * @return Closure(): list<string>
-     */
-    private function writtenNames(array $stmts, AnalysisScope $scope): Closure
-    {
-        $names = null;
-
-        return function () use (&$names, $stmts, $scope): array {
-            return $names ??= $this->collectWrittenVariableNames($stmts, $scope);
-        };
     }
 
     /**
@@ -317,17 +308,6 @@ final class ParameterBinder
         $class = $type instanceof ReflectionNamedType ? $type->getName() : null;
 
         return $class !== null && is_a($class, Request::class, true) ? $class : null;
-    }
-
-    /**
-     * The class as a model a variable binding can hold: an Eloquent model that is not abstract, else null.
-     *
-     * @param  class-string  $class
-     * @return class-string<Model>|null
-     */
-    private function concreteModel(string $class): ?string
-    {
-        return is_a($class, Model::class, true) && ! new ReflectionClass($class)->isAbstract() ? $class : null;
     }
 
     /**

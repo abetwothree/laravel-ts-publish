@@ -21,6 +21,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -238,6 +239,15 @@ it('merges a multi-return closure body into a union via ValueResult::unionResult
     expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
 });
 
+it('reads each returned variable of a multi-return closure body through the walk over its writes', function () {
+    $closure = new AstParser()->parseSource('<?php return function () { if ($this->is_pinned) { return null; } '
+        .'$d = ["id" => $this->id]; $d["title"] = $this->title; return $d; };')[0];
+
+    expect($closure)->toBeInstanceOf(Return_::class)
+        ->and(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($closure->expr)['type'])
+        ->toBe('{ id: number; title: string } | null');
+});
+
 it('falls back to the native return-type annotation when the body resolves to unknown', function () {
     $bodyExpr = new Variable('x');
     $expr = new ArrowFunction(['expr' => $bodyExpr, 'returnType' => new Identifier('int')]);
@@ -309,18 +319,20 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
     foreach (['slug', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $outer;
         $scope->varClassBindings[$name] = [stdClass::class];
-        $scope->varGuardBindings[$name] = ['classes' => [stdClass::class], 'after' => 0];
+        $scope->varGuardBindings[$name] = [['classes' => [stdClass::class], 'after' => 0, 'before' => null]];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varDeclaredBindings[$name] = [stdClass::class];
         $scope->varCollectionBindings[$name] = ['type' => 'User[]', 'modelFqcn' => User::class];
         $scope->varValueBindings[$name] = ['type' => 'string', 'optional' => false];
         $scope->localVarBindings[$name] = $outer;
-        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null]];
+        $scope->byReferenceForms[$name] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
         $scope->requestVarNames[$name] = Request::class;
         $scope->nonNullReads[$name] = [['read' => new Variable($name), 'after' => null, 'before' => null]];
         $scope->bindingEnds[$name] = 0;
-        $scope->bindingGaps[$name] = [[5, 9, null, false]];
+        $scope->bindingGaps[$name] = [[5, 9, null, false, false]];
+        $scope->keyBuiltLocals[$name] = [new Return_($outer)];
+        $scope->passedValues[$name] = $outer;
     }
 
     $before = $scope->nameBindings();
@@ -482,8 +494,7 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'same_model?' => 'string',
         'relation_bio?' => 'string | null',
         'relation_website?' => 'string | null',
-        // A relation read through a model-bound variable is unknown, so the local it binds is too (#93).
-        'relation_bare?' => 'unknown',
+        'relation_bare?' => 'Profile | null',
         'narrowed_bio?' => 'string | null',
         'narrowed_website?' => 'string | null',
         'mapped_reassigned?' => 'unknown',

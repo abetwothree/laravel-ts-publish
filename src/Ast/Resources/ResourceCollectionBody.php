@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -35,7 +35,6 @@ use ReflectionClass;
  */
 final class ResourceCollectionBody
 {
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /**
@@ -174,7 +173,7 @@ final class ResourceCollectionBody
     private function holdsCollectedList(array $stmts, string $name, ReflectionClass $declaring): bool
     {
         $writes = array_values(array_filter(
-            $this->collectVariableWrites($stmts, $declaring),
+            VariableWrites::of($stmts, $declaring),
             fn (array $write): bool => $write[0] === $name,
         ));
 

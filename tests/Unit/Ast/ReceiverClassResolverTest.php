@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -22,11 +25,14 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Name\FullyQualified;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -240,6 +246,54 @@ describe('ReceiverClassResolver::resolve()', function () {
             ->and($resolver->resolve(receiverExpr('$this->resource->comments()->create([])'), postScope()))
             ->toEqual(ReceiverType::of(Comment::class))
             ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::find(1)'), postScope()))->toBeNull();
+    });
+
+    // forwardDecoratedCallTo() hands the relation back only for the very builder it holds, which `$this` promises and
+    // `static` does not: clone() returns a copy, the builder's until Laravel 13.38 gave Relation its own clone().
+    // first()'s `TValue|null` is the model BuildsQueries<TModel> binds.
+    test('a call a relation forwards to its builder holds what the builder returns, the relation itself for $this', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+        $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+        Comment::create(['content' => 'alpha', 'post_id' => $post->id, 'user_id' => $user->id]);
+        $relation = $post->comments();
+        $copy = method_exists(Relation::class, 'clone') ? HasMany::class : Builder::class;
+
+        expect($resolver->resolve(receiverExpr('$this->resource->comments()->where("id", ">", 0)'), postScope()))
+            ->toEqual(new ReceiverType([HasMany::class], relatedModel: Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->clone()'), postScope()))
+            ->toEqual(new ReceiverType([$copy], relatedModel: Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->first()'), postScope()))->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->firstWhere("id", 1)'), postScope()))
+            ->toEqual(ReceiverType::of(Comment::class))
+            ->and($resolver->resolve(receiverExpr('\Workbench\App\Models\Post::query()->first()'), postScope()))->toEqual(ReceiverType::of(Post::class))
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->count()'), postScope()))->toBeNull()
+            ->and($resolver->resolve(receiverExpr('$this->resource->comments()->addHasWhere($query, $relation)'), postScope()))->toBeNull()
+            ->and($relation->where('id', '>', 0))->toBe($relation)
+            ->and($relation->clone())->toBeInstanceOf($copy)
+            ->and($relation->first())->toBeInstanceOf(Comment::class)
+            ->and($relation->firstWhere('id', 0))->toBeNull();
+    });
+
+    // A `new` with no constructor argument holds no attributes; a copy, a filled model and any model a step reaches
+    // may hold some. The binder's `new` for a passed copy is one of those.
+    test('marks only a new model built with no constructor argument as holding no attributes', function () {
+        $resolver = resolve(ReceiverClassResolver::class);
+        $model = new AnalysisScope(new ReflectionClass(Post::class));
+        $copy = new New_(new FullyQualified(Post::class), [], [ReceiverClassResolver::HOLDS_ATTRIBUTES => true]);
+        $attributeless = fn (string $php, ?AnalysisScope $scope = null): ?bool => $resolver->resolve(receiverExpr($php), $scope ?? postScope())?->attributeless;
+
+        expect($attributeless('new \Workbench\App\Models\Post'))->toBeTrue()
+            ->and($attributeless('new static', $model))->toBeTrue()
+            ->and($attributeless('new self()', $model))->toBeTrue()
+            ->and($attributeless('$flag ? new \Workbench\App\Models\Post : $this->resource'))->toBeTrue()
+            ->and($attributeless('new \Workbench\App\Models\Post(["title" => "x"])'))->toBeFalse()
+            ->and($attributeless('new \Workbench\App\Services\UrlService'))->toBeFalse()
+            ->and($attributeless('$this->resource->replicate()'))->toBeFalse()
+            ->and($attributeless('(new \Workbench\App\Models\Post)->fill([])'))->toBeFalse()
+            ->and($attributeless('(new \Workbench\App\Models\Post)->author'))->toBeFalse()
+            ->and($attributeless('\Workbench\App\Models\Post::query()->firstOrNew([])'))->toBeFalse()
+            ->and($resolver->resolve($copy, postScope()))->toEqual(new ReceiverType([Post::class], unsaved: true));
     });
 
     test('a static-syntax call the subject lacks reads as $this->m(), as __call() runs it', function () {
@@ -486,44 +540,88 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
     });
 });
 
-describe('ReceiverClassResolver::returnClasses()', function () {
+describe('DeclaredClasses::returnClasses()', function () {
     test('self names the declaring class, while static and $this name the class read through', function () {
         $resolver = resolve(ReceiverClassResolver::class);
         $viaChild = receiverExpr('(new \\AbeTwoThree\\LaravelTsPublish\\Tests\\Unit\\Ast\\Fixtures\\ReceiverChildDto)->copy()');
 
-        expect($resolver->returnClasses(ReceiverChildDto::class, 'copy'))->toBe([ReceiverBaseDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'fresh'))->toBe([ReceiverChildDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docCopy'))->toBe([ReceiverBaseDto::class])
-            ->and($resolver->returnClasses(ReceiverChildDto::class, 'docFresh'))->toBe([ReceiverChildDto::class])
+        expect(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'copy'))->toBe([ReceiverBaseDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'fresh'))->toBe([ReceiverChildDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'docCopy'))->toBe([ReceiverBaseDto::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverChildDto::class, 'docFresh'))->toBe([ReceiverChildDto::class])
             ->and($resolver->resolve($viaChild, postScope())?->classes)->toBe([ReceiverBaseDto::class]);
     });
 
     test('a native class, static, or class-and-null union return names its classes', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
-
-        expect($resolver->returnClasses(Carbon::class, 'setTimezone'))->toBe([Carbon::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'fluent'))->toBe([ReceiverReturnsProbe::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'classUnion'))->toBe([UrlService::class, Post::class]);
+        expect(DeclaredClasses::returnClasses(Carbon::class, 'setTimezone'))->toBe([Carbon::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'fluent'))->toBe([ReceiverReturnsProbe::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'classUnion'))->toBe([UrlService::class, Post::class]);
     });
 
     test('a native return with a builtin arm, or a missing method, names nothing', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
-
-        expect($resolver->returnClasses(ReceiverReturnsProbe::class, 'builtinUnion'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'publishable'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'noSuchMethod'))->toBeNull();
+        expect(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'builtinUnion'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'publishable'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'noSuchMethod'))->toBeNull();
     });
 
     test('an untyped method falls back to its @return docblock', function () {
-        $resolver = resolve(ReceiverClassResolver::class);
+        expect(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockUnion'))->toBe([UrlService::class, Post::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockThis'))->toBe([ReceiverReturnsProbe::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockUnresolvable'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(Post::class, 'isFeatured'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
+            ->and(DeclaredClasses::returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
+    });
+});
 
-        expect($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnion'))->toBe([UrlService::class, Post::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockThis'))->toBe([ReceiverReturnsProbe::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockUnresolvable'))->toBeNull()
-            ->and($resolver->returnClasses(Post::class, 'isFeatured'))->toBeNull()
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGeneric'))->toBe([Collection::class])
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockGenericArray'))->toBeNull()
-            ->and($resolver->returnClasses(ReceiverReturnsProbe::class, 'docblockProseMention'))->toBe([UrlService::class]);
+describe('DeclaredClasses::docblockArms()', function () {
+    test('a type keyword PHP reserves names no class arm, in any case', function (string $type, bool $nullable) {
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+
+        expect(DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class))
+            ->toBe(['classes' => [], 'named' => false, 'nullable' => $nullable]);
+    })->with([
+        'bool' => ['bool', false],
+        'a nullable string' => ['?string', true],
+        'uppercase, beside null' => ['STRING|null', true],
+        'capitalized' => ['Bool', false],
+        'a generic array' => ['array<int, Post>', false],
+        'callable' => ['callable', false],
+        'a generic iterable' => ['iterable<int>', false],
+        'never' => ['never', false],
+        'object or null' => ['object|null', true],
+        'true or false' => ['true|false', false],
+        'mixed' => ['mixed', false],
+        'void' => ['void', false],
+        'float or int' => ['float|int', false],
+    ]);
+
+    // The keywords need no import map, but a cached output still depends on the file the docblock lives in.
+    test('a docblock naming only type keywords reads no import, but records its file', function () {
+        LaravelTsPublish::partialMock()->shouldReceive('parseFileUseStatements')->never();
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+        DependencyRecorder::start();
+
+        try {
+            $arms = DeclaredClasses::docblockArms('int|string|null', $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
+            $paths = DependencyRecorder::paths();
+        } finally {
+            DependencyRecorder::stop();
+        }
+
+        expect($arms)->toBe(['classes' => [], 'named' => false, 'nullable' => true])
+            ->and($paths)->toBe([(string) $context->getFileName()]);
+    });
+
+    // PHP allows a class named `resource`, so only a lookup can tell; this file's imports name UrlService and Post.
+    test('a class arm beside a keyword resolves through the file\'s imports', function () {
+        $context = new ReflectionClass(ReceiverReturnsProbe::class);
+        $arms = fn (string $type): array => DeclaredClasses::docblockArms($type, $context, ReceiverReturnsProbe::class, ReceiverReturnsProbe::class);
+
+        expect($arms('UrlService|bool|null'))->toBe(['classes' => [UrlService::class], 'named' => false, 'nullable' => true])
+            ->and($arms('?Post'))->toBe(['classes' => [Post::class], 'named' => true, 'nullable' => true])
+            ->and($arms('resource'))->toBe(['classes' => [], 'named' => false, 'nullable' => false]);
     });
 });
 
@@ -552,6 +650,8 @@ describe('ReceiverType', function () {
 
         expect($type->models())->toBe([User::class, Post::class])
             ->and(ReceiverType::of(User::class)->withShortCircuit(true)->shortCircuits)->toBeTrue()
-            ->and(ReceiverType::of(User::class, true)->withShortCircuit(false)->classes)->toBe([User::class]);
+            ->and(ReceiverType::of(User::class, true)->withShortCircuit(false)->classes)->toBe([User::class])
+            ->and(ReceiverType::of(Post::class)->asAttributeless())->toEqual(new ReceiverType([Post::class], unsaved: true, attributeless: true))
+            ->and(ReceiverType::of(Post::class)->asAttributeless()->withShortCircuit(true)->attributeless)->toBeTrue();
     });
 });

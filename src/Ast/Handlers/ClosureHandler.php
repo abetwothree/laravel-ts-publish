@@ -5,16 +5,24 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
@@ -37,6 +45,7 @@ final class ClosureHandler implements ExpressionHandler
 {
     use CollectsLocalVarBindings;
     use InspectsAstNodes;
+    use ResolvesModelRelationTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -47,41 +56,110 @@ final class ClosureHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
+        if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
+            return null;
+        }
+
         // Closures / arrow functions — body analysis first, return-type annotation as the fallback.
         $closureReturns = $this->resolveClosureReturnExpressions($expr);
 
-        if ($closureReturns !== []) {
-            $previousNameBindings = $scope->nameBindings();
-
-            try {
-                // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
-                $scope->releaseUnclaimedParameters($expr);
-
-                if ($expr instanceof ClosureExpr) {
-                    $this->seedBody($expr->stmts, $scope);
-                }
-
-                $bodyResult = count($closureReturns) === 1
-                    ? $engine->resolve($closureReturns[0])
-                    : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope);
-
-                if ($bodyResult['type'] !== 'unknown') {
-                    return $bodyResult;
-                }
-
-                $annotationResult = $this->resolveClosureAstReturnType($expr);
-
-                if ($annotationResult !== null) {
-                    return [...$annotationResult, 'optional' => false];
-                }
-
-                return $bodyResult;
-            } finally {
-                $scope->restoreNameBindings($previousNameBindings);
-            }
+        if ($closureReturns === []) {
+            return null;
         }
 
-        return null;
+        return $scope->within(function () use ($expr, $scope): void {
+            // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
+            $scope->releaseUnclaimedParameters($expr);
+            // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
+            $this->bindDeclaredParameters($expr, $scope);
+            ModelFills::markDefaults($expr, $scope);
+
+            if ($expr instanceof ClosureExpr) {
+                $this->seedBody($expr->stmts, $scope, $expr);
+                $this->bindForeachLoopVariables($expr->stmts, $scope);
+            }
+        }, fn (): array => $this->resolveBody($expr, $closureReturns, $scope, $engine));
+    }
+
+    /**
+     * A closure's returns resolved in its own bindings, or its return-type annotation where they resolve to `unknown`.
+     *
+     * @param  non-empty-list<Expr>  $closureReturns
+     * @return ValueExpressionResult
+     */
+    private function resolveBody(ArrowFunction|ClosureExpr $closure, array $closureReturns, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        $resolve = $this->returnResolver($closure, $engine);
+        $bodyResult = count($closureReturns) === 1
+            ? $resolve($closureReturns[0])
+            : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
+
+        if ($bodyResult['type'] !== 'unknown') {
+            return $bodyResult;
+        }
+
+        $annotationResult = $this->resolveClosureAstReturnType($closure);
+
+        return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
+    }
+
+    /**
+     * How a closure's returns resolve: a closure body's returned variable through the walk over its writes, where the
+     * engine reads one, and any other return as the engine resolves it.
+     *
+     * @return Closure(Expr): ValueExpressionResult
+     */
+    private function returnResolver(ArrowFunction|ClosureExpr $closure, ExpressionEngine $engine): Closure
+    {
+        return $closure instanceof ClosureExpr && $engine instanceof ResolvesReturnedValues
+            ? fn (Expr $returned): array => $engine->resolveReturned($returned, $closure->stmts)
+            : $engine->resolve(...);
+    }
+
+    /**
+     * Bind each parameter whose native type names one class to that class, where no writer bound the name to a class:
+     * a non-null concrete model in varModelBindings, any other class, or a nullable one, in varDeclaredBindings, a
+     * Request included. PHP throws for any other argument, so the type holds for every call.
+     */
+    private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        foreach ($closure->params as $param) {
+            $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
+            $declared = $name === null || $param->variadic ? null : ParameterBinder::declaredClass($param);
+
+            if ($name === null
+                || $declared === null
+                || $scope->bindsClassName($name)
+                || $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)
+            ) {
+                continue;
+            }
+
+            [$class, $nullable] = $declared;
+            $nullable = $nullable
+                || ($param->default instanceof ConstFetch && $param->default->name->toLowerString() === 'null');
+
+            if (! $nullable && ReceiverType::isConcreteModel($class)) {
+                $scope->varModelBindings[$name] = $class;
+            } else {
+                $scope->varDeclaredBindings[$name] = [$class];
+            }
+        }
+    }
+
+    /**
+     * Whether a value a writer bound names a class of its own, such as an enum case, or is only null, as an unpassed
+     * `= null` default is: either says more about the parameter than the class its type declares.
+     *
+     * @param  ValueExpressionResult|null  $value
+     */
+    private function bindsClassOrNull(?array $value): bool
+    {
+        return $value !== null && ($value['type'] === 'null'
+            || isset($value['modelFqcn'])
+            || isset($value['enumFqcn'])
+            || isset($value['directEnumFqcn'])
+            || isset($value['resourceFqcn']));
     }
 
     /**

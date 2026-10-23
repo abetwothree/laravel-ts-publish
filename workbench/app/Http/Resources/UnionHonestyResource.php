@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 /**
  * Exercises: a union arm the engine cannot type is dropped, so the property publishes the arm that is left.
  *
- * One key per recording site, each pinned by the audit: the plain ternary and the Elvis through analyzeClosureUnion(),
- * 'narrowed' through TernaryHandler's instanceof path, 'data_get_default' through KnownFunctionCallHandler, and
- * 'conditional_default', 'match_arm', 'coalesce_right' through ConditionalMethodHandler, MatchHandler, CoalesceHandler.
+ * Keys per recording site, each pinned by the audit: the ternary and the Elvis through analyzeClosureUnion(), then
+ * 'narrowed', 'data_get_default', 'conditional_default', 'match_arm' and 'coalesce_right' through their handlers, the
+ * 'binding_join' keys, 'walk_branch_join' and 'merge_branch_join' through a parameter's, a local's and a merge's join.
  *
  * @mixin Post
  */
@@ -35,6 +35,35 @@ final class UnionHonestyResource extends JsonResource
                 $this->id > 1 => $this->title, default => $this->opaqueValue()
             },
             'coalesce_right' => $this->title ?? $this->opaqueValue(),
+            // The value the callback is passed, which no rule types, is left out beside the one it writes.
+            'binding_join_old' => $this->transform($this->opaqueValue(), function ($value) {
+                if ($this->id > 1) {
+                    $value = $this->title;
+                }
+
+                return $value;
+            }),
+            // The value written inside the block is left out, since the title passed still reaches the read.
+            'binding_join_written' => $this->transform($this->title, function ($title) {
+                if ($this->id > 1) {
+                    $title = $this->opaqueValue();
+                }
+
+                return $title;
+            }),
+            'walk_branch_join' => $this->when($this->id > 0, function () {
+                $built = ['id' => $this->id];
+
+                if ($this->id > 1) {
+                    $built['value'] = $this->opaqueValue();
+                } else {
+                    $built['value'] = $this->title;
+                }
+
+                return $built;
+            }),
+            // The merged side, which no rule types, is left out beside the default's title.
+            $this->mergeWhen($this->id > 0, ['merge_branch_join' => $this->opaqueValue()], ['merge_branch_join' => $this->title]),
         ];
     }
 

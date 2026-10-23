@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeWrappedRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableGuardedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyAuthenticatableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyBranchPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyCollectedPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDeclaredPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
@@ -42,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedMedia
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyGuardedPageCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyModelPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrImageResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyPostOrStringResource;
@@ -58,6 +60,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IntKeyedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LabeledPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyCollectedPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SingleModelStepPost;
@@ -103,6 +106,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Fluent;
 use PhpParser\Node\Expr;
@@ -110,6 +114,7 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
@@ -122,6 +127,7 @@ use Workbench\App\Http\Resources\ModelWrappedPropResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\NarrowedParentResource;
 use Workbench\App\Http\Resources\NarrowedWiderTestResource;
+use Workbench\App\Http\Resources\PostCollection;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\PostStatsResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
@@ -806,14 +812,16 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$probe->anyModel'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
 
-    // An unsaved Product's key is null at runtime, the getKey() limit, so this pins the merge rather than the nullness.
+    // A new Product holds no attributes, so its `id` reads null, as Laravel sends it, beside the author's key; a `?->`
+    // adds no second `null`.
     test('a union receiver merges what each model arm types', function (string $php, string $type) {
         $scope = new AnalysisScope(new ReflectionClass(ReceiverMethodResource::class), Post::class);
 
         expect(new ReceiverPropertyFetchHandler()->resolve(receiverHandlerExpr($php), $scope, chainHandlersThrowingEngine())['type'] ?? null)
-            ->toBe($type);
+            ->toBe($type)
+            ->and((new Product)->id)->toBeNull();
     })->with([
-        ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number'],
+        ['($this->status ? new '.Product::class.' : $this->author)->id', 'string | number | null'],
         ['($this->status ? new '.Product::class.' : $this->author)?->id', 'string | number | null'],
     ]);
 
@@ -1011,14 +1019,15 @@ describe('PropertyChainHandler declines an unknown-only chain', function () {
 });
 
 /**
- * The classes of each guard binding collectInstanceofGuards() writes for one parsed method body.
+ * The scope collectInstanceofGuards() seeds from one parsed method body, and the source it parsed.
  *
- * @return array<string, non-empty-list<class-string>>
+ * @return array{AnalysisScope, string}
  */
-function narrowingBindings(string $body): array
+function guardPassScope(string $body): array
 {
     $scope = new AnalysisScope(new ReflectionClass(NarrowedParentResource::class), Attachment::class);
-    $stmts = new AstParser()->parseSource('<?php '.$body);
+    $source = '<?php '.$body;
+    $stmts = new AstParser()->parseSource($source);
 
     $host = new class
     {
@@ -1034,7 +1043,35 @@ function narrowingBindings(string $body): array
 
     $host->run($stmts, $scope);
 
-    return array_map(fn (array $guard): array => $guard['classes'], $scope->varGuardBindings);
+    return [$scope, $source];
+}
+
+/**
+ * Each variable's classes, from the guard bindings that run to the end of the body: a guard's, never one block's.
+ *
+ * @return array<string, list<class-string>>
+ */
+function narrowingBindings(string $body): array
+{
+    return array_filter(array_map(
+        fn (array $guards): array => array_merge(...array_map(fn (array $guard): array => $guard['before'] === null ? $guard['classes'] : [], $guards)),
+        guardPassScope($body)[0]->varGuardBindings,
+    ));
+}
+
+/**
+ * Every guard binding of each variable, in the order the pass binds them: its classes and the source it covers.
+ *
+ * @return array<string, list<array{list<class-string>, string}>>
+ */
+function blockNarrowingBindings(string $body): array
+{
+    [$scope, $source] = guardPassScope($body);
+
+    return array_map(fn (array $guards): array => array_map(fn (array $guard): array => [
+        $guard['classes'],
+        trim(substr($source, $guard['after'] + 1, ($guard['before'] ?? strlen($source) - 1) - $guard['after'])),
+    ], $guards), $scope->varGuardBindings);
 }
 
 describe('narrowing', function () {
@@ -1121,7 +1158,7 @@ describe('narrowing', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(new Variable('x'), $scope)?->classes)->toBe([Post::class]);
     });
 
-    test('a guard binds a variable exactly when no write to it sits after the guard tests it', function (string $body, array $bindings) {
+    test('a guard binds a variable exactly when no write that can change its class sits after the guard tests it', function (string $body, array $bindings) {
         expect(narrowingBindings($body))->toBe($bindings);
     })->with([
         'no write at all' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; }', ['a' => [Post::class]]],
@@ -1131,7 +1168,23 @@ describe('narrowing', function () {
         'one write after the guard' => ['if (! $a instanceof \Workbench\App\Models\Post) { return; } $a = $this->author;', []],
         'a write before the guard and one after it' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } foreach ([] as $a) {}', []],
         'a write in the condition after the test' => ['if (! $a instanceof \Workbench\App\Models\Post || ! ($a = $this->author)) { return; }', []],
+        'a member and a key write after the guard' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->touched = true; $a[\'k\'] = 1;', ['a' => [Post::class]]],
+        'a $this member write after a guard on $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->touched = true;', [AnalysisScope::PROXY_GUARDS => [Post::class]]],
+        'a write of $this->resource itself after its guard' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource = $this->author;', []],
+        'a member write of a value its column holds, directly or through a relation' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = \'x\'; $a->author->name = \'y\';', ['a' => [Post::class]]],
+        'a member write of a value its column does not hold' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a->title = 5;', []],
+        'an append, which names no member' => ['$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return; } $a[] = 1;', []],
+        'a member and a key write through $this->resource after its guard' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource->touched = true; $this->resource[\'k\'] = 1;', [AnalysisScope::PROXY_GUARDS => [Post::class]]],
+        'a value its column does not hold, written through $this' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->title = 5;', []],
+        'a value its column does not hold, written through $this->resource' => ['if (! $this->resource instanceof \Workbench\App\Models\Post) { return; } $this->resource->title = 5;', []],
     ]);
+
+    test('a member write after a guard still ends the proof that a read through the variable is not null', function () {
+        $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
+
+        expect($proven('$a = $this->author; if ($a->team === null) { return; } $b = 1;'))->toBe(['a'])
+            ->and($proven('$a = $this->author; if ($a->team === null) { return; } $a->team = null;'))->toBe([]);
+    });
 
     test('a guard narrows a variable never written or written only before it, and not one written after it', function () {
         $resource = new GuardWritePostResource(null);
@@ -1186,13 +1239,88 @@ describe('narrowing', function () {
         'a property subject' => ['if (! $this->author instanceof \Workbench\App\Models\User) { return null; }', []],
     ]);
 
-    test('an elseif, an else, or a positive instanceof test binds nothing', function () {
+    test('a chain whose leading branch always leaves binds past the chain, and a positive test only inside its block', function () {
         expect(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } elseif ($a) { return null; }'))
-            ->toBe([])
+            ->toBe(['a' => [Post::class]])
             ->and(narrowingBindings('$a = $this->author; if (! $a instanceof \Workbench\App\Models\Post) { return null; } else { return null; }'))
+            ->toBe(['a' => [Post::class]])
+            ->and(narrowingBindings('$a = $this->author; if ($a) { $b = 1; } elseif (! $a instanceof \Workbench\App\Models\Post) { return null; }'))
             ->toBe([])
             ->and(narrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
-            ->toBe([]);
+            ->toBe([])
+            ->and(blockNarrowingBindings('$a = $this->author; if ($a instanceof \Workbench\App\Models\Post) { return $a->title; }'))
+            ->toBe(['a' => [[[Post::class], 'return $a->title;']]]);
+    });
+
+    test('a test binds inside the blocks it proves, and a nested guard to the end of its block', function (string $body, array $bindings) {
+        expect(blockNarrowingBindings($body))->toBe($bindings);
+    })->with([
+        'a positive test, and the else of a negated one' => [
+            'if ($a instanceof \Workbench\App\Models\Post) { $x = 1; } if (! $b instanceof \Workbench\App\Models\User) { $x = 2; } else { $x = 3; }',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 3;']]],
+        ],
+        'an elseif, under the failed test before it' => [
+            'if (! $a instanceof \Workbench\App\Models\Post) { $x = 1; } elseif ($a instanceof \Workbench\App\Models\Post) { $x = 2; }',
+            ['a' => [[[Post::class], '$x = 2;'], [[Post::class], '$x = 2;']]],
+        ],
+        'an && of tests that hold, and an || chain on one variable' => [
+            'if ($a instanceof \Workbench\App\Models\Post && $b instanceof \Workbench\App\Models\User) { $x = 1; } if ($c instanceof \Workbench\App\Models\Post || $c instanceof \Workbench\App\Models\User) { $x = 2; }',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 1;']], 'c' => [[[Post::class, User::class], '$x = 2;']]],
+        ],
+        'an || of tests on two variables, or an && that fails' => [
+            'if ($a instanceof \Workbench\App\Models\Post || $b instanceof \Workbench\App\Models\User) { $x = 1; } if (! $a instanceof \Workbench\App\Models\Post && ! $b instanceof \Workbench\App\Models\User) { return; }',
+            [],
+        ],
+        'a guard leaving a loop body by continue, a try block by throw' => [
+            'foreach ([] as $i) { if (! $a instanceof \Workbench\App\Models\Post) { continue; } $x = 1; } try { if (! $b instanceof \Workbench\App\Models\User) { throw new \RuntimeException(); } $x = 2; } catch (\RuntimeException) {}',
+            ['a' => [[[Post::class], '$x = 1;']], 'b' => [[[User::class], '$x = 2;']]],
+        ],
+        'a nested guard that falls through, or one written in its block after the test' => [
+            'if ($c) { if (! $a instanceof \Workbench\App\Models\Post) { $x = 1; } $y = 1; } if ($c) { if (! $b instanceof \Workbench\App\Models\User) { return; } $b = 1; }',
+            [],
+        ],
+        'a write after the guard\'s block' => [
+            'if ($c) { if (! $a instanceof \Workbench\App\Models\Post) { return; } $y = 1; } $a = 1;',
+            ['a' => [[[Post::class], '$y = 1;']]],
+        ],
+        'a guard that exits through continue 2 binds to the end of its case, not past the switch' => [
+            'foreach ([] as $i) { switch ($k) { case 1: if (! $x instanceof \Workbench\App\Models\Post) { continue 2; } $a = $x->title; break; } $b = $x->title; }',
+            ['x' => [[[Post::class], '$a = $x->title; break;']]],
+        ],
+        'a guard or a positive test on a foreach\'s own value variable, which a by-reference loop leaves unbound' => [
+            'foreach ($a as $x) { if (! $x instanceof \Workbench\App\Models\Post) { continue; } $y = 1; } foreach ($b as $z) { if ($z instanceof \Workbench\App\Models\Post) { $y = 2; } } foreach ($c as &$w) { if (! $w instanceof \Workbench\App\Models\Post) { continue; } $y = 3; }',
+            ['x' => [[[Post::class], '$y = 1;']], 'z' => [[[Post::class], '$y = 2;']]],
+        ],
+        'an interface proof, then a test for a class that does not implement it, holds the class' => [
+            'if (! $x instanceof \Countable) { return; } if (! $x instanceof \Workbench\App\Models\Post) { return; } $y = 1;',
+            ['x' => [
+                [[Countable::class], 'if (! $x instanceof \Workbench\App\Models\Post) { return; } $y = 1;'],
+                [[Post::class], '$y = 1;'],
+            ]],
+        ],
+        'a class proof, then a test for an interface it does not implement, keeps the class' => [
+            'if (! $x instanceof \Workbench\App\Models\Post) { return; } if (! $x instanceof \Countable) { return; } $y = 1;',
+            ['x' => [
+                [[Post::class], 'if (! $x instanceof \Countable) { return; } $y = 1;'],
+                [[Post::class], '$y = 1;'],
+            ]],
+        ],
+        'a test inside another holds what both prove, the later one where they disagree' => [
+            'if ($a instanceof \Illuminate\Database\Eloquent\Model) { if ($a instanceof \Workbench\App\Models\Post) { if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; } } }',
+            ['a' => [
+                [[Model::class], 'if ($a instanceof \Workbench\App\Models\Post) { if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; } }'],
+                [[Post::class], 'if ($a instanceof \Illuminate\Contracts\Support\Arrayable) { $x = 1; } if ($a instanceof \Workbench\App\Models\User) { $x = 2; }'],
+                [[Post::class], '$x = 1;'],
+                [[User::class], '$x = 2;'],
+            ]],
+        ],
+    ]);
+
+    test('proves a foreach value variable non-null in the block its test runs, unless the loop is by reference', function () {
+        $proven = fn (string $body): array => array_keys(guardPassScope($body)[0]->nonNullReads);
+
+        expect($proven('foreach ($a as $x) { if ($x) { $y = 1; } }'))->toBe(['x'])
+            ->and($proven('foreach ($a as &$x) { if ($x) { $y = 1; } }'))->toBe([]);
     });
 });
 
@@ -1347,7 +1475,7 @@ describe('getKey()', function () {
         $scope->bindingEnds['draft'] = 0;
 
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverHandlerExpr('$draft'), $scope))
-            ->toEqual(new ReceiverType([Post::class], unsaved: true));
+            ->toEqual(new ReceiverType([Post::class], unsaved: true, attributeless: true));
     });
 
     // VariableHandler leaves getKey() to the receiver rules, so a closure parameter keys as the model it holds.
@@ -1871,6 +1999,17 @@ describe('what $this->resource holds, through every path', function () {
         ['max_via_resource', 'number'],
         ['prefixes', 'prefixes'],
     ]);
+
+    // A test on Model rules out neither redeclared class, so the values it holds, nested ones included, read unproven.
+    test('a guard that rules out no redeclared class leaves the values under it as they read unguarded', function (string $key, string $type) {
+        $props = collect(pipelineAnalyzer(ProxyModelGuardResource::class)->analyze()->properties)->keyBy('name');
+
+        expect($props[$key]['type'])->toBe($type);
+    })->with([
+        ['nested', '{ a: { b: { c: { d: { e: string } } } } }'],
+        ['proven', 'Post'],
+        ['narrowed', 'string | null'],
+    ]);
 });
 
 /**
@@ -1904,6 +2043,31 @@ describe('a ResourceCollection holds its items, never the collected model', func
         ['$this->resource->pluck(\'title\')', 'unknown'],
         ['$this->collection', 'ProxyCollectedPostResource[]'],
     ]);
+
+    // The items arrive as a list or one of three paginators, so a test for one keeps that paginator alone.
+    test('an instanceof ternary on the items narrows them to the paginator it tests', function (string $php, string $type) {
+        expect(pipelineAnalyzer(ProxyCollectedPostCollection::class)->resolve(receiverHandlerExpr($php))['type'])->toBe($type);
+    })->with([
+        ['$this->resource instanceof \Illuminate\Pagination\LengthAwarePaginator ? $this->resource : null', 'LengthAwarePaginator<ProxyCollectedPostResource> | null'],
+        ['$this->resource instanceof \Illuminate\Pagination\CursorPaginator ? $this->resource : null', 'CursorPaginator<ProxyCollectedPostResource> | null'],
+        ['! $this->resource instanceof \Illuminate\Pagination\LengthAwarePaginator ? null : $this->resource', 'LengthAwarePaginator<ProxyCollectedPostResource> | null'],
+    ]);
+
+    // A positive test holds in the block it runs, and a nested guard to the end of its block, never past them.
+    test('an instanceof if on the items narrows them inside the block the test proves', function () {
+        $post = new ProxyCollectedPost;
+        $post->forceFill(['id' => 7, 'title' => 'Banana']);
+        $sent = fn (mixed $items, array $query): string|false => json_encode(
+            new ProxyBranchPageCollection($items)->resolve(Request::create('/', 'GET', $query)),
+        );
+
+        expect(collect(pipelineAnalyzer(ProxyBranchPageCollection::class)->analyze()->properties)->keyBy('name')['pager']['type'])
+            ->toBe('LengthAwarePaginator<ProxyCollectedPostResource> | null')
+            ->and($sent(new LengthAwarePaginator([$post], 1, 15), []))->toContain('"pager":{"current_page":1,"data":[{"id":7,"title":"Banana"}]')
+            ->and($sent(new LengthAwarePaginator([$post], 1, 15), ['nested' => 1]))->toContain('"pager":{"current_page":1,')
+            ->and($sent(collect([$post]), []))->toBe('{"pager":null,"nested":false}')
+            ->and($sent(collect([$post]), ['nested' => 1]))->toBe('{"pager":null,"nested":true}');
+    });
 
     // A guard holds only inside its branch, so `page`, read past it, keeps every class the items may arrive in.
     test('a guard on a paginator keeps the items answer', function (string $key, string $type) {
@@ -1995,7 +2159,9 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
         'firstWhere()' => ['$this->comments->firstWhere(\'id\', 1)?->content', 'string | null'],
         'a nullsafe read of the collection' => ['$this->comments?->first()?->content', 'string | null'],
         'through $this->resource' => ['$this->resource->comments->first()?->content', 'string | null'],
-        'find(), whose return depends on its argument' => ['$this->comments->find(1)?->content', 'unknown'],
+        'find() of one literal key' => ['$this->comments->find(1)?->content', 'string | null'],
+        'find() of one literal string key' => ['$this->comments->find(\'1\')?->content', 'string | null'],
+        'find() of a key named' => ['$this->comments->find(key: 1)?->content', 'string | null'],
     ]);
 
     test('reads the element through a plain arrow, which fails where no item is there', function () use ($runAsResource) {
@@ -2007,12 +2173,293 @@ describe('a relation collection\'s first(), last() and firstWhere() hold its ele
             ->and(fn () => $runAsResource($php, new EloquentCollection))->toThrow(ErrorException::class);
     });
 
-    test('declines first() or last() given a default, which Laravel returns where no item matches', function (string $php) {
+    test('declines first(), last() or find() given a default, which Laravel returns where no item matches', function (string $php) {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
 
         expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown');
     })->with([
         '$this->comments->first(null, \'none\')?->content',
         '$this->comments->last(default: \'none\')?->content',
+        '$this->comments->find(1, \'none\')?->content',
     ]);
+
+    test('declines find() on a collection whose find() is not Eloquent\\Collection\'s own', function () use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $php = '$this->comments->toBase()->find(1)?->content';
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown')
+            ->and(fn () => $runAsResource($php, new EloquentCollection([(new Comment)->forceFill(['id' => 1, 'content' => 'Hi'])])))
+            ->toThrow(BadMethodCallException::class);
+    });
+
+    test('declines find() of a key it cannot tell from a list, which returns a collection', function (string $php) use ($runAsResource) {
+        $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+        $comments = new EloquentCollection([(new Comment)->forceFill(['id' => 1, 'content' => 'Hi'])]);
+
+        expect($analyzer->resolve(receiverHandlerExpr($php))['type'])->toBe('unknown')
+            ->and($runAsResource(str_replace('?->content', '', $php), $comments))->toBeInstanceOf(EloquentCollection::class);
+    })->with([
+        'a list' => ['$this->comments->find([1])?->content'],
+        'a collection of keys' => ['$this->comments->find(collect([1]))?->content'],
+    ]);
+});
+
+/**
+ * What the final `return` of a body written with fully-qualified names publishes on a Post resource, read with the
+ * locals the body binds.
+ */
+function collectionFactsType(string $body): string
+{
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
+
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /** @param  list<Stmt>  $stmts */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->collectLocalVarBindings($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+    $returned = $stmts[array_key_last($stmts)];
+
+    if (! $returned instanceof Return_ || $returned->expr === null) {
+        throw new LogicException('The body must end in a return.');
+    }
+
+    return new ResourceAstAnalyzer(new ReflectionClass(ReceiverProbeResource::class), Post::class, 'toArray', null, $scope)
+        ->resolve($returned->expr)['type'];
+}
+
+describe('a collection step that keeps its items', function () {
+    /** Runs a resource body over a saved post whose comments `beta` and `alpha` are loaded, as Laravel would. */
+    $run = function (string $body): mixed {
+        $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+        $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+
+        foreach (['beta', 'alpha'] as $content) {
+            Comment::create(['content' => $content, 'post_id' => $post->id, 'user_id' => $user->id]);
+        }
+
+        $resource = new class(Post::with('comments')->findOrFail($post->id)) extends JsonResource {};
+
+        return Closure::bind(eval('return function () { '.$body.' };'), $resource, $resource)();
+    };
+
+    /** Each comment's content under the key it was sent under, which tells a list from an object. */
+    $contents = fn (array $comments): array => array_map(fn (Comment $comment): string => $comment->content, $comments);
+    $keys = fn (array $items): array => array_keys($items);
+    $same = fn (mixed $value): mixed => $value;
+    $query = '\Workbench\App\Models\Comment::query()->get()';
+
+    test('keeps a collection\'s element and keys through item-keeping steps, a query, Model::all() and a @var', function (string $body, string $type, Closure $read, mixed $sent) use ($run) {
+        expect(collectionFactsType($body))->toBe($type)
+            ->and($read($run($body)))->toBe($sent);
+    })->with([
+        'sortBy()->first()' => [
+            'return $this->comments->sortBy(\'content\')->first()?->content;',
+            'string | null',
+            $same,
+            'alpha',
+        ],
+        'keyBy()->all(), whose string keys json_encode() writes as an object' => [
+            'return $this->comments->keyBy(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            ['beta' => 'beta', 'alpha' => 'alpha'],
+        ],
+        'Model::all()->toResourceCollection()' => [
+            'return \Workbench\App\Models\Post::all()->toResourceCollection();',
+            'PostResource[]',
+            fn (PostCollection $posts): array => $posts->collection->map(fn (object $item): string => $item::class)->all(),
+            [PostResource::class],
+        ],
+        'a query\'s get()->first()' => [
+            'return '.$query.'->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
+        'a @var collection over a value that names no class' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $vague */ '
+                .'$vague = $this->resource->getRelationValue(\'comments\'); return $vague->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
+        'a @var collection over an Eloquent collection the value names no element of' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment> $rows */ '
+                .'$rows = new \Illuminate\Database\Eloquent\Collection($this->comments->all()); return $rows->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
+        'a @var collection of plain values keyed by string, over a value that names no class' => [
+            '/** @var \Illuminate\Support\Collection<string, int> $m */ '
+                .'$m = $this->resource->getAttribute(\'comments\')->pluck(\'id\', \'content\'); return $m->all();',
+            'number[] | Record<string, number>',
+            $keys,
+            ['beta', 'alpha'],
+        ],
+        'all() of a local holding plain values a filter() may leave keyed' => [
+            '$m = $this->comments->map(fn ($c) => $c->content)->filter(); return $m->all();',
+            'string[] | Record<string, string>',
+            $keys,
+            [0, 1],
+        ],
+        'a @var collection that admits null' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<int, \Workbench\App\Models\Comment>|null $maybe */ '
+                .'$maybe = $this->resource->getRelationValue(\'comments\'); return $maybe?->first()?->content;',
+            'string | null',
+            $same,
+            'beta',
+        ],
+        'a @var collection keyed by string' => [
+            '/** @var \Illuminate\Database\Eloquent\Collection<string, \Workbench\App\Models\Comment> $byName */ '
+                .'$byName = $this->resource->getRelationValue(\'comments\')->keyBy(\'content\'); return $byName->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            ['beta' => 'beta', 'alpha' => 'alpha'],
+        ],
+        'values()->all(), a list' => [
+            'return $this->comments->values()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'keyBy()->values()->all(), a list again' => [
+            'return $this->comments->keyBy(\'content\')->values()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'a ternary of a keyed and a listed collection' => [
+            'return ($this->resource->id > 0 ? $this->comments->keyBy(\'content\') : $this->comments)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            ['beta' => 'beta', 'alpha' => 'alpha'],
+        ],
+        'take() of a literal count on a list, a list' => [
+            'return '.$query.'->take(1)->all();',
+            'Comment[]',
+            $contents,
+            ['beta'],
+        ],
+        'take() of a literal count, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->take(1)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha'],
+        ],
+        'take() of a count a variable holds, which may take from the end' => [
+            '$n = -1; return '.$query.'->take($n)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha'],
+        ],
+        'sortKeys() with no arguments on a list, a list' => [
+            'return '.$query.'->sortKeys()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'sortKeysUsing(), whose callback may reverse a list' => [
+            'return '.$query.'->sortKeysUsing(fn ($a, $b) => $b <=> $a)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'only() on an Eloquent collection, which re-indexes the models it keeps' => [
+            'return '.$query.'->sortBy(\'content\')->only([1, 2])->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'except(null) on an Eloquent collection, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->except(null)->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'unique() without a key on an Eloquent collection, which re-indexes' => [
+            'return '.$query.'->sortBy(\'content\')->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'unique() by a key, which keeps the keys a sortBy() left' => [
+            'return '.$query.'->sortBy(\'content\')->unique(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'diff() on an Eloquent collection, which re-indexes' => [
+            'return '.$query.'->sortBy(\'content\')->diff([])->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'unique() without a key on a relation chain, which re-indexes' => [
+            'return $this->comments->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['beta', 'alpha'],
+        ],
+        'unique() without a key on a relation chain past a sortBy()' => [
+            'return $this->comments->sortBy(\'content\')->unique()->all();',
+            'Comment[]',
+            $contents,
+            ['alpha', 'beta'],
+        ],
+        'map() on a relation chain past a key-less unique()' => [
+            'return $this->comments->sortBy(\'content\')->unique()->map(fn ($c) => $c->content)->all();',
+            'string[]',
+            $same,
+            ['alpha', 'beta'],
+        ],
+        'unique() by a key on a relation chain, which keeps the keys a sortBy() left' => [
+            'return $this->comments->sortBy(\'content\')->unique(\'content\')->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'unique() on a base collection, which keeps the keys' => [
+            'return '.$query.'->sortBy(\'content\')->toBase()->unique()->all();',
+            'Comment[] | Record<string, Comment>',
+            $contents,
+            [1 => 'alpha', 0 => 'beta'],
+        ],
+        'modelKeys() of a keyed collection' => [
+            'return '.$query.'->sortBy(\'content\')->modelKeys();',
+            'number[] | Record<string, number>',
+            $keys,
+            [1, 0],
+        ],
+        'toArray() of a keyed collection' => [
+            'return '.$query.'->sortBy(\'content\')->toArray();',
+            'Record<string, unknown>[] | Record<string, Record<string, unknown>>',
+            $keys,
+            [1, 0],
+        ],
+    ]);
+
+    test('declines a step the receiver class does not run, which throws', function (string $body) use ($run) {
+        expect(collectionFactsType($body))->toBe('unknown')
+            ->and(fn () => $run($body))->toThrow(BadMethodCallException::class);
+    })->with([
+        'modelKeys() once toBase() hands the models over in a base collection' => ['return $this->comments->toBase()->modelKeys();'],
+        'load() on a base collection' => ['return $this->comments->toBase()->load(\'user\')->first()?->content;'],
+    ]);
+
+    test('names no element for makeMany(), whose models no row backs yet', function () use ($run) {
+        $body = 'return $this->resource->comments()->makeMany([[\'content\' => \'new\']])->first()->getKey();';
+
+        expect(collectionFactsType($body))->toBe('unknown')
+            ->and($run($body))->toBeNull();
+    });
 });

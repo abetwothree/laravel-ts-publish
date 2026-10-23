@@ -39,8 +39,14 @@ enum ByReferenceEffect
     /** array_walk_recursive() writes each value below the arrays it descends, at any depth. */
     case WritesLeaves;
 
+    /** preg_match() with no flag and no named group writes the groups it captures: a list of strings. */
+    case WritesMatches;
+
     /** Anything else: the callee writes a value the scan does not follow. */
     case Replaces;
+
+    /** What preg_match()'s matches replace: an empty or string list, which a list of strings stands for either way. */
+    private const array MATCHES_REPLACE = ['never[]', '[]', 'string[]'];
 
     /**
      * The type a value of a type holds once the call returns, or null when the scan cannot tell: the type itself while
@@ -287,6 +293,11 @@ enum ByReferenceEffect
 
         $arms = TsTypeShape::splitTopLevel($type, ['|']);
 
+        // A call that may not run leaves the value held, so the matches replace only one they can stand for.
+        if ($this === self::WritesMatches) {
+            return array_diff($arms, self::MATCHES_REPLACE) === [] ? 'string[]' : null;
+        }
+
         if (! array_any($arms, static fn (string $arm): bool => $arm !== 'null')) {
             return $this === self::KeepsAny ? $type : null;
         }
@@ -328,7 +339,7 @@ enum ByReferenceEffect
             self::Appends => self::holdsEach(self::listedElements($arm), $written) ? $arm : null,
             self::WritesElements => self::holdsEach(self::elements($arm), $written) ? $arm : null,
             self::WritesLeaves => self::holdsEach(self::leaves($arm), $written) ? $arm : null,
-            self::KeepsNumber, self::Replaces => null,
+            self::KeepsNumber, self::WritesMatches, self::Replaces => null,
         };
     }
 }

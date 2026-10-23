@@ -74,9 +74,7 @@ final class NewResourceHandler implements ExpressionHandler
                 return $result;
             }
 
-            return $this->resolveEnumFromPropertyArg($payload, $scope)
-                ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine)
-                ?? $result;
+            return $this->enumWrapValue($payload, $scope, $engine) ?? $result;
         }
 
         // new SomeCollection($this->items). Must precede the generic isResourceClass() branch below, for the same

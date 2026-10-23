@@ -233,14 +233,21 @@ final class ValueResult
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
      * duplicate types are removed and import metadata is collected from all branches.
      *
-     * With $firstIsChecked, the first expression is the checked operand of a short `?:`.
+     * With $firstIsChecked, the first expression is the checked operand of a short `?:`; $resolve resolves each one in
+     * the engine's place, as a closure reads its returns.
      *
      * @param  list<Expr>  $returns
+     * @param  (Closure(Expr): ValueExpressionResult)|null  $resolve
      * @return ValueExpressionResult
      */
-    public static function analyzeClosureUnion(array $returns, ExpressionEngine $engine, AnalysisScope $scope, bool $firstIsChecked = false): array
-    {
-        $results = array_map($engine->resolve(...), $returns);
+    public static function analyzeClosureUnion(
+        array $returns,
+        ExpressionEngine $engine,
+        AnalysisScope $scope,
+        bool $firstIsChecked = false,
+        ?Closure $resolve = null,
+    ): array {
+        $results = array_map($resolve ?? $engine->resolve(...), $returns);
 
         if ($firstIsChecked) {
             $results[0] = self::checkedOperand($results[0]);
@@ -248,13 +255,16 @@ final class ValueResult
 
         // Paired with their expressions here because unionResults() receives results only, and by then
         // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
+        $dropped = [];
+
         foreach ($results as $index => $result) {
             if ($result['type'] === 'unknown') {
                 DroppedUnionArms::record($returns[$index], $scope, 'closure-union');
+                $dropped[] = $returns[$index];
             }
         }
 
-        return self::unionResults($results);
+        return DroppedUnionArms::warnOfPlaceholder(self::unionResults($results), $dropped, $scope);
     }
 
     /**
@@ -264,7 +274,8 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
-     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent.
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
+     * `[]` beside a list is no member of its own, since the list already admits it.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -298,7 +309,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        return [...$result, 'optional' => $optional];
+        return [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
     }
 
     /**
@@ -383,6 +394,26 @@ final class ValueResult
     public static function enumTypeName(string $fqcn): string
     {
         return LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+    }
+
+    /**
+     * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
+     */
+    private static function withoutEmptyListBesideList(string $type): string
+    {
+        if (! str_contains($type, 'never[]')) {
+            return $type;
+        }
+
+        $members = TsTypeString::splitTopLevelUnion($type);
+        $lists = array_filter(
+            $members,
+            fn (string $member): bool => $member !== 'never[]' && TsTypeShape::elementType($member) !== null,
+        );
+
+        return $lists === [] || ! in_array('never[]', $members, true)
+            ? $type
+            : implode(' | ', array_diff($members, ['never[]']));
     }
 
     /**

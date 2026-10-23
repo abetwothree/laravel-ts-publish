@@ -271,7 +271,7 @@ class InertiaPageAnalyzer
         }
 
         if ($propsArg instanceof Variable && is_string($propsArg->name)) {
-            $bound = $scope->literalLocalBindings()[$propsArg->name] ?? null;
+            $bound = $scope->literalLocalBinding($propsArg->name);
 
             return $bound === null ? [] : $this->propsArrayLiterals($bound, $scope, $hops + 1);
         }

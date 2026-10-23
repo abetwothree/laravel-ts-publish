@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsEnum;
@@ -105,6 +106,9 @@ class LaravelTsPublish
     public const string CARBON_INTERVAL_OBJECT_TYPE = '{ y: number; m: number; d: number; h: number; i: number; s: number; '
         .'f: number; invert: number; days: number | false; from_string: false }';
 
+    /** The PHPDoc integer subtypes PHPStan names, each holding an int as an `int<min, max>` range does. */
+    protected const array INTEGER_SUBTYPES = ['positive-int', 'negative-int', 'non-negative-int', 'non-positive-int', 'non-zero-int'];
+
     protected static ?Closure $callCommandWith = null;
 
     /**
@@ -195,11 +199,11 @@ class LaravelTsPublish
     }
 
     /**
-     * Resolve the nullability strategy for a relation type, given a short class name or a FQCN.
+     * Resolve the nullability strategy for a relation type, given a short class name or a FQCN, and its relation class.
      */
-    public function relationStrategy(string $type): string
+    public function relationStrategy(string $type, ?string $relationClass = null): string
     {
-        return (new RelationMap)->strategyFor($type);
+        return (new RelationMap)->strategyFor($type, $relationClass);
     }
 
     /**
@@ -600,7 +604,9 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo(); // @codeCoverageIgnore
         }
 
-        return $this->resolveReflectionType($class->getProperty($property)->getType());
+        $reflection = $class->getProperty($property);
+
+        return $this->resolveReflectionType($reflection->getType(), $reflection->getDeclaringClass());
     }
 
     /**
@@ -617,7 +623,9 @@ class LaravelTsPublish
             return $this->emptyTypeScriptInfo();
         }
 
-        return $this->resolveReflectionType($class->getMethod($method)->getReturnType());
+        $reflection = $class->getMethod($method);
+
+        return $this->resolveReflectionType($reflection->getReturnType(), $reflection->getDeclaringClass());
     }
 
     /**
@@ -638,7 +646,7 @@ class LaravelTsPublish
         }
 
         $reflectionMethod = $class->getMethod($method);
-        $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType());
+        $signatureInfo = $this->resolveReflectionType($reflectionMethod->getReturnType(), $reflectionMethod->getDeclaringClass());
 
         if ($signatureInfo['type'] !== 'unknown' && ! TsTypeString::isVagueTsType($signatureInfo['type'])) {
             return $signatureInfo;
@@ -745,13 +753,18 @@ class LaravelTsPublish
         return $cache[$name] = $this->resolveReflectionType($returnType);
     }
 
-    /** @return TypeScriptTypeInfo */
-    public function resolveReflectionType(?ReflectionType $returnType): array
+    /**
+     * Resolve a reflected native type to TypeScript, reading `self` and `parent` against the declaring class.
+     *
+     * @param  ReflectionClass<object>|null  $declaringClass  the class whose member declares the type
+     * @return TypeScriptTypeInfo
+     */
+    public function resolveReflectionType(?ReflectionType $returnType, ?ReflectionClass $declaringClass = null): array
     {
         $result = $this->emptyTypeScriptInfo();
 
         if ($returnType instanceof ReflectionNamedType) {
-            $result = $this->toTsType($returnType->getName());
+            $result = $this->toTsType($this->reflectedTypeName($returnType, $declaringClass));
 
             if ($returnType->allowsNull() && $returnType->getName() !== 'null') {
                 $result['type'] .= ' | null';
@@ -770,7 +783,7 @@ class LaravelTsPublish
 
             foreach ($returnType->getTypes() as $type) {
                 $infos[] = $type instanceof ReflectionNamedType
-                    ? $this->toTsType($type->getName())
+                    ? $this->toTsType($this->reflectedTypeName($type, $declaringClass))
                     : $this->emptyTypeScriptInfo(); // ReflectionIntersectionType inside a DNF union → unknown
             }
 
@@ -804,6 +817,31 @@ class LaravelTsPublish
         }
 
         return $declaringClass; // @codeCoverageIgnore
+    }
+
+    /**
+     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
+     */
+    public function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
+    {
+        $trait = $this->methodDeclaringFileClass($method);
+
+        if (! $trait->isTrait()) {
+            return $typeString;
+        }
+
+        $templates = $this->traitTemplateNames($trait);
+        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
+
+        foreach ($templates as $index => $name) {
+            if (! isset($arguments[$index])) {
+                continue;
+            }
+
+            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
+        }
+
+        return $typeString;
     }
 
     /**
@@ -948,7 +986,7 @@ class LaravelTsPublish
             return $alias;
         }
 
-        $resolved = $this->resolveDocblockTypeName($part, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($part) ? 'int' : $this->resolveDocblockTypeName($part, $useMap, $namespace);
 
         return $this->isUnreadForm($resolved, '<{(')
             ? $this->emptyTypeScriptInfo()
@@ -1071,9 +1109,9 @@ class LaravelTsPublish
             return null;
         }
 
-        // A conditional keeps its first-token reading: whole, toTsType()'s partial match would guess from its arms.
+        // Any other conditional keeps its first token: whole, toTsType()'s partial match would guess from its arms.
         if (preg_match('/^\(\s*(\S+)\s+is\s/', $type, $condition) === 1) {
-            return '('.$condition[1];
+            return $this->isStringConditional($type) ? 'string' : '('.$condition[1];
         }
 
         return $this->normalizeDocblockWhitespace($type);
@@ -1288,7 +1326,7 @@ class LaravelTsPublish
             return $alias['type'];
         }
 
-        $resolved = $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($phpType) ? 'int' : $this->resolveDocblockTypeName($phpType, $useMap, $namespace);
 
         // A type still holding '<', '{' or '(' is a form this reader does not know, such as a callable: degrade it
         // rather than let toTsType()'s partial string matching resolve the 'int' inside it to 'number'.
@@ -1736,7 +1774,7 @@ class LaravelTsPublish
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
-        $infos = $this->serializedCastersTypes($receivers->returnClasses($castable, 'castUsing'))
+        $infos = $this->serializedCastersTypes(DeclaredClasses::returnClasses($castable, 'castUsing'))
             ?? $this->serializedCastersTypes($receivers->bodyReturnClasses($castable, 'castUsing'));
 
         return $infos === null ? null : $this->mergeTypeScriptInfos($infos);
@@ -1862,7 +1900,7 @@ class LaravelTsPublish
     protected function castGetReturnTypes(ReflectionClass $cast): array
     {
         $get = $cast->getMethod('get');
-        $native = $this->resolveReflectionType($get->getReturnType());
+        $native = $this->resolveReflectionType($get->getReturnType(), $get->getDeclaringClass());
         $docComment = $get->getDocComment();
         $docReturn = $docComment !== false && TsTypeString::isVagueTsType($native['type'])
             ? $this->extractReturnTypeFromDocblock($docComment)
@@ -2153,6 +2191,25 @@ class LaravelTsPublish
     }
 
     /**
+     * A reflected named type's name, `self` and `parent` resolved against the class whose member declares it.
+     *
+     * PHP 8.4 reflects each as written, where PHP 8.5 resolves them everywhere but in a trait.
+     *
+     * @param  ReflectionClass<object>|null  $declaringClass
+     */
+    protected function reflectedTypeName(ReflectionNamedType $type, ?ReflectionClass $declaringClass): string
+    {
+        $name = $type->getName();
+        $parent = $declaringClass?->getParentClass();
+
+        return match (strtolower($name)) {
+            'self' => $declaringClass?->getName() ?? $name,
+            'parent' => $parent instanceof ReflectionClass ? $parent->getName() : $name,
+            default => $name,
+        };
+    }
+
+    /**
      * Every trait used by a class, including traits used by those traits.
      *
      * @param  ReflectionClass<object>  $class
@@ -2241,31 +2298,6 @@ class LaravelTsPublish
             $this->bindTraitTemplates($typeString, $method),
             $this->methodDeclaringFileClass($method),
         );
-    }
-
-    /**
-     * Replace a trait's @template names with the classes its consumer binds through `@use Trait<X>`.
-     */
-    protected function bindTraitTemplates(string $typeString, ReflectionMethod $method): string
-    {
-        $trait = $this->methodDeclaringFileClass($method);
-
-        if (! $trait->isTrait()) {
-            return $typeString;
-        }
-
-        $templates = $this->traitTemplateNames($trait);
-        $arguments = $templates === [] ? [] : $this->traitUseArguments($method->getDeclaringClass(), $trait);
-
-        foreach ($templates as $index => $name) {
-            if (! isset($arguments[$index])) {
-                continue;
-            }
-
-            $typeString = (string) preg_replace('/(?<![\w\\\\$])'.preg_quote($name, '/').'(?![\w\\\\])/', '\\'.$arguments[$index], $typeString);
-        }
-
-        return $typeString;
     }
 
     /**
@@ -2499,7 +2531,7 @@ class LaravelTsPublish
             return $alias;
         }
 
-        $resolved = $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
+        $resolved = $this->isIntegerSubtype($valueType) ? 'int' : $this->resolveDocblockTypeName($valueType, $useMap, $namespace);
 
         // '<' is left to toTsType(), whose partial match reads `class-string<X>` as the string it is.
         return $this->isUnreadForm($resolved, '{(')
@@ -2715,6 +2747,33 @@ class LaravelTsPublish
     }
 
     /**
+     * Whether every branch a conditional return type `($x is T ? A : B)` takes, a nested conditional's too, is a string
+     * type: a string literal, `string` or a `…-string` subtype, alone or in a union or an intersection of them.
+     */
+    protected function isStringConditional(string $type): bool
+    {
+        // A `?` with no space after it makes a type nullable, as `?string`, which the split below would take for a `?`
+        // ending the test.
+        if (! TsTypeShape::isWrapped($type, '(', ')') || preg_match('/\?(?!\s)/', $type) === 1) {
+            return false;
+        }
+
+        $test = TsTypeShape::splitTopLevel(substr($type, 1, -1), ['?']);
+        $branches = count($test) === 2 ? TsTypeShape::splitTopLevel($test[1], [':']) : [];
+
+        return count($branches) === 2 && array_all($branches, fn (string $branch): bool => $this->isStringConditional($branch)
+            || array_all(TsTypeShape::splitTopLevel($branch, ['|', '&']), $this->isPhpDocStringType(...)));
+    }
+
+    /**
+     * Whether a PHPDoc type is a string literal, `string` or a `…-string` subtype such as `non-empty-string`.
+     */
+    protected function isPhpDocStringType(string $phpType): bool
+    {
+        return preg_match('/^(?:[a-z]+-)*string$/i', $phpType) === 1 || $this->phpDocStringLiteral($phpType) !== null;
+    }
+
+    /**
      * Whether a PHPDoc type opens as a shape: `array{`, `list{`, `object{`, or a `non-empty-` one.
      */
     protected function isPhpDocShape(string $phpType): bool
@@ -2731,6 +2790,14 @@ class LaravelTsPublish
     protected function isUnreadForm(string $resolved, string $brackets): bool
     {
         return strpbrk($resolved, $brackets) !== false && ! str_starts_with($resolved, '($');
+    }
+
+    /**
+     * Whether a PHPDoc type is an integer range such as `int<0, max>` or a named subtype such as `positive-int`.
+     */
+    protected function isIntegerSubtype(string $phpType): bool
+    {
+        return preg_match('/^int\s*<[^<>]+>$/i', $phpType) === 1 || in_array(strtolower($phpType), self::INTEGER_SUBTYPES, true);
     }
 
     /**

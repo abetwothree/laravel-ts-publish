@@ -59,13 +59,14 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         $name = $expr->name->toString();
+        $attributeless = $receiver->attributeless && ! in_array($name, $receiver->filled, true);
         $results = [];
 
         foreach ($receiver->classes as $class) {
             // The answer, a decline included, follows the class's declarations, which reflection reads without parsing.
             DependencyRecorder::recordClass($class);
             $result = is_a($class, Model::class, true)
-                ? $this->modelMember($class, $name, $scope->carriesImports)
+                ? $this->modelMember($class, $name, $scope->carriesImports, $attributeless)
                 : $this->reflectedProperty($class, $name);
 
             // One untypable arm would make the union a lie; decline so dispatch reaches the floor.
@@ -90,18 +91,21 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
     }
 
     /**
-     * One model's attribute (accessor → cast → column) or, failing that, its relation.
+     * One model's attribute (accessor → cast → column) or, failing that, its relation; a column a model with no
+     * attributes reads is null.
      *
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private function modelMember(string $modelFqcn, string $name, bool $carriesImports): ?array
+    private function modelMember(string $modelFqcn, string $name, bool $carriesImports, bool $attributeless): ?array
     {
         $resolver = resolve(ModelAttributeResolver::class);
         $attribute = resolve(ReflectedTypeAcceptor::class)->accept($resolver->resolveAttribute($modelFqcn, $name, $carriesImports));
 
         if ($attribute !== null) {
-            return $attribute;
+            return $attributeless && $this->readsNullWithoutAttributes($resolver, $modelFqcn, $name)
+                ? [...$attribute, 'type' => ValueResult::withNullArm($attribute['type'])]
+                : $attribute;
         }
 
         $relation = $resolver->resolveRelation($modelFqcn, $name);
@@ -122,6 +126,27 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         return $result;
+    }
+
+    /**
+     * Whether a model with no attributes reads a column as null: one its new instance holds no default for, which no
+     * accessor or cast class computes; a built-in or enum cast reads a missing value as null, a cast class may not.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     */
+    private function readsNullWithoutAttributes(ModelAttributeResolver $resolver, string $modelFqcn, string $name): bool
+    {
+        $column = $resolver->getAttributes($modelFqcn)?->firstWhere('name', $name);
+        $instance = $resolver->getInstance($modelFqcn);
+        $cast = $column['cast'] ?? null;
+        $castClass = $cast === null ? null : explode(':', $cast, 2)[0];
+
+        return $column !== null
+            && $column['type'] !== null
+            && $instance !== null
+            && ! array_key_exists($name, $instance->getAttributes())
+            && ! in_array($cast, ['accessor', 'attribute'], true)
+            && ($castClass === null || ! class_exists($castClass) || enum_exists($castClass));
     }
 
     /**

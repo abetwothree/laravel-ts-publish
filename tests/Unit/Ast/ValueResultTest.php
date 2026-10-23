@@ -579,3 +579,25 @@ describe('ValueResult::unionResults() over an arm that can be a MissingValue', f
         ])['optional'])->toBeFalse();
     });
 });
+
+describe('ValueResult::unionResults() over an empty array beside a list', function () {
+    test('folds never[] into a list it is assignable to, and keeps it beside anything else', function (array $types, string $union) {
+        $arms = array_map(fn (string $type): array => ['type' => $type, 'optional' => false], $types);
+
+        expect(ValueResult::unionResults($arms)['type'])->toBe($union);
+    })->with([
+        'a list' => [['string[]', 'never[]'], 'string[]'],
+        'a list of unknown' => [['unknown[]', 'never[]'], 'unknown[]'],
+        'an empty array first' => [['never[]', '{ id: number }[]'], '{ id: number }[]'],
+        'a nullable list' => [['string[] | null', 'never[]'], 'string[] | null'],
+        'an Array<> spelling' => [['Array<string>', 'never[]'], 'Array<string>'],
+        'a list of a union' => [['(string | number)[]', 'never[]'], '(string | number)[]'],
+        'a list beside null' => [['never[]', 'null', 'number[]'], 'number[] | null'],
+        'an empty array alone' => [['never[]'], 'never[]'],
+        'an empty array beside null' => [['never[]', 'null'], 'never[] | null'],
+        'a tuple' => [['[string, number]', 'never[]'], '[string, number] | never[]'],
+        'a record' => [['Record<string, string>', 'never[]'], 'Record<string, string> | never[]'],
+        'a named type' => [['UserCollection', 'never[]'], 'UserCollection | never[]'],
+        'an empty array nested in a shape' => [['{ a: never[] }', 'string[]'], '{ a: never[] } | string[]'],
+    ]);
+});

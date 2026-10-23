@@ -32,6 +32,15 @@ class TypedActionParametersController
         ]);
     }
 
+    /** Reads two relations of a route-bound model. */
+    public function relations(Post $post): Response
+    {
+        return Inertia::render('Typed/Relations', [
+            'author' => $post->author,
+            'comments' => $post->comments,
+        ]);
+    }
+
     /** Reads a nullable scalar and a union parameter. */
     public function filter(?string $term = null, int|string $key = 0): Response
     {

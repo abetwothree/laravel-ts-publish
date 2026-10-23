@@ -74,6 +74,9 @@ a concrete class, so it stays a one-line change if a provider author asks for it
 handler profile, whose handlers mean nothing in a provider. It reads `#[TsCasts]` from `provide()` only, on purpose.
 `InertiaSharedDataAnalyzer` also reads class-level casts, but adding that here would be a new feature, not a fix.
 
+Inside an `instanceof` arm `$model` holds the tested model, so its reads and relation calls type there:
+`$model instanceof Post ? $model->comments()->count() : null` infers `number | null`.
+
 ### Inferred imports
 
 `ModelMetadataAnalyzer::inferredTypeImports()` passes `AnalysisImports::build()` only the channels the inferred
@@ -103,7 +106,7 @@ object literal with numeric keys or as a tuple.
 
 `isObjectLike()` requires every non-null arm to be an object literal or a `Record`, so a mixed union, an imported alias
 or a `#[TsCasts]` tuple keeps `[]`. Coercion reads the type string because the engine's DTOs export nothing else. The
-list-or-object decision is stringified in `InlineArrayHandler`, in `LaravelTsPublish::resolveGenericContainerType()`
+list-or-object decision is stringified in `InlineObjectResult`, in `LaravelTsPublish::resolveGenericContainerType()`
 and in `mergeTypeScriptInfos()`, so a structured shape channel would have to start at those three points.
 
 ## Filenames and barrels

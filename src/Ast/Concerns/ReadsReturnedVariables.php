@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use Closure;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -20,6 +27,7 @@ use PhpParser\Node\Expr\PostDec;
 use PhpParser\Node\Expr\PostInc;
 use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
+use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -29,12 +37,14 @@ use PhpParser\Node\Stmt\Expression as ExpressionStmt;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\Node\Stmt\While_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use WeakMap;
 
 /**
  * Reads the array a method builds in a local variable and returns, walking the variable's writes from the last whole
@@ -45,15 +55,19 @@ use ReflectionClass;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type UntypedKeyWrite = array{string, Expr}
+ *
  * @internal
  */
 trait ReadsReturnedVariables
 {
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
-    /** Reads that publish only part of what they read; variableBranch() skips a variable whose walk raises it. */
-    private int $lenientReads = 0;
+    /** @var list<UntypedKeyWrite> each key the walk under way wrote a value the engine cannot type, with that value */
+    private array $untypedKeyWrites = [];
+
+    /** @var WeakMap<MethodAnalysis, list<UntypedKeyWrite>>|null each walked or literal branch's untyped key writes */
+    private ?WeakMap $branchNotes = null;
 
     /**
      * The analysis of a whole-array write's value, or null for an expression the host does not read.
@@ -80,6 +94,17 @@ trait ReadsReturnedVariables
     abstract protected function subjectReflection(): ReflectionClass;
 
     /**
+     * The scope the walk reads in, which an arm its join leaves out is recorded against.
+     */
+    abstract protected function analysisScope(): AnalysisScope;
+
+    /**
+     * The string, int or class-constant literal a local holds at a read where the host binds it, so a key write or an
+     * unset() through that local names its key; null for any other read.
+     */
+    abstract protected function literalLocal(Variable $read): ?Expr;
+
+    /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
      *
      * @return TAnalysis
@@ -93,6 +118,15 @@ trait ReadsReturnedVariables
      * @return array{name: string, result: ValueExpressionResult}|null
      */
     abstract protected function appendedKey(Expr $value): ?array;
+
+    /**
+     * Join the exclusive branches of an `if` chain or a loop, each the keys the variable holds at its end: a key every
+     * branch holds keeps each branch's type, and one some branch lacks is optional.
+     *
+     * @param  non-empty-list<TAnalysis>  $branches
+     * @return TAnalysis
+     */
+    abstract protected function joinedBranches(array $branches): MethodAnalysis;
 
     /**
      * The analysis of one array literal a closure returns, each key it sets required within that branch.
@@ -109,21 +143,65 @@ trait ReadsReturnedVariables
     abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
 
     /**
+     * Resolve what a body returns, a returned variable the scope cannot type read through the walk over its writes.
+     *
+     * ResolvesReturnedValues entry point for a closure's returns and those of a method read as a value.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body that returns $returned
+     * @return ValueExpressionResult
+     */
+    public function resolveReturned(Expr $returned, array $stmts): array
+    {
+        $result = $this->analyzeValueExpression($returned);
+
+        if ($result['type'] !== 'unknown' || ! $returned instanceof Variable || ! is_string($returned->name)) {
+            return $result;
+        }
+
+        return $this->walkedValue($stmts, $returned->name) ?? $result;
+    }
+
+    /**
+     * The array a local holds where it is read, walked over the body's statements that end before the read. Null for a
+     * variable variable, where none does, where the one holding the read writes the local too, as a loop can before the
+     * read runs again, or where the walk reads the writes only partly or finds no key.
+     *
+     * ResolvesReturnedValues entry point for a value read of a local built by key writes.
+     *
+     * @param  array<Node\Stmt>  $stmts  the body holding the read
+     * @return ValueExpressionResult|null
+     */
+    public function walkedLocal(Variable $read, array $stmts): ?array
+    {
+        $name = $read->name;
+        $stmts = array_values($stmts);
+        $offset = $read->getStartFilePos();
+        $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
+        $holding = $stmts[count($before)] ?? null;
+
+        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable($holding, $name))) {
+            return null;
+        }
+
+        return $this->walkedValue($before, $name);
+    }
+
+    /**
      * Resolve properties from a method that builds an array variable and returns it.
      *
      * Handles: $data = [...]; $data['key'] = expr; if (...) { $data['key'] = expr; } return $data;
-     * It reads a variable the gate rejects too, publishing what the walk sees, and counts that as a lenient read.
+     * It reads a variable the gate rejects too, publishing what the walk sees, as an analysis not read completely.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis
      */
     protected function resolveVariableReturnAnalysis(array $stmts, string $varName, bool $topLevel = true): MethodAnalysis
     {
-        if (! $this->readsVariableArray($stmts, $varName)) {
-            $this->lenientReads++;
-        }
+        $reads = $this->readsVariableArray($stmts, $varName);
+        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
+        $analysis->readsCompletely = $analysis->readsCompletely && $reads;
 
-        return $this->walkVariable($stmts, $varName, $topLevel);
+        return $analysis;
     }
 
     /**
@@ -136,7 +214,7 @@ trait ReadsReturnedVariables
     {
         $assigned = false;
 
-        foreach ($this->collectVariableWrites($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
+        foreach (VariableWrites::of($stmts, $this->subjectReflection()) as [$written, $node, $writtenTo]) {
             if ($written !== $varName) {
                 continue;
             }
@@ -163,11 +241,12 @@ trait ReadsReturnedVariables
     /**
      * Recursively collect array assignments to a variable from method statements.
      *
-     * Assignments inside a branch, a loop, a `try` body, a `catch` or a `case` are marked as optional, except those a
-     * `do` body makes before its first `break` or `continue`, which always run. A whole-array write that analyzes as
-     * nothing counts as a lenient read, since its keys are then unknown.
+     * The bodies of an `if` chain and of a `foreach`, `for` or `while` join as branches. Assignments inside a `try`
+     * body, a `catch`, a `case`, or a `do` body after its first `break` or `continue`, are marked as optional. A
+     * whole-array write that analyzes as nothing leaves the variable not read completely, since its keys are unknown.
      *
      * @param  array<Node\Stmt>  $stmts
+     * @param  TAnalysis  $into
      */
     protected function collectVariableArrayAssignments(
         array $stmts,
@@ -188,13 +267,14 @@ trait ReadsReturnedVariables
             $appended = $appendedValue === null ? null : $this->appendedKey($appendedValue);
 
             if ($appended !== null) {
+                $this->noteUntypedWrite($appended['name'], $appendedValue, $appended['result']);
                 $this->writeKey($into, $appended['name'], $appended['result'], $isConditional);
 
                 continue;
             }
 
             if ($this->writesUnreadKey($stmt, $varName, $into)) {
-                $this->lenientReads++;
+                $into->readsCompletely = false;
 
                 continue;
             }
@@ -218,11 +298,17 @@ trait ReadsReturnedVariables
                 $baseAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($baseAnalysis === null) {
-                    $this->lenientReads++;
+                    $into->readsCompletely = false;
 
                     continue;
                 }
 
+                // A write that always runs replaces every key held before it, as fromLastReplacement() does at the top.
+                if (! $isConditional && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+                    $into->replaceWith($this->newVariableAnalysis());
+                }
+
+                $this->noteUntypedItems($stmt->expr->expr, $baseAnalysis);
                 $this->mergeWholeArrayWrite($into, $baseAnalysis, $isConditional);
 
                 continue;
@@ -237,12 +323,13 @@ trait ReadsReturnedVariables
                 $addedAnalysis = $this->analyzeArrayExpression($stmt->expr->expr, $topLevel);
 
                 if ($addedAnalysis === null) {
-                    $this->lenientReads++;
+                    $into->readsCompletely = false;
 
                     continue;
                 }
 
                 $addedAnalysis->dropKeysHeldBy($into);
+                $this->noteUntypedItems($stmt->expr->expr, $addedAnalysis);
                 $this->mergeWholeArrayWrite($into, $addedAnalysis, $isConditional);
 
                 continue;
@@ -258,6 +345,7 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
                 $result = $this->analyzeValueExpression($stmt->expr->expr);
+                $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
                     $into->addSignatureEntry($keyName, $result);
@@ -271,20 +359,12 @@ trait ReadsReturnedVariables
             }
 
             if ($stmt instanceof If_) {
-                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
-
-                foreach ($stmt->elseifs as $elseif) {
-                    $this->collectVariableArrayAssignments($elseif->stmts, $varName, true, $into, $topLevel);
-                }
-
-                if ($stmt->else !== null) {
-                    $this->collectVariableArrayAssignments($stmt->else->stmts, $varName, true, $into, $topLevel);
-                }
+                $this->collectIfChainAssignments($stmt, $varName, $isConditional, $into, $topLevel);
             }
 
-            // Loop bodies are conditional: a loop may execute zero times.
+            // A loop may run zero times, so the keys held before it are a branch beside its body's.
             if ($stmt instanceof Foreach_ || $stmt instanceof For_ || $stmt instanceof While_) {
-                $this->collectVariableArrayAssignments($stmt->stmts, $varName, true, $into, $topLevel);
+                $this->collectExclusiveAssignments([$stmt->stmts], true, $varName, $isConditional, $into, $topLevel);
             }
         }
     }
@@ -292,20 +372,23 @@ trait ReadsReturnedVariables
     /**
      * The branches a closure's returns can merge, none when no branch sets a key.
      *
-     * One per returned array, `[]` included, one per returned variable the walk reads completely, however often it is
-     * returned, and one per other value mergedValueBranch() reads. A return none of them reads is a lenient read.
+     * One per returned array, `[]` included, per returned variable the walk reads completely, however often returned,
+     * or returned alone with no unset() it cannot name, as a method's lone one is read, and per other value
+     * mergedValueBranch() reads, with whether every return was read completely.
      *
-     * @return list<TAnalysis>
+     * @return array{list<TAnalysis>, bool}
      */
     protected function closureReturnBranches(Expr $closure): array
     {
         $stmts = $closure instanceof ClosureExpr ? $closure->stmts : [];
+        $returns = $this->resolveClosureReturnExpressions($closure);
         $branches = [];
         $read = [];
+        $complete = true;
 
-        foreach ($this->resolveClosureReturnExpressions($closure) as $returned) {
+        foreach ($returns as $returned) {
             if ($returned instanceof Array_) {
-                $branches[] = $this->mergedArrayAnalysis($returned);
+                $branches[] = $this->literalBranch($returned, $this->mergedArrayAnalysis($returned));
 
                 continue;
             }
@@ -316,14 +399,16 @@ trait ReadsReturnedVariables
                 }
 
                 $read[$returned->name] = true;
-                $branch = $this->variableBranch($stmts, $returned->name, topLevel: false);
+                $branch = count($returns) === 1 && ! $this->unsetsUnnamedKey($stmts, $returned->name)
+                    ? $this->resolveVariableReturnAnalysis($stmts, $returned->name, topLevel: false)
+                    : $this->variableBranch($stmts, $returned->name, topLevel: false);
             } else {
                 $branch = $this->mergedValueBranch($returned);
             }
 
             // Its keys are unknown, so a variable holding this merge is not read completely either.
             if ($branch === null) {
-                $this->lenientReads++;
+                $complete = false;
 
                 continue;
             }
@@ -331,8 +416,46 @@ trait ReadsReturnedVariables
             $branches[] = $branch;
         }
 
+        $complete = $complete && array_all($branches, fn (MethodAnalysis $branch): bool => $branch->readsCompletely);
+
         // A guard's `return []` merges nothing, so beside a branch that sets a key it is a branch like any other.
-        return array_any($branches, fn (MethodAnalysis $branch): bool => $branch->properties !== []) ? $branches : [];
+        $setsKey = array_any($branches, fn (MethodAnalysis $branch): bool => $branch->properties !== []);
+
+        return [$setsKey ? $branches : [], $complete];
+    }
+
+    /**
+     * An array literal's analysis as a merge call's or a spread helper's branch, beside the items it types `unknown`.
+     *
+     * @param  TAnalysis  $branch
+     * @return TAnalysis
+     */
+    protected function literalBranch(Array_ $literal, MethodAnalysis $branch): MethodAnalysis
+    {
+        $this->branchNotes ??= new WeakMap;
+        $this->branchNotes[$branch] = $this->untypedItems($literal, $branch);
+
+        return $branch;
+    }
+
+    /**
+     * A merge call's or a spread helper's join, once each value it left out beside a typed one is recorded and warned
+     * of, as the walk's join does, naming the untyped write its walked or literal branch saw.
+     *
+     * @param  TAnalysis  $joined
+     * @param  list<TAnalysis>  $branches
+     * @return TAnalysis
+     */
+    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches): MethodAnalysis
+    {
+        $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
+        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'merge-branch-join');
+        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
+        $this->branchNotes ??= new WeakMap;
+        $this->branchNotes[$joined] = array_merge(...$notes);
+
+        return $joined;
     }
 
     /**
@@ -342,15 +465,14 @@ trait ReadsReturnedVariables
      */
     private function mergedValueBranch(Expr $expr): ?MethodAnalysis
     {
-        $lenientReads = $this->lenientReads;
         $analysis = $this->mergedValueAnalysis($expr);
 
-        return $this->lenientReads === $lenientReads ? $analysis : null;
+        return $analysis !== null && $analysis->readsCompletely ? $analysis : null;
     }
 
     /**
      * A returned variable's branch, or null when the walk does not read it completely: the gate rejects a whole write,
-     * or reading it counts a lenient read, as a model-less `parent::toArray()` or an unreadable helper does.
+     * or its walk is not read completely, as over a model-less `parent::toArray()` or an unreadable helper.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis|null
@@ -359,26 +481,49 @@ trait ReadsReturnedVariables
     {
         $read = $this->readVariable($stmts, $varName, $topLevel);
 
-        return $read !== null && $read[1] ? $read[0] : null;
+        return $read !== null && $read->readsCompletely ? $read : null;
     }
 
     /**
-     * A returned variable's walk and whether it read the variable completely, or null when the gate rejects a whole
-     * write: a walk that counts a lenient read still saw the keys it publishes.
+     * The inline object a variable's walk over a body reads; null where the walk reads it only partly, or reads no key.
      *
      * @param  array<Node\Stmt>  $stmts
-     * @return array{TAnalysis, bool}|null
+     * @return ValueExpressionResult|null
      */
-    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?array
+    private function walkedValue(array $stmts, string $varName): ?array
     {
-        if (! $this->readsVariableArray($stmts, $varName)) {
+        $branch = $this->variableBranch($stmts, $varName, topLevel: false);
+
+        if ($branch === null || $branch->properties === []) {
             return null;
         }
 
-        $lenientReads = $this->lenientReads;
-        $analysis = $this->walkVariable($stmts, $varName, $topLevel);
+        resolve(IndexSignatureReconciler::class)->reconcile($branch);
 
-        return [$analysis, $this->lenientReads === $lenientReads];
+        return new InlineObjectResult()->of($branch);
+    }
+
+    /**
+     * Whether a statement writes the named variable anywhere within it, as VariableWrites::of() counts a write.
+     */
+    private function writesVariable(Node\Stmt $stmt, string $varName): bool
+    {
+        return array_any(
+            VariableWrites::of([$stmt], $this->subjectReflection()),
+            fn (array $write): bool => $write[0] === $varName,
+        );
+    }
+
+    /**
+     * A returned variable's walk, or null when the gate rejects a whole write: a walk not read completely still saw the
+     * keys it publishes.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     * @return TAnalysis|null
+     */
+    private function readVariable(array $stmts, string $varName, bool $topLevel = true): ?MethodAnalysis
+    {
+        return $this->readsVariableArray($stmts, $varName) ? $this->walkVariable($stmts, $varName, $topLevel) : null;
     }
 
     /**
@@ -391,8 +536,17 @@ trait ReadsReturnedVariables
     {
         $analysis = $this->newVariableAnalysis();
         $live = $this->fromLastReplacement($stmts, $varName);
+        // A value read during the walk can start a walk of its own, whose writes are not this one's.
+        $outer = $this->untypedKeyWrites;
+        $this->untypedKeyWrites = [];
 
-        $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+        try {
+            $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+            $this->branchNotes ??= new WeakMap;
+            $this->branchNotes[$analysis] = $this->untypedKeyWrites;
+        } finally {
+            $this->untypedKeyWrites = $outer;
+        }
 
         return $analysis;
     }
@@ -482,9 +636,212 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Collect a variable's writes across an `if` chain, whose bodies exclude each other; with no `else`, none may run.
+     *
+     * @param  TAnalysis  $into
+     */
+    private function collectIfChainAssignments(
+        If_ $if,
+        string $varName,
+        bool $isConditional,
+        MethodAnalysis $into,
+        bool $topLevel,
+    ): void {
+        $bodies = [$if->stmts, ...array_column($if->elseifs, 'stmts')];
+
+        if ($if->else !== null) {
+            $bodies[] = $if->else->stmts;
+        }
+
+        $this->collectExclusiveAssignments($bodies, $if->else === null, $varName, $isConditional, $into, $topLevel);
+    }
+
+    /**
+     * Collect a variable's writes across bodies of which one runs, or none where $mayRunNone. Each body writes into its
+     * own copy of the keys held before, which is one more branch where none may run, and the copies join; the copy
+     * leads, so earlier types lead each union. A key a body writes takes that body's value there, never another's.
+     *
+     * @param  non-empty-list<array<Node\Stmt>>  $bodies
+     * @param  TAnalysis  $into
+     */
+    private function collectExclusiveAssignments(
+        array $bodies,
+        bool $mayRunNone,
+        string $varName,
+        bool $isConditional,
+        MethodAnalysis $into,
+        bool $topLevel,
+    ): void {
+        // Bodies that never name the variable leave its keys as they are.
+        $names = fn (Node $node): bool => $node instanceof Variable && $node->name === $varName;
+
+        if (new NodeFinder()->findFirst(array_merge(...$bodies), $names) === null) {
+            return;
+        }
+
+        $bodies = array_values(array_filter($bodies, fn (array $body): bool => ! $this->exitsElsewhere($body, $varName)));
+
+        if ($bodies === []) {
+            return;
+        }
+
+        $before = $this->untypedKeyWrites;
+        $branches = $mayRunNone ? [clone $into] : [];
+        // Each branch's untyped writes: those before the branches, then its own, never a sibling's.
+        $notes = $mayRunNone ? [$before] : [];
+        $added = [];
+
+        foreach ($bodies as $body) {
+            $this->untypedKeyWrites = $before;
+            $branch = clone $into;
+            $this->collectVariableArrayAssignments($body, $varName, $isConditional, $branch, $topLevel);
+            $branches[] = $branch;
+            $notes[] = $this->untypedKeyWrites;
+            array_push($added, ...array_slice($this->untypedKeyWrites, count($before)));
+        }
+
+        $this->untypedKeyWrites = [...$before, ...$added];
+
+        foreach ($branches as $index => $branch) {
+            foreach (array_slice($branches, 0, $index) as $earlier) {
+                $branch->dropRepeatsOf($earlier);
+            }
+        }
+
+        $joined = $this->joinedBranches($branches);
+        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
+        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        $into->replaceWith($joined);
+    }
+
+    /**
+     * Record each branch value a join left out beside a typed one, naming the last untyped write of its key the branch
+     * saw, and warn of each: it still reaches the read.
+     *
+     * @param  list<TAnalysis>  $branches
+     * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
+     * @param  Closure(Expr): void  $record  records one value left out, under its join's site
+     */
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $record): void
+    {
+        if (array_merge(...$notes) === []) {
+            return;
+        }
+
+        $types = array_map(
+            fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
+            $branches,
+        );
+
+        foreach ($joined->properties as $property) {
+            if ($property['type'] === 'unknown') {
+                continue;
+            }
+
+            $dropped = [];
+
+            foreach ($types as $index => $branchTypes) {
+                $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
+                    ? $this->lastUntypedWrite($property['name'], $notes[$index])
+                    : null;
+
+                if ($write !== null) {
+                    $record($write);
+                    $dropped[] = $write;
+                }
+            }
+
+            if ($dropped !== []) {
+                $union = [...ValueResult::unknown(), 'type' => $property['type']];
+                DroppedUnionArms::warnOfJoinDrop($union, $dropped, $this->analysisScope());
+            }
+        }
+    }
+
+    /**
+     * The last value written to a key that the engine cannot type, among the untyped writes one branch saw.
+     *
+     * @param  list<UntypedKeyWrite>  $notes
+     */
+    private function lastUntypedWrite(string $key, array $notes): ?Expr
+    {
+        for ($index = count($notes) - 1; $index >= 0; $index--) {
+            if ($notes[$index][0] === $key) {
+                return $notes[$index][1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Note each item of an array literal written whole whose key the write's analysis types `unknown`.
+     */
+    private function noteUntypedItems(Expr $array, MethodAnalysis $write): void
+    {
+        array_push($this->untypedKeyWrites, ...$this->untypedItems($array, $write));
+    }
+
+    /**
+     * Each item of an array literal whose key its analysis types `unknown`, with its value; none for another value.
+     *
+     * @return list<UntypedKeyWrite>
+     */
+    private function untypedItems(Expr $array, MethodAnalysis $analysis): array
+    {
+        if (! $array instanceof Array_) {
+            return [];
+        }
+
+        $types = array_column($analysis->properties, 'type', 'name');
+        $untyped = [];
+
+        foreach ($array->items as $item) {
+            $key = $item->key === null || $item->unpack ? null : $this->namedKey($item->key);
+
+            if ($key !== null && ($types[$key] ?? null) === 'unknown') {
+                $untyped[] = [$key, $item->value];
+            }
+        }
+
+        return $untyped;
+    }
+
+    /**
+     * Note a key write whose value the engine cannot type, which a join may leave out beside a typed branch.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function noteUntypedWrite(string $key, Expr $value, array $result): void
+    {
+        if ($result['type'] === 'unknown') {
+            $this->untypedKeyWrites[] = [$key, $value];
+        }
+    }
+
+    /**
+     * Whether a body ends in a throw, or in a return of anything but the variable, so its writes never reach the code
+     * after it; a body that returns the variable stays, as an early return does.
+     *
+     * @param  array<Node\Stmt>  $body
+     */
+    private function exitsElsewhere(array $body, string $varName): bool
+    {
+        $last = $body === [] ? null : $body[array_key_last($body)];
+
+        return match (true) {
+            $last instanceof ExpressionStmt => $last->expr instanceof Throw_,
+            $last instanceof Return_ => ! $last->expr instanceof Variable || $last->expr->name !== $varName,
+            default => false,
+        };
+    }
+
+    /**
      * Collect a variable's writes inside a `try`, `switch`, `do` or bare block: a catch or a case may not run, nor a
      * `try` body finish, so their writes are conditional, while a bare block and a `finally` keep the caller's
      * condition. A `do` body, which runs once, keeps it too, until a statement that can `break` or `continue`.
+     *
+     * @param  TAnalysis  $into
      */
     private function collectNestedArrayAssignments(
         TryCatch|Switch_|Block|Do_ $stmt,
@@ -594,19 +951,10 @@ trait ReadsReturnedVariables
 
     /**
      * Whether a statement writes the variable through a key the walk does not read: a dynamic, appended or nested key,
-     * an unset() of the variable or of a key namedUnsetKey() cannot name, or a compound write or an increment of a key
-     * the walk does not hold.
+     * or a compound write or an increment of a key the walk does not hold. removeUnsetKeys() judges an unset().
      */
     private function writesUnreadKey(Node\Stmt $stmt, string $varName, MethodAnalysis $into): bool
     {
-        if ($stmt instanceof Unset_) {
-            return array_any(
-                $stmt->vars,
-                fn (Expr $unset): bool => $this->keyRoot($unset) === $varName
-                    && $this->namedUnsetKey($unset, $varName) === null,
-            );
-        }
-
         $write = $stmt instanceof ExpressionStmt ? $stmt->expr : null;
         $target = $write === null ? null : $this->writeTarget($write);
 
@@ -623,7 +971,8 @@ trait ReadsReturnedVariables
 
     /**
      * Remove each named key an unset() takes from the variable, with its import channels and cast, or make it optional
-     * where the unset() may not run.
+     * where the unset() may not run. An unset() of a key namedUnsetKey() cannot name may take any key, and one of the
+     * variable itself takes them all, so either leaves the variable not read completely.
      */
     private function removeUnsetKeys(Unset_ $stmt, string $varName, bool $isConditional, MethodAnalysis $into): void
     {
@@ -631,6 +980,8 @@ trait ReadsReturnedVariables
             $key = $this->namedUnsetKey($unset, $varName);
 
             if ($key === null) {
+                $into->readsCompletely = $into->readsCompletely && $this->keyRoot($unset) !== $varName;
+
                 continue;
             }
 
@@ -654,6 +1005,27 @@ trait ReadsReturnedVariables
     }
 
     /**
+     * Whether an unset() past the variable's last whole replacement takes from it a key the walk cannot name, which may
+     * be any key the walk reads.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function unsetsUnnamedKey(array $stmts, string $varName): bool
+    {
+        $unsets = new NodeFinder()->findInstanceOf($this->fromLastReplacement($stmts, $varName), Unset_::class);
+
+        foreach ($unsets as $unset) {
+            foreach ($unset->vars as $var) {
+                if ($this->keyRoot($var) === $varName && $this->namedUnsetKey($var, $varName) === null) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The key an unset() takes from the variable itself, named as a key write's is; null for any other unset(), and for
      * a signature key, which stands for many runtime keys.
      */
@@ -670,11 +1042,14 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * The key a write's dim names, read as resolveKeyName() reads a literal's key; null for any other.
+     * The key a write's dim names, read as resolveKeyName() reads a literal's key, a local holding one included; null
+     * for any other.
      */
     private function namedKey(Expr $dim): ?string
     {
-        return $this->resolveKeyName($dim, $this->subjectReflection());
+        $key = $dim instanceof Variable ? $this->literalLocal($dim) : $dim;
+
+        return $key === null ? null : $this->resolveKeyName($key, $this->subjectReflection());
     }
 
     /**

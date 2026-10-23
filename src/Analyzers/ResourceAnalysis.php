@@ -11,4 +11,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
  *
  * @internal
  */
-class ResourceAnalysis extends MethodAnalysis {}
+class ResourceAnalysis extends MethodAnalysis
+{
+    /**
+     * An empty analysis for keys the analyzer could not read, so a variable built on it is not read completely.
+     */
+    public static function unreadAnalysis(): self
+    {
+        $analysis = new self;
+        $analysis->readsCompletely = false;
+
+        return $analysis;
+    }
+}

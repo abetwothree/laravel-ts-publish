@@ -33,13 +33,16 @@ test('a union records the arm it leaves out, and its published type is unchanged
         $dropped = DroppedUnionArms::stop();
     }
 
-    // One line per recording site: 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed instanceof path,
-    // 32 is KnownFunctionCallHandler's data_get default, 33 is ConditionalMethodHandler's when() default, 35 is
-    // MatchHandler's arm, 37 is CoalesceHandler's right operand. The last five resolve their arms themselves.
+    // 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed path, 32 data_get()'s default, 33 when()'s
+    // default, 35 a match arm and 37 a `??` right operand; 39 and 49 are a parameter's join past its block, the value
+    // passed and the one written, 58 a local's branch join and 66 a merge call's. All but 28/29 resolve their own arms.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35, 37])
-        ->and(array_column($dropped, 'site'))->toBe(['closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm', 'coalesce-right'])
+        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35, 37, 39, 49, 58, 66])
+        ->and(array_column($dropped, 'site'))->toBe([
+            'closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm',
+            'coalesce-right', 'binding-join', 'binding-join', 'walk-branch-join', 'merge-branch-join',
+        ])
         ->and($props['coalesce_right']['type'])->toBe('string')
         ->and($props['elvis']['type'])->toBe('null')
         ->and($props['ternary']['type'])->toBe('null')
@@ -48,7 +51,11 @@ test('a union records the arm it leaves out, and its published type is unchanged
         ->and($props['conditional_default']['type'])->toBe('string')
         ->and($props['conditional_default']['optional'])->toBeFalse()
         ->and($props['match_arm']['type'])->toBe('string')
-        ->and($props['still_typed']['type'])->toBe('string | null');
+        ->and($props['still_typed']['type'])->toBe('string | null')
+        ->and($props['binding_join_old']['type'])->toBe('string')
+        ->and($props['binding_join_written']['type'])->toBe('string')
+        ->and($props['walk_branch_join']['type'])->toBe('{ id: number; value: string }')
+        ->and($props['merge_branch_join']['type'])->toBe('string');
 });
 
 test('a coalesce operand the engine cannot type is recorded too', function () {

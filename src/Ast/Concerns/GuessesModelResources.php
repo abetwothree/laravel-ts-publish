@@ -139,20 +139,16 @@ trait GuessesModelResources
     /**
      * Resolve the model class backing a toResource()/toResourceCollection() receiver: a whenLoaded closure parameter
      * (ConditionalMethodHandler::analyzeWhenLoaded()'s bindings) or `$this->relation` accessed directly. Past the write
-     * that ended a parameter's binding, the receiver resolver reads what the body assigned instead.
+     * that ended a parameter's binding, or under a narrowing, the receiver resolver reads what the variable holds.
      *
      * @return class-string<Model>|null
      */
     protected function resolveToResourceReceiverModel(Expr $receiver, AnalysisScope $scope): ?string
     {
-        if ($receiver instanceof Variable && is_string($receiver->name)) {
-            if (! $scope->holdsBinding($receiver)) {
-                return null;
-            }
+        if ($receiver instanceof Variable) {
+            $receivers = resolve(ReceiverClassResolver::class);
 
-            return $scope->varModelBindings[$receiver->name]
-                ?? $scope->varCollectionBindings[$receiver->name]['modelFqcn']
-                ?? $scope->closureRelationModelClass;
+            return $receivers->boundModel($receiver, $scope) ?? $receivers->boundElementModel($receiver, $scope);
         }
 
         if ($receiver instanceof PropertyFetch && $this->isThisPropertyFetch($receiver) && $receiver->name instanceof Identifier) {

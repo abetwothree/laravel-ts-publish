@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLocalModelResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
@@ -22,6 +23,7 @@ use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
@@ -491,4 +493,30 @@ it('carries the import an object-typed spread arm names', function () {
 
     expect($result['type'])->toBe("Omit<Pick<User, 'id'>, 'x'> & { x: number }")
         ->and($result['embeddedModelFqcns'] ?? [])->toBe([User::class]);
+});
+
+// The loaded relation's or the mapped element's model is no guess for another variable: Laravel spreads Ada's columns.
+it('spreads the model a variable no closure binds holds, never the relation\'s', function () {
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'secret']);
+    $post = Post::create(['title' => 'First', 'content' => 'Body', 'user_id' => $user->id]);
+    new Comment()->forceFill(['id' => 1, 'content' => 'alpha', 'post_id' => $post->id, 'user_id' => $user->id])->save();
+
+    /** @var array{data: array<string, mixed>} $sent */
+    $sent = json_decode((string) new SpreadLocalModelResource(Post::with(['author', 'comments.user'])->findOrFail($post->id))
+        ->response(request())->getContent(), true);
+
+    expect(publishedResourceKeyTypes(SpreadLocalModelResource::class, Post::class))->toBe([
+        'local?' => "Omit<User, 'x'> & { x: number }",
+        'captured?' => "Omit<User, 'x'> & { x: number }",
+        'collected_local' => "(Omit<User, 'x'> & { x: number })[]",
+        'relation_local' => "(Omit<User, 'x'> & { x: number })[]",
+        'fresh?' => "Omit<Record<string, unknown>, 'x'> & { x: number }",
+        'unbound?' => '{ x: number }',
+    ])
+        ->and($sent['data']['local'])->toMatchArray(['name' => 'Ada', 'x' => 1])
+        ->and($sent['data']['captured'])->toMatchArray(['name' => 'Ada', 'x' => 1])
+        ->and($sent['data']['collected_local'][0])->toMatchArray(['name' => 'Ada', 'x' => 1])
+        ->and($sent['data']['relation_local'][0])->toMatchArray(['name' => 'Ada', 'x' => 1])
+        ->and($sent['data']['fresh'])->toBe(['x' => 1])
+        ->and($sent['data'])->not->toHaveKey('unbound');
 });

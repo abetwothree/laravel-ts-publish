@@ -6,27 +6,34 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\AnalyzesPluckCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesMapProxyElementModels;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\SpellsKeyedCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\AbstractCursorPaginator;
+use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Enumerable;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
@@ -37,7 +44,6 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use ReflectionMethod;
 
 /**
@@ -47,19 +53,24 @@ use ReflectionMethod;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type VarDocBinding from AnalysisScope
+ * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @internal
  */
 final class VariableHandler implements ExpressionHandler
 {
     use AnalyzesPluckCalls;
+    use BindsMapCallbacks;
     use CollectsLocalVarBindings;
     use FiltersAttributeKeys;
     use InspectsAstNodes;
-    use ResolvesMapProxyElementModels;
+    use ReadsNonNullGuards;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
     use SpellsKeyedCollections;
+
+    /** The classes whose map() runs over their items: a collection, or a paginator, which forwards it to its page. */
+    private const array MAPS_ITEMS = [Enumerable::class, AbstractPaginator::class, AbstractCursorPaginator::class];
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -70,66 +81,57 @@ final class VariableHandler implements ExpressionHandler
     /** @return ValueExpressionResult|null */
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // A trailing argument-less values()/all() on a collection takes its element type from the receiver chain, which
-        // is the only thing that knows it: all() hands the array back, keys and all, and values() re-indexes it into a
-        // list. On any other class the method is its own, so the receiver's type says nothing about what it returns.
-        if ($expr instanceof MethodCall
-            && $expr->var instanceof MethodCall
-            && $expr->name instanceof Identifier
-            && in_array($expr->name->toString(), ['values', 'all'], true)
-            && ! $expr->isFirstClassCallable()
-            && CallArguments::for($expr, new ReflectionMethod(EloquentCollection::class, $expr->name->toString()))->isEmpty()
-            && $this->holdsOnlyCollections($expr->var, $scope)
-        ) {
-            $receiverResult = $engine->resolve($expr->var);
-            $type = $expr->name->toString() === 'values' ? $this->valuesList($receiverResult['type']) : $receiverResult['type'];
+        $peeled = $expr instanceof MethodCall ? $this->peeledValuesOrAll($expr, $scope, $engine) : null;
 
-            if ($type !== null && $type !== 'unknown') {
-                return [...$receiverResult, 'type' => $type];
-            }
+        if ($peeled !== null) {
+            return $peeled;
         }
 
-        // $variable->property — resolve against the variable's own bound model (whenLoaded param,
-        // map param, foreach value var), falling back to the ambient whenLoaded closure model.
+        // $variable->property — an attribute of the variable's own bound model (whenLoaded param, map param, foreach
+        // value var). Anything else, a relation or a narrowed read included, goes on to ReceiverPropertyFetchHandler.
         if ($expr instanceof PropertyFetch
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
         ) {
-            $boundModel = $this->boundModel($expr->var, $scope);
+            $boundModel = resolve(ReceiverClassResolver::class)->boundModel($expr->var, $scope);
+            $attribute = $boundModel === null ? null : $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
 
-            if ($boundModel !== null) {
-                return $this->analyzeRelatedModelProperty($expr->name->toString(), $scope, $boundModel);
+            if ($attribute !== null && $attribute['type'] !== 'unknown') {
+                return $attribute;
             }
         }
 
-        // `$variable->map(fn (Item $item) => [...])` — no ambient closureRelationModelClass is required: the element
-        // model comes from the param's type hint, or from the receiver's own to-many whenLoaded binding.
-        if ($expr instanceof MethodCall && $this->mappedVariable($expr) !== null) {
-            $mapResult = $this->analyzeVariableMapCall($expr, $scope, $engine);
+        // `$receiver->map(fn (Item $item) => [...])`: the element model comes from the param's type hint, or from the
+        // collection the receiver resolver names.
+        if ($expr instanceof MethodCall && $this->mappedReceiver($expr) !== null) {
+            $mapResult = $this->analyzeReceiverMapCall($expr, $scope, $engine);
 
             if ($mapResult !== null) {
                 return $mapResult;
             }
         }
 
-        // $variable->pluck('field') — resolve to an array of the field's type
-        if ($scope->closureRelationModelClass !== null
-            && $expr instanceof MethodCall
+        // $variable->pluck('field') — an array of the field's type on the element model of the variable's own to-many
+        // binding; any other variable goes on to the receiver handlers.
+        if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
             && $expr->var->name !== 'this'
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'pluck'
-            && $scope->holdsBinding($expr->var)
         ) {
-            return $this->analyzeVariablePluckCall($expr, $scope);
+            $elementModel = resolve(ReceiverClassResolver::class)->boundElementModel($expr->var, $scope);
+
+            if ($elementModel !== null) {
+                return $this->analyzeVariablePluckCall($expr, $scope, $elementModel);
+            }
         }
 
-        // $variable->method() — resolve against the variable's own bound model, falling back to the
-        // ambient whenLoaded closure model. An only()/except() filter is skipped: the receiver rules own it, and
-        // reflecting it here reads Model::except()'s `@return array` as a list or filters a collection by key.
+        // $variable->method() — resolve against the variable's own bound model. An only()/except() filter is skipped:
+        // the receiver rules own it, and reflecting it here reads Model::except()'s `@return array` as a list or
+        // filters a collection by key.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && is_string($expr->var->name)
@@ -137,13 +139,13 @@ final class VariableHandler implements ExpressionHandler
             && $expr->name instanceof Identifier
             && ! $this->callsAttributeFilter($expr)
         ) {
-            $boundModel = $this->boundModel($expr->var, $scope);
+            $boundModel = resolve(ReceiverClassResolver::class)->boundModel($expr->var, $scope);
             $method = $expr->name->toString();
 
             // A rule types what reflection reads loosely, and the receiver order reads what it cannot, such as an
             // untyped method's body, so both go on to ReceiverMethodCallHandler.
             if ($boundModel !== null && ! resolve(ReceiverMethodReturnResolver::class)->typesByRule($boundModel, $method)) {
-                $result = $this->analyzeRelatedModelMethodCall($method, $scope, $boundModel);
+                $result = $this->analyzeRelatedModelMethodCall($method, $boundModel);
 
                 if ($result['type'] !== 'unknown') {
                     return $result;
@@ -158,37 +160,96 @@ final class VariableHandler implements ExpressionHandler
         $span = $scope->declaredAt($expr);
         $value = $span === null
             ? $this->boundValue($expr, $expr->name, $scope, $engine)
+                ?? $this->keyBuiltValue($expr, $expr->name, $scope, $engine)
             : $this->declaredLocalValue($expr->name, $span, $scope, $engine);
 
-        return $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
+        if ($value === null && $this->writtenWhole($expr, $scope)) {
+            $value = [...ValueResult::unknown(), 'type' => 'string[]', 'optional' => false];
+        }
+
+        $kept = $value === null ? null : $this->keptByReference($expr, $expr->name, $value, $scope, $engine);
+
+        return $kept === null ? null : $this->provenNonNull($expr, $kept, $scope);
     }
 
     /**
-     * The model a `$variable->member` read resolves against: the variable's own model binding while the read holds it,
-     * else the ambient whenLoaded model.
+     * A trailing argument-less values()/all() on a collection, typed from the receiver chain, which is the only thing
+     * that knows its element: all() hands the array back, keys and all, and values() re-indexes it into a list. On any
+     * other class the method is its own, so the receiver's type says nothing about what it returns.
      *
-     * @return class-string<Model>|null
+     * @return ValueExpressionResult|null
      */
-    private function boundModel(Variable $variable, AnalysisScope $scope): ?string
+    private function peeledValuesOrAll(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $own = is_string($variable->name) && $scope->holdsBinding($variable)
-            ? $scope->varModelBindings[$variable->name] ?? null
+        if ((! $call->var instanceof MethodCall && ! $this->isPlainVariable($call->var))
+            || ! $call->name instanceof Identifier
+            || ! in_array($call->name->toString(), ['values', 'all'], true)
+            || $call->isFirstClassCallable()
+            || ! CallArguments::for($call, new ReflectionMethod(EloquentCollection::class, $call->name->toString()))->isEmpty()
+        ) {
+            return null;
+        }
+
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
+
+        if (! $this->holdsOnlyCollections($call->var, $receiver, $scope)) {
+            return null;
+        }
+
+        $method = $call->name->toString();
+        $receiverResult = $scope->within(function () use ($scope, $method): void {
+            $scope->mapResultArrayed = $scope->mapResultArrayed || $method === 'all';
+        }, fn (): array => $engine->resolve($call->var));
+
+        $type = match (true) {
+            $method === 'values' => $this->valuesList($receiverResult['type']),
+            $receiver?->keyed === true => $this->keyedAll($receiverResult['type']),
+            default => $receiverResult['type'],
+        };
+
+        return $type === null || $type === 'unknown' ? null : [...$receiverResult, 'type' => $type];
+    }
+
+    /**
+     * What all() on a collection whose keys a step broke sends, where its read names only the object: that object, or
+     * the `[]` json_encode() writes while it holds nothing, as a `@var Collection<string, X>` local reads.
+     */
+    private function keyedAll(string $type): string
+    {
+        $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
+            ? $this->valuesList($type)
             : null;
 
-        return $own ?? $this->ambientModel($variable, $scope);
+        return $list === null ? $type : $this->keyedObjectArm($list);
     }
 
     /**
-     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding; past
-     * the write that ended its parameter binding, from the local assignment alone, or inside a gap from the value its
-     * write assigned, joined with the old binding where that may still hold.
+     * A bare read's value without its null arm where a guard or a filled-value callback, such as transform()'s, proves
+     * the read non-null; a value that is only null keeps it, since nothing else is left to publish.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
+    {
+        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && ValueResult::hasNullArm($value['type'])
+            ? [...$value, 'type' => ValueResult::stripNullArm($value['type'])]
+            : $value;
+    }
+
+    /**
+     * A bare variable's value from its model, collection, value, closure-parameter or local-assignment binding, a model
+     * as the subclass a guard proves it; past the write that ended its parameter binding, from the local assignment
+     * alone, or inside a gap from the value its write assigned, joined with the old binding where that may still hold.
      *
      * @return ValueExpressionResult|null
      */
     private function boundValue(Variable $variable, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($scope->holdsBinding($variable)) {
-            return $this->heldValue($name, $scope, $engine);
+            $narrowed = $this->narrowedModel($variable, $name, $scope);
+
+            return $narrowed === null ? $this->heldValue($name, $scope, $engine) : $this->modelValue($narrowed);
         }
 
         $gap = $scope->gapAt($variable);
@@ -199,16 +260,82 @@ final class VariableHandler implements ExpressionHandler
             return $local === null ? null : $this->boundExpressionValue($name, $local, $scope, $engine);
         }
 
-        // The old binding may still hold past a write nested in a block that falls through, so both are read.
-        $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
-            fn (Expr $written): ?array => $this->boundExpressionValue($name, $written, $scope, $engine),
-            $gap[2] ?? [],
-        ));
-        $arms = $gap[3] ? [$this->heldValue($name, $scope, $engine), ...$values] : $values;
+        return $this->joinedValue($variable, $name, $gap, $scope, $engine);
+    }
 
-        return $gap[2] === null || $gap[2] === [] || array_any($arms, fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown')
-            ? null
-            : (count($arms) === 1 ? $arms[0] : ValueResult::unionResults(array_values(array_filter($arms))));
+    /**
+     * A read's value inside a gap: the values its writes assigned, joined with the old binding where that may still
+     * hold. An arm the engine cannot type is left out beside typed ones, as a ternary leaves one out: a parameter's
+     * nested write where an earlier value still reaches the read, and an old value beside writes that all type.
+     *
+     * @param  BindingGap  $gap
+     * @return ValueExpressionResult|null
+     */
+    private function joinedValue(Variable $read, string $name, array $gap, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        // The old binding may still hold past a write nested in a block that falls through, so both are read.
+        $written = $gap[2] ?? [];
+        $values = $scope->beforeGap($name, $gap, fn (): array => array_map(
+            fn (Expr $value): ?array => $this->writtenValue($name, $value, $scope, $engine),
+            $written,
+        ));
+        $untyped = fn (?array $arm): bool => $arm === null || $arm['type'] === 'unknown';
+        $nested = $gap[5] ?? [];
+        // An earlier value still reaches past a parameter's nested write, so a value it wrote the engine cannot type is
+        // left out of the join, as fromGap() leaves a receiver.
+        $reaches = $gap[3] || array_any($written, fn (Expr $value): bool => ! in_array($value, $nested, true));
+        $old = $gap[3] ? $this->heldValue($name, $scope, $engine) : null;
+        $arms = [];
+        $dropped = [];
+        // A value left out can still be a MissingValue, whose key Laravel drops.
+        $optional = false;
+
+        foreach ($values as $index => $arm) {
+            if ($reaches && $untyped($arm) && in_array($written[$index], $nested, true)) {
+                $dropped[] = $written[$index];
+                $optional = $optional || ($arm['optional'] ?? false);
+            } else {
+                $arms[] = $arm;
+            }
+        }
+
+        if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
+            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
+                ?? $scope->passedValues[$name] ?? $read;
+            $optional = $optional || ($old['optional'] ?? false);
+        } elseif ($gap[3]) {
+            array_unshift($arms, $old);
+        }
+
+        if ($gap[2] === null || $arms === [] || array_any($arms, $untyped)) {
+            return null;
+        }
+
+        foreach ($dropped as $arm) {
+            DroppedUnionArms::record($arm, $scope, 'binding-join');
+        }
+
+        $typed = array_values(array_filter($arms));
+        $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
+
+        return DroppedUnionArms::warnOfJoinDrop([...$union, 'optional' => $union['optional'] || $optional], $dropped, $scope);
+    }
+
+    /**
+     * A local built by key writes, read where no binding types it, as the array its writes before the read build; null
+     * for any other variable, and for one whose walk is already under way.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function keyBuiltValue(Variable $read, string $name, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $stmts = $scope->keyBuiltLocals[$name] ?? null;
+
+        if ($stmts === null || ! $engine instanceof ResolvesReturnedValues) {
+            return null;
+        }
+
+        return $scope->resolvingName($name, fn (): ?array => $engine->walkedLocal($read, $stmts));
     }
 
     /**
@@ -221,14 +348,7 @@ final class VariableHandler implements ExpressionHandler
         // Bound to a model class (whenLoaded param, map param, foreach value var) — resolves to the model's own type.
         // Checked before closure-param/local-var expression bindings, which resolve through a *different* expression.
         if (isset($scope->varModelBindings[$name])) {
-            $modelFqcn = $scope->varModelBindings[$name];
-
-            return [
-                ...ValueResult::unknown(),
-                'type' => class_basename($modelFqcn),
-                'optional' => false,
-                'modelFqcn' => $modelFqcn,
-            ];
+            return $this->modelValue($scope->varModelBindings[$name]);
         }
 
         // Bound to a whole relation collection (to-many whenLoaded param) — resolves to the collection type, e.g.
@@ -258,6 +378,40 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
+     * The subclass of a variable's bound model a guard proves it to hold, where that is one published model, or null.
+     *
+     * @return class-string<Model>|null
+     */
+    private function narrowedModel(Variable $variable, string $name, AnalysisScope $scope): ?string
+    {
+        $bound = $scope->varModelBindings[$name] ?? null;
+
+        if ($bound === null || $scope->guardAt($variable) === null) {
+            return null;
+        }
+
+        $held = resolve(ReceiverClassResolver::class)->resolve($variable, $scope)->classes ?? [];
+        $model = count($held) === 1 ? $held[0] : null;
+
+        return $model !== null
+            && is_subclass_of($model, $bound)
+            && ValueResult::namesOnlyPublishedModels([...ValueResult::unknown(), 'modelFqcn' => $model])
+                ? $model
+                : null;
+    }
+
+    /**
+     * A model's own value, as a bare variable bound to it reads: the model's published type.
+     *
+     * @param  class-string<Model>  $model
+     * @return ValueExpressionResult
+     */
+    private function modelValue(string $model): array
+    {
+        return [...ValueResult::unknown(), 'type' => class_basename($model), 'optional' => false, 'modelFqcn' => $model];
+    }
+
+    /**
      * A declared local's value: the engine's reading of its annotated assignment's value, unless that is vague or only
      * the `null` an untypable arm's drop left, as AccessorBodyAnalyzer reads a body. Then the `@var` type, if it is
      * precise enough to publish, optional where the reading was, since Laravel drops a missing conditional value.
@@ -268,40 +422,75 @@ final class VariableHandler implements ExpressionHandler
     private function declaredLocalValue(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $dropped = DroppedUnionArms::dropped();
-        $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
+        // A placeholder the tag replaces is never published, so the warnings its reading raised are not either.
+        [$reading, $replacement] = DroppedUnionArms::replaceable(
+            function () use ($name, $span, $scope, $engine, $dropped): array {
+                $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
 
-        if ($reading !== null
+                return [$reading, $this->declaredReplacement($span, $reading, $dropped)];
+            },
+            fn (array $read): bool => $read[1] === null,
+        );
+
+        return $replacement ?? $reading;
+    }
+
+    /**
+     * Whether a declared local's reading stands over its `@var`: not vague, and not the `null` an untypable arm's drop
+     * left once the read began at the given count of dropped arms.
+     *
+     * @param  ValueExpressionResult|null  $reading
+     */
+    private function readingStands(?array $reading, int $dropped): bool
+    {
+        return $reading !== null
             && ! TsTypeString::isVagueTsType($reading['type'])
-            && ($reading['type'] !== 'null' || DroppedUnionArms::dropped() === $dropped)
-        ) {
-            return $reading;
+            && ! DroppedUnionArms::leftNullSince($reading['type'], $dropped);
+    }
+
+    /**
+     * The `@var` type in place of a reading that does not stand, where the tag is precise enough to publish, optional
+     * where the reading was; null where the reading stands or the tag cannot replace it.
+     *
+     * @param  VarDocBinding  $span
+     * @param  ValueExpressionResult|null  $reading
+     * @return ValueExpressionResult|null
+     */
+    private function declaredReplacement(array $span, ?array $reading, int $dropped): ?array
+    {
+        if ($this->readingStands($reading, $dropped)) {
+            return null;
         }
 
         $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
 
         return $declared !== null && ! TsTypeString::isVagueTsType($declared['type']) && ValueResult::namesOnlyPublishedModels($declared)
             ? [...$declared, 'optional' => $reading['optional'] ?? false]
-            : $reading;
+            : null;
     }
 
     /**
-     * Resolve the expression a variable is bound to, or null while that variable is already mid-resolution.
+     * A value a gap's write assigned, as the inline `@var` on it declares where it is nested in a block.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function writtenValue(string $name, Expr $value, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $span = $scope->declaredWrite($name, $value);
+
+        return $span === null
+            ? $this->boundExpressionValue($name, $value, $scope, $engine)
+            : $this->declaredLocalValue($name, $span, $scope, $engine);
+    }
+
+    /**
+     * Resolve the expression a variable is bound to, or null while that binding is already mid-resolution.
      *
      * @return ValueExpressionResult|null
      */
     private function boundExpressionValue(string $name, Expr $bound, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        if (isset($scope->resolvingLocalVars[$name])) {
-            return null;
-        }
-
-        $scope->resolvingLocalVars[$name] = true;
-
-        try {
-            return $engine->resolve($bound);
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
-        }
+        return $scope->resolvingBinding($name, $bound, fn (): array => $engine->resolve($bound));
     }
 
     /**
@@ -319,25 +508,15 @@ final class VariableHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): ?array {
-        $position = $read->getStartFilePos();
-        $forms = array_filter(
-            $scope->byReferenceForms[$name] ?? [],
-            fn (array $form): bool => $position < 0
-                || ($position > $form['after'] && ($form['before'] === null || $position <= $form['before'])),
-        );
+        $forms = $read->getStartFilePos() < 0 ? $scope->byReferenceForms[$name] ?? [] : $scope->formsAt($read);
 
         if ($forms === []) {
             return $value;
         }
 
-        if (isset($scope->resolvingLocalVars[$name])) {
-            return null;
-        }
+        return $scope->resolvingName($name, function () use ($forms, $value, $scope, $engine): ?array {
+            $type = $value['type'];
 
-        $scope->resolvingLocalVars[$name] = true;
-        $type = $value['type'];
-
-        try {
             foreach ($forms as $form) {
                 $read = [];
                 $written = function (string $element, string $key) use ($form, &$read, $scope, $engine): array {
@@ -354,11 +533,25 @@ final class VariableHandler implements ExpressionHandler
                     return null;
                 }
             }
-        } finally {
-            unset($scope->resolvingLocalVars[$name]);
+
+            return [...$value, 'type' => $type];
+        });
+    }
+
+    /**
+     * Whether a read holds the list of strings preg_match() writes into a name no other write reaches, past a call and
+     * no longer holding a binding: only a call that is a statement of the body ends one. A skipped call leaves an
+     * unbound name undefined, which Laravel throws on and `??` replaces with its default.
+     */
+    private function writtenWhole(Variable $read, AnalysisScope $scope): bool
+    {
+        if (! is_string($read->name) || ($scope->bindsName($read->name) && $scope->holdsBinding($read))) {
+            return false;
         }
 
-        return [...$value, 'type' => $type];
+        $form = $scope->formsAt($read)[0] ?? null;
+
+        return $form !== null && $form['effect'] === ByReferenceEffect::WritesMatches && $form['sole'] && $form['path'] === [];
     }
 
     /**
@@ -377,13 +570,10 @@ final class VariableHandler implements ExpressionHandler
         AnalysisScope $scope,
         ExpressionEngine $engine,
     ): array {
-        $caller = $scope->nameBindings();
-        $ambient = $scope->closureRelationModelClass;
-
-        try {
+        return $scope->within(function () use ($callback, $element, $key, $scope): void {
             if ($callback instanceof ClosureExpr) {
+                $caller = $scope->nameBindings();
                 $scope->restoreNameBindings(AnalysisScope::NO_NAME_BINDINGS);
-                $scope->closureRelationModelClass = null;
 
                 foreach ($callback->uses as $use) {
                     if (is_string($use->var->name)) {
@@ -405,12 +595,7 @@ final class VariableHandler implements ExpressionHandler
             if ($callback instanceof ClosureExpr) {
                 $this->seedBody($callback->stmts, $scope);
             }
-
-            return array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values);
-        } finally {
-            $scope->restoreNameBindings($caller);
-            $scope->closureRelationModelClass = $ambient;
-        }
+        }, fn (): array => array_map(fn (Expr $written): string => $this->writtenType($written, $engine), $values));
     }
 
     /**
@@ -424,104 +609,54 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * The model a whenLoaded closure's relation holds, as a guess at an unbound variable. A declared local keeps it
-     * only where it is, or extends, one of the classes the receiver path reads it as: its assigned value's, else the
-     * `@var`'s. A variable past the write that ended its parameter binding holds what that write assigned instead.
+     * Analyze `$receiver->map(fn (Item $item) => [...])` with the first param bound to its element: the type hint's
+     * model, else the element model or the list element of the collection the receiver resolver names. The body wraps
+     * as a list, beside the object arm json_encode() writes where an earlier step broke the receiver's keys.
      *
-     * @return class-string<Model>|null
-     */
-    private function ambientModel(Variable $variable, AnalysisScope $scope): ?string
-    {
-        $ambient = $scope->closureRelationModelClass;
-
-        if ($ambient === null || ! $scope->holdsBinding($variable)) {
-            return null;
-        }
-
-        if ($scope->declaredAt($variable) === null) {
-            return $ambient;
-        }
-
-        $held = resolve(ReceiverClassResolver::class)->resolve($variable, $scope);
-
-        return $held === null || ReceiverType::of($ambient)->within($held->classes) ? $ambient : null;
-    }
-
-    /**
-     * Analyze `$variable->map(fn (Item $item) => [...])` with the first param bound to its element model — the type
-     * hint, else the receiver's to-many whenLoaded element — and wrap the body result as `elementType[]`.
-     *
-     * Returns null when neither names a model, or the first param is variadic, deferring to the generic method handler.
+     * Declines a receiver the resolver names outside MAPS_ITEMS, which runs its own map(), a resource collection's
+     * items, an unnamed one but a variable a model hint binds, and a receiver whose element nothing names.
      *
      * @return ValueExpressionResult|null
      */
-    private function analyzeVariableMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function analyzeReceiverMapCall(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $closureArg = $this->mapArguments($call)->named('callback')?->value;
+        $callback = $this->mapArguments($call)->named('callback')?->value;
 
-        if ($closureArg === null) {
+        if (! $callback instanceof ArrowFunction && ! $callback instanceof ClosureExpr) {
             return null;
         }
 
-        if ($closureArg instanceof ArrowFunction) {
-            $params = $closureArg->params;
-        } elseif ($closureArg instanceof ClosureExpr) {
-            $params = $closureArg->params;
-        } else {
+        $receiver = resolve(ReceiverClassResolver::class)->resolve($call->var, $scope);
+        $declared = $this->declaredMapModel($callback->params[0] ?? null);
+
+        // A resource collection's items are the API resources it built, or what it was given if it collects none.
+        if ($receiver === null
+            ? ! $this->mayHoldCollection($call->var, $declared, $scope)
+            : ! $receiver->within(self::MAPS_ITEMS) || $receiver->collectedItems
+        ) {
             return null;
         }
 
-        if ($params === []) {
-            return null;
-        }
+        $elementModel = $receiver?->elementModel;
+        $elementValue = null;
 
-        $firstParam = $params[0];
+        // A collection of plain values, such as a pluck() or an earlier map(), passes each value its list holds.
+        if ($declared === null && $elementModel === null) {
+            $elementValue = $receiver === null ? null : $this->listElement($engine->resolve($call->var));
 
-        // map() passes ($value, $key), so a variadic first param collects both and never holds one element.
-        if ($firstParam->variadic) {
-            return null;
-        }
-
-        // A named class type hint (already FQCN-resolved by NameResolver) wins when present — it's
-        // the more specific signal. Otherwise fall back to the receiver's own relation binding, the
-        // same one ConditionalMethodHandler::analyzeWhenLoaded() already populated for a to-many param.
-        $paramClass = $firstParam->type instanceof Name
-            ? $firstParam->type->toString()
-            : $this->resolveMapProxyElementModel($call->var, $scope);
-
-        if ($paramClass === null || ! class_exists($paramClass) || ! is_a($paramClass, Model::class, true)) {
-            return null;
-        }
-
-        /** @var class-string<Model> $paramClass */
-        $previousRelationModel = $scope->closureRelationModelClass;
-        $previousNameBindings = $scope->nameBindings();
-
-        try {
-            $scope->closureRelationModelClass = $paramClass;
-            $scope->claimParameters($closureArg);
-
-            // ReceiverClassResolver reads a parameter from varModelBindings, never closureRelationModelClass.
-            if ($firstParam->var instanceof Variable && is_string($firstParam->var->name)) {
-                $scope->varModelBindings[$firstParam->var->name] = $paramClass;
+            if ($elementValue === null) {
+                return null;
             }
-
-            // The body's returns resolve here, never through ClosureHandler, so its reassignments end bindings here.
-            if ($closureArg instanceof ClosureExpr) {
-                $this->endBindingsAtWrites($closureArg->stmts, $scope);
-            }
-
-            $returnExprs = $this->resolveClosureReturnExpressions($closureArg);
-
-            $bodyResult = match (count($returnExprs)) {
-                0 => null,
-                1 => $engine->resolve($returnExprs[0]),
-                default => ValueResult::analyzeClosureUnion($returnExprs, $engine, $scope),
-            };
-        } finally {
-            $scope->closureRelationModelClass = $previousRelationModel;
-            $scope->restoreNameBindings($previousNameBindings);
         }
+
+        $bodyResult = $this->resolveMapCallback(
+            $callback,
+            $elementModel,
+            $elementValue,
+            $scope->mapResultArrayed,
+            $scope,
+            $engine,
+        );
 
         if ($bodyResult === null || $bodyResult['type'] === 'unknown') {
             return null;
@@ -529,10 +664,41 @@ final class VariableHandler implements ExpressionHandler
 
         // ValueResult::arrayWrapType(), not a raw '[]' suffix: a union body (e.g. a mixed AsEnum/direct-enum
         // ternary) must be parenthesized before the array suffix binds.
-        $bodyResult['type'] = ValueResult::arrayWrapType($bodyResult['type']);
-        $bodyResult['optional'] = false;
+        $list = ValueResult::arrayWrapType($bodyResult['type']);
+        $type = $receiver?->keyed === true ? $this->keyedObjectArm($list) : $list;
 
-        return $bodyResult;
+        // A `?->` earlier in the receiver can end the whole chain as null before map() runs.
+        return [...$bodyResult, 'type' => $receiver?->shortCircuits === true ? ValueResult::withNullArm($type) : $type, 'optional' => false];
+    }
+
+    /**
+     * The value each element of a one-armed list type holds, with the channels the list carries; else null.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult|null
+     */
+    private function listElement(array $list): ?array
+    {
+        $element = count(TsTypeString::splitTopLevelUnion($list['type'])) === 1 ? TsTypeShape::elementType($list['type']) : null;
+
+        return $element === null || $element === 'unknown' || $element === 'never'
+            ? null
+            : [...$list, 'type' => $element, 'optional' => false];
+    }
+
+    /**
+     * Whether an unnamed receiver is read as a collection: a variable a model hint binds the element of, unless its one
+     * write is an array literal, on which map() throws.
+     *
+     * @param  class-string<Model>|null  $declared
+     */
+    private function mayHoldCollection(Expr $receiver, ?string $declared, AnalysisScope $scope): bool
+    {
+        return $declared !== null
+            && $receiver instanceof Variable
+            && is_string($receiver->name)
+            && $receiver->name !== 'this'
+            && ! ($scope->literalLocalBinding($receiver->name) instanceof Array_);
     }
 
     /**
@@ -544,12 +710,11 @@ final class VariableHandler implements ExpressionHandler
     }
 
     /**
-     * Whether an expression holds only Illuminate collections, whose values() and all() the engine knows.
+     * Whether an expression, which the receiver resolver reads as $receiver, holds only Illuminate collections, whose
+     * values() and all() the engine knows.
      */
-    private function holdsOnlyCollections(Expr $expr, AnalysisScope $scope): bool
+    private function holdsOnlyCollections(Expr $expr, ?ReceiverType $receiver, AnalysisScope $scope): bool
     {
-        $receiver = resolve(ReceiverClassResolver::class)->resolve($expr, $scope);
-
         // An unnamed receiver passes only as the map arm's `$variable->map(callback)` over an unnamed variable,
         // which that arm already types as a Collection map; values() leaves it one.
         if ($receiver === null) {
@@ -562,27 +727,39 @@ final class VariableHandler implements ExpressionHandler
                 $expr = $expr->var;
             }
 
-            $mapped = $this->mappedVariable($expr);
+            $mapped = $this->mappedReceiver($expr);
 
-            return $mapped !== null && resolve(ReceiverClassResolver::class)->resolve($mapped, $scope) === null;
+            return $mapped instanceof Variable && resolve(ReceiverClassResolver::class)->resolve($mapped, $scope) === null;
+        }
+
+        // The receiver rules type values()/all() on a variable whose element the resolver names, keys included, where
+        // its bare read may give only its `@var` type.
+        if ($expr instanceof Variable && $receiver->elementModel !== null) {
+            return false;
         }
 
         return array_all($receiver->classes, fn (string $class): bool => is_a($class, Enumerable::class, true));
     }
 
     /**
-     * The variable a `$variable->map(callback)` call maps over, else null.
+     * The receiver a `$receiver->map(callback)` call maps over, but a bare `$this`, else null.
      */
-    private function mappedVariable(Expr $expr): ?Variable
+    private function mappedReceiver(Expr $expr): ?Expr
     {
         return $expr instanceof MethodCall
-            && $expr->var instanceof Variable
-            && is_string($expr->var->name)
-            && $expr->var->name !== 'this'
+            && ! ($expr->var instanceof Variable && $expr->var->name === 'this')
             && $expr->name instanceof Identifier
             && $expr->name->toString() === 'map'
             && ! $this->mapArguments($expr)->isEmpty()
                 ? $expr->var
                 : null;
+    }
+
+    /**
+     * Whether an expression is a variable other than `$this`.
+     */
+    private function isPlainVariable(Expr $expr): bool
+    {
+        return $expr instanceof Variable && is_string($expr->name) && $expr->name !== 'this';
     }
 }

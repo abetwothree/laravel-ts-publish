@@ -766,6 +766,33 @@ describe('Arrayable property-shape inference', function () {
     });
 });
 
+// PHP 8.4 reflects every `self` and `parent` as written, and PHP 8.5 still does in a trait.
+describe('self and parent in a reflected native type', function () {
+    test('a trait property or return typed self publishes the class using the trait', function () {
+        $node = new ReflectionClass(SelfTypedTraitNode::class);
+
+        expect($this->service->propertyTypes($node, 'peer')['type'])->toBe('SelfTypedNode | null')
+            ->and($this->service->methodReturnedTypes($node, 'sibling')['type'])->toBe('SelfTypedNode')
+            ->and($this->service->methodOrDocblockReturnTypes($node, 'sibling')['type'])->toBe('SelfTypedNode');
+    });
+
+    test('a class property or return typed parent or self publishes the class it names', function () {
+        $child = new ReflectionClass(ParentTypedChild::class);
+
+        expect($this->service->propertyTypes($child, 'origin')['type'])->toBe('ParentTypedBase | null')
+            ->and($this->service->propertyTypes($child, 'either')['type'])->toBe('ParentTypedChild | number')
+            ->and($this->service->methodReturnedTypes($child, 'original')['type'])->toBe('ParentTypedBase');
+    });
+
+    test('resolveReflectionType() reads self against the declaring class it is given, and as written without one', function () {
+        $sibling = new ReflectionMethod(SelfTypedTraitNode::class, 'sibling')->getReturnType();
+
+        expect($this->service->resolveReflectionType($sibling, new ReflectionClass(SelfTypedTraitNode::class))['type'])
+            ->toBe('SelfTypedNode')
+            ->and($this->service->resolveReflectionType($sibling)['type'])->toBe('unknown');
+    });
+});
+
 describe('JsonSerializable DTO shape inference', function () {
     test('JsonSerializable with array-shape jsonSerialize docblock resolves to inline object type', function () {
         $result = $this->service->toTsType(JsonSerializableShapeValueObject::class);
@@ -1157,12 +1184,26 @@ describe('extractReturnTypeFromDocblock', function () {
         'a callable spaced before its colon' => ['/** @return callable(int) : string The callback */', 'callable(int) : string'],
     ]);
 
-    test('keeps the first-token reading of a conditional return type', function () {
-        expect($this->service->extractReturnTypeFromDocblock("/** @return (\$value is '' ? '' : string) */"))
-            ->toBe('($value');
-    });
+    test('reads a conditional return type whose every branch is a string as string', function (string $doc) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe('string');
+    })->with([
+        'an empty literal or a string' => ["/** @return (\$value is '' ? '' : string) */"],
+        'an intersection of string types' => ["/** @return (\$value is '' ? '' : non-empty-string&uppercase-string) */"],
+        'a nested conditional' => ["/** @return (\$value is '' ? (\$cap is '' ? '' : non-empty-string) : non-empty-string) */"],
+        'a string subtype under any subject' => ['/** @return ($letters is false ? numeric-string : string) */'],
+    ]);
 
-    test('keeps the first-token reading of a conditional return type Laravel declares', function (
+    test('keeps the first-token reading of a conditional return type it cannot read as all strings', function (string $doc, string $reading) {
+        expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
+    })->with([
+        'a list branch' => ['/** @return ($value is string ? string : string[]) */', '($value'],
+        'a false branch' => ["/** @return (\$haystack is '' ? false : string) */", '($haystack'],
+        'a union branch' => ["/** @return (\$string is '' ? '' : string|false) */", '($string'],
+        'a nullable string branch' => ["/** @return (\$value is '' ? ?string : string) */", '($value'],
+        'an else conditional without parentheses' => ["/** @return (\$value is '' ? '' : \$value is null ? '' : string) */", '($value'],
+    ]);
+
+    test('reads each conditional return type Laravel declares as string, else by its first token', function (
         string $class,
         string $method,
         string $reading,
@@ -1175,9 +1216,10 @@ describe('extractReturnTypeFromDocblock', function () {
 
         expect($this->service->extractReturnTypeFromDocblock($doc))->toBe($reading);
     })->with([
-        'Str::upper' => [Str::class, 'upper', '($value'],
+        'Str::upper' => [Str::class, 'upper', 'string'],
+        'Str::lower' => [Str::class, 'lower', 'string'],
         'Str::contains' => [Str::class, 'contains', '($needles'],
-        'Str::password' => [Str::class, 'password', '($letters'],
+        'Str::password' => [Str::class, 'password', 'string'],
         'Arr::random' => [Arr::class, 'random', '($number'],
         'Collection::sum' => [Collection::class, 'sum', '($callback'],
     ]);
@@ -1736,6 +1778,24 @@ describe('resolveGenericContainerType() key refinements', function () {
     test('keeps int refinements as a list', function () {
         expect($this->service->resolveGenericContainerType('array<positive-int, string>', [], '')['type'])->toBe('string[]');
     });
+});
+
+describe('PHPDoc integer subtypes', function () {
+    test('reads an integer range or a named integer subtype as a number, through every docblock reader', function (string $phpType, string $expected) {
+        expect($this->service->resolvePhpDocTypeToTs($phpType, [], ''))->toBe($expected)
+            ->and($this->service->resolvePhpDocTypeToTs("{$phpType}|null", [], ''))->toBe("{$expected} | null")
+            ->and($this->service->resolveDocblockTypePart($phpType, [], '')['type'])->toBe($expected)
+            ->and($this->service->resolveGenericContainerType("list<{$phpType}>", [], '')['type'] ?? null)->toBe("{$expected}[]");
+    })->with([
+        'a range up to max' => ['int<0, max>', 'number'],
+        'a bounded range' => ['int<1, 10>', 'number'],
+        'positive-int' => ['positive-int', 'number'],
+        'non-negative-int' => ['non-negative-int', 'number'],
+        'negative-int' => ['negative-int', 'number'],
+        'non-positive-int' => ['non-positive-int', 'number'],
+        'non-zero-int' => ['non-zero-int', 'number'],
+        'a range inside a shape' => ['array{a: int<1, 5>}', '{ a: number }'],
+    ]);
 });
 
 describe('trait @template binding', function () {
@@ -3067,3 +3127,41 @@ class PhpstanTypeAliasHyphenSuffixHost {}
  * @phpstan-type PunctuationAlias.Suffix array{x: int}
  */
 class PhpstanTypeAliasDotSuffixHost {}
+
+/** Types a property and a return as `self`, which PHP reflects as written in a trait on every version. */
+trait DeclaresSelfTypedMembers
+{
+    public ?self $peer = null;
+
+    /** Returns this node. */
+    public function sibling(): self
+    {
+        return $this;
+    }
+}
+
+/** A class that takes `self`-typed members from a trait. */
+#[TsType('SelfTypedNode')]
+class SelfTypedTraitNode
+{
+    use DeclaresSelfTypedMembers;
+}
+
+/** The parent a `parent` type names. */
+#[TsType('ParentTypedBase')]
+class ParentTypedBase {}
+
+/** Types members as `parent` and `self`, which PHP 8.4 reflects as written. */
+#[TsType('ParentTypedChild')]
+class ParentTypedChild extends ParentTypedBase
+{
+    public ?parent $origin = null;
+
+    public self|int $either = 0;
+
+    /** Returns a fresh parent. */
+    public function original(): parent
+    {
+        return new ParentTypedBase;
+    }
+}

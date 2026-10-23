@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
@@ -66,7 +67,8 @@ it('inserts both controller handlers immediately before StaticCallHandler and ch
     }
 
     expect($controller)->toBe($expected)
-        ->and($controller)->toHaveCount(count($generic) + 2);
+        ->and($controller)->toHaveCount(27)
+        ->and($controller)->toContain(OffsetReadHandler::class);
 });
 
 // Ordering pin: StaticCallHandler's last arm claims every StaticCall on a named class, so after it

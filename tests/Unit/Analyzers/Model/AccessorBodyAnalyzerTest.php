@@ -32,12 +32,17 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
         ['tag_list', '{ name: string }[]'],
         ['channels', 'string[]'],
         ['summary', '{ major: number }'],
-        ['dynamic_totals', 'unknown[]'],
+        ['dynamic_totals', '{ [key: `k${string}`]: unknown | undefined }'],
         ['length_callable', 'Record<string, never>'],
         ['key_callable', 'Record<string, never>'],
         ['checked_at', 'string'],
         ['channel_ids', 'number[]'],
     ]);
+
+    test('a getter that builds its array by key writes sends the object those keys type', function () {
+        expect((new Release)->dynamic_totals)->toBe(['k1' => 1, 'k2' => 2])
+            ->and(json_encode((new Release)->dynamic_totals))->toBe('{"k1":1,"k2":2}');
+    });
 
     test('keys a constant-keyed getter body by the constant values', function () {
         expect(resolve(ModelAttributeResolver::class)->resolveAttribute(Release::class, 'channel_options')['type'])

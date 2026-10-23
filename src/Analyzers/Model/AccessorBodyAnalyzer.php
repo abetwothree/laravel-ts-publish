@@ -80,25 +80,46 @@ final class AccessorBodyAnalyzer
         $dropped = DroppedUnionArms::dropped();
 
         try {
-            $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
+            // A body declined here gives way to what the model declares, so its placeholder is never published.
+            return DroppedUnionArms::replaceable(
+                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $dropped),
+                fn (?array $info): bool => $info !== null,
+            );
         } finally {
             $memo->leave($key);
         }
+    }
 
-        // `never[]` is what an empty `[]` literal resolves to — no element information at all, so a
-        // @property tag or a cast still knows the elements better than the body does.
-        if ($result === null || $result['type'] === 'unknown' || $result['type'] === 'never[]') {
-            return null;
-        }
+    /**
+     * The type a getter body publishes; null where it does not stand or spells a class the model file cannot name.
+     *
+     * @param  class-string<Model>  $modelFqcn
+     * @return TypeScriptTypeInfo|null
+     */
+    private function publishedBody(string $modelFqcn, string $attributeName, bool $carriesImports, int $dropped): ?array
+    {
+        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
 
-        // A bare `null` left once a ternary or `??` dropped the arm it could not type says nothing about the value.
-        if ($result['type'] === 'null' && DroppedUnionArms::dropped() > $dropped) {
+        if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
         }
 
         $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
 
         return $this->namesEveryClass($result, $info) ? $info : null;
+    }
+
+    /**
+     * Whether a body's type stands over a `@property` tag or a cast: not `unknown`, not the `never[]` of an empty `[]`,
+     * which says nothing of the elements, and not a bare `null` a ternary or `??` left when it dropped an untyped arm.
+     *
+     * @param  ValueExpressionResult|null  $result
+     */
+    private function bodyStands(?array $result, int $dropped): bool
+    {
+        return $result !== null
+            && ! in_array($result['type'], ['unknown', 'never[]'], true)
+            && ! DroppedUnionArms::leftNullSince($result['type'], $dropped);
     }
 
     /**

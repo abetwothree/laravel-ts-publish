@@ -1907,10 +1907,11 @@ describe('ResourceAstAnalyzer with QuirkyResource', function () {
             ->and($dynamic['optional'])->toBeTrue();
     });
 
-    test('resolves non-resource static call as unknown', function () {
+    // Str::upper() declares a conditional `@return` whose every branch is a string; even a null note sends `''`.
+    test('resolves a non-resource static call by the return type it declares', function () {
         $formatted = collect($this->analysis->properties)->firstWhere('name', 'formatted');
 
-        expect($formatted['type'])->toBe('unknown');
+        expect($formatted['type'])->toBe('string');
     });
 
     test('resolves Resource::make with non-conditional arg as non-optional', function () {
@@ -4229,7 +4230,7 @@ describe('ResourceAstAnalyzer with CommentResource — nullsafe chains and closu
     // plain and nullsafe chain traversal inside whenLoaded — $this->post —————————
 
     test('plain chain in whenLoaded closure — post_title resolves to string', function () {
-        // `fn () => $this->post->title` — the proxy step $this->post is skipped via closureRelationModelClass.
+        // `fn () => $this->post->title` — the chain starts at the resource's model, inside the closure too.
         $prop = collect($this->analysis->properties)->firstWhere('name', 'post_title');
 
         expect($prop)->not->toBeNull()
@@ -4729,12 +4730,12 @@ describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 en
             ->and($prop['optional'])->toBeTrue();
     });
 
-    // $this->whenLoaded('user', fn ($user) => ...) — $user is the User relation; $user->role is the Role enum.
-    test('whenLoaded() param → EnumResource::make($user->role) resolves to RoleType not unknown', function () {
+    // $this->whenLoaded('user', fn ($user) => ...) — $user is the User relation; $user->role is the nullable Role enum.
+    test('whenLoaded() param → EnumResource::make($user->role) resolves to RoleType | null not unknown', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'user_role');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('RoleType')
+            ->and($prop['type'])->toBe('RoleType | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -5630,9 +5631,14 @@ describe('local variable bindings', function () {
             ->and($this->props['key']['type'])->toBe('number');
     });
 
-    // A variable also written inside nested control flow is dropped from $localVarBindings entirely.
-    test('a variable reassigned in nested control flow degrades to unknown, not the stale top-level type', function () {
-        expect($this->props['shadowed']['type'])->toBe('unknown');
+    // Past the `if` that may reassign it, the variable holds the top-level default or the nested write.
+    test('a variable reassigned in nested control flow reads the top-level value or the nested one past it', function () {
+        $order = new Order;
+        $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
+
+        expect($this->props['shadowed']['type'])->toBe('string | null')
+            ->and(new LocalVarResource($order)->resolve(Request::create('/'))['shadowed'])->toBe('top-level default')
+            ->and(new LocalVarResource($order)->resolve(Request::create('/', 'GET', ['flag' => 1]))['shadowed'])->toBe('Ring twice');
     });
 
     // A closure parameter rebinds the name: it resolves against its own bound model (whenLoaded
@@ -5651,7 +5657,7 @@ describe('local variable bindings', function () {
             ->and($props['shadowed']['type'])->toBe('string');
     });
 
-    // Guards the regression narrowing collectWrittenVariableNames() alone would introduce: with no
+    // Guards the regression narrowing VariableWrites::writtenNames() alone would introduce: with no
     // scoped binding for the closure param, the outer local must stay unknown, not leak through.
     test('does not leak an outer local into a closure that shadows its name', function () {
         $props = collect(
@@ -5726,15 +5732,20 @@ describe('local variable bindings — review follow-up regressions', function ()
             ->and($props['y']['type'])->toBe('string');
     });
 
-    // Which of two top-level assignments is live depends on the return branch taken — no last-assignment-wins.
-    test('two top-level assignments to the same var across return branches both degrade to unknown', function () {
+    // Each return reads the top-level assignment live where it stands, never the last one in the body.
+    test('two top-level assignments to the same var across return branches each type the return they precede', function () {
         $props = collect(
             (new ResourceAstAnalyzer(new ReflectionClass(LocalVarGuardClauseResource::class), Order::class))
                 ->analyze()->properties,
         )->keyBy('name');
 
-        expect($props['early']['type'])->toBe('unknown')
-            ->and($props['late']['type'])->toBe('unknown');
+        $order = new Order;
+        $order->forceFill(['id' => 3, 'notes' => 'Ring twice']);
+
+        expect($props['early']['type'])->toBe('string | null')
+            ->and($props['late']['type'])->toBe('number')
+            ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/', 'GET', ['early' => 1])))->toBe(['early' => 'Ring twice'])
+            ->and(new LocalVarGuardClauseResource($order)->resolve(Request::create('/')))->toBe(['late' => 3]);
     });
 
     // A foreach binding, compound assignment, increment and by-ref alias are writes too, not just Assign.
@@ -6330,9 +6341,9 @@ describe('ResourceAstAnalyzer with NestedResourceSpreadResource (spread-of-a-res
     });
 
     test('a to-many whenLoaded param\'s own toArray() spread is a Record<number, Model>, not the element model', function () {
-        // $members is bound in varCollectionBindings (a list), not varModelBindings (one model) —
-        // spreadModelToArrayFqcn() must not fall back to closureRelationModelClass for it. The
-        // spread renumbers the members 0..n, so they key by index beside the literal's 'flag'.
+        // $members is bound in varCollectionBindings (a list), not varModelBindings (one model), so
+        // spreadModelToArrayFqcn() names no model for it. The spread renumbers the members 0..n, so
+        // they key by index beside the literal's 'flag'.
         expect($this->props['members_collection_spread']['type'])->toBe('Record<number, User> & { flag: boolean }')
             ->and($this->props['members_collection_spread']['optional'])->toBeTrue()
             ->and($this->props['members_collection_spread']['type'])->not->toContain('Omit<')
@@ -6714,7 +6725,7 @@ describe('whole-model delegation publishes what Model::toArray() writes', functi
     ];
     $userRelationKeys = [
         'profile', 'posts', 'comments', 'orders', 'addresses', 'primary_address', 'teams', 'owned_teams', 'images',
-        'notifications',
+        'notifications', 'read_notifications', 'unread_notifications',
     ];
 
     it('keeps $hidden columns while exclude_hidden is off, and leaves out accessors the model does not append', function () {
@@ -7410,7 +7421,7 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
     expect(resourceKeyTypes(UnseenWritesResource::class, Post::class))->toBe([
         'caught' => 'unknown',
         'declared_caught' => 'unknown',
-        'matches' => 'unknown',
+        'matches' => 'string[]',
         'sorted' => 'unknown',
         'static_filled' => 'unknown',
         'instance_filled' => 'unknown',
@@ -7427,6 +7438,13 @@ it('unbinds a local a catch, a by-reference argument, unset(), static or global 
         'items' => 'number[]',
         'author' => 'User',
     ]);
+
+    // The fixture throws as a whole, so the list of strings preg_match() writes is checked on its own statement.
+    preg_match('/(H)(e)/', 'Hello', $matches);
+    preg_match('/(H)(e)/', 'Bye', $unmatched);
+
+    expect($matches)->toBe(['He', 'H', 'e'])
+        ->and($unmatched)->toBe([]);
 });
 
 it('keeps a local across a by-reference built-in that leaves its value in a form that keeps its type', function (string $key, string $type) {
@@ -7544,7 +7562,7 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'walked_key' => 'unknown',
         'walked_named' => 'unknown',
         'looped_other' => 'unknown',
-        'matched' => 'unknown',
+        'matched' => 'string[]',
         'object_member_sorted' => 'unknown',
         'dynamic_member_sorted' => 'unknown',
         'walked_nested_other' => 'unknown',
@@ -7564,6 +7582,12 @@ it('leaves unknown a local a by-reference built-in reshapes, or writes with a va
         'tmp' => 'string',
         'shuffled' => 'number[]',
     ]);
+
+    // The fixture throws as a whole, so the list of strings preg_match() writes is checked on its own statement.
+    $matched = [];
+    preg_match('/a/', 'a', $matched);
+
+    expect($matched)->toBe(['a']);
 });
 
 it('a top-level only() spread on another receiver holding one model flattens, and except() still does not', function () {
@@ -7604,8 +7628,8 @@ test('a resource method whose own declaration is vague publishes what its return
     'a string or a number' => ['branchy', 'string | number'],
 ]);
 
-// The last three need rules of their own: a conditional return type, a finder in this profile, keys() in a pipeline.
-test('a helper read as a value publishes what its returns hold, and three whenHas() callbacks stay unread', function (string $key, string $type) {
+// The last two need rules of their own: a finder in this profile, keys() in a pipeline.
+test('a helper read as a value publishes what its returns hold, and two whenHas() callbacks stay unread', function (string $key, string $type) {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(NamesakeHelperBodyResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
     expect(($props[$key]['optional'] ? '?' : '').$props[$key]['type'])->toBe($type);
@@ -7621,7 +7645,7 @@ test('a helper read as a value publishes what its returns hold, and three whenHa
     'an untyped attribute read' => ['untyped_title', 'string'],
     'a variable returned after a closure\'s own return' => ['closure_first', '{ title: string; active: number }'],
     'a literal return beside a variable one' => ['mixed_meta', '{ a: number } | { a: number; b: string }'],
-    'Str::upper()' => ['str_static', '?unknown'],
+    'Str::upper(), whose conditional return is a string either way' => ['str_static', '?string'],
     'a finder' => ['find', '?unknown'],
     'keys()' => ['keys', '?unknown'],
 ]);

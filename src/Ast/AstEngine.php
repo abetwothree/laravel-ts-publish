@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -89,11 +90,12 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
+     * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @return ValueExpressionResult|null
      *
      * @internal
      */
-    public function analyzeMethodValue(string $class, string $method, array $passed = []): ?array
+    public function analyzeMethodValue(string $class, string $method, array $passed = [], ?string $backing = null): ?array
     {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -102,6 +104,7 @@ final class AstEngine
         }
 
         $modelClass = match (true) {
+            $backing !== null => $backing,
             is_a($class, Model::class, true) => $class,
             is_a($class, JsonResource::class, true) => resolve(ModelClassResolver::class)->resolve($context->reflection),
             default => null,
@@ -168,7 +171,7 @@ final class AstEngine
             $method = $context->reflection->getMethod($methodName);
             $scope->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
 
-            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+            resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
         }
 
         $this->seedBody($stmts, $scope);
@@ -293,6 +296,7 @@ final class AstEngine
 
     /**
      * A function-like body's own returns, merged strictly; null if it yields, may return a callable, or one is unknown.
+     * A returned variable is read through the walk over its writes where the engine reads one.
      *
      * @return ValueExpressionResult|null
      */
@@ -309,7 +313,9 @@ final class AstEngine
             return null;
         }
 
-        $results = array_map($engine->resolve(...), $returns);
+        $results = array_map($engine instanceof ResolvesReturnedValues
+            ? fn (Expr $returned): array => $engine->resolveReturned($returned, $stmts)
+            : $engine->resolve(...), $returns);
 
         // unionResults() would drop a return typed unknown and claim less than PHP can return, so the read declines.
         if (array_any($results, fn (array $result): bool => $result['type'] === 'unknown')) {

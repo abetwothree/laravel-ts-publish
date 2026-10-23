@@ -75,20 +75,14 @@ final class SubjectHelperReturnResolver
 
         // Read in the caller's names, before they are set aside.
         $passed = new CallSite($call, $scope, $engine)->passedTo($method, valueRead: true);
-        $caller = $scope->enterSubjectMethod(
-            $name,
-            LaravelTsPublish::methodDeclaringFileClass($method),
-            $this->proofsAcrossCall($scope, $call),
-        );
+        $proofs = $this->proofsAcrossCall($scope, $call);
+        $rewritten = $this->rewrittenThisPaths($stmts, $scope);
 
-        try {
-            resolve(ParameterBinder::class)->bindCall($method, $stmts, $passed, $scope);
+        $result = $scope->within(function () use ($scope, $name, $method, $proofs, $rewritten, $passed, $stmts): void {
+            $scope->enterSubjectMethod($name, LaravelTsPublish::methodDeclaringFileClass($method), $proofs, $rewritten);
+            resolve(ParameterBinder::class)->bindCall($method, $passed, $scope);
             $this->seedBody($stmts, $scope);
-
-            $result = ValueResult::analyzeClosureUnion($returns, $engine, $scope);
-        } finally {
-            $scope->leaveSubjectMethod($name, $caller);
-        }
+        }, fn (): array => ValueResult::analyzeClosureUnion($returns, $engine, $scope));
 
         // Without an enum channel no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.
         if (! isset($result['enumFqcn']) && ! isset($result['multiEnumResourceFqcns'])) {

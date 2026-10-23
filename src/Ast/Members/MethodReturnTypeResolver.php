@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -58,7 +58,6 @@ use ReflectionMethod;
 final class MethodReturnTypeResolver
 {
     use BuildsInlineObjectTypes;
-    use CollectsLocalVarBindings;
     use InspectsAstNodes;
 
     /**
@@ -67,9 +66,10 @@ final class MethodReturnTypeResolver
      *
      * @param  class-string  $class
      * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
+     * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @return ValueExpressionResult|null
      */
-    public function resolve(string $class, string $methodName, ?CallSite $site = null): ?array
+    public function resolve(string $class, string $methodName, ?CallSite $site = null, ?string $backing = null): ?array
     {
         if (! method_exists($class, $methodName)) {
             return null;
@@ -79,9 +79,9 @@ final class MethodReturnTypeResolver
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
 
         return resolve(AnalysisMemo::class)->remember(
-            'method-return:'.$class.'@'.$methodName.CallSite::signature($passed),
-            function () use ($class, $methodName, $passed): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed);
+            'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing),
+            function () use ($class, $methodName, $passed, $backing): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -119,9 +119,10 @@ final class MethodReturnTypeResolver
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
+     * @param  class-string<Model>|null  $backing
      * @return ValueExpressionResult|null
      */
-    private function reflectOrReadBody(string $class, string $methodName, array $passed): ?array
+    private function reflectOrReadBody(string $class, string $methodName, array $passed, ?string $backing): ?array
     {
         $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
@@ -130,8 +131,8 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed)
-            ?? $this->bodyValue($class, $methodName, $passed)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing)
+            ?? $this->bodyValue($class, $methodName, $passed, $backing)
             ?? $reflected;
     }
 
@@ -145,9 +146,10 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  ValueExpressionResult|null  $reflected
      * @param  array<string, PassedBinding>  $passed
+     * @param  class-string<Model>|null  $backing
      * @return ValueExpressionResult|null
      */
-    private function bodyType(string $class, string $methodName, ?array $reflected, array $passed): ?array
+    private function bodyType(string $class, string $methodName, ?array $reflected, array $passed, ?string $backing): ?array
     {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -169,7 +171,7 @@ final class MethodReturnTypeResolver
             $analysis = resolve(AstEngine::class)->analyzeMethod(
                 $class,
                 $methodName,
-                is_a($class, Model::class, true) ? $class : null,
+                $backing ?? (is_a($class, Model::class, true) ? $class : null),
                 carriesImports: false,
                 passed: $passed,
                 readsCall: true,
@@ -214,9 +216,10 @@ final class MethodReturnTypeResolver
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
+     * @param  class-string<Model>|null  $backing
      * @return ValueExpressionResult|null
      */
-    private function bodyValue(string $class, string $methodName, array $passed): ?array
+    private function bodyValue(string $class, string $methodName, array $passed, ?string $backing): ?array
     {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -228,7 +231,7 @@ final class MethodReturnTypeResolver
         }
 
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed);
+            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing);
         } finally {
             $memo->leave($key);
         }
@@ -322,7 +325,7 @@ final class MethodReturnTypeResolver
             }
         }
 
-        foreach ($returned === [] ? [] : $this->collectVariableWrites($stmts, $subject, $declaration) as [$name, , $target]) {
+        foreach ($returned === [] ? [] : VariableWrites::of($stmts, $subject, $declaration) as [$name, , $target]) {
             if (! isset($returned[$name])) {
                 continue;
             }
@@ -330,7 +333,7 @@ final class MethodReturnTypeResolver
             if (! $target instanceof ArrayDimFetch) {
                 // A whole write, a `foreach` target or a by-reference argument may replace what the caller passed.
                 unset($returned[$name]);
-            } elseif ($this->rootVariable($target) === $name) {
+            } elseif (VariableWrites::rootVariable($target) === $name) {
                 $returned[$name] = true;
             }
         }

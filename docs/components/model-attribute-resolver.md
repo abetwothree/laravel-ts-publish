@@ -28,7 +28,8 @@ The attribute waterfall spans these classes:
 - [`LaravelTsPublish`](../../src/LaravelTsPublish.php): `toTsType()`, return-type resolution, and the docblock helpers
   for generics, shapes, type aliases and trait templates.
 - [`TsTypeString`](../../src/Support/TsTypeString.php): `isVagueTsType()`, the one definition of "vague".
-- [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute and relation lists.
+- [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute list, and reads the
+  relation list itself. See [Relation discovery](#relation-discovery).
 
 ## A vague signature defers to the docblock
 
@@ -240,6 +241,24 @@ which lists `ModelInspector`'s attributes.
 
 A nullable primitive-cast or database-typed column adds `| null` unless the declared type already has a top-level
 `null`; a class cast or an accessor keeps the looser test, since it runs on `NULL` and returns what it returns.
+
+## Relation discovery
+
+`ModelInspector::getRelations()` calls each relation method once, so one that throws on a blank model is left out with
+a warning. It calls what Laravel's `getRelations()` calls, a public parameterless method typed as a relation or calling
+a builder such as `$this->hasMany(` in its body, and also one whose declared return names only relation classes
+(`declaresRelationReturn()`): `@return Ancestors<static, static>` over a package's own helper, or `Notifiable`'s
+`readNotifications()`. A method that declares neither is missed; see
+[known gaps](../known-gaps.md#a-relation-method-that-declares-no-relation-class-and-builds-it-through-a-helper-is-left-out).
+It reads them in the order PHP 8.5 binds the model's methods, each class's own and then its traits', from the model
+up, so PHP 8.4, which binds a class's traits after its parent, lists them the same.
+
+Each entry carries the relation's `class` beside Laravel's short `type`. `RelationMap::isToMany()` reads a relation as
+a list when its `type` names "many", or when its class extends one of Laravel's to-many relations and keeps that
+relation's `getResults()` and `match()`. So a package's `Ancestors` on `HasMany` loads a list, and a has-one-deep built
+on has-many-through, which overrides both, loads one model. `strategyFor()` gives a subclass the map does not name the
+strategy of its nearest parent the map names, but never a to-many parent's to a subclass that loads one model, which
+stays `nullable`. The `morphTo` and `morphToMany` tests still read `type`.
 
 ## MorphTo targets
 
