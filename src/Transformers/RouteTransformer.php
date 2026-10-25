@@ -30,6 +30,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 
 /**
+ * @phpstan-import-type PageKinds from InertiaPageAnalyzer
  * @phpstan-import-type RouteActionData from TsRouteDto
  * @phpstan-import-type RouteArgData from TsRouteDto
  * @phpstan-import-type TypesImportMap from Datable
@@ -58,7 +59,7 @@ class RouteTransformer extends CoreTransformer
     /** @var array<int, list<class-string>> Action index => FQCNs found in page type */
     protected array $actionPageTypeFqcns = [];
 
-    /** @var array<string, list<array<string, class-string>>> method name => per page type, each `…Kind` => its enum */
+    /** @var array<string, PageKinds> action method, as actions dedupe => per page type, each `…Kind` => its enum */
     protected array $actionPageKinds = [];
 
     /** @var array<int, list<class-string>> Action index => enums whose const a page type reads through `typeof` */
@@ -175,37 +176,18 @@ class RouteTransformer extends CoreTransformer
      */
     protected function spellSharedKindsApart(): self
     {
-        /** @var array<string, array<class-string, true>> $enumsOf `…Kind` name => the enums behind it, file-wide */
-        $enumsOf = [];
-
-        foreach ($this->actionPageKinds as $pages) {
-            foreach ($pages as $kinds) {
-                foreach ($kinds as $kind => $enum) {
-                    $enumsOf[$kind][$enum] = true;
-                }
-            }
-        }
-
-        $shared = array_filter($enumsOf, static fn (array $enums): bool => count($enums) > 1);
+        $shared = SharedEnumKinds::sharedAcross(array_merge(...array_values($this->actionPageKinds)));
 
         foreach ($shared === [] ? [] : $this->actions as $index => $action) {
-            if (! isset($action['pageType'], $this->actionPageKinds[$action['methodName']])) {
+            if (! isset($action['pageType'], $this->actionPageKinds[$action['originalMethodName']])) {
                 continue;
             }
 
-            $pages = $this->actionPageKinds[$action['methodName']];
-            $spell = static function (string $type, int $position) use ($pages, $shared): string {
-                foreach (array_intersect_key($pages[$position] ?? [], $shared) as $kind => $enum) {
-                    $type = SharedEnumKinds::spellAsLiteral($type, $kind, $enum);
-                }
-
-                return $type;
-            };
-
+            $pages = $this->actionPageKinds[$action['originalMethodName']];
             $pageType = $action['pageType'];
 
             if (is_string($pageType)) {
-                $this->actions[$index]['pageType'] = $spell($pageType, 0);
+                $this->actions[$index]['pageType'] = SharedEnumKinds::spellShared($pageType, $pages[0] ?? [], $shared);
 
                 continue;
             }
@@ -214,7 +196,7 @@ class RouteTransformer extends CoreTransformer
             $position = 0;
 
             foreach ($pageType as $key => $type) {
-                $pageType[$key] = $spell($type, $position++);
+                $pageType[$key] = SharedEnumKinds::spellShared($type, $pages[$position++] ?? [], $shared);
             }
 
             $this->actions[$index]['pageType'] = $pageType;
@@ -403,7 +385,7 @@ class RouteTransformer extends CoreTransformer
 
                     $action['shouldAnnotate'] = true;
                     $this->hasPageTypes = true;
-                    $this->actionPageKinds[$methodName] = $inertiaData['pageKinds'] ?? [];
+                    $this->actionPageKinds[$originalMethodName] = $inertiaData['pageKinds'] ?? [];
                 }
 
                 if ($inertiaData['classFqcns'] !== []) {

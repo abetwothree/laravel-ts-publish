@@ -48,12 +48,14 @@ use Throwable;
  *
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TsCastsParseResult from InertiaSharedDataAnalyzer
+ * @phpstan-import-type SpelledKinds from SharedEnumKinds
  *
+ * @phpstan-type PageKinds = list<SpelledKinds>
  * @phpstan-type InertiaPageData = array{
  *     component: string|list<string>,
  *     pageType: string|list<string>|null,
  *     classFqcns: list<class-string>,
- *     pageKinds?: list<array<string, class-string>>,
+ *     pageKinds?: PageKinds,
  *     enumConstFqcns?: list<class-string>,
  *     externalImports?: array<string, list<string>>,
  * }
@@ -367,7 +369,7 @@ class InertiaPageAnalyzer
         $allFqcns = [];
         /** @var list<class-string> $constFqcns */
         $constFqcns = [];
-        /** @var list<array<string, class-string>> $pageKinds per page type, each `…Kind` it spells => its enum */
+        /** @var PageKinds $pageKinds per page type, each `…Kind` it spells => its enum */
         $pageKinds = [];
         /** @var array<string, list<string>> $externalImports */
         $externalImports = [];

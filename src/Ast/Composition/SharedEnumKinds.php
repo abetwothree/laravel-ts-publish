@@ -14,6 +14,9 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
  * companion or the shared-data file would import one name from two modules. Each such token becomes its enum's literal
  * case-name union, which needs no import.
  *
+ * @phpstan-type SpelledKinds = array<string, class-string>
+ * @phpstan-type SharedKinds = array<string, array<class-string, true>>
+ *
  * @internal
  */
 final class SharedEnumKinds
@@ -22,11 +25,11 @@ final class SharedEnumKinds
      * Respell, in the analysis's property types, each `…Kind` token two of its enums spell, and name the one enum
      * behind each `…Kind` the types still spell.
      *
-     * @return array<string, class-string> `…Kind` name => the enum behind its tokens
+     * @return SpelledKinds `…Kind` name => the enum behind its tokens
      */
     public static function spellApart(MethodAnalysis $analysis): array
     {
-        /** @var array<string, array<class-string, true>> $spelledBy `…Kind` name => the enums behind its tokens */
+        /** @var SharedKinds $spelledBy `…Kind` name => the enums behind its tokens */
         $spelledBy = [];
 
         foreach ($analysis->properties as $property) {
@@ -37,7 +40,7 @@ final class SharedEnumKinds
             }
         }
 
-        $shared = array_filter($spelledBy, static fn (array $enums): bool => count($enums) > 1);
+        $shared = self::shared($spelledBy);
 
         if ($shared !== []) {
             foreach ($analysis->properties as $index => $property) {
@@ -57,11 +60,57 @@ final class SharedEnumKinds
     }
 
     /**
+     * The `…Kind` names the given name maps put different enums behind, as spellApart() finds them within one analysis,
+     * for a file whose types each spellApart() read alone.
+     *
+     * @param  list<SpelledKinds>  $kinds
+     * @return SharedKinds
+     */
+    public static function sharedAcross(array $kinds): array
+    {
+        $spelledBy = [];
+
+        foreach ($kinds as $spelled) {
+            foreach ($spelled as $kind => $enum) {
+                $spelledBy[$kind][$enum] = true;
+            }
+        }
+
+        return self::shared($spelledBy);
+    }
+
+    /**
+     * Respell each `…Kind` token of a type that sharedAcross() lists as the literal case-name union of its own enum.
+     *
+     * @param  SpelledKinds  $kinds  the type's own `…Kind` names, as spellApart() named them
+     * @param  SharedKinds  $shared
+     */
+    public static function spellShared(string $type, array $kinds, array $shared): string
+    {
+        foreach (array_intersect_key($kinds, $shared) as $kind => $enum) {
+            $type = self::spellAsLiteral($type, $kind, $enum);
+        }
+
+        return $type;
+    }
+
+    /**
+     * The `…Kind` names more than one enum is behind.
+     *
+     * @param  SharedKinds  $spelledBy
+     * @return SharedKinds
+     */
+    private static function shared(array $spelledBy): array
+    {
+        return array_filter($spelledBy, static fn (array $enums): bool => count($enums) > 1);
+    }
+
+    /**
      * Respell each `$kind` token in the type as the enum's literal case-name union.
      *
      * @param  class-string  $enum
      */
-    public static function spellAsLiteral(string $type, string $kind, string $enum): string
+    private static function spellAsLiteral(string $type, string $kind, string $enum): string
     {
         return new ClassTokenQueue([$enum], static fn (): string => $kind)->rewrite(
             $type,
