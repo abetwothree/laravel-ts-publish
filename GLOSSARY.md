@@ -115,7 +115,7 @@ The class `$this` is at run time — for a collection, the one Laravel instantia
 _Avoid_: leaf, publishing collection, called class
 
 **Declaring class**:
-The class that declares the method body being read: `self` names it, `parent` names its parent, and a private member it declares is the one that body reads, even where the runtime class redeclares it. For a trait's method it is the class that uses the trait, not the trait.
+The class that declares the method body being read: `self` names it, `parent` names its parent, and a private member it declares is the one `$this->` reads in that body, even where the runtime class redeclares it. For a trait's method it is the class that uses the trait, not the trait.
 _Avoid_: defining class, lexical class, scope class
 
 **Resource proxy**:
