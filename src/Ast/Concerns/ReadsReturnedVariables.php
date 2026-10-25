@@ -112,6 +112,12 @@ trait ReadsReturnedVariables
     abstract protected function newVariableAnalysis(): MethodAnalysis;
 
     /**
+     * The keys a parameter holds on entry, read from the value the host binds it to; null where it binds none it can
+     * read back key by key.
+     */
+    abstract protected function parameterSeed(string $varName): ?MethodAnalysis;
+
+    /**
      * The key and value an append `$var[] = value` writes where the host reads an appended item as a named key; null
      * where an appended item is a position.
      *
@@ -143,7 +149,8 @@ trait ReadsReturnedVariables
     abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
 
     /**
-     * Resolve what a body returns, a returned variable the scope cannot type read through the walk over its writes.
+     * Resolve what a body returns, a returned variable the scope cannot type, or a seeded parameter the body writes,
+     * read through the walk over its writes.
      *
      * ResolvesReturnedValues entry point for a closure's returns and those of a method read as a value.
      *
@@ -154,11 +161,15 @@ trait ReadsReturnedVariables
     {
         $result = $this->analyzeValueExpression($returned);
 
-        if ($result['type'] !== 'unknown' || ! $returned instanceof Variable || ! is_string($returned->name)) {
+        if (! $returned instanceof Variable || ! is_string($returned->name)) {
             return $result;
         }
 
-        return $this->walkedValue($stmts, $returned->name) ?? $result;
+        // A parameter's binding is what it held on entry, which misses each key the body writes into it after.
+        $walks = $result['type'] === 'unknown'
+            || ($this->entrySeed($stmts, $returned->name) !== null && $this->writesVariable($stmts, $returned->name));
+
+        return $walks ? $this->walkedValue($stmts, $returned->name) ?? $result : $result;
     }
 
     /**
@@ -179,7 +190,7 @@ trait ReadsReturnedVariables
         $before = array_values(array_filter($stmts, fn (Node\Stmt $stmt): bool => $stmt->getEndFilePos() < $offset));
         $holding = $stmts[count($before)] ?? null;
 
-        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable($holding, $name))) {
+        if (! is_string($name) || $before === [] || ($holding !== null && $this->writesVariable([$holding], $name))) {
             return null;
         }
 
@@ -206,7 +217,8 @@ trait ReadsReturnedVariables
 
     /**
      * Whether every whole write to a variable has a form the walk reads: each assignment of the variable is an array
-     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it. A key write never counts against.
+     * readsAsArray() accepts, or a `+=` of one, and at least one assigns it or the walk starts from a seed. A key write
+     * never counts against.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -235,7 +247,7 @@ trait ReadsReturnedVariables
             $assigned = $assigned || $node instanceof Assign;
         }
 
-        return $assigned;
+        return $assigned || $this->entrySeed($stmts, $varName) !== null;
     }
 
     /**
@@ -504,12 +516,14 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a statement writes the named variable anywhere within it, as VariableWrites::of() counts a write.
+     * Whether statements write the named variable anywhere within them, as VariableWrites::of() counts a write.
+     *
+     * @param  array<Node\Stmt>  $stmts
      */
-    private function writesVariable(Node\Stmt $stmt, string $varName): bool
+    private function writesVariable(array $stmts, string $varName): bool
     {
         return array_any(
-            VariableWrites::of([$stmt], $this->subjectReflection()),
+            VariableWrites::of($stmts, $this->subjectReflection()),
             fn (array $write): bool => $write[0] === $varName,
         );
     }
@@ -527,7 +541,8 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis.
+     * Walk a variable's writes, from the last whole assignment that replaces it, into a new analysis; with none at the
+     * top level, from the keys a parameter holds on entry.
      *
      * @param  array<Node\Stmt>  $stmts
      * @return TAnalysis
@@ -535,6 +550,12 @@ trait ReadsReturnedVariables
     private function walkVariable(array $stmts, string $varName, bool $topLevel): MethodAnalysis
     {
         $analysis = $this->newVariableAnalysis();
+        $seed = $this->entrySeed($stmts, $varName);
+
+        if ($seed !== null) {
+            $analysis->merge($seed);
+        }
+
         $live = $this->fromLastReplacement($stmts, $varName);
         // A value read during the walk can start a walk of its own, whose writes are not this one's.
         $outer = $this->untypedKeyWrites;
@@ -564,17 +585,42 @@ trait ReadsReturnedVariables
         $start = 0;
 
         foreach ($stmts as $index => $stmt) {
-            if ($stmt instanceof ExpressionStmt
-                && $stmt->expr instanceof Assign
-                && $stmt->expr->var instanceof Variable
-                && $stmt->expr->var->name === $varName
-                && $this->readsAsArray($stmt->expr->expr)
-                && ! $this->spreadsVariable($stmt->expr->expr, $varName)) {
+            $value = $this->replacingValue($stmt, $varName);
+
+            if ($value !== null && $this->readsAsArray($value)) {
                 $start = $index;
             }
         }
 
         return array_slice($stmts, $start);
+    }
+
+    /**
+     * The keys a parameter holds where the walk over a body starts; null where a top-level assignment replaces it,
+     * whether the walk reads that value or not, or the host seeds it with none.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function entrySeed(array $stmts, string $varName): ?MethodAnalysis
+    {
+        $replaced = array_any($stmts, fn (Node\Stmt $stmt): bool => $this->replacingValue($stmt, $varName) !== null);
+
+        return $replaced ? null : $this->parameterSeed($varName);
+    }
+
+    /**
+     * The value a statement `$var = value;` assigns where it replaces every key the variable held, one that spreads
+     * the variable into itself aside; null for any other statement.
+     */
+    private function replacingValue(Node\Stmt $stmt, string $varName): ?Expr
+    {
+        $replaces = $stmt instanceof ExpressionStmt
+            && $stmt->expr instanceof Assign
+            && $stmt->expr->var instanceof Variable
+            && $stmt->expr->var->name === $varName
+            && ! $this->spreadsVariable($stmt->expr->expr, $varName);
+
+        return $replaces ? $stmt->expr->expr : null;
     }
 
     /**

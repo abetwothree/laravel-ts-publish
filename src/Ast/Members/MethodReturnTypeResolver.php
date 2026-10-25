@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -192,9 +193,10 @@ final class MethodReturnTypeResolver
         }
 
         $subject = new ReflectionClass($class);
+        $method = new ReflectionMethod($class, $methodName);
 
         // A caller's keys reach a returned parameter the body only writes keys into unseen, so the shape stays open.
-        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection)) {
+        if ($this->returnsKeyWrittenParameter($context->method, $subject, $context->reflection, $method, $passed)) {
             $signature = array_search('[key: string]', array_column($analysis->properties, 'name'), true);
 
             if ($signature === false) {
@@ -302,13 +304,20 @@ final class MethodReturnTypeResolver
 
     /**
      * Whether the method returns a parameter its body writes only through its keys, so whatever the caller passed in it
-     * reaches the return without the body seeing it.
+     * reaches the return without the body seeing it; the import-less body read starts one bound to an object literal
+     * from its keys.
      *
      * @param  ReflectionClass<object>  $subject
      * @param  ReflectionClass<object>  $declaration
+     * @param  array<string, PassedBinding>  $passed
      */
-    private function returnsKeyWrittenParameter(ClassMethod $method, ReflectionClass $subject, ReflectionClass $declaration): bool
-    {
+    private function returnsKeyWrittenParameter(
+        ClassMethod $method,
+        ReflectionClass $subject,
+        ReflectionClass $declaration,
+        ReflectionMethod $reflection,
+        array $passed,
+    ): bool {
         $stmts = $method->stmts ?? [];
         $parameters = [];
         $returned = [];
@@ -322,6 +331,14 @@ final class MethodReturnTypeResolver
         foreach ($this->ownReturns($stmts) ?? [] as [$return]) {
             if ($return->expr instanceof Variable && in_array($return->expr->name, $parameters, true)) {
                 $returned[$return->expr->name] = false;
+            }
+        }
+
+        foreach (array_keys($returned) as $name) {
+            $bound = resolve(ParameterBinder::class)->boundValue($reflection, $name, $passed);
+
+            if ($bound !== null && ObjectMembers::seed($bound, carriesImports: false) !== null) {
+                unset($returned[$name]);
             }
         }
 

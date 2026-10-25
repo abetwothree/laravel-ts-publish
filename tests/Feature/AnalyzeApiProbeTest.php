@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
+use Workbench\App\ValueObjects\GuardedLinkPayload;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 
@@ -69,6 +70,10 @@ function analysisProbeCases(): array
         'SameNamedKindsInner' => [SameNamedKindsPayload::class, 'inner', null],
         // array_values() and (object) and (array) casts of a list, a Record and an object literal, and stdClass values.
         'ReshapedListsPayload' => [ReshapedListsPayload::class, 'toArray', null],
+        // A helper that returns the array it is passed, its writes joined onto the argument's shape.
+        'GuardedLinkPayload' => [GuardedLinkPayload::class, 'toArray', null],
+        // The same helper and its kin read as values: a nested argument, a +=, a declared shape and an unread one.
+        'GuardedLinkPayloadValues' => [GuardedLinkPayload::class, 'values', null],
     ];
 }
 

@@ -26,6 +26,7 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Release;
 use Workbench\App\Services\PayloadDecoratorService;
 use Workbench\App\Services\PostStatsService;
+use Workbench\App\ValueObjects\GuardedLinkPayload;
 
 test('a vague array signature falls back to the literal body', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(ServiceReturnResource::class), Post::class)->analyze()->properties)->keyBy('name');
@@ -267,4 +268,20 @@ test('every call path publishes a returned key-written parameter open', function
         'passed_through' => 'Record<string, string> | never[]',
         'rebuilt' => '{ id: number; seen: boolean }',
     ]);
+});
+
+test('keeps the open signature only for a parameter bound to nothing it can read', function () {
+    $values = analyzedKeyTypes(GuardedLinkPayload::class, 'values');
+
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'guard')['type'] ?? null)
+        ->toBe('{ url?: null; disabled?: boolean; [key: string]: unknown }')
+        ->and($values['opaque'])->toBe('{ url?: null; disabled?: boolean; [key: string]: unknown }')
+        ->and($values['nested'])->toBe('{ id: number; url: string | null; disabled: boolean }')
+        ->and(json_encode(new GuardedLinkPayload()->values()['opaque']))->toBe('[]');
+});
+
+test('lets a seeded shape win over a vague @return array<string, mixed>', function () {
+    expect(resolve(MethodReturnTypeResolver::class)->resolve(GuardedLinkPayload::class, 'declared'))
+        ->toBe(['type' => '{ id: number; name: string; extra: boolean }', 'optional' => false])
+        ->and(json_encode(new GuardedLinkPayload()->values()['declared']))->toBe('{"id":1,"name":"x","extra":true}');
 });

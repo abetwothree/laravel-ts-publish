@@ -41,6 +41,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
@@ -585,6 +586,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     protected function newVariableAnalysis(): ResourceAnalysis
     {
         return new ResourceAnalysis;
+    }
+
+    /**
+     * The keys a parameter holds on entry: the object literal its bound value spells, read back key by key.
+     */
+    protected function parameterSeed(string $varName): ?MethodAnalysis
+    {
+        $bound = $this->scope->varValueBindings[$varName] ?? null;
+
+        return $bound === null ? null : ObjectMembers::seed($bound, $this->scope->carriesImports);
     }
 
     /**

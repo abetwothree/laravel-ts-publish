@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
+use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\UserResource;
@@ -162,3 +163,24 @@ it('declines a value whose queue holds two same-named classes for fewer tokens',
         'embeddedModelFqcns' => [CrmUser::class, User::class],
     ]))->toBeNull();
 });
+
+it('seeds an analysis with the members analysis() reads where each keeps its text', function () {
+    $value = ['type' => '{ author: User; status: StatusType }', 'optional' => false, 'modelFqcn' => User::class, 'embeddedEnumFqcns' => [Status::class]];
+
+    expect(ObjectMembers::seed($value, carriesImports: true))->toEqual(ObjectMembers::analysis($value))
+        ->and(ObjectMembers::seed(['type' => '{ id: number }', 'optional' => false], carriesImports: false))
+        ->toEqual(ObjectMembers::analysis(['type' => '{ id: number }', 'optional' => false]));
+});
+
+it('seeds nothing where a member would lose its text', function (array $value, bool $carriesImports, array $published) {
+    PublishedModelRegistry::register($published);
+
+    expect(ObjectMembers::seed($value, $carriesImports))->toBeNull();
+})->with([
+    'a model no generated file exports' => [
+        ['type' => '{ author: User }', 'optional' => false, 'modelFqcn' => User::class], true, [Post::class],
+    ],
+    'a class in an analysis with no imports' => [
+        ['type' => '{ status: StatusType }', 'optional' => false, 'directEnumFqcn' => Status::class], false, [],
+    ],
+]);

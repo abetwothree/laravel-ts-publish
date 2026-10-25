@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
@@ -95,6 +96,20 @@ final class ObjectMembers
         $analysis->carry($value['carriedFqcns'] ?? []);
 
         return $analysis;
+    }
+
+    /**
+     * The keys a value starts an analysis with, as analysis() reads them; null where a member would lose its text: a
+     * model no generated file exports, which addProperty() types `unknown`, or any class an import-less analysis holds.
+     *
+     * @param  ValueExpressionResult  $value
+     */
+    public static function seed(array $value, bool $carriesImports): ?MethodAnalysis
+    {
+        $losesText = ! ValueResult::namesOnlyExportedClasses($value)
+            || (! $carriesImports && TsTypeString::shapeValueHasUnimportableToken($value['type']));
+
+        return $losesText ? null : self::analysis($value);
     }
 
     /**
