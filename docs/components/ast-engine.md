@@ -163,8 +163,13 @@ the matrix does not run these profiles.
 ## AnalysisScope
 
 [`AnalysisScope`] is one mutable object shared by a whole analysis, not a value copied down the walk. Its field
-docblocks say what each binding table holds. These seven facts span other classes:
+docblocks say what each binding table holds. These eight facts span other classes:
 
+- **Three classes stand for the body under analysis**: `subjectReflection` is the subject; `runtimeReflection` is the
+  runtime class, the one `$this` and `static` are, which differs from the subject when `ResourceAstAnalyzer` reads an
+  ancestor's body for a subclass; `declaringClass` is the declaring class, the one `self` names, which is the using
+  class for a trait's method, where `declaringFileClass` names the trait. A `$this->m()` call reads `m` on
+  `thisMemberClass()`: the declaring class when it declares that member private, else the runtime class.
 - **`modelClass` is scoped, not fixed**: `NarrowsInstanceofSubjects::resolveNarrowed()` narrows it, with
   `forwardsUndeclaredMembersTo` and `provenProxy`, while a ternary's proven arm, or a value inside a block an `if`
   proves on `$this->resource`, resolves, for `TernaryHandler`, `ReceiverClassResolver` and `ResourceAstAnalyzer` alike,

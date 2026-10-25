@@ -103,7 +103,8 @@ under a child subject. `AnalysisScope::$declaringFileClass` cannot stand in for 
 inline `@var` imports. It names a trait for a trait's method, and `analyze()` sets it from the located method. So
 `new self`, `new parent`, `self::m()` and `parent::m()` resolve only when the subject's parent is absent or under
 `Illuminate\`, where every body analyzed under the subject is its own or a trait's. `static` always names the subject,
-since late static binding follows the object.
+since late static binding follows the object. `$this->m()` reads the runtime class's `m`, or the declaring class's own
+private one, through `AnalysisScope::thisMemberClass()`.
 
 ### Visibility
 

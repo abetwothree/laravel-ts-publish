@@ -114,6 +114,10 @@ The class or method being analyzed, such as an API resource or a controller acti
 The class `$this` is at run time — for a collection, the one Laravel instantiates — whose `collects()`, `$wrap` and keys apply to every ancestor body it runs.
 _Avoid_: leaf, publishing collection, called class
 
+**Declaring class**:
+The class that declares the method body being read: `self` names it, `parent` names its parent, and a private member it declares is the one that body reads, even where the runtime class redeclares it. For a trait's method it is the class that uses the trait, not the trait.
+_Avoid_: defining class, lexical class, scope class
+
 **Resource proxy**:
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
 _Avoid_: wrapper, resource property
