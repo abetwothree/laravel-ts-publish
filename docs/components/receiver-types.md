@@ -442,6 +442,14 @@ Each class types the property one of two ways:
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
 
+An enum's `value` or `name`, read on an enum or on `BackedEnum` or `UnitEnum`, comes from [`EnumValueTypes`] first,
+and what it declines falls to the reflected property. `->value` publishes the enum's `…Type` alias with its import, as
+does a pure enum's `->name`, since its values are its names. The alias needs a
+[reader that carries imports][reader-no-import], an enum [`PublishedEnums`] says `ts:publish` writes, and no case whose
+`#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends, which a backed
+enum's `->name` always is. A case past ±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number`
+and `string`. `PropertyChainHandler`'s wrapped-enum arm asks the same class.
+
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
 `| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
@@ -464,9 +472,11 @@ These pages cover the neighbors of receiver resolution:
 
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
+[`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
 [`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
+[`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
 [`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
 [`ReceiverClassResolver`]: ../../src/Ast/Receivers/ReceiverClassResolver.php

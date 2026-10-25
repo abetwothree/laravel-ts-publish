@@ -240,8 +240,9 @@ Return `(object) []` from the provider instead.
 `ModelMetadataAnalyzer::inferredTypeImports()` imports an enum a provider body returns from the path its namespace
 implies, without checking `enums.excluded`, `#[TsExclude]` or `enums.additional_directories`. When enum publishing
 leaves the enum out, the companion fails `tsc` with TS2305 or TS2307 instead of `ts:publish` failing. Resources have
-`PublishedResourceRegistry` for this check, and enums have no equivalent. Publish the enum, or cast the property with
-an import-aware `#[TsCasts]`.
+`PublishedResourceRegistry` for this check. Enums have `PublishedEnums`, but only an enum's `->value` and `->name` reads
+consult it, and a raw enum read such as this one does not. Publish the enum, or cast the property with an import-aware
+`#[TsCasts]`.
 
 ### A model published on demand gets no metadata companion and is not watched
 

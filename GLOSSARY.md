@@ -75,6 +75,10 @@ _Avoid_: metadata
 One of the built-in functions a published enum gets, such as `.from()`, `.tryFrom()`, and `.cases()`.
 _Avoid_: helper
 
+**Published enum**:
+An enum a run writes a file for, because enum publishing is on and the configured enum collector lists it. A `->value` or `->name` read publishes an enum's alias only for a published enum, since only its file can be imported.
+_Avoid_: collected enum, exported enum
+
 **Route helper**:
 The published function for one controller action, which builds its URL and binds its parameters.
 _Avoid_: helper
