@@ -373,6 +373,26 @@ class TsTypeString
     }
 
     /**
+     * Whether a type is a vague list type's arms with an `unknown[]` spelled as a `Record<…>`: a string-keyed array
+     * encodes as an object, never as the list a native `array` publishes.
+     */
+    public function spellsListAsRecord(string $list, string $record): bool
+    {
+        $arms = $this->splitTopLevelUnion($record);
+        $listed = array_map(
+            fn (string $arm): string => TsTypeShape::recordArguments($arm) === null ? $arm : 'unknown[]',
+            $arms,
+        );
+        $spellsRecord = $listed !== $arms;
+        $listArms = $this->splitTopLevelUnion($list);
+
+        sort($listed);
+        sort($listArms);
+
+        return $spellsRecord && $listed === $listArms;
+    }
+
+    /**
      * Replace each registered name with its alias, the Nth occurrence of a name taking the Nth FQCN queued under it.
      *
      * A sibling name reads its class's queue, so an enum's `…Type` and `…Kind` tokens share one order. $anchor is a

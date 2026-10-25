@@ -61,7 +61,7 @@ class MethodAnalysis
 
     /**
      * Whether keys these hold reach the return unread, from a whole write's value the walk could not read or a key
-     * write it could not name; merge() ORs it, and the body fallback publishes such a shape open.
+     * write it could not name; the body fallback publishes such a shape open.
      */
     public bool $holdsUnreadKeys = false;
 
@@ -181,9 +181,9 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key the
-     * source sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType()
-     * consumes each as a positional queue against the rendered type. `carried` unions per kind; `readsCompletely` ANDs.
+     * `properties` appends; the single-value class maps and `casts` replace-merge, the source winning, and a key it
+     * sets without a cast loses its entry. The four inline maps append WITHOUT deduping: aliasPropertyType() consumes
+     * each as a positional queue. `carried` unions per kind; `readsCompletely` ANDs and `holdsUnreadKeys` ORs.
      */
     public function merge(self $source): void
     {

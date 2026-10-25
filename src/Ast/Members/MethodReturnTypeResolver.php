@@ -116,7 +116,8 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The precise reflected return type, else the body's shape beside the declaration's other arms, else its value.
+     * The precise reflected return type, else the body's shape beside the declaration's other arms, else its value,
+     * unless the declaration spells as a string-keyed `Record` the vague list that value reads as.
      *
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
@@ -133,8 +134,26 @@ final class MethodReturnTypeResolver
         }
 
         return $this->bodyType($class, $methodName, $reflected, $passed, $backing)
-            ?? $this->bodyValue($class, $methodName, $passed, $backing)
+            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing), $reflected)
             ?? $reflected;
+    }
+
+    /**
+     * A body value, or the declaration where that value is only the vague `unknown[]`, `null` aside, and the
+     * declaration spells it as a `Record`: a string-keyed array encodes as an object.
+     *
+     * @param  ValueExpressionResult|null  $value
+     * @param  ValueExpressionResult|null  $reflected
+     * @return ValueExpressionResult|null
+     */
+    private function declaredOverVagueList(?array $value, ?array $reflected): ?array
+    {
+        $listsOnly = $value !== null
+            && array_values(array_diff(TsTypeString::splitTopLevelUnion($value['type']), ['null'])) === ['unknown[]'];
+
+        return $listsOnly && $reflected !== null && TsTypeString::spellsListAsRecord($value['type'], $reflected['type'])
+            ? $reflected
+            : $value;
     }
 
     /**

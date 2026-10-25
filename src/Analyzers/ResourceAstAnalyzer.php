@@ -67,6 +67,7 @@ use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\MethodCall;
@@ -74,6 +75,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
@@ -942,12 +944,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             if ($filtered !== null) {
                 $analysis = $filtered;
             } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
-                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? new ResourceAnalysis;
+                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? ResourceAnalysis::unreadAnalysis();
             } else {
-                $analysis = new ResourceAnalysis;
+                $analysis = ResourceAnalysis::unreadAnalysis();
             }
         } else {
-            $analysis = new ResourceAnalysis;
+            // A scalar, `null` or a constant holds no key; any other value holds keys nothing here read.
+            $holdsNoKey = $returned === null || $returned instanceof Scalar || $returned instanceof ConstFetch;
+            $analysis = $holdsNoKey ? new ResourceAnalysis : ResourceAnalysis::unreadAnalysis();
         }
 
         $analysis->readsCompletely = false;

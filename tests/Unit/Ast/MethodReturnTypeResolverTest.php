@@ -298,11 +298,43 @@ it('publishes a value-read shape open when its base is unread', function () {
 });
 
 test('keeps a seeded parameter open where the body writes a key the walk cannot name', function () {
-    $payload = new UnreadBasePayload(Request::create('/'));
+    $values = new UnreadBasePayload(Request::create('/'))->values();
 
-    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values')['extended'])
-        ->toBe('{ id: number; seen: boolean; [key: string]: unknown }')
-        ->and(json_encode($payload->values()['extended']))->toBe('{"id":1,"k":true,"seen":true}');
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'extended' => '{ id: number; seen: boolean; [key: string]: unknown }',
+        'appended' => '{ id: number; [key: string]: unknown }',
+        'nested_key' => '{ id: number; [key: string]: unknown }',
+    ])->and(json_encode($values['extended']))->toBe('{"id":1,"k":true,"seen":true}')
+        ->and(json_encode($values['appended']))->toBe('{"id":1,"0":5}')
+        ->and(json_encode($values['nested_key']))->toBe('{"id":1,"a":{"b":1}}');
+});
+
+test('publishes a value-read shape open over a helper or a spread the walk cannot read', function () {
+    $values = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]))->values();
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'raw_base' => '{ x: number; [key: string]: unknown }',
+        'raw_spread' => '{ x: number; [key: string]: unknown }',
+        'null_base' => '{ x: number }',
+    ])->and(json_encode($values['raw_base']))->toBe('{"a":1,"x":1}')
+        ->and(json_encode($values['raw_spread']))->toBe('{"a":1,"x":1}')
+        ->and(json_encode($values['null_base']))->toBe('{"x":1}');
+});
+
+test('publishes a string-keyed parameter returned untouched as a record where its argument reads as a list', function () {
+    $payload = new UnreadBasePayload(Request::create('/', 'GET', ['a' => 1]));
+    $filled = new UnreadBasePayload(Request::create('/'));
+    $filled->extra = ['b' => 2];
+
+    expect(analyzedKeyTypes(UnreadBasePayload::class, 'values'))->toMatchArray([
+        'request_untouched' => 'Record<string, unknown>',
+        'maybe_untouched' => 'Record<string, unknown> | null',
+        // Only a value that is the vague list alone gives way.
+        'either_untouched' => 'unknown[] | string',
+    ])->and(json_encode($payload->values()['request_untouched']))->toBe('{"a":1}')
+        ->and(json_encode($payload->values()['maybe_untouched']))->toBe('null')
+        ->and(json_encode($filled->values()['maybe_untouched']))->toBe('{"b":2}')
+        ->and(json_encode($payload->values()['either_untouched']))->toBe('"none"');
 });
 
 test('publishes a value-read shape open where a += adds an array the walk cannot read', function () {

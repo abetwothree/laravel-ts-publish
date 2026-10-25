@@ -14,12 +14,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 class ResourceAnalysis extends MethodAnalysis
 {
     /**
-     * An empty analysis for keys the analyzer could not read, so a variable built on it is not read completely.
+     * An empty analysis for keys the analyzer could not read, so a variable built on it is not read completely and
+     * holds unread keys.
      */
     public static function unreadAnalysis(): self
     {
         $analysis = new self;
         $analysis->readsCompletely = false;
+        $analysis->holdsUnreadKeys = true;
 
         return $analysis;
     }
