@@ -277,7 +277,7 @@ final class AstEngine
                 continue;
             }
 
-            $result = $resolver->resolve($reflection, $name) ?? ValueResult::unknown();
+            $result = $resolver->resolve($reflection, $name, $reflection) ?? ValueResult::unknown();
 
             // json_encode() omits a typed property never assigned; a promoted or defaulted one is always present.
             $analysis->addProperty($name, $result, optional: ! $property->hasDefaultValue() && ! $property->isPromoted());

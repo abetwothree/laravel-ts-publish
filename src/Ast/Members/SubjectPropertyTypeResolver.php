@@ -36,6 +36,7 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Unset_;
@@ -51,6 +52,8 @@ use WeakMap;
  * declares it at all, and whether a read still holds its default.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ *
+ * @phpstan-type PropertyWrites list<array{Node, ReflectionClass<object>}>
  *
  * @internal
  */
@@ -74,9 +77,11 @@ final class SubjectPropertyTypeResolver
      * yields a type whose tokens can be imported.
      *
      * @param  ReflectionClass<object>  $subject
+     * @param  ReflectionClass<object>|null  $runtime  the class a write's `static` names; null where only the declared
+     *                                                 class is known, which declines such a write
      * @return ValueExpressionResult|null
      */
-    public function resolve(ReflectionClass $subject, string $name): ?array
+    public function resolve(ReflectionClass $subject, string $name, ?ReflectionClass $runtime = null): ?array
     {
         if (! $subject->hasProperty($name)) {
             return null;
@@ -86,7 +91,7 @@ final class SubjectPropertyTypeResolver
 
         return resolve(PropertyDocblockTypeReader::class)->read($property)
             ?? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::propertyTypes($subject, $name))
-            ?? $this->defaultValueType($subject, $property);
+            ?? $this->defaultValueType($subject, $property, $runtime);
     }
 
     /**
@@ -188,9 +193,10 @@ final class SubjectPropertyTypeResolver
      * the property in any other way, since a read may then hold anything.
      *
      * @param  ReflectionClass<object>  $subject  the class the property is read through
+     * @param  ReflectionClass<object>|null  $runtime  the class a write's `static` names, if known
      * @return ValueExpressionResult|null
      */
-    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property): ?array
+    private function defaultValueType(ReflectionClass $subject, ReflectionProperty $property, ?ReflectionClass $runtime): ?array
     {
         if ($property->getType() !== null || ! $property->hasDefaultValue()) {
             return null;
@@ -218,7 +224,7 @@ final class SubjectPropertyTypeResolver
         $written = [];
 
         foreach ($writes as [$site, $declaration]) {
-            $assigned = $this->assignedConstant($site, $property->getName(), $subject, $declaration);
+            $assigned = $this->assignedConstant($site, $property->getName(), $runtime, $declaration);
 
             if ($assigned === null) {
                 return null;
@@ -248,7 +254,7 @@ final class SubjectPropertyTypeResolver
      * Laravel's own computed writes, such as `increment()`'s and `touch()`'s `$this->{$column}`, name a column.
      *
      * @param  ReflectionClass<object>  $class
-     * @return list<array{Node, ReflectionClass<object>}>|null
+     * @return PropertyWrites|null
      */
     private function propertyWrites(ReflectionClass $class, string $name): ?array
     {
@@ -296,11 +302,12 @@ final class SubjectPropertyTypeResolver
      * null for a value no constant evaluation types, and for any other write: a compound or element write, a computed
      * name, an unset, an iteration, a reference or a call that may take it by reference.
      *
-     * @param  ReflectionClass<object>  $class  the class the property is read through, which `static` names
+     * @param  ReflectionClass<object>|null  $runtime  the class the object is, which `static` names; null declines a
+     *                                                 value naming `static`, since a subclass may give it another type
      * @param  ReflectionClass<object>  $declaration  the class or trait whose body holds the write, which `self` names
      * @return ValueExpressionResult|null
      */
-    private function assignedConstant(Node $site, string $name, ReflectionClass $class, ReflectionClass $declaration): ?array
+    private function assignedConstant(Node $site, string $name, ?ReflectionClass $runtime, ReflectionClass $declaration): ?array
     {
         if (! $site instanceof Assign
             || ! $site->var instanceof PropertyFetch
@@ -310,8 +317,17 @@ final class SubjectPropertyTypeResolver
             return null;
         }
 
+        $namesStatic = new NodeFinder()->findFirst(
+            $site->expr,
+            fn (Node $node): bool => $node instanceof Name && $node->toLowerString() === 'static',
+        ) !== null;
+
+        if ($namesStatic && $runtime === null) {
+            return null;
+        }
+
         $scope = new AnalysisScope($declaration);
-        $scope->runtimeReflection = $class;
+        $scope->runtimeReflection = $runtime ?? $declaration;
         $values = resolve(ValueResolver::class);
 
         try {

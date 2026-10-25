@@ -3,15 +3,21 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BasePrivateLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseWrittenTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltInstanceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LateReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumberTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParameterTierResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SilverTierResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TrueLevelResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NinthViewCounter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StartedViewCounter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\StaticSyntaxPayload;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverBaseDto;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverChildDto;
@@ -184,4 +190,38 @@ it('types an untyped property a class writes itself as its default joined with t
     expect(publishedResourceKeyTypes(BaseWrittenTierResource::class, Post::class))->toBe(['tier' => 'string', 'level' => 'number | string'])
         ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)))->toBe(['tier' => 'gold', 'level' => 1])
         ->and(writtenTierResponse(new BaseWrittenTierResource(new Post)->maxLevel()))->toBe(['tier' => 'gold', 'level' => 'max']);
+});
+
+// Siblings read in one process: a `static::` write typed once per class would leak one sibling's type to the next.
+it('types a private property\'s `static::` write against each runtime class that reads it', function () {
+    $levels = [];
+
+    foreach ([BasePrivateLevelResource::class, SevenLevelResource::class, TrueLevelResource::class] as $resource) {
+        $levels[$resource] = [
+            publishedResourceKeyTypes($resource, Post::class)['level'],
+            (new $resource(new Post))->resolve(request())['level'],
+            (new $resource(new Post))->raise()->resolve(request())['level'],
+        ];
+    }
+
+    expect($levels)->toBe([
+        BasePrivateLevelResource::class => ['string', 'x', 'base'],
+        SevenLevelResource::class => ['string | number', 'x', 7],
+        TrueLevelResource::class => ['string | boolean', 'x', true],
+    ]);
+});
+
+it('leaves a receiver\'s property `unknown` where a write names `static`, since its object may be a subclass', function () {
+    expect(publishedResourceKeyTypes(SevenLevelResource::class, Post::class)['views'])->toBe('unknown')
+        ->and((new SevenLevelResource(new Post))->resolve(request())['views'])->toBe(9);
+});
+
+it('types a published class\'s public property against that class, whose instances it describes', function () {
+    $views = fn (string $class): string => resolve(AstEngine::class)->analyzePublicProperties($class)->properties[0]['type'];
+    $bumped = new NinthViewCounter;
+    $bumped->bump();
+
+    expect([$views(StartedViewCounter::class), $views(NinthViewCounter::class)])->toBe(['string', 'string | number'])
+        ->and(json_encode(new NinthViewCounter))->toBe('{"views":"x"}')
+        ->and(json_encode($bumped))->toBe('{"views":9}');
 });

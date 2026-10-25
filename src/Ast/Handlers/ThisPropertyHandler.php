@@ -124,7 +124,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 $items !== null => $items,
                 $scope->provenProxy !== null => $this->provenValue($scope->provenProxy, $scope),
                 default => $this->proxiedModel($receivers, $scope)
-                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName),
+                    ?? resolve(SubjectPropertyTypeResolver::class)->resolve($scope->subjectReflection, $propName, $scope->runtimeReflection),
             };
 
             return $held !== null && ValueResult::namesOnlyPublishedModels($held) ? $held : $result;
@@ -134,7 +134,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         // PHP reads a declared property before JsonResource::__get() ever forwards to the model.
         if ($scope->modelClass !== null && resolve(SubjectPropertyTypeResolver::class)->declaresOwnProperty($owner, $propName)) {
-            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName);
+            $own = resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName, $scope->runtimeReflection);
 
             // An abstract or framework model would be emitted as a token nothing imports.
             return $own !== null && ValueResult::namesOnlyPublishedModels($own) ? $own : $result;
@@ -167,7 +167,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         // Subject mode: with no backing model, `$this->prop` can only mean a property `$this` declares.
         if ($scope->modelClass === null) {
-            return resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName) ?? $result;
+            return resolve(SubjectPropertyTypeResolver::class)->resolve($owner, $propName, $scope->runtimeReflection) ?? $result;
         }
 
         return $result;

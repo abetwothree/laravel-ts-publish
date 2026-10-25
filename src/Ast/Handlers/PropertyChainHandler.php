@@ -196,7 +196,8 @@ final class PropertyChainHandler implements ExpressionHandler
      */
     private function resolveSubjectRootModel(string $name, AnalysisScope $scope): ?string
     {
-        $result = resolve(SubjectPropertyTypeResolver::class)->resolve($scope->thisMemberClass($name, false), $name);
+        $result = resolve(SubjectPropertyTypeResolver::class)
+            ->resolve($scope->thisMemberClass($name, false), $name, $scope->runtimeReflection);
         $modelFqcn = $result['modelFqcn'] ?? null;
 
         return $modelFqcn !== null && is_a($modelFqcn, Model::class, true) ? $modelFqcn : null;
