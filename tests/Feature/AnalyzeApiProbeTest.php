@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
+use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 
 /**
@@ -64,6 +65,8 @@ function analysisProbeCases(): array
         'SameNamedKindsPayload' => [SameNamedKindsPayload::class, 'toArray', null],
         // One enum's `…Type` token and its same-named sibling's `…Kind` token in one union.
         'SameNamedKindsUnions' => [SameNamedKindsPayload::class, 'unions', null],
+        // array_values() of a list, a Record, an object literal and an array_filter() result.
+        'ReshapedListsPayload' => [ReshapedListsPayload::class, 'toArray', null],
     ];
 }
 
