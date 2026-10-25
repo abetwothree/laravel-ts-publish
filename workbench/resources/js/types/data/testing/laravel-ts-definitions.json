@@ -302,6 +302,11 @@
                     "name": "kept",
                     "type": "AppStatusType",
                     "optional": false
+                },
+                {
+                    "name": "status_name",
+                    "type": "AppStatusKind",
+                    "optional": false
                 }
             ]
         },
@@ -13471,7 +13476,7 @@
                 },
                 {
                     "name": "stage_name",
-                    "type": "'Draft' | 'Published'",
+                    "type": "StatusKind",
                     "optional": true
                 }
             ]
@@ -15500,7 +15505,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
@@ -15520,7 +15525,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
+                    "type": "MediaTypeKind",
                     "optional": true
                 },
                 {
@@ -15545,7 +15550,7 @@
             "properties": [
                 {
                     "name": "name",
-                    "type": "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'",
+                    "type": "MediaTypeKind",
                     "optional": false
                 },
                 {
@@ -17308,7 +17313,7 @@
                 },
                 {
                     "name": "payload_name",
-                    "type": "'Draft' | 'Published'",
+                    "type": "StatusKind",
                     "optional": false
                 }
             ]

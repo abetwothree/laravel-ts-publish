@@ -21,7 +21,7 @@ it('binds a closure parameter to the class its native type names', function () {
         'null_default?' => 'null',
         'null_default_member?' => 'unknown',
         'enum_default?' => 'StatusType',
-        'unit_enum_default?' => "'Draft' | 'Published'",
+        'unit_enum_default?' => 'StatusKind',
     ]);
 });
 
@@ -33,7 +33,7 @@ it('binds no declared class over a default that names an enum case or is null', 
         'null_default?' => 'null',
         'null_default_member?' => 'unknown',
         'enum_default?' => 'StatusType',
-        'unit_enum_default?' => "'Draft' | 'Published'",
+        'unit_enum_default?' => 'StatusKind',
     ])->and($sent)->toMatchArray([
         'null_default' => null,
         'null_default_member' => null,

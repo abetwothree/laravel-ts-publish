@@ -3,7 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRenamedCases;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRevaluedCases;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRenamedCases;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRevaluedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\EnumInterfaceReads;
 use Workbench\App\Enums\Color;
@@ -21,16 +26,17 @@ it('types a backed enum value read as the published alias or the literal union',
     expect(analyzedKeyTypes(EnumValuesPayload::class))->toBe([
         'grade' => 'GradeType | null',
         'fallback_grade' => 'GradeType',
-        'grade_name' => "'Pass' | 'Fail'",
+        'grade_name' => 'GradeKind',
         'priority' => 'PriorityType',
-        'priority_name' => "'Low' | 'Medium' | 'High' | 'Critical'",
+        'priority_name' => 'PriorityKind',
         'visibility' => 'VisibilityType',
         'color' => "'red' | 'green' | 'blue' | 'amber' | 'gray' | 'purple'",
         'color_name' => "'Red' | 'Green' | 'Blue' | 'Amber' | 'Gray' | 'Purple'",
         'excluded' => "'foo' | 'bar'",
         'excluded_name' => "'Foo' | 'Bar'",
         'grade_list' => 'GradeType[]',
-    ])->and(analyzedImportNames(EnumValuesPayload::class))->toBe(['GradeType', 'PriorityType', 'VisibilityType']);
+    ])->and(analyzedImportNames(EnumValuesPayload::class))
+        ->toBe(['GradeKind', 'GradeType', 'PriorityKind', 'PriorityType', 'VisibilityType']);
 });
 
 it('sends values the published types admit', function () {
@@ -44,8 +50,10 @@ it('sends values the published types admit', function () {
 it('publishes the literal union when enum publishing is off or excludes the enum', function (array $config) {
     config()->set($config);
 
-    expect(analyzedKeyTypes(EnumValuesPayload::class)['fallback_grade'])->toBe("'pass' | 'fail'")
-        ->and(analyzedImportNames(EnumValuesPayload::class))->not->toContain('GradeType');
+    expect(analyzedKeyTypes(EnumValuesPayload::class))->toMatchArray([
+        'fallback_grade' => "'pass' | 'fail'",
+        'grade_name' => "'Pass' | 'Fail'",
+    ])->and(analyzedImportNames(EnumValuesPayload::class))->not->toContain('GradeType');
 })->with([
     'publishing off' => [['ts-publish.enums.enabled' => false]],
     'excluded' => [['ts-publish.enums.excluded' => [Grade::class]]],
@@ -56,6 +64,22 @@ it('publishes the literal union for an enum whose cases #[TsCase] renames or rev
         ->and(EnumValueTypes::name(Color::class, true)['type'])->toBe("'Red' | 'Green' | 'Blue' | 'Amber' | 'Gray' | 'Purple'")
         ->and(EnumValueTypes::value(Color::class, true))->not->toHaveKey('directEnumFqcn');
 });
+
+it('keeps an enum alias only while #[TsCase] leaves the case scalars it is built from', function (
+    string $enum,
+    string $read,
+    string $type,
+) {
+    $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([$enum]));
+
+    expect(EnumValueTypes::{$read}($enum, true)['type'])->toBe($type);
+})->with([
+    'a pure name beside a renamed case' => [PureRenamedCases::class, 'name', 'PureRenamedCasesType'],
+    'a pure name beside a revalued case' => [PureRevaluedCases::class, 'name', "'Visible' | 'Hidden'"],
+    'a backed name beside a renamed case' => [BackedRenamedCases::class, 'name', "'Visible' | 'Hidden'"],
+    'a backed name beside a revalued case' => [BackedRevaluedCases::class, 'name', 'BackedRevaluedCasesKind'],
+    'a backed value beside a renamed case' => [BackedRenamedCases::class, 'value', 'BackedRenamedCasesType'],
+]);
 
 it('reads an enum value in an import-less shape as the literal union', function () {
     expect(publishedResourceKeyTypes(PostHelperParamsResource::class, Post::class)['status_label'])

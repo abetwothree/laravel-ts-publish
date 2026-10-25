@@ -3424,7 +3424,7 @@ declare global {
             limits: { daily: number; codes: string[] };
             tags: (string | number)[];
             notes: never[];
-            stage_name?: 'Draft' | 'Published';
+            stage_name?: app.enums.StatusKind;
         }
         /** The same numeric keys in a resource that preserves its keys, so every array keeps them. */
         export interface DepotTierKeyedResource {
@@ -3990,7 +3990,7 @@ declare global {
             unflagged_rows: { id: number }[];
         }
         export interface MediaTypeInstanceOfResource {
-            name?: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            name?: app.enums.MediaTypeKind;
             value?: app.enums.MediaTypeType;
             meta?: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
@@ -4000,13 +4000,13 @@ declare global {
          * to exercise additional coverage paths.
          */
         export interface MediaTypePositiveInstanceOfResource {
-            name?: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            name?: app.enums.MediaTypeKind;
             value?: app.enums.MediaTypeType;
             meta?: { label?: string };
             empty?: never[];
         }
         export interface MediaTypeResource {
-            name: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+            name: app.enums.MediaTypeKind;
             value: app.enums.MediaTypeType;
             meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
         }
@@ -4569,7 +4569,7 @@ declare global {
             status_label: { label: 'Draft' | 'Published'; value: 0 | 1 };
             status_payload: { payload_status: unknown; payload_name: 'Draft' | 'Published' };
             payload_status: app.enums.StatusType;
-            payload_name: 'Draft' | 'Published';
+            payload_name: app.enums.StatusKind;
         }
         /** A `new` of a class that is not a resource, in place and as a parameter default. */
         export interface PostNewValueResource {
@@ -6493,6 +6493,7 @@ declare global {
             status: app.enums.StatusType;
             crm_status: crm.enums.StatusType;
             kept: app.enums.StatusType;
+            status_name: app.enums.StatusKind;
         }
         export interface PureEnumEvent {
             role: app.enums.RoleType;

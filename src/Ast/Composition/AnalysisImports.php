@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -30,6 +31,9 @@ final class AnalysisImports
 
     /** The importing file's namespace path; BuildsImportMaps computes relative paths from it. */
     protected string $namespacePath = '';
+
+    /** @var array<string, array<string, string>> FQCN => each `…Kind` it is imported under, unaliased */
+    protected array $siblingImportNames = [];
 
     /**
      * Build the type and value import maps for one analysis.
@@ -57,6 +61,15 @@ final class AnalysisImports
 
         foreach ($this->asEnumWrappedOnlyFqcns($analysis) as $fqcn) {
             unset($enumFqcnMap[$fqcn]);
+        }
+
+        // Every caller keeps only the names its type spells, so a backed enum offers its `…Kind` beside its `…Type`.
+        $this->siblingImportNames = [];
+
+        foreach (array_keys($enumFqcnMap) as $fqcn) {
+            foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+                $this->siblingImportNames[$fqcn][$name] = $name;
+            }
         }
 
         $resourceFqcnMap = [];

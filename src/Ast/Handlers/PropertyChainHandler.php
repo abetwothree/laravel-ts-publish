@@ -224,7 +224,8 @@ final class PropertyChainHandler implements ExpressionHandler
 
         $result = match ($innerProp) {
             'name' => EnumValueTypes::name($wrappedClass, $scope->carriesImports),
-            // A pure enum declares no value; its read publishes as any backed enum's rather than declining to unknown.
+            // A pure enum has no `value`, so this read fails at runtime (docs/known-gaps.md); the arm keeps the type it
+            // published before rather than regress the key to unknown.
             'value' => EnumValueTypes::value($wrappedClass, $scope->carriesImports)
                 ?? EnumValueTypes::value(BackedEnum::class, $scope->carriesImports),
             default => null,

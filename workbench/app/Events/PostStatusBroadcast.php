@@ -11,7 +11,7 @@ use Workbench\App\Models\Post;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
- * Broadcasts bare enum cases, two of them from enums that share a basename.
+ * Broadcasts bare enum cases, two of them from enums that share a basename, and one enum's case name.
  */
 class PostStatusBroadcast implements ShouldBroadcast
 {
@@ -26,6 +26,7 @@ class PostStatusBroadcast implements ShouldBroadcast
             'status' => Status::Published,
             'crm_status' => CrmStatus::Active,
             'kept' => $this->post->status ?? Status::Draft,
+            'status_name' => $this->post->status->name,
         ];
     }
 

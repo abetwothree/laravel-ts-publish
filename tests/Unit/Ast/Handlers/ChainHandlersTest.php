@@ -141,7 +141,7 @@ it('resolves $this->resource->name / ->value on an enum-wrapped resource', funct
     $name = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine());
     $value = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'value'), $scope, chainHandlersThrowingEngine());
 
-    expect($name)->toBe(['type' => "'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'", 'optional' => false])
+    expect($name)->toBe(['type' => 'MediaTypeKind', 'optional' => false, 'directEnumFqcn' => MediaType::class])
         ->and($value)->toBe(['type' => 'MediaTypeType', 'optional' => false, 'directEnumFqcn' => MediaType::class]);
 });
 

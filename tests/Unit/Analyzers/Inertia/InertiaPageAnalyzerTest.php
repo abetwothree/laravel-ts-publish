@@ -773,11 +773,11 @@ it('quotes a page prop key that is not an identifier', function () {
         ->toBe('Inertia.SharedData & { "can-edit": boolean, ok: number }');
 });
 
-it('types a bare enum case prop as its enum, and imports it once, beside a new value', function () {
+it('types a bare enum case prop as its enum, and imports it once, beside a case name and a new value', function () {
     $data = pageData(InertiaEnumCaseController::class.'@show');
 
     expect($data['pageType'])
-        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
+        ->toBe('Inertia.SharedData & { status: StatusType, kept: StatusType, status_name: StatusKind, nested: { status: StatusType }, cases: StatusType[], reading: '.LaravelTsPublishService::DATE_TIME_OBJECT_TYPE.' }')
         ->and($data['classFqcns'])->toBe([Status::class]);
 });
 

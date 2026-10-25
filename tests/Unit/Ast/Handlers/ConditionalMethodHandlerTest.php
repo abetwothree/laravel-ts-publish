@@ -937,7 +937,7 @@ it('reads a parameter bound to an enum case default as that enum', function (str
         ->toBe($type);
 })->with([
     '->value' => ['->value', 'StatusType'],
-    '->name' => ['->name', "'Draft' | 'Published'"],
+    '->name' => ['->name', 'StatusKind'],
     'a method' => ['->icon()', 'string'],
 ]);
 

@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
  * Assigns collision-free local TypeScript names to imported FQCNs.
  *
  * resolve() returns a deterministic FQCN => local-name map, extending each alias by namespace
- * segment until unique (numeric suffix as final tiebreak).
+ * segment until unique (numeric suffix as final tiebreak). resolveSiblings() names each FQCN's sibling names after it.
  *
  * @phpstan-type RegistryEntry array{fqcn: string, typeName: string, preferredAlias: string|null}
  */
@@ -22,6 +22,9 @@ class ImportNameRegistry
 
     /** @var array<string, true> */
     protected array $reserved = [];
+
+    /** @var array<string, list<string>> FQCN => the other names it is imported under, such as an enum's `…Kind` */
+    protected array $siblings = [];
 
     /**
      * @param  list<string>  $skipSegments  Namespace segments skipped when deriving prefixes.
@@ -58,6 +61,16 @@ class ImportNameRegistry
             'typeName' => $typeName,
             'preferredAlias' => $preferredAlias,
         ];
+    }
+
+    /**
+     * Register another name a registered FQCN is imported under. It takes the prefix and tiebreak its type name gets.
+     */
+    public function registerSibling(string $fqcn, string $name): void
+    {
+        if (! in_array($name, $this->siblings[$fqcn] ?? [], true)) {
+            $this->siblings[$fqcn][] = $name;
+        }
     }
 
     /**
@@ -108,6 +121,40 @@ class ImportNameRegistry
         }
 
         return $ordered;
+    }
+
+    /**
+     * Name each registered sibling as its FQCN's type name was named: `StatusKind as CrmStatusKind` beside
+     * `StatusType as CrmStatusType`. A sibling name another import already holds takes a numeric tiebreak.
+     *
+     * @param  array<string, string>  $resolved  FQCN => local name, as resolve() returned it
+     * @return array<string, array<string, string>> FQCN => sibling name => local name
+     */
+    public function resolveSiblings(array $resolved): array
+    {
+        $taken = $this->reserved + array_fill_keys(array_values($resolved), true);
+        $named = [];
+
+        foreach (array_intersect_key($this->siblings, $resolved, $this->entries) as $fqcn => $names) {
+            $local = $resolved[$fqcn];
+            $typeName = $this->entries[$fqcn]['typeName'];
+
+            // A local name is its type name with a prefix before it and a tiebreak after it.
+            $at = strrpos($local, $typeName);
+
+            foreach ($names as $name) {
+                $candidate = $at === false ? $name : substr_replace($local, $name, $at, strlen($typeName));
+
+                for ($base = $candidate, $i = 2; isset($taken[$candidate]); $i++) {
+                    $candidate = $base.$i;
+                }
+
+                $taken[$candidate] = true;
+                $named[$fqcn][$name] = $candidate;
+            }
+        }
+
+        return $named;
     }
 
     /**

@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -531,7 +532,10 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
             fn (string $fqcn): bool => enum_exists($fqcn)
-                ? $this->typeSpells($pageType, LaravelTsPublish::toTsType($fqcn)['type'])
+                ? array_any(
+                    [LaravelTsPublish::toTsType($fqcn)['type'], ...ValueResult::enumSiblingNames($fqcn)],
+                    fn (string $name): bool => $this->typeSpells($pageType, $name),
+                )
                 : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
         ));
     }

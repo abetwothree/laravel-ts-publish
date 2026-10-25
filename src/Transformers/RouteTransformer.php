@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Concerns\FiltersRoutes;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -759,6 +760,10 @@ class RouteTransformer extends CoreTransformer
 
         /** @var TypesImportMap $imports */
         $imports = [];
+        $pageTypes = array_merge(...array_map(
+            static fn (array $action): array => array_values((array) ($action['pageType'] ?? [])),
+            $this->actions,
+        ));
 
         foreach ($allFqcns as $fqcn) {
             // FQCNs in TolkiTypes::MAP are imported from '@tolki/types' rather than a relative path
@@ -770,10 +775,21 @@ class RouteTransformer extends CoreTransformer
 
             $targetPath = TsNaming::namespaceToPath($fqcn);
             $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
-            // An enum's TypeScript name follows #[TsEnum(name:)]; resourceTypeName() only knows #[TsResource].
-            $imports[$importPath][] = enum_exists($fqcn)
-                ? (LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type')
-                : TsNaming::resourceTypeName($fqcn);
+
+            if (! enum_exists($fqcn)) {
+                $imports[$importPath][] = TsNaming::resourceTypeName($fqcn);
+
+                continue;
+            }
+
+            // An enum's TypeScript name follows #[TsEnum(name:)]; a page reading only its `…Kind` needs no `…Type`.
+            $typeName = LaravelTsPublish::toTsType($fqcn)['enumTypes'][0] ?? class_basename($fqcn).'Type';
+            $kinds = array_values(array_filter(
+                ValueResult::enumSiblingNames($fqcn),
+                static fn (string $name): bool => TsTypeString::typeNameOccursIn($name, ...$pageTypes),
+            ));
+            $names = $kinds !== [] && ! TsTypeString::typeNameOccursIn($typeName, ...$pageTypes) ? $kinds : [$typeName, ...$kinds];
+            $imports[$importPath] = [...($imports[$importPath] ?? []), ...$names];
         }
 
         // A type-only import declares the const for `typeof`, and the route file keeps no runtime import for it.

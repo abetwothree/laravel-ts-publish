@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use Illuminate\Support\Str;
 
 /**
  * Shared helpers for building TypeScript import maps in both transformers.
@@ -15,19 +17,38 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 trait BuildsImportMaps
 {
     /**
-     * Collect modular (per-file) type imports for a set of FQCNs.
+     * Collect modular (per-file) type imports for a set of FQCNs, each beside the sibling names it is imported under.
+     *
+     * With `$spelledIn`, a class imported under a sibling name keeps only the names those types spell: an enum a type
+     * reads by its `…Kind` alone does not import its `…Type`.
      *
      * @param  array<string, string>  $fqcnMap  FQCN => TypeScript type name
+     * @param  list<string>|null  $spelledIn  the types the file publishes, as it spells them
      * @return TypesImportMap
      */
-    protected function collectModularTypeImports(array $fqcnMap): array
+    protected function collectModularTypeImports(array $fqcnMap, ?array $spelledIn = null): array
     {
         $imports = [];
 
         foreach ($fqcnMap as $fqcn => $typeName) {
             $targetPath = TsNaming::namespaceToPath($fqcn);
             $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = $this->formatImportName($fqcn, $typeName);
+            $names = [$this->formatImportName($fqcn, $typeName)];
+
+            foreach ($this->siblingImportNames[$fqcn] ?? [] as $name => $local) {
+                $names[] = $local === $name ? $name : $name.' as '.$local;
+            }
+
+            if ($spelledIn !== null && count($names) > 1) {
+                $names = array_filter(
+                    $names,
+                    static fn (string $name): bool => TsTypeString::typeNameOccursIn(Str::afterLast($name, ' as '), ...$spelledIn),
+                );
+            }
+
+            if ($names !== []) {
+                $imports[$importPath] = [...($imports[$importPath] ?? []), ...array_values($names)];
+            }
         }
 
         return $imports;

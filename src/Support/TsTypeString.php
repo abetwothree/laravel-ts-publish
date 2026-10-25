@@ -140,10 +140,12 @@ class TsTypeString
      *                                   aliasPropertyType() consumes only the matching prefix, in order
      * @param  array<string, string>  $nameMap  FQCN => unaliased type name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  array<string, array<string, string>>  $siblings  FQCN => each sibling name it is imported under, such as
+     *                                                          an enum's `…Kind` => the local name the file gives it
      */
-    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases): string
+    public function aliasPropertyType(string $type, array $itemFqcns, array $nameMap, array $aliases, array $siblings = []): string
     {
-        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '');
+        return $this->aliasInQueueOrder($type, $itemFqcns, $nameMap, $aliases, '', $siblings);
     }
 
     /**
@@ -372,38 +374,55 @@ class TsTypeString
     /**
      * Replace each registered name with its alias, the Nth occurrence of a name taking the Nth FQCN queued under it.
      *
-     * $anchor is a pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
+     * A sibling name reads its class's queue, so an enum's `…Type` and `…Kind` tokens share one order. $anchor is a
+     * pattern each occurrence must follow; a `\K` in it keeps the anchor out of the text replaced.
      *
      * @param  list<string>  $itemFqcns
      * @param  array<string, string>  $nameMap  FQCN => unaliased name
      * @param  array<string, string>  $aliases  FQCN => alias, for the subset that was aliased
+     * @param  array<string, array<string, string>>  $siblings  FQCN => sibling name => its local name
      */
-    protected function aliasInQueueOrder(string $type, array $itemFqcns, array $nameMap, array $aliases, string $anchor): string
-    {
-        /** @var array<string, non-empty-list<string>> $queues */
+    protected function aliasInQueueOrder(
+        string $type,
+        array $itemFqcns,
+        array $nameMap,
+        array $aliases,
+        string $anchor,
+        array $siblings = [],
+    ): string {
+        /** @var array<string, non-empty-list<string>> $queues name => the FQCN behind each of its occurrences */
         $queues = [];
+        /** @var array<string, string> $queueOf each name a token is spelled with => the name its queue is kept under */
+        $queueOf = [];
 
         foreach ($itemFqcns as $fqcn) {
             $name = $nameMap[$fqcn] ?? null;
 
             if ($name !== null) {
-                $queues[$name][] = $aliases[$fqcn] ?? $name;
+                $queues[$name][] = $fqcn;
+                $queueOf[$name] = $name;
+
+                foreach (array_keys($siblings[$fqcn] ?? []) as $sibling) {
+                    $queueOf[$sibling] ??= $name;
+                }
             }
         }
 
-        if ($queues === []) {
+        if ($queueOf === []) {
             return $type;
         }
 
-        $pattern = $this->queuedTokenPattern(array_keys($queues), $anchor);
+        $pattern = $this->queuedTokenPattern(array_keys($queueOf), $anchor);
         $seen = [];
 
-        return preg_replace_callback($pattern, function (array $match) use ($queues, &$seen): string {
-            $name = $match[0];
+        return preg_replace_callback($pattern, function (array $match) use ($queues, $queueOf, $aliases, $siblings, &$seen): string {
+            $spelled = $match[0];
+            $name = $queueOf[$spelled];
             $occurrence = $seen[$name] ?? 0;
             $seen[$name] = $occurrence + 1;
+            $fqcn = $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
 
-            return $queues[$name][$this->queuePosition($occurrence, count($queues[$name]))];
+            return $spelled === $name ? ($aliases[$fqcn] ?? $name) : ($siblings[$fqcn][$spelled] ?? $spelled);
         }, $type) ?? $type;
     }
 

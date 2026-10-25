@@ -2005,7 +2005,7 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($data->properties['name']['type'])->toBe('MediaTypeKind');
         expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
@@ -2020,10 +2020,10 @@ describe('ResourceTransformer with MediaTypeResource (model-less enum resource)'
         expect($data->modelClass)->toBeNull();
     });
 
-    test('enum-backed resource imports only its enum\'s value type', function () {
+    test('enum-backed resource imports only its enum\'s name and value types', function () {
         $data = (new ResourceTransformer(MediaTypeResource::class))->data();
 
-        expect($data->typeImports)->toBe(['../../enums' => ['MediaTypeType']]);
+        expect($data->typeImports)->toBe(['../../enums' => ['MediaTypeKind', 'MediaTypeType']]);
     });
 });
 
@@ -2032,7 +2032,7 @@ describe('ResourceTransformer with MediaTypeInstanceOfResource (instanceof guard
         $data = (new ResourceTransformer(MediaTypeInstanceOfResource::class))->data();
 
         expect($data->properties)->toHaveKeys(['name', 'value', 'meta']);
-        expect($data->properties['name']['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($data->properties['name']['type'])->toBe('MediaTypeKind');
         expect($data->properties['value']['type'])->toBe('MediaTypeType');
         expect($data->properties['meta']['type'])
             ->toStartWith('{ ')
@@ -3465,9 +3465,9 @@ it('types the resource\'s own untyped properties from their defaults, over a sam
         'limits' => '{ daily: number; codes: string[] }',
         'tags' => '(string | number)[]',
         'notes' => 'never[]',
-        'stage_name' => "'Draft' | 'Published'",
+        'stage_name' => 'StatusKind',
     ])
-        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusType \\} from '[^']+';$/m");
+        ->and(new ResourceWriter(new Filesystem)->write($transformer))->toMatch("/^import type \\{ StatusKind, StatusType \\} from '[^']+';$/m");
 });
 
 // A method cast is final for its key, so the publisher's re-index leaves its text as written.

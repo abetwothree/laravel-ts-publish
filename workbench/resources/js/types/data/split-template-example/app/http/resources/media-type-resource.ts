@@ -1,9 +1,9 @@
-import type { MediaTypeType } from '../../enums';
+import type { MediaTypeKind, MediaTypeType } from '../../enums';
 
 /** @see Workbench\App\Http\Resources\MediaTypeResource */
 export interface MediaTypeResource
 {
-    name: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+    name: MediaTypeKind;
     value: MediaTypeType;
     meta: { extensions: string[]; maxSizeMb: number; sizeUnit: string; icon: string };
 }

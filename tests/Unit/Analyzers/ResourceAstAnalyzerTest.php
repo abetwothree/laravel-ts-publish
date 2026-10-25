@@ -3281,14 +3281,14 @@ describe('ResourceAstAnalyzer with MediaTypeResource (model-less enum resource)'
         expect($names)->toContain('name', 'value', 'meta');
     });
 
-    test('wrapped resource name property resolves to the case-name union', function () {
+    test('wrapped resource name property resolves to the enum\'s Kind alias', function () {
         $reflection = new ReflectionClass(MediaTypeResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $name = collect($analysis->properties)->firstWhere('name', 'name');
 
-        expect($name['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($name['type'])->toBe('MediaTypeKind');
     });
 
     test('wrapped resource value property resolves to the published enum\'s value type', function () {
@@ -3371,14 +3371,14 @@ describe('ResourceAstAnalyzer with MediaTypeInstanceOfResource (instanceof guard
         expect($names)->toContain('name', 'value', 'meta');
     });
 
-    test('wrapped resource name property resolves to the case-name union via instanceof hint', function () {
+    test('wrapped resource name property resolves to the enum\'s Kind alias via instanceof hint', function () {
         $reflection = new ReflectionClass(MediaTypeInstanceOfResource::class);
         $analyzer = new ResourceAstAnalyzer($reflection);
         $analysis = $analyzer->analyze();
 
         $name = collect($analysis->properties)->firstWhere('name', 'name');
 
-        expect($name['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($name['type'])->toBe('MediaTypeKind');
     });
 
     test('wrapped resource value property resolves to the published enum\'s value type via instanceof hint', function () {
@@ -3428,7 +3428,7 @@ describe('ResourceAstAnalyzer with MediaTypePositiveInstanceOfResource (positive
         $name = collect($analysis->properties)->firstWhere('name', 'name');
         $value = collect($analysis->properties)->firstWhere('name', 'value');
 
-        expect($name['type'])->toBe("'Image' | 'Video' | 'Audio' | 'Document' | 'Archive'");
+        expect($name['type'])->toBe('MediaTypeKind');
         expect($value['type'])->toBe('MediaTypeType');
     });
 

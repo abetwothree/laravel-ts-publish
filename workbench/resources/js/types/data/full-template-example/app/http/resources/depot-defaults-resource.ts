@@ -1,4 +1,4 @@
-import type { StatusType } from '../../enums';
+import type { StatusKind, StatusType } from '../../enums';
 
 /**
  * Untyped properties of the resource's own, each typed from its default as a parameter default is. `name` shadows the
@@ -14,5 +14,5 @@ export interface DepotDefaultsResource
     limits: { daily: number; codes: string[] };
     tags: (string | number)[];
     notes: never[];
-    stage_name?: 'Draft' | 'Published';
+    stage_name?: StatusKind;
 }

@@ -26,20 +26,33 @@ final class ClassTokenQueue
     /** @var array<string, int> name => how many of its occurrences have been read */
     private array $seen = [];
 
+    /** @var array<string, string> each name a token is spelled with => the name its queue is kept under */
+    private array $queueOf = [];
+
     private ?string $pattern = null;
 
     /**
+     * Queue each class under its name. A token spelling one of its sibling names, as an enum's `…Kind` is beside its
+     * `…Type`, reads the same queue, so two same-named enums' tokens of either name keep one order.
+     *
      * @param  list<class-string>  $fqcns  one per token, in the order the arm's type spells them
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
+     * @param  (Closure(class-string): list<string>)|null  $alsoSpelledAs  the class's sibling names
      */
-    public function __construct(array $fqcns, Closure $nameOf)
+    public function __construct(array $fqcns, Closure $nameOf, ?Closure $alsoSpelledAs = null)
     {
         foreach ($fqcns as $fqcn) {
-            $this->queues[$nameOf($fqcn)][] = $fqcn;
+            $name = $nameOf($fqcn);
+            $this->queues[$name][] = $fqcn;
+            $this->queueOf[$name] = $name;
+
+            foreach ($alsoSpelledAs === null ? [] : $alsoSpelledAs($fqcn) as $sibling) {
+                $this->queueOf[$sibling] ??= $name;
+            }
         }
 
-        if ($this->queues !== []) {
-            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queues));
+        if ($this->queueOf !== []) {
+            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queueOf));
         }
     }
 
@@ -120,7 +133,8 @@ final class ClassTokenQueue
 
         $taken = [];
 
-        foreach ($matches[0] as $name) {
+        foreach ($matches[0] as $spelled) {
+            $name = $this->queueOf[$spelled];
             $occurrence = $this->seen[$name] ?? 0;
             $this->seen[$name] = $occurrence + 1;
             $taken[] = $this->queues[$name][TsTypeString::queuePosition($occurrence, count($this->queues[$name]))];

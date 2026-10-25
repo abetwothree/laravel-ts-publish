@@ -1,4 +1,4 @@
-import type { MediaTypeType } from '../../enums';
+import type { MediaTypeKind, MediaTypeType } from '../../enums';
 
 /**
  * Resource using a positive instanceof guard (not negated).
@@ -9,7 +9,7 @@ import type { MediaTypeType } from '../../enums';
  */
 export interface MediaTypePositiveInstanceOfResource
 {
-    name?: 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+    name?: MediaTypeKind;
     value?: MediaTypeType;
     meta?: { label?: string };
     empty?: never[];

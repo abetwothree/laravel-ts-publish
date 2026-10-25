@@ -56,8 +56,8 @@ final class EnumValueTypes
             return self::typed('number');
         }
 
-        return self::aliasUsable($reflection, $carriesImports, orName: false)
-            ? self::alias($reflection)
+        return self::aliasUsable($reflection, $carriesImports, fromNames: false)
+            ? self::alias($reflection, kind: false)
             : self::typed(self::literals($values));
     }
 
@@ -80,12 +80,16 @@ final class EnumValueTypes
             return null;
         }
 
-        // A pure enum publishes its names as its values, so its alias is the name union.
-        return ! $reflection->isBacked() && self::aliasUsable($reflection, $carriesImports, orName: true)
-            ? self::alias($reflection)
-            : self::typed(self::literals(
-                self::caseScalars($reflection, fn (ReflectionEnumUnitCase $case): string => $case->getName()),
-            ));
+        // A pure enum publishes its names as its values, so its `…Type` is the name union; a backed one has a `…Kind`.
+        $backed = $reflection->isBacked();
+
+        if (self::aliasUsable($reflection, $carriesImports, fromNames: $backed)) {
+            return self::alias($reflection, kind: $backed);
+        }
+
+        return self::typed(self::literals(
+            self::caseScalars($reflection, fn (ReflectionEnumUnitCase $case): string => $case->getName()),
+        ));
     }
 
     /**
@@ -106,30 +110,32 @@ final class EnumValueTypes
 
     /**
      * Whether the enum's alias spells what PHP sends: the reader carries imports, `ts:publish` writes the enum, and no
-     * case's #[TsCase] replaces its published value, or with `$orName` its name.
+     * case's #[TsCase] replaces the scalar the alias is built from, its published name `$fromNames`, else its value.
      *
      * @param  ReflectionEnum<UnitEnum>  $reflection
      */
-    private static function aliasUsable(ReflectionEnum $reflection, bool $carriesImports, bool $orName): bool
+    private static function aliasUsable(ReflectionEnum $reflection, bool $carriesImports, bool $fromNames): bool
     {
         return $carriesImports
             && PublishedEnums::includes($reflection->getName())
-            && ! array_any($reflection->getCases(), function (ReflectionEnumUnitCase $case) use ($orName): bool {
+            && ! array_any($reflection->getCases(), function (ReflectionEnumUnitCase $case) use ($fromNames): bool {
                 $tsCase = ($case->getAttributes(TsCase::class)[0] ?? null)?->newInstance();
 
-                return $tsCase !== null && ($tsCase->value !== '' || ($orName && $tsCase->name !== ''));
+                return $tsCase !== null && ($fromNames ? $tsCase->name : $tsCase->value) !== '';
             });
     }
 
     /**
-     * The enum's published alias, carrying the enum so its file imports it.
+     * The enum's published `…Type` alias, or with `$kind` its `…Kind`, carrying the enum so its file imports it.
      *
      * @param  ReflectionEnum<UnitEnum>  $reflection
      * @return ValueExpressionResult
      */
-    private static function alias(ReflectionEnum $reflection): array
+    private static function alias(ReflectionEnum $reflection, bool $kind): array
     {
-        return [...self::typed(ValueResult::enumTypeName($reflection->getName())), 'directEnumFqcn' => $reflection->getName()];
+        $enum = $reflection->getName();
+
+        return [...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)), 'directEnumFqcn' => $enum];
     }
 
     /**
