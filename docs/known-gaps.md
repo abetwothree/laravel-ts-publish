@@ -215,6 +215,12 @@ collides, since `TsCastsImportResolver` aliases only between casts, and an inlin
 invalid TypeScript. A key typed by a docblock-displaced union has no such handle, because its enums are keyed by FQCN
 rather than by property name, so narrow it to one enum.
 
+### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
+
+`$this->resource->value` in a resource wrapping a pure enum, such as `UnitEnumResource.value`, publishes
+`string | number`. A pure enum has no `value`: PHP reads the undefined property as `null` with a warning, which
+Laravel's error handler turns into an exception. Read `->name`, which publishes the enum's `…Type`.
+
 ### An enum named like another enum's type name collides with it
 
 An enum `Role` publishes the const `Role` and the type `RoleType`, so a second enum named `RoleType` in the same

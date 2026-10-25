@@ -751,7 +751,7 @@ value degrades to `unknown`.
 | Reflected shape | Accepted? | Dispatch channel |
 | --- | --- | --- |
 | Primitives and their unions (`string`, `int \| null`) | yes | none needed |
-| One enum | yes | `directEnumFqcn` |
+| One enum | yes | `directEnumFqcn`; an enum channel carries the enum behind each `…Type` or `…Kind` token |
 | Several enums (`Status\|Priority`) | yes | `embeddedEnumFqcns` |
 | One `Model` subclass | yes; a method return then declines an abstract, `Illuminate\` or unpublished model | `modelFqcn` |
 | Several `Model` subclasses | yes | `embeddedModelFqcns` |

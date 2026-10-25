@@ -107,6 +107,10 @@ maps, and passes the result to `applyResolvedImportNames()`. `AnalysisComposer` 
 Only `ModelTransformer` suggests preferred aliases, derived from relation names. The others have no relation to derive
 one from.
 
+A backed enum's `…Kind` that a type spells registers as a sibling of its enum's entry, and `resolveSiblings()` gives it
+the prefix and tiebreak its `…Type` gets, so `StatusKind as CrmStatusKind` sits beside `StatusType as CrmStatusType`.
+`aliasPropertyType()` reads a `…Kind` token from its enum's queue, which keeps two same-named enums' tokens in order.
+
 Every consumer unions its FQCN maps with `+`, which is safe only because no FQCN lands in two of them. The analyzers
 put only `JsonResource` subclasses in a resource map and only Eloquent models in a model map, and an enum is neither.
 PHP does not enforce the resource and model split, and a class extending both would break it.
