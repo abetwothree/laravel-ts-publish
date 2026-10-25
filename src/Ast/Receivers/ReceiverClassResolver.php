@@ -50,6 +50,7 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 use ReflectionClass;
+use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionProperty;
 use Throwable;
@@ -132,6 +133,7 @@ final class ReceiverClassResolver
             $expr instanceof StaticCall => $this->resolveStaticClass($expr, $scope),
             $expr instanceof New_ => $this->fromNew($expr, $scope),
             $expr instanceof FuncCall => $this->fromFunctionCall($expr),
+            $expr instanceof ClassConstFetch => $this->fromEnumCase($expr, $scope),
             $expr instanceof Ternary => $this->fromArms(
                 [$expr->if ?? $expr->cond, $expr->else],
                 $scope,
@@ -985,6 +987,22 @@ final class ReceiverClassResolver
         return $docblock === null || $context === null
             ? null
             : DeclaredClasses::docblockClasses($docblock, $context, $subjectClass, $subjectClass);
+    }
+
+    /**
+     * Resolve `E::Case`, `self::Case` or `static::Case` to its enum; a constant that is no case declines.
+     */
+    private function fromEnumCase(ClassConstFetch $fetch, AnalysisScope $scope): ?ReceiverType
+    {
+        if (! $fetch->class instanceof Name || ! $fetch->name instanceof Identifier) {
+            return null;
+        }
+
+        $class = $this->subjectClassName($fetch->class, $scope->subjectReflection);
+
+        return enum_exists($class) && new ReflectionEnum($class)->hasCase($fetch->name->toString())
+            ? ReceiverType::of($class)
+            : null;
     }
 
     /**

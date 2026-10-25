@@ -16,6 +16,7 @@ use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 
@@ -57,6 +58,8 @@ function analysisProbeCases(): array
         'StorePostRequest' => [StorePostRequest::class, 'rules', null],
         // Enum `->value` and `->name` reads, each the published alias with its import or the literal union.
         'EnumValuesPayload' => [EnumValuesPayload::class, 'toArray', null],
+        // An enum case, a local holding one and a ternary of cases read as receivers of their enum.
+        'EnumCasePayload' => [EnumCasePayload::class, 'toArray', null],
         // Two same-named enums' `->value` and `->name` reads, each `…Kind` aliased with its `…Type`'s prefix.
         'SameNamedKindsPayload' => [SameNamedKindsPayload::class, 'toArray', null],
         // One enum's `…Type` token and its same-named sibling's `…Kind` token in one union.

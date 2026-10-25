@@ -16,6 +16,7 @@ use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\PostHelperParamsResource;
 use Workbench\App\Models\Post;
+use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 
 beforeEach(function () {
@@ -93,4 +94,23 @@ it('publishes number for an enum with a case past the safe integer range', funct
 it('declines a pure enum value and types the enum interfaces by their scalars', function () {
     expect(EnumValueTypes::value(Visibility::class, true))->toBeNull()
         ->and(analyzedKeyTypes(EnumInterfaceReads::class))->toBe(['backed' => 'string | number', 'unit' => 'string']);
+});
+
+it('reads an enum case, a local holding one and a ternary of cases as the enum', function () {
+    expect(analyzedKeyTypes(EnumCasePayload::class))->toBe([
+        'case_value' => 'GradeType',
+        'case_name' => 'PriorityKind',
+        'local_value' => 'GradeType',
+        'picked' => 'GradeType',
+        'parsed' => 'GradeType',
+        'maybe' => 'GradeType | null',
+        'label' => 'string',
+    ]);
+});
+
+it('sends the values the enum case reads publish', function () {
+    expect(json_encode(new EnumCasePayload()->toArray()))->toBe(
+        '{"case_value":"pass","case_name":"High","local_value":"fail","picked":"pass","parsed":"pass",'
+        .'"maybe":null,"label":"High Priority"}',
+    );
 });

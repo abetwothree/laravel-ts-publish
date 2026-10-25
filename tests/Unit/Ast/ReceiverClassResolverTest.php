@@ -33,6 +33,7 @@ use Illuminate\Support\Collection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
+use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
@@ -68,6 +69,19 @@ describe('ReceiverClassResolver::resolve()', function () {
         expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('$this->priority'), postScope())?->classes)
             ->toBe([Priority::class]);
     });
+
+    test('names the enum an enum case fetch holds', function () {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr('\Workbench\App\Enums\Grade::Pass'), postScope())?->classes)
+            ->toBe([Grade::class]);
+    });
+
+    test('declines a class constant that is no enum case, and ::class', function (string $php) {
+        expect(resolve(ReceiverClassResolver::class)->resolve(receiverExpr($php), postScope()))->toBeNull();
+    })->with([
+        'a model constant' => ['\Workbench\App\Models\Post::CREATED_AT'],
+        'an enum constant that is no case' => ['\Workbench\App\Enums\Grade::Missing'],
+        '::class' => ['\Workbench\App\Enums\Grade::class'],
+    ]);
 
     test('a date-cast attribute holds Carbon, and a static-returning call keeps it', function () {
         $resolver = resolve(ReceiverClassResolver::class);
