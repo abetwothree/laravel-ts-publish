@@ -292,44 +292,15 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
-        $branchAnalysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts);
+        $analysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts)
+            ?? $this->ownFirstReturnAnalysis($toArrayMethod->stmts);
 
-        if ($branchAnalysis !== null) {
-            if ($passesKeys) {
-                $branchAnalysis->holdUnreadKeys();
-            }
-
-            return $this->ownMethodShaped($branchAnalysis);
-        }
-
-        // Fallback: the method's own first return for non-array returns (parent::toArray, $this->only, etc.); a
-        // closure's return is the closure's value, never the method's.
-        $returns = $this->collectReturnExpressions($toArrayMethod->stmts);
-        $returned = $returns[0] ?? null;
-
-        if ($returned === null) {
+        if ($analysis === null) {
             return new ResourceAnalysis; // @codeCoverageIgnore
         }
 
-        $parentMethod = $this->readParentCall($returned);
-        $frameworkMethod = $this->readThisFrameworkCall($returned);
-        $analysis = match (true) {
-            $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($toArrayMethod->stmts, $returned->name),
-            $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
-            $parentMethod !== null => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
-            $frameworkMethod !== null => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
-            default => $this->analyzeArrayExpression($returned),
-        };
-
-        $analysis ??= ResourceAnalysis::unreadAnalysis();
-
         if ($passesKeys) {
             $analysis->holdUnreadKeys();
-        }
-
-        // The fallback reads one return of several, so the others are unread.
-        if (count($returns) > 1) {
-            $analysis->readsCompletely = false;
         }
 
         return $this->ownMethodShaped($analysis);
@@ -1308,6 +1279,39 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * The fallback when the branch sweep cannot read the method's returns: its own first return, for non-array returns
+     * such as parent::toArray() or $this->only(), never a closure's; null for a body with no return.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function ownFirstReturnAnalysis(array $stmts): ?ResourceAnalysis
+    {
+        $returns = $this->collectReturnExpressions($stmts);
+        $returned = $returns[0] ?? null;
+
+        if ($returned === null) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $parentMethod = $this->readParentCall($returned);
+        $frameworkMethod = $this->readThisFrameworkCall($returned);
+        $analysis = match (true) {
+            $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($stmts, $returned->name),
+            $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
+            $parentMethod !== null => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
+            $frameworkMethod !== null => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
+            default => $this->analyzeArrayExpression($returned),
+        } ?? ResourceAnalysis::unreadAnalysis();
+
+        // The fallback reads one return of several, so the others are unread.
+        if (count($returns) > 1) {
+            $analysis->readsCompletely = false;
+        }
 
         return $analysis;
     }
